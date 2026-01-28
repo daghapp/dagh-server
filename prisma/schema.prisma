@@ -58,7 +58,7 @@ model User {
   // security             UserSecurity?
   // subscription         UserSubscription?
   // preferences          UserPreferences?
-  // deviceTokens         DeviceToken[]
+  deviceTokens         DeviceToken[]
   // suspiciousActivities SuspiciousActivity[]
   // scamAlerts           ScamAlert[]
   // paymentMethods       PaymentMethod[]
@@ -164,4 +164,28 @@ model BackgroundCheck {
   verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
 
   @@map("background_checks")
+}
+
+
+
+model otp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  purpose   String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+
+model DeviceToken {
+  id       String    @id @default(uuid())
+  userId   String    
+  token    String?   
+  platform String?   
+  addedAt  DateTime? @default(now())
+  expiredAt DateTime?
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
 }

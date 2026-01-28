@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "device_tokens" ALTER COLUMN "addedAt" SET DEFAULT CURRENT_TIMESTAMP;

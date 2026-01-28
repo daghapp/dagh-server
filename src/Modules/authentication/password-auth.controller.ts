@@ -2,6 +2,8 @@ import { Response, Request } from "express";
 import { RegistrationSchema, LoginSchema } from "../../validator";
 import { prisma } from "../../config/index";
 import bcrypt from "bcrypt";
+import { sendOtp , generateAccessToken, generateRefreshToken} from "../../helpers/index";
+
 
 export class PasswordAuthController {
   async register(req: Request, res: Response) {
@@ -32,7 +34,8 @@ export class PasswordAuthController {
           passwordHash: hashedPassword,
         },
       });
-
+      
+      await  sendOtp({ email: newUser.email, subject: "Verify Your Email" });
       return res.status(201).json({ success: true, data: newUser });
     } catch (error) {
       console.error("Registration error:", error);
@@ -49,8 +52,13 @@ export class PasswordAuthController {
     try {
       const loginData = req.body as LoginSchema;
 
-      const user = await prisma.user.findUnique({
-        where: { email: loginData.email },
+      const user = await prisma.user.findFirst({
+        where: { 
+          OR: [
+            { email: loginData.email },
+            { phoneNumber: loginData.email }
+          ]
+         },
       });
 
       if (!user || !user.passwordHash) {
@@ -69,12 +77,27 @@ export class PasswordAuthController {
           .json({ success: false, message: "Invalid email or password" });
       }
 
+      const accessToken = generateAccessToken({
+        id: user.id,
+        email: user.email,
+        accountType: user.accountType,
+    
+      })
+      const refreshToken = await generateRefreshToken({
+        id: user.id,
+        email: user.email,
+        accountType: user.accountType,
+      })
+
       return res.status(200).json({
         success: true,
         data: {
           id: user.id,
           email: user.email,
           fullName: user.fullName,
+          accountType: user.accountType,
+          accessToken,
+          refreshToken,
         },
       });
     } catch (error) {
