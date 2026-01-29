@@ -1,6 +1,6 @@
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
-import {prisma} from "../config/index";
+import { prisma } from "../config";
 
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 
@@ -19,13 +19,15 @@ export default async function protectedRoute(
   next: NextFunction
 ) {
   try {
-    const token = req.cookies.token;
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET as string) as unknown as AuthPayload;
+    const token = authHeader.split(" ")[1];
+
+    const decoded = jwt.verify(token, JWT_SECRET!) as AuthPayload;
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -33,7 +35,6 @@ export default async function protectedRoute(
         id: true,
         email: true,
         accountType: true,
-        
       },
     });
 
@@ -43,7 +44,7 @@ export default async function protectedRoute(
 
     req.user = user;
     next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
