@@ -52,12 +52,9 @@ export class PasswordAuthController {
     try {
       const loginData = req.body as LoginSchema;
 
-      const user = await prisma.user.findFirst({
+      const user = await prisma.user.findUnique({
         where: { 
-          OR: [
-            { email: loginData.email },
-            { phoneNumber: loginData.email }
-          ]
+          email: loginData.email,
          },
       });
 
@@ -109,4 +106,11 @@ export class PasswordAuthController {
       });
     }
   }
+
+  //log out user
+  async logout(req: Request, res: Response) {}
+
+  //access token
+  async newAccessToken(req: Request, res: Response) {}
+  
 }
