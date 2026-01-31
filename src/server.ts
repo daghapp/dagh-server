@@ -4,6 +4,7 @@ import { router as PasswordRoutes } from './routes/password.routes';
 import passport from './config/passport';
 import{router as OauthRoutes} from './routes/google-auth.routes'
 import { sessionConfig } from './config';
+import { setupSwagger } from './config/swagger';
 
 dotenv.config();
 
@@ -17,6 +18,9 @@ app.use(sessionConfig);
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Setup Swagger
+setupSwagger(app);
 
 app.get('/', (req, res) => {
   res.send('Hello, World!');

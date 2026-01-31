@@ -3,9 +3,10 @@ import { prisma } from "../config/prisma";
 interface OtpPayload {
   email: string;
   subject: string;
+  purpose?: string;
 }
 
-export  async function sendOtp({ email ,subject }: OtpPayload) {
+export  async function sendOtp({ email ,subject, purpose }: OtpPayload) {
   const otp = Math.floor(100000 + Math.random() * 900000);
   const expirationTime = new Date(Date.now() + 10 * 60 * 1000);
   await prisma.otp.create({
@@ -13,7 +14,7 @@ export  async function sendOtp({ email ,subject }: OtpPayload) {
       code: otp.toString(),
       expiresAt: expirationTime,
       email: email,
-      purpose: "EMAIL_VERIFICATION",
+      purpose: purpose!,
     },
   });
   await sendEmail({

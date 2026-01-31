@@ -1,5 +1,5 @@
-import { Response, Request } from "express";
-import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema } from "../../validator";
+import { Response, Request ,NextFunction} from "express";
+import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema , RequestResetPasswordSchema,ResetPasswordSchema} from "../../validator";
 import { prisma } from "../../config/index";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -39,7 +39,7 @@ export class PasswordAuthController {
         },
       });
       
-      await  sendOtp({ email: newUser.email, subject: "Verify Your Email" });
+      await  sendOtp({ email: newUser.email, subject: "Verify Your Email", purpose: "EMAIL_VERIFICATION" });
       return res.status(201).json({ success: true, data: newUser });
     } catch (error) {
       console.error("Registration error:", error);
@@ -261,7 +261,7 @@ export class PasswordAuthController {
         where: {
           email: otpData.email,
           code: otpData.code,
-          purpose: "EMAIL_VERIFICATION",
+          purpose:otpData.purpose,
         },
         orderBy: {
           createdAt: "desc",
@@ -280,11 +280,13 @@ export class PasswordAuthController {
           .json({ success: false, message: "OTP has expired" });
       }
 
-      // Update user status to ACTIVE
-      await prisma.user.update({
-        where: { email: otpData.email },
-        data: { accountStatus: "ACTIVE" },
-      });
+      // Update user status to ACTIVE only for email verification
+      if (otpData.purpose === "EMAIL_VERIFICATION") {
+        await prisma.user.update({
+          where: { email: otpData.email },
+          data: { accountStatus: "ACTIVE" },
+        });
+      }
 
       // Delete used OTP
       await prisma.otp.delete({
@@ -369,7 +371,87 @@ export class PasswordAuthController {
   }
 
 
-  //password reset
-  async resetPassword(req: Request, res: Response) {}
+  //password request reset
+  async requestResetPassword(req: Request, res: Response) {
+    //Verify if user is logged in
+    const user = req.user;
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Not authenticated" });
+    }
+    
+    //send otp for password reset
+    try{
+      const existingUser = await prisma.user.findUnique({
+        where: { id: user.id },
+      });
+
+      if (!existingUser) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
+      }
+
+      await sendOtp({ email: existingUser.email, subject: "Password Reset OTP", purpose: "PASSWORD_RESET" });
+      return res.status(200).json({
+        success: true,
+        message: "Password reset OTP sent successfully",
+      });
+    } catch (error) {
+      console.error("Request reset password error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send password reset OTP",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  //reset password
+  async resetPassword(req: Request, res: Response) {
+    try{
+      const resetData = req.body as ResetPasswordSchema;
+
+      const user = await prisma.user.findUnique({
+        where: { email: resetData.email },
+      });
+
+      if (!user || !user.passwordHash) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
+      }
+
+      const passwordMatch = bcrypt.compareSync(
+        resetData.oldPassword,
+        user.passwordHash,
+      );
+      if (!passwordMatch) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Old password is incorrect" });
+      }
+
+      const hashedNewPassword = bcrypt.hashSync(resetData.newPassword, 10);
+      await prisma.user.update({
+        where: { email: resetData.email },
+        data: { passwordHash: hashedNewPassword },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Password reset successfully",
+      });
+    }
+    catch (error) {
+      console.error("Reset password error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to reset password",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
   
 }
