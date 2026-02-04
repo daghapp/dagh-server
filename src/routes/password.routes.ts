@@ -1,15 +1,15 @@
 import express from "express";
 const router = express.Router();
 
-import { PasswordAuthController } from "../Modules/authentication/password-auth.controller";
-import { validate } from "../middleware/validation";
-import protectedRoute from "../middleware/protected";
+import { PasswordAuthController } from "../Modules/authentication/password-auth.controller.js";
+import { validate } from "../middleware/validation.js";
+import protectedRoute from "../middleware/protected.js";
 import {
   loginSchema,
   registrationSchema,
-} from "../validator/password-auth-validator";
-import { verifyOtpSchema, resendOtpSchema } from "../validator/otp-validator";
-import { refreshTokenSchema } from "../validator/token-validator";
+} from "../validator/password-auth-validator.js";
+import { verifyOtpSchema, resendOtpSchema } from "../validator/otp-validator.js";
+import { refreshTokenSchema } from "../validator/token-validator.js";
 
 
 const passwordAuthController = new PasswordAuthController();

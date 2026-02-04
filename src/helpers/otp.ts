@@ -1,5 +1,5 @@
-import sendEmail from "../config/resend.config";
-import { prisma } from "../config/prisma";
+import sendEmail from "../config/resend.config.js";
+import { prisma } from "../config/prisma.js";
 interface OtpPayload {
   email: string;
   subject: string;

@@ -1,3 +1,3 @@
-export * from "./prisma"
-export * from "./passport"
-export * from "./session"
+export * from "./prisma.js"
+export * from "./passport.js"
+export * from "./session.js"

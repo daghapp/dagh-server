@@ -1,15 +1,14 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import { router as PasswordRoutes } from './routes/password.routes';
-import passport from './config/passport';
-import{router as OauthRoutes} from './routes/google-auth.routes'
-import { sessionConfig } from './config';
-import { setupSwagger } from './config/swagger';
+import { router as PasswordRoutes } from './routes/password.routes.js';
+import passport from './config/passport.js';
+import{router as OauthRoutes} from './routes/google-auth.routes.js'
+import { sessionConfig } from './config/index.js';
+import { setupSwagger } from './config/swagger.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 
 app.use(express.json());
