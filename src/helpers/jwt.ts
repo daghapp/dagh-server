@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { prisma } from "../config/index";
+import { prisma } from "../config/index.js";
 
 if (!process.env.JWT_ACCESS_SECRET) {
   throw new Error(

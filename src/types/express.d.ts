@@ -2,12 +2,13 @@ import { User } from "../../generated/prisma/client";
 
 declare global {
   namespace Express {
+    interface User {
+      id: string;
+      email: string;
+      accountType: string;
+    }
     interface Request {
-      user?: {
-        id: string;
-        email: string;
-        accountType: string;
-      };
+      user?: User;
     }
   }
 }

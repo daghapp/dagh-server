@@ -1,2 +1,2 @@
-export * from "./otp"
-export * from "./jwt"
+export * from "./otp.js"
+export * from "./jwt.js"

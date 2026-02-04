@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { generateAccessToken, generateRefreshToken } from "src/helpers/index";
+import { generateAccessToken, generateRefreshToken } from "../../helpers/index.js";
 
 export class GoogleAuthController {
   async googleAuthCallback(req: Request, res: Response) {
