@@ -4,8 +4,10 @@
   "main": "index.ts",
   "scripts": {
   "dev": "nodemon",
-  "build": "tsc",
-  "start": "node dist/index.js"
+  "build": "prisma generate && tsc",
+  "start": "node dist/index.js",
+  "postinstall": "prisma generate"
+
 },
   "type": "module",
   "author": "",
