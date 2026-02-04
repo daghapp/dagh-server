@@ -1,7 +1,7 @@
 import { Response, Request ,NextFunction} from "express";
 import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema , RequestResetPasswordSchema,ResetPasswordSchema} from "../../validator/index.js";
 import { prisma } from "../../config/index.js";
-import bcrypt from "bcrypt";
+import * as bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { sendOtp , generateAccessToken, generateRefreshToken} from "../../helpers/index.js";
 
