@@ -1,7 +1,7 @@
 import { Response, Request ,NextFunction} from "express";
 import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema , RequestResetPasswordSchema,ResetPasswordSchema} from "../../validator";
 import { prisma } from "../../config/index";
-import bcrypt from "bcrypt";
+import * as bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { sendOtp , generateAccessToken, generateRefreshToken} from "../../helpers/index";
 
@@ -120,7 +120,8 @@ export class PasswordAuthController {
   //log out user
   async logout(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const user = req.user as { id: string; email: string; accountType: string } | undefined;
+      const userId = user?.id;
 
       if (!userId) {
         return res
@@ -374,7 +375,7 @@ export class PasswordAuthController {
   //password request reset
   async requestResetPassword(req: Request, res: Response) {
     //Verify if user is logged in
-    const user = req.user;
+    const user = req.user as { id: string; email: string; accountType: string } | undefined;
     if (!user) {
       return res
         .status(401)
