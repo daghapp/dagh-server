@@ -54,7 +54,7 @@ router.get(
  *         description: Authentication failed
  */
 router.get("/google/failed", (req, res) => {
-  res.status(401).sendFile(path.join(__dirname, "../views/auth-failed.html"));
+  res.status(401).sendFile(path.join(process.cwd(), "src/views/auth-failed.html"));
 });
 
 /**
@@ -68,7 +68,7 @@ router.get("/google/failed", (req, res) => {
  *         description: Authentication successful
  */
 router.get("/google/success", (req, res) => {
-  res.sendFile(path.join(__dirname, "../views/auth-success.html"));
+  res.sendFile(path.join(process.cwd(), "src/views/auth-success.html"));
 });
 
 // router.get("/me", protectedRoute, (req, res) => {
