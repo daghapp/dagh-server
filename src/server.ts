@@ -3,8 +3,10 @@ import dotenv from 'dotenv';
 import { router as PasswordRoutes } from './routes/password.routes.js';
 import passport from './config/passport.js';
 import{router as OauthRoutes} from './routes/google-auth.routes.js'
+import{router as FacebookRoutes} from './routes/facebook-auth.routes.js'
 import { sessionConfig } from './config/index.js';
 import { setupSwagger } from './config/swagger.js';
+import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
 
 dotenv.config();
 
@@ -28,6 +30,10 @@ app.get('/', (req, res) => {
 //user authentication routes
 app.use('/auth', PasswordRoutes);
 app.use('/auth', OauthRoutes);
+app.use('/auth', FacebookRoutes);
+
+//image upload route
+app.use('/images', ImageUploadRoutes);
 
 
 app.get("/profile", (req, res) => {
