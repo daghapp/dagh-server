@@ -7,6 +7,7 @@ import{router as FacebookRoutes} from './routes/facebook-auth.routes.js'
 import { sessionConfig } from './config/index.js';
 import { setupSwagger } from './config/swagger.js';
 import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
+import { router as PaymentRoutes } from './routes/payment.routes.js';
 
 dotenv.config();
 
@@ -34,6 +35,9 @@ app.use('/auth', FacebookRoutes);
 
 //image upload route
 app.use('/images', ImageUploadRoutes);
+
+//payment routes
+app.use('/payment', PaymentRoutes);
 
 
 app.get("/profile", (req, res) => {

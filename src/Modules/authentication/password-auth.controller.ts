@@ -1,4 +1,4 @@
-import { Response, Request ,NextFunction} from "express";
+import { Response, Request } from "express";
 import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema , RequestResetPasswordSchema,ResetPasswordSchema} from "../../validator/index.js";
 import { prisma } from "../../config/index.js";
 import * as bcrypt from "bcrypt";

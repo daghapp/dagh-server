@@ -19,6 +19,7 @@
     "@types/express": "^5.0.6",
     "@types/multer": "^2.0.0",
     "@types/passport-facebook": "^3.0.4",
+    "axios": "^1.13.5",
     "bcrypt": "^6.0.0",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.6",
