@@ -1,5 +1,5 @@
 import expres from 'express';
-import { ImageUploadController } from '../Modules/common/image-upload.controller';
+import { ImageUploadController } from '../Modules/common/image-upload.controller.js';
 
 const router = expres.Router();
 const imageUploadController = new ImageUploadController();

@@ -6,6 +6,7 @@ import{router as OauthRoutes} from './routes/google-auth.routes.js'
 import{router as FacebookRoutes} from './routes/facebook-auth.routes.js'
 import { sessionConfig } from './config/index.js';
 import { setupSwagger } from './config/swagger.js';
+import cors from 'cors';
 import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
 import { router as PaymentRoutes } from './routes/payment.routes.js';
 
@@ -15,7 +16,7 @@ const app = express();
 
 
 app.use(express.json());
-
+app.use(cors({origin: "*"}));
 app.use(sessionConfig);
 
 app.use(passport.initialize());
