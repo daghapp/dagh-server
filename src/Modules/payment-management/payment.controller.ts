@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma,hubtelClient } from "../../config/index.js";
 import { InitializePaymentSchema, SubscribtionPaymentSchema } from "../../validator/index.js";
-import { generateClientReference } from "src/helpers/client-ref.js";
+import { generateClientReference } from "../../helpers/client-ref.js";
 
 export class PaymentController {
 
