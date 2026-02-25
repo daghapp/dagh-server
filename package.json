@@ -6,7 +6,6 @@
     "dev": "nodemon",
     "build": "prisma generate && tsc",
     "start": "node dist/src/index.js",
-    "postinstall": "prisma generate"
   },
   "type": "module",
   "author": "",
