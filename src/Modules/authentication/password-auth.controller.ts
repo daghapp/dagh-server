@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { Response, Request ,NextFunction} from "express";
+=======
+import { Response, Request } from "express";
+>>>>>>> fixcors
 import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema , RequestResetPasswordSchema,ResetPasswordSchema} from "../../validator/index.js";
 import { prisma } from "../../config/index.js";
 import * as bcrypt from "bcrypt";
@@ -120,7 +124,8 @@ export class PasswordAuthController {
   //log out user
   async logout(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const user = req.user as { id: string; email: string; accountType: string } | undefined;
+      const userId = user?.id;
 
       if (!userId) {
         return res
@@ -374,7 +379,7 @@ export class PasswordAuthController {
   //password request reset
   async requestResetPassword(req: Request, res: Response) {
     //Verify if user is logged in
-    const user = req.user;
+    const user = req.user as { id: string; email: string; accountType: string } | undefined;
     if (!user) {
       return res
         .status(401)
