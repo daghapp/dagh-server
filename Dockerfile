@@ -2,30 +2,22 @@ FROM node:20
 
 WORKDIR /app
 
-# Copy package files first for caching
-COPY package.json package-lock.json* ./
+COPY package*.json ./
 
-# # Copy Prisma schema
-# COPY prisma ./prisma
-
-
-# Copy the rest of your source code
-COPY . ./
-
-# Install dependencies and generate Prisma client
 RUN npm install
 
-# Accept DATABASE_URL as a build argument
-ARG DATABASE_URL
-# ENV DATABASE_URL=$DATABASE_URL
+COPY . .
 
-# Build TypeScript to JavaScript
+# Provide DATABASE_URL for prisma
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
+
+# Build project
 RUN npm run build
 
-# Generate Prisma client after build so generated files exist in /dist
+# Generate Prisma client
 RUN npx prisma generate
 
 EXPOSE 3000
 
-# Start the compiled app
 CMD ["npm", "start"]
