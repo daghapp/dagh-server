@@ -1,9 +1,6 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-<<<<<<< HEAD
-=======
 import { Strategy as FacebookStrategy } from "passport-facebook";
->>>>>>> fixcors
 import { prisma } from "./prisma.js";
 
 const { CLIENTID, CLIENTSECRETE, REDIRECTURI, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET, FACEBOOK_CALLBACK_URL } = process.env;
