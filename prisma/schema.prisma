@@ -24,10 +24,10 @@ model User {
   gender              String?
   phoneNumber         String?           @unique
   deviceTokens        DeviceToken[]
-  profile             UserProfile?
-  verification        UserVerification?
   payments            Payment[]
+  profile             UserProfile?
   subscription        UserSubscription?
+  verification        UserVerification?
 
   @@map("users")
 }
@@ -135,25 +135,25 @@ model Payment {
   description      String?
   status           PaymentStatus @default(PENDING)
   paymentReference String        @unique
-  clientReference  String        @unique 
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+  clientReference  String        @unique
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("payments")
 }
 
 model UserSubscription {
-  id             String           @id @default(uuid())
-  userId         String           @unique
-  autoRenew      Boolean          @default(false)
+  id             String             @id @default(uuid())
+  userId         String             @unique
+  autoRenew      Boolean            @default(false)
   startDate      DateTime
   endDate        DateTime?
   status         SubscriptionStatus @default(ACTIVE)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
   billingHistory BillingHistory[]
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_subscriptions")
 }
@@ -163,13 +163,115 @@ model BillingHistory {
   subscriptionId   String
   amount           Float
   currency         String           @default("GHS")
-  paymentReference String        @unique 
+  paymentReference String           @unique
   status           PaymentStatus    @default(PENDING)
   createdAt        DateTime         @default(now())
   paidAt           DateTime?
   subscription     UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@map("billing_history")
+}
+
+model itinerary_activities {
+  id               String           @id
+  itineraryId      String
+  activityTime     String?
+  activity         String?
+  durationMinutes  Int?
+  included         Boolean?
+  cost             Decimal?
+  locationName     String?
+  locationAddress  String?
+  tour_itineraries tour_itineraries @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+}
+
+model pricing_excludes {
+  id            String        @id
+  tour_id       String
+  item          String?
+  tour_packages tour_packages @relation(fields: [tour_id], references: [id], onDelete: Cascade)
+}
+
+model pricing_includes {
+  id            String        @id
+  tour_id       String
+  item          String?
+  tour_packages tour_packages @relation(fields: [tour_id], references: [id], onDelete: Cascade)
+}
+
+model tour_itineraries {
+  id                   String                 @id
+  tourId               String
+  dayNumber            Int?
+  title                String?                @db.VarChar(255)
+  description          String?
+  breakfast            Boolean?
+  lunch                Boolean?
+  dinner               Boolean?
+  accommodationName    String?
+  accommodationType    String?
+  accommodationRating  Decimal?
+  itinerary_activities itinerary_activities[]
+  tour_packages        tour_packages          @relation(fields: [tourId], references: [id], onDelete: Cascade)
+}
+
+model tour_locations {
+  id            String        @id
+  tourId        String
+  name          String?
+  city          String?
+  region        String?
+  description   String?
+  visitDuration Int?
+  photos        String[]
+  tour_packages tour_packages @relation(fields: [tourId], references: [id], onDelete: Cascade)
+}
+
+model tour_media {
+  id            String        @id
+  tour_id       String
+  media_type    String?       @db.VarChar(20)
+  url           String?
+  tour_packages tour_packages @relation(fields: [tour_id], references: [id], onDelete: Cascade)
+}
+
+model tour_packages {
+  id                 String             @id
+  title              String?
+  slug               String?            @unique
+  description        String?
+  shortDescription   String?
+  category           String?
+  subcategory        String?
+  durationDays       Int?
+  durationNights     Int?
+  basePrice          Decimal?
+  currency           String?
+  status             String?
+  featured           Boolean            @default(false)
+  trending           Boolean            @default(false)
+  cancellationPolicy String?
+  bookingDeadline    Int?
+  minimumBooking     Int?
+  accessibility      String?
+  coverImage         String?
+  heritageDnaTesting Boolean            @default(false)
+  overallRating      Decimal?
+  ratingCount        Int                @default(0)
+  viewCount          Int                @default(0)
+  bookingCount       Int                @default(0)
+  wishlistCount      Int                @default(0)
+  shareCount         Int                @default(0)
+  conversionRate     Decimal?
+  createdBy          String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime?
+  publishedAt        DateTime?          @default(now())
+  pricing_excludes   pricing_excludes[]
+  pricing_includes   pricing_includes[]
+  tour_itineraries   tour_itineraries[]
+  tour_locations     tour_locations[]
+  tour_media         tour_media[]
 }
 
 enum AccountStatus {
