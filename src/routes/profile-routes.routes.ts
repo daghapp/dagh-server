@@ -1,7 +1,7 @@
 import express from "express";
 const router = express.Router();
 import { validate } from "../middleware/validation.js";
-import protectedRoute from "src/middleware/protected.js";
+import protectedRoute from "../middleware/protected.js";
 import { profileSchema, updateProfileSchema } from "../validator/index.js";
 
 import { ProfileController } from "../Modules/profile-managemnt/profile.controller.js";
