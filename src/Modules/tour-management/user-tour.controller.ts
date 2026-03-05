@@ -11,7 +11,7 @@ import {
   TourBookingSchema,
   TourReviewSchema,
 } from "../../validator/index.js";
-import sendEmail from "src/config/resend.config.js";
+import sendEmail from "../../config/resend.config.js";
 
 export class UserTourController {
   // Book a tour
