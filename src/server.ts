@@ -9,6 +9,9 @@ import cors from 'cors';
 import{router as FacebookRoutes} from './routes/facebook-auth.routes.js'
 import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
 import { router as PaymentRoutes } from './routes/payment.routes.js';
+import { router as TourRoutes } from './routes/tour.routes.js';
+import {router as ProfileRoutes} from './routes/profile-routes.routes.js'
+import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
 
 dotenv.config();
 
@@ -26,6 +29,9 @@ app.use(sessionConfig);
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Initialize cron jobs
+deleteInactiveUsersJob();
 
 // Setup Swagger
 setupSwagger(app);
@@ -45,14 +51,10 @@ app.use('/images', ImageUploadRoutes);
 //payment routes
 app.use('/payment', PaymentRoutes);
 
+//tour management routes
+app.use('/tours', TourRoutes);
 
-app.get("/profile", (req, res) => {
-  if (!req.user) {
-    return res.redirect("/");
-  }
-
-  res.send(`<h1>Profile Page</h1><p>Welcome ${req.user}</p>`);
-});
+app.use('/profile', ProfileRoutes);
 
 
 

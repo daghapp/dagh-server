@@ -313,6 +313,8 @@ export class PasswordAuthController {
     try {
       const { email } = req.body as ResendOtpSchema;
 
+      
+
       const user = await prisma.user.findUnique({
         where: { email },
       });

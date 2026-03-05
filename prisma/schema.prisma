@@ -28,6 +28,7 @@ model User {
   profile             UserProfile?
   subscription        UserSubscription?
   verification        UserVerification?
+  tourBookings        tour_bookings[]
 
   @@map("users")
 }
@@ -129,16 +130,17 @@ model DeviceToken {
 }
 
 model Payment {
-  id               String        @id @default(uuid())
+  id               String         @id @default(uuid())
   userId           String
   amount           Float
   description      String?
-  status           PaymentStatus @default(PENDING)
-  paymentReference String        @unique
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  clientReference  String        @unique
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status           PaymentStatus  @default(PENDING)
+  paymentReference String         @unique
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  clientReference  String         @unique
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tourBooking      tour_bookings?
 
   @@map("payments")
 }
@@ -200,7 +202,7 @@ model pricing_includes {
 }
 
 model tour_itineraries {
-  id                   String                 @id
+  id                   String                 @id @default(uuid())
   tourId               String
   dayNumber            Int?
   title                String?                @db.VarChar(255)
@@ -236,7 +238,7 @@ model tour_media {
 }
 
 model tour_packages {
-  id                 String             @id
+  id                 String             @id @default(uuid())
   title              String?
   slug               String?            @unique
   description        String?
@@ -267,11 +269,52 @@ model tour_packages {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime?
   publishedAt        DateTime?          @default(now())
+  bookings           tour_bookings[]
   pricing_excludes   pricing_excludes[]
   pricing_includes   pricing_includes[]
   tour_itineraries   tour_itineraries[]
   tour_locations     tour_locations[]
   tour_media         tour_media[]
+}
+
+model tour_bookings {
+  id                 String        @id @default(uuid())
+  userId             String
+  tourId             String
+  bookingReference   String        @unique
+  numberOfPeople     Int
+  bookingDate        DateTime      @default(now())
+  tourStartDate      DateTime
+  tourEndDate        DateTime?
+  totalPrice         Decimal
+  currency           String        @default("GHS")
+  status             BookingStatus @default(PENDING)
+  paymentId          String?       @unique
+  paymentStatus      PaymentStatus @default(PENDING)
+  specialRequests    String?
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  emergencyContact   String?
+  emergencyPhone     String?
+  cancellationReason String?
+  cancelledAt        DateTime?
+  cancelledBy        String?
+  refundAmount       Decimal?
+  refundedAt         DateTime?
+  confirmedAt        DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  payment            Payment?      @relation(fields: [paymentId], references: [id])
+  tour               tour_packages @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tourId])
+  @@index([status])
+  @@index([bookingDate])
+  @@map("tour_bookings")
 }
 
 enum AccountStatus {
@@ -319,4 +362,13 @@ enum SubscriptionStatus {
   CANCELLED
   EXPIRED
   SUSPENDED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  REFUNDED
+  NO_SHOW
 }

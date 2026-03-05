@@ -4,6 +4,7 @@ declare global {
       id: string;
       email: string;
       accountType: string;
+      fullName: string;
     }
     interface Request {
       user?: User;

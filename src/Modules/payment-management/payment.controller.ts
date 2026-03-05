@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma,hubtelClient } from "../../config/index.js";
+import { prisma, hubtelClient, hubtelStatusClient } from "../../config/index.js";
 import { InitializePaymentSchema, SubscribtionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
 
@@ -25,7 +25,7 @@ export class PaymentController {
 
         }
       );
-      console.log(hubtelResponse.data)
+      console.log(hubtelResponse.data, "Hubtel response data") // Debug log for Hubtel response
 
       const data = hubtelResponse.data;
 
@@ -183,6 +183,72 @@ export class PaymentController {
       return res.status(500).json({
         success: false,
         message: "Payment verification failed",
+        error: error?.response?.data || error.message,
+      });
+    }
+  }
+
+  // Check transaction status using Hubtel's dedicated status API
+  async checkTransactionStatus(req: Request, res: Response) {
+    try {
+      const { posSalesId } = req.params as { posSalesId: string };
+
+      // Call Hubtel transaction status API
+      const hubtelResponse = await hubtelStatusClient.get(
+        `/transactions/${posSalesId}/status`
+      );
+
+      const data = hubtelResponse.data;
+
+      if (!data) {
+        return res.status(400).json({
+          success: false,
+          message: "Unable to check transaction status",
+        });
+      }
+
+      // Map Hubtel status to your internal status
+      let status: "SUCCESS" | "FAILED" | "PENDING" = "PENDING";
+      
+      if (data.responseCode === "0000" || data.status?.toLowerCase() === "success") {
+        status = "SUCCESS";
+      } else if (data.responseCode === "0001" || data.status?.toLowerCase() === "failed") {
+        status = "FAILED";
+      }
+
+      // Update payment record if found by POS Sales ID
+      const payment = await prisma.payment.findFirst({
+        where: { 
+          OR: [
+            { paymentReference: posSalesId },
+            { clientReference: posSalesId }
+          ]
+        },
+      });
+
+      if (payment) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { status },
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Transaction status retrieved",
+        data: {
+          ...data,
+          internalStatus: status,
+          paymentRecord: payment ? { id: payment.id, status } : null,
+        },
+      });
+
+    } catch (error: any) {
+      console.error("Transaction status check error:", error?.response?.data || error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Transaction status check failed",
         error: error?.response?.data || error.message,
       });
     }

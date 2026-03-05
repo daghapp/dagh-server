@@ -35,6 +35,8 @@ export default async function protectedRoute(
         id: true,
         email: true,
         accountType: true,
+        fullName: true,
+        
       },
     });
 

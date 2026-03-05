@@ -10,69 +10,10 @@ const profileController = new ProfileController();
 
 /**
  * @swagger
- * /profile:
- *   get:
- *     summary: Get authenticated user's profile
- *     description: Retrieves the profile information of the currently authenticated user
- *     tags: [Profile]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Profile retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               description: User profile data
- *       401:
- *         description: Unauthorized - User not authenticated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Unauthorized access
- *       404:
- *         description: Profile not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Profile not found
- *       500:
- *         description: Failed to fetch profile
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Failed to fetch profile
- *                 error:
- *                   type: string
- */
-router.get(
-  "/profile",
-  protectedRoute,
-  profileController.getProfile.bind(profileController),
-);
-
-/**
- * @swagger
- * /profile:
+ * /profile/create:
  *   post:
- *     summary: Create a new user profile
- *     description: Creates a new profile for a user. A user can only have one profile.
+ *     summary: Create or update a user profile
+ *     description: Creates a new user profile or updates existing one for the authenticated user
  *     tags: [Profile]
  *     security:
  *       - bearerAuth: []
@@ -87,32 +28,78 @@ router.get(
  *             properties:
  *               userId:
  *                 type: string
- *                 description: Unique identifier of the user
- *                 example: user123456
+ *                 format: uuid
+ *                 description: Unique identifier for the user
+ *                 example: 123e4567-e89b-12d3-a456-426614174000
+ *               username:
+ *                 type: string
+ *                 minLength: 3
+ *                 description: Username for the profile
+ *                 example: johndoe123
  *               firstName:
  *                 type: string
+ *                 minLength: 2
  *                 description: User's first name
  *                 example: John
  *               lastName:
  *                 type: string
+ *                 minLength: 2
  *                 description: User's last name
  *                 example: Doe
- *               phoneNumber:
- *                 type: string
- *                 description: User's phone number
- *                 example: +1234567890
- *               address:
- *                 type: string
- *                 description: User's address
- *                 example: 123 Main Street, City
  *               dateOfBirth:
  *                 type: string
  *                 format: date
  *                 description: User's date of birth
  *                 example: 1990-01-15
+ *               gender:
+ *                 type: string
+ *                 enum: [MALE, FEMALE, OTHER]
+ *                 description: User's gender
+ *                 example: MALE
+ *               nationality:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: User's nationality
+ *                 example: American
+ *               residenceCountry:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: Country of residence
+ *                 example: United States
+ *               residenceCity:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: City of residence
+ *                 example: New York
+ *               residenceState:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: State/Province of residence
+ *                 example: NY
+ *               profilePhotoUrl:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL to profile photo
+ *                 example: https://example.com/photos/profile.jpg
+ *               profilePhotoUploadedAt:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Timestamp when profile photo was uploaded
+ *                 example: 2026-03-04T10:00:00Z
+ *               bio:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: User's biography (max 500 characters)
+ *                 example: Travel enthusiast and adventure seeker
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: List of languages spoken by the user
+ *                 example: ["English", "Spanish"]
  *     responses:
- *       201:
- *         description: Profile created successfully
+ *       200:
+ *         description: Profile created or updated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -123,48 +110,26 @@ router.get(
  *                   example: Profile created successfully
  *                 profile:
  *                   type: object
- *                   description: Created profile data
  *       400:
- *         description: Profile already exists or invalid request
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Unable to create profile for this user
+ *         description: Invalid input data
  *       401:
- *         description: Unauthorized - User not authenticated
- *       500:
- *         description: Registration failed
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Registration failed
- *                 error:
- *                   type: string
+ *         description: Unauthorized - Authentication required
  */
 router.post(
-  "/profile",
+  "/create",
   protectedRoute,
   validate(profileSchema),
   profileController.createOrUpdateProfile.bind(profileController),
 );
 
+
+
 /**
  * @swagger
- * /profile:
+ * /profile/update:
  *   put:
- *     summary: Update authenticated user's profile
- *     description: Updates the profile information of the currently authenticated user
+ *     summary: Update user profile
+ *     description: Updates the profile information for the authenticated user
  *     tags: [Profile]
  *     security:
  *       - bearerAuth: []
@@ -175,27 +140,67 @@ router.post(
  *           schema:
  *             type: object
  *             properties:
+ *               username:
+ *                 type: string
+ *                 minLength: 3
+ *                 description: Username for the profile
+ *                 example: johndoe123
  *               firstName:
  *                 type: string
+ *                 minLength: 2
  *                 description: User's first name
  *                 example: John
  *               lastName:
  *                 type: string
+ *                 minLength: 2
  *                 description: User's last name
  *                 example: Doe
- *               phoneNumber:
- *                 type: string
- *                 description: User's phone number
- *                 example: +1234567890
- *               address:
- *                 type: string
- *                 description: User's address
- *                 example: 456 Oak Avenue, New City
  *               dateOfBirth:
  *                 type: string
  *                 format: date
  *                 description: User's date of birth
  *                 example: 1990-01-15
+ *               gender:
+ *                 type: string
+ *                 enum: [MALE, FEMALE, OTHER]
+ *                 description: User's gender
+ *                 example: MALE
+ *               nationality:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: User's nationality
+ *                 example: American
+ *               residenceCountry:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: Country of residence
+ *                 example: United States
+ *               residenceCity:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: City of residence
+ *                 example: New York
+ *               residenceState:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: State/Province of residence
+ *                 example: NY
+ *               profilePhotoUrl:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL to profile photo
+ *                 example: https://example.com/photos/profile.jpg
+ *               bio:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: User's biography (max 500 characters)
+ *                 example: Travel enthusiast and adventure seeker
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: List of languages spoken by the user
+ *                 example: ["English", "Spanish"]
  *     responses:
  *       200:
  *         description: Profile updated successfully
@@ -209,46 +214,27 @@ router.post(
  *                   example: Profile updated successfully
  *                 profile:
  *                   type: object
- *                   description: Updated profile data
+ *       400:
+ *         description: Invalid input data
  *       401:
- *         description: Unauthorized - User not authenticated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Unauthorized access
- *       500:
- *         description: Failed to update profile
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Failed to update profile
- *                 error:
- *                   type: string
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Profile not found
  */
 router.put(
-  "/profile",
+  "/update",
   protectedRoute,
   validate(updateProfileSchema),
   profileController.updateProfile.bind(profileController),
 );
 
+
 /**
  * @swagger
- * /profile:
+ * /profile/delete:
  *   delete:
- *     summary: Delete authenticated user's profile
- *     description: Permanently deletes the profile of the currently authenticated user
+ *     summary: Delete user profile
+ *     description: Deletes the profile of the authenticated user
  *     tags: [Profile]
  *     security:
  *       - bearerAuth: []
@@ -264,43 +250,89 @@ router.put(
  *                   type: string
  *                   example: Profile deleted successfully
  *       401:
- *         description: Unauthorized - User not authenticated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Unauthorized access
- *       500:
- *         description: Failed to delete profile
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Failed to delete profile
- *                 error:
- *                   type: string
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Profile not found
  */
 router.delete(
-  "/profile",
+  "/delete",
   protectedRoute,
   profileController.deleteProfile.bind(profileController),
 );
+
+
+/**
+ * @swagger
+ * /profile/me:
+ *   get:
+ *     summary: Get authenticated user's profile
+ *     description: Retrieves the profile information for the currently authenticated user
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 profile:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     userId:
+ *                       type: string
+ *                       format: uuid
+ *                     username:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     dateOfBirth:
+ *                       type: string
+ *                       format: date
+ *                     gender:
+ *                       type: string
+ *                       enum: [MALE, FEMALE, OTHER]
+ *                     nationality:
+ *                       type: string
+ *                     residenceCountry:
+ *                       type: string
+ *                     residenceCity:
+ *                       type: string
+ *                     residenceState:
+ *                       type: string
+ *                     profilePhotoUrl:
+ *                       type: string
+ *                     bio:
+ *                       type: string
+ *                     languages:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *       401:
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Profile not found
+ */
+router.get(
+  "/me",
+  protectedRoute,
+  profileController.getProfile.bind(profileController),
+);
+
 
 /**
  * @swagger
  * /profile/{userId}:
  *   get:
- *     summary: Get profile by user ID
- *     description: Retrieves a specific user's profile by their user ID (admin or specific use case)
+ *     summary: Get user profile by user ID
+ *     description: Retrieves the profile information for a specific user
  *     tags: [Profile]
  *     security:
  *       - bearerAuth: []
@@ -310,8 +342,9 @@ router.delete(
  *         required: true
  *         schema:
  *           type: string
- *         description: Unique identifier of the user
- *         example: user123456
+ *           format: uuid
+ *         description: The unique identifier of the user
+ *         example: 123e4567-e89b-12d3-a456-426614174000
  *     responses:
  *       200:
  *         description: Profile retrieved successfully
@@ -319,37 +352,51 @@ router.delete(
  *           application/json:
  *             schema:
  *               type: object
- *               description: User profile data
+ *               properties:
+ *                 profile:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     userId:
+ *                       type: string
+ *                       format: uuid
+ *                     username:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     dateOfBirth:
+ *                       type: string
+ *                       format: date
+ *                     gender:
+ *                       type: string
+ *                       enum: [MALE, FEMALE, OTHER]
+ *                     nationality:
+ *                       type: string
+ *                     residenceCountry:
+ *                       type: string
+ *                     residenceCity:
+ *                       type: string
+ *                     residenceState:
+ *                       type: string
+ *                     profilePhotoUrl:
+ *                       type: string
+ *                     bio:
+ *                       type: string
+ *                     languages:
+ *                       type: array
+ *                       items:
+ *                         type: string
  *       401:
- *         description: Unauthorized - User not authenticated
+ *         description: Unauthorized - Authentication required
  *       404:
  *         description: Profile not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Profile not found
- *       500:
- *         description: Failed to fetch profile
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Failed to fetch profile
- *                 error:
- *                   type: string
  */
 router.get(
-  "/profile/:userId",
+  "/:userId",
   protectedRoute,
   profileController.getProfileByUserId.bind(profileController),
 );

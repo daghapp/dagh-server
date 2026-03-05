@@ -38,10 +38,14 @@ export class ProfileController {
   // Create or update user profile
   async createOrUpdateProfile(req: Request, res: Response) {
     try {
+      const user = req.user as { id: string; email: string; accountType: string } | undefined;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized access" });
+      }
       const profileData = req.body as ProfileSchema;
       //check if profile exists
       const existingProfile = await prisma.userProfile.findUnique({
-        where: { userId: profileData.userId },
+        where: { userId: user.id },
       });
       if (existingProfile) {
         return res
@@ -53,7 +57,7 @@ export class ProfileController {
       }
 
       const newProfile = await prisma.userProfile.create({
-        data: profileData,
+        data: { ...profileData, userId: user.id },
       });
       return res
         .status(201)

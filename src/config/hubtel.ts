@@ -24,4 +24,16 @@ const hubtelClient = axios.create({
   timeout: 15000,
 });
 
-export { hubtelClient };
+// Separate client for transaction status API
+const hubtelStatusClient = axios.create({
+  baseURL: "https://api-txnstatus.hubtel.com",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Basic ${Buffer.from(
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
+    ).toString("base64")}`,
+  },
+  timeout: 15000,
+});
+
+export { hubtelClient, hubtelStatusClient };

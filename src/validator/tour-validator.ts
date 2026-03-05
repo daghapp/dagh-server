@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
 // Itinerary Activity Schema
-const itineraryActivitySchema = z.object({
+export const itineraryActivitySchema = z.object({
     activityTime: z.string().optional(),
     activity: z.string().max(255).optional(),
     durationMinutes: z.number().int().positive().optional(),
@@ -12,7 +12,7 @@ const itineraryActivitySchema = z.object({
 });
 
 // Tour Itinerary Schema
-const tourItinerarySchema = z.object({
+export const tourItinerarySchema = z.object({
     dayNumber: z.number().int().positive().optional(),
     title: z.string().max(255).optional(),
     description: z.string().optional(),
@@ -119,6 +119,7 @@ export const tourBookingSchema = z.object({
     tourId: z.string().uuid('Invalid tour ID'),
     numberOfPeople: z.number().int().positive('Number of people must be positive'),
     bookingDate: z.string().datetime().or(z.date()),
+    tourStartDate: z.string().datetime().or(z.date()),
     specialRequests: z.string().optional(),
     paymentMethodId: z.string().uuid().optional(),
 });
@@ -149,3 +150,5 @@ export type UpdateTourSchema = z.infer<typeof updateTourSchema>;
 export type TourBookingSchema = z.infer<typeof tourBookingSchema>;
 export type TourReviewSchema = z.infer<typeof tourReviewSchema>;
 export type TourReportSchema = z.infer<typeof tourReportSchema>;
+export type ItineraryActivitySchema = z.infer<typeof itineraryActivitySchema>;
+export type TourItinerarySchema = z.infer<typeof tourItinerarySchema>;
