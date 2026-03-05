@@ -19,7 +19,7 @@ const swaggerOptions: swaggerJSDoc.Options = {
         description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
       },{
         url:"https://dagh-server-3.onrender.com" ,
-        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
+        description: "Production server on Render",
       },
 
     ],
