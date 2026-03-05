@@ -36,9 +36,7 @@ deleteInactiveUsersJob();
 // Setup Swagger
 setupSwagger(app);
 
-app.get('/', (req, res) => {
-  res.send('Hello, World!');
-});
+
 
 //user authentication routes
 app.use('/auth', PasswordRoutes);
