@@ -17,7 +17,11 @@ const swaggerOptions: swaggerJSDoc.Options = {
       {
         url:'http://localhost:3000',
         description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
+      },{
+        url:"https://dagh-server-3.onrender.com" ,
+        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
       },
+
     ],
     components: {
       securitySchemes: {
