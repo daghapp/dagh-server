@@ -1,0 +1,196 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+  PENDING_VERIFICATION
+}
+
+enum AccountType {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum AuthProvider {
+  GOOGLE
+  ICLOUD
+  FACEBOOK
+  EMAIL
+  PASSWORD
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  fullName             String
+  authProvider         AuthProvider     // google || icloud || facebook || email
+  email                String    @unique 
+  phoneNumber          String?   @unique
+  dateOfBirth         DateTime?
+  gender              String?
+  passwordHash         String?   
+  passwordLastChanged  DateTime?
+  accountStatus        AccountStatus @default(PENDING_VERIFICATION)  
+  accountType          AccountType  @default(USER)  
+  createdAt            DateTime  @default(now()) 
+  updatedAt            DateTime  @default(now()) 
+  lastLoginAt          DateTime? 
+  lastActiveAt         DateTime? 
+
+  profile              UserProfile?
+  verification         UserVerification?
+   //to be implemented later
+  // security             UserSecurity?
+  // subscription         UserSubscription?
+  // preferences          UserPreferences?
+  deviceTokens         DeviceToken[]
+  // suspiciousActivities SuspiciousActivity[]
+  // scamAlerts           ScamAlert[]
+  // paymentMethods       PaymentMethod[]
+
+  @@map("users")
+}
+
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER 
+}
+
+model UserProfile {
+  id                    String    @id @default(uuid())
+  userId                String    @unique 
+  username              String?   
+  firstName             String?   
+  lastName              String?   
+  dateOfBirth           DateTime? 
+  gender               Gender?
+  nationality           String?   
+  residenceCountry      String?  
+  residenceCity         String?   
+  residenceState        String?   
+  profilePhotoUrl       String?   
+  profilePhotoUploadedAt DateTime?
+  bio                   String?   
+  languages             String[]  
+
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+
+
+enum VerificationLevel {
+  BASIC
+  ADVANCED
+  FULL
+}
+
+model UserVerification {
+  id                String   @id @default(uuid()) 
+  userId            String   @unique 
+  isVerified        Boolean  @default(false) 
+  verificationLevel VerificationLevel?  
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  governmentId      GovernmentId?
+  selfieVerification SelfieVerification?
+  backgroundCheck   BackgroundCheck?
+
+  @@map("user_verifications")
+}
+
+
+
+
+model GovernmentId {
+  id               String    @id @default(uuid())
+  verificationId   String    @unique 
+  idType           String?   
+  number           String?   @unique
+  country          String?   
+  expiryDate       DateTime? 
+  frontImageUrl    String?   
+  backImageUrl     String?   
+  uploadedAt       DateTime? 
+  verifiedAt       DateTime?  
+  verifiedBy       String?   
+
+  verification     UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  @@map("government_ids")
+}
+
+
+model SelfieVerification {
+  id             String    @id @default(uuid()) 
+  verificationId String    @unique 
+  imageUrl       String?   
+  matchScore     Int?      
+  verifiedAt     DateTime? 
+  aiProvider     String?   
+
+  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  @@map("selfie_verifications")
+}
+
+
+model BackgroundCheck {
+  id             String    @id @default(uuid()) 
+  verificationId String    @unique 
+  status         String?   
+  provider       String?   
+  completedAt    DateTime? 
+  reportUrl      String?   
+
+  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  @@map("background_checks")
+}
+
+
+
+model otp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  purpose   String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+
+model DeviceToken {
+  id       String    @id @default(uuid())
+  userId   String    
+  token    String?   
+  platform String?   
+  addedAt  DateTime? @default(now())
+  expiredAt DateTime?
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
