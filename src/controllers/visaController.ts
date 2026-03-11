@@ -1,8 +1,6 @@
-// src/controllers/visaController.ts
 import { Request, Response } from 'express'
 import { prisma } from '../lib/prisma'
 
-// Make sure each function has the 'export' keyword
 export const createVisaApplication = async (req: Request, res: Response) => {
   try {
     const {
@@ -20,7 +18,56 @@ export const createVisaApplication = async (req: Request, res: Response) => {
 
     const userId = req.user?.id
 
+    // Additional business logic validation
+    const today = new Date()
+    const birthDate = new Date(dateOfBirth)
+    const expiryDate = new Date(passportExpiry)
+    const arrival = new Date(arrivalDate)
+
+    // Check if user is at least 18 years old
+    const age = today.getFullYear() - birthDate.getFullYear()
+    if (age < 18) {
+      return res.status(400).json({
+        success: false,
+        error: 'Applicant must be at least 18 years old'
+      })
+    }
+
+    // Check if passport is not expired
+    if (expiryDate < today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Passport has expired'
+      })
+    }
+
+    // Check if arrival date is in the future
+    if (arrival < today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Arrival date must be in the future'
+      })
+    }
+
     const result = await prisma.$transaction(async (tx) => {
+      // Check for existing pending application with same passport
+      const existingPassport = await tx.passport.findUnique({
+        where: { passportNumber }
+      })
+
+      if (existingPassport) {
+        const existingApplication = await tx.visaApplication.findFirst({
+          where: {
+            passportId: existingPassport.id,
+            status: { in: ['PENDING', 'REVIEW'] }
+          }
+        })
+
+        if (existingApplication) {
+          throw new Error('You already have a pending visa application')
+        }
+      }
+
       // Create or find passport
       const passport = await tx.passport.upsert({
         where: { passportNumber },
@@ -62,7 +109,7 @@ export const createVisaApplication = async (req: Request, res: Response) => {
           passportId: passport.id,
           purposeId: purpose.id,
           lodgingId: lodging.id,
-          arrivalDate: new Date(arrivalDate),
+          arrivalDate: arrival,
           status: 'PENDING',
           paymentStatus: 'PENDING'
         },
@@ -82,12 +129,22 @@ export const createVisaApplication = async (req: Request, res: Response) => {
     })
   } catch (error) {
     console.error('Create application error:', error)
+    
+    if (error instanceof Error) {
+      return res.status(400).json({
+        success: false,
+        error: error.message
+      })
+    }
+
     res.status(500).json({
       success: false,
       error: 'Failed to create visa application'
     })
   }
 }
+
+
 
 export const getUserApplications = async (req: Request, res: Response) => {
   try {
@@ -313,3 +370,7 @@ export const updateVisaStatus = async (req: Request, res: Response) => {
     })
   }
 }
+
+
+
+
