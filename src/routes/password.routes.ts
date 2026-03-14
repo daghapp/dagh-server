@@ -41,7 +41,8 @@ const passwordAuthController = new PasswordAuthController();
  *               phoneNumber:
  *                 type: string
  *                 description: Phone number in E.164 format
- *                 example: +1234567890
+ *                 pattern: ^\+[1-9]\d{1,14}$
+ *                 example: +233201234567
  *               gender:
  *                 type: string
  *                 example: MALE
@@ -64,6 +65,30 @@ const passwordAuthController = new PasswordAuthController();
  *         description: User registered successfully
  *       400:
  *         description: Invalid input or user already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         example: phoneNumber
+ *                       message:
+ *                         type: string
+ *                         example: Phone number must be in E.164 format
+ *             example:
+ *               success: false
+ *               errors:
+ *                 - path: phoneNumber
+ *                   message: Phone number must be in E.164 format
  */
 router.post(
   "/register",

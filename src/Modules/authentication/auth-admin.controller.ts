@@ -1,15 +1,25 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 
+const ensureAdmin = (req: Request, res: Response) => {
+  const accountType = req.user?.accountType;
+
+  if (!accountType || accountType.toUpperCase() !== "ADMIN") {
+    return res.status(403).json({ success: false, message: "Access denied" });
+  }
+
+  return null;
+};
+
 export class AuthAdminController {
   // Get all users on app
   async getAllUsers(req: Request, res: Response) {
     try {
-        const user = req.user as { id: string; accountType: string };
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
+      }
 
-        if (user.accountType !== "ADMIN") {
-          return res.status(403).json({ success: false, message: "Access denied" });
-        }
       const users = await prisma.user.findMany({
         select: {
           id: true,
@@ -39,11 +49,12 @@ export class AuthAdminController {
   // Promote user to admin
   async promoteToAdmin(req: Request, res: Response) {
     try {
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
+      }
+
       const userId = req.params.userId as string;
-      const requestingAdmin = req.user as { id: string, accountType: string };
-        if (requestingAdmin.accountType !== "ADMIN") {
-          return res.status(403).json({ success: false, message: "Access denied" });
-        }
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -75,12 +86,12 @@ export class AuthAdminController {
   // Delete user from app
   async deleteUser(req: Request, res: Response) {
     try {
-      const userId = req.params.userId as string;
-      const requestingAdmin = req.user as { id: string, accountType: string };
-
-      if (requestingAdmin.accountType !== "ADMIN") {
-        return res.status(403).json({ success: false, message: "Access denied" });
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
       }
+
+      const userId = req.params.userId as string;
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -104,12 +115,12 @@ export class AuthAdminController {
   // Demote admin to user
   async demoteToUser(req: Request, res: Response) {
     try {
-      const userId = req.params.userId as string;
-      const requestingAdmin = req.user as { id: string, accountType: string };
-
-      if (requestingAdmin.accountType !== "ADMIN") {
-        return res.status(403).json({ success: false, message: "Access denied" });
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
       }
+
+      const userId = req.params.userId as string;
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -141,12 +152,12 @@ export class AuthAdminController {
   // Suspend user from app
   async suspendUser(req: Request, res: Response) {
     try {
-      const userId = req.params.userId as string;
-      const requestingAdmin = req.user as { id: string, accountType: string };
-
-      if (requestingAdmin.accountType !== "ADMIN") {
-        return res.status(403).json({ success: false, message: "Access denied" });
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
       }
+
+      const userId = req.params.userId as string;
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -178,8 +189,12 @@ export class AuthAdminController {
   // Reactivate user on app
   async reactivateUser(req: Request, res: Response) {
     try {
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
+      }
+
       const userId = req.params.userId as string;
-      const requestingAdmin = req.user as { id: string, accountType: string };
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) {

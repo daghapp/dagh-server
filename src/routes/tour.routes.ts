@@ -17,6 +17,183 @@ const adminTourController = new AdminTourController();
 
 /**
  * @swagger
+ * /tours:
+ *   get:
+ *     summary: Get all tours
+ *     description: Retrieve a paginated list of tour packages with optional filters
+ *     tags: [Tours - User]
+ *     parameters:
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Filter by category
+ *         example: Cultural
+ *       - in: query
+ *         name: subcategory
+ *         schema:
+ *           type: string
+ *         description: Filter by subcategory
+ *         example: Heritage
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [draft, published, archived, pending_review]
+ *         description: Filter by status
+ *         example: published
+ *       - in: query
+ *         name: featured
+ *         schema:
+ *           type: boolean
+ *         description: Filter featured tours
+ *         example: true
+ *       - in: query
+ *         name: trending
+ *         schema:
+ *           type: boolean
+ *         description: Filter trending tours
+ *         example: true
+ *       - in: query
+ *         name: durationDays
+ *         schema:
+ *           type: integer
+ *         description: Filter by exact duration in days
+ *         example: 7
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *         description: Minimum base price
+ *         example: 100
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *         description: Maximum base price
+ *         example: 500
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by title or description
+ *         example: safari
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 100
+ *         description: Results per page
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Tours retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *       500:
+ *         description: Failed to fetch tours
+ */
+router.get(
+  "/",
+  userTourController.getAllTours.bind(userTourController)
+);
+
+/**
+ * @swagger
+ * /tours/bookings/my:
+ *   get:
+ *     summary: Get user bookings
+ *     description: Retrieve all tour bookings for the authenticated user
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Bookings retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 bookings:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       tourId:
+ *                         type: string
+ *                         format: uuid
+ *                       userId:
+ *                         type: string
+ *                         format: uuid
+ *                       numberOfPeople:
+ *                         type: integer
+ *                       totalPrice:
+ *                         type: number
+ *                       currency:
+ *                         type: string
+ *                       bookingReference:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                       bookingDate:
+ *                         type: string
+ *                         format: date-time
+ *                       tourStartDate:
+ *                         type: string
+ *                         format: date-time
+ *                       tour:
+ *                         type: object
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Failed to fetch user bookings
+ */
+router.get(
+  "/bookings/my",
+  protectedRoute,
+  userTourController.getUserBookings.bind(userTourController)
+);
+
+/**
+ * @swagger
  * /tours/bookings:
  *   post:
  *     summary: Book a tour

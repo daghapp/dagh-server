@@ -12,8 +12,83 @@ import {
   TourReviewSchema,
 } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
+import { ca } from "zod/v4/locales";
 
 export class UserTourController {
+
+  //get all tours
+  async getAllTours(req: Request, res: Response) {
+    try {
+      const {
+        category,
+        subcategory,
+        minPrice,
+        maxPrice,
+        durationDays,
+        featured,
+        trending,
+        status,
+        search,
+        page = "1",
+        limit = "10",
+      } = req.query;
+
+      const where: any = {};
+
+      if (category) where.category = category as string;
+      if (subcategory) where.subcategory = subcategory as string;
+      if (status) where.status = status as string;
+      if (featured !== undefined) where.featured = featured === "true";
+      if (trending !== undefined) where.trending = trending === "true";
+      if (durationDays) where.durationDays = Number(durationDays);
+
+      if (minPrice || maxPrice) {
+        where.basePrice = {};
+        if (minPrice) where.basePrice.gte = Number(minPrice);
+        if (maxPrice) where.basePrice.lte = Number(maxPrice);
+      }
+
+      if (search) {
+        where.OR = [
+          { title: { contains: search as string, mode: "insensitive" } },
+          { description: { contains: search as string, mode: "insensitive" } },
+          { shortDescription: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const pageNum = Math.max(1, Number(page));
+      const limitNum = Math.min(100, Math.max(1, Number(limit)));
+      const skip = (pageNum - 1) * limitNum;
+
+      const [tours, total] = await Promise.all([
+        prisma.tour_packages.findMany({
+          where,
+          skip,
+          take: limitNum,
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.tour_packages.count({ where }),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        data: tours,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching tours:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch tours",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
   // Book a tour
   async bookTour(req: Request, res: Response) {
     try {
@@ -70,6 +145,34 @@ export class UserTourController {
       return res.status(500).json({
         success: false,
         message: "Failed to book tour",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+  //get all tours booked by user 
+  async getUserBookings(req: Request, res: Response) {
+    try {
+      const userId = req.user?.id as string;
+      //check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const bookings = await prisma.tour_bookings.findMany({
+        where: { userId },
+        include: { tour: true },
+        orderBy: { createdAt: "desc" },
+      });
+      return res.status(200).json({ success: true, bookings });
+
+
+    } catch (error) {
+      console.error("Error fetching user bookings:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch user bookings",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -138,5 +241,11 @@ export class UserTourController {
   }
 
   //review a tour by user
+  //get all tours booked by user
+
+
+  //get all tours 
+
+  
   
 }

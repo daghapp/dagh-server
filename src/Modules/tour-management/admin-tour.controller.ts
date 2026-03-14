@@ -33,10 +33,25 @@ const isPrismaNotFoundError = (error: unknown): error is { code: string } => {
   );
 };
 
+const ensureAdmin = (req: Request, res: Response) => {
+  const accountType = req.user?.accountType;
+
+  if (!accountType || accountType.toUpperCase() !== "ADMIN") {
+    return res.status(403).json({ message: "Forbidden: Admins only" });
+  }
+
+  return null;
+};
+
 export class AdminTourController {
   // Create a new tour
   async createTour(req: Request, res: Response) {
     try {
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
+      }
+
       const tourData = req.body as TourSchema;
       const newTour = await prisma.tour_packages.create({
         data: tourData,
@@ -57,6 +72,11 @@ export class AdminTourController {
   // Update an existing tour
     async updateTour(req: Request, res: Response) {
         try {
+            const unauthorizedResponse = ensureAdmin(req, res);
+            if (unauthorizedResponse) {
+              return unauthorizedResponse;
+            }
+
             const tourId = req.params.id as string;
             const tourData = req.body as UpdateTourSchema;
             const updatedTour = await prisma.tour_packages.update({
@@ -80,6 +100,11 @@ export class AdminTourController {
     //delete a tour
     async deleteTour(req: Request, res: Response) {
         try{
+            const unauthorizedResponse = ensureAdmin(req, res);
+            if (unauthorizedResponse) {
+              return unauthorizedResponse;
+            }
+
             const tourId = req.params.id as string;
             await prisma.tour_packages.delete({
               where: { id: tourId },
@@ -101,6 +126,11 @@ export class AdminTourController {
     //add tour itinerary by admin
     async addTourItinerary(req: Request, res: Response) {
         try{
+            const unauthorizedResponse = ensureAdmin(req, res);
+            if (unauthorizedResponse) {
+              return unauthorizedResponse;
+            }
+
             const tourId = req.params.id as string;
             const itineraryData = req.body as TourItinerarySchema;
             const { activities, ...itineraryFields } = itineraryData;
@@ -147,6 +177,11 @@ export class AdminTourController {
     //update tour itinerary by admin
     async updateTourItinerary(req: Request, res: Response) {
         try{
+            const unauthorizedResponse = ensureAdmin(req, res);
+            if (unauthorizedResponse) {
+              return unauthorizedResponse;
+            }
+
             const itineraryId = req.params.id as string;
             const itineraryData = req.body as TourItinerarySchema;
             const { activities, ...itineraryFields } = itineraryData;
@@ -204,6 +239,11 @@ export class AdminTourController {
     //delete tour itinerary by admin
     async deleteTourItinerary(req: Request, res: Response) {
         try{
+            const unauthorizedResponse = ensureAdmin(req, res);
+            if (unauthorizedResponse) {
+              return unauthorizedResponse;
+            }
+
             const itineraryId = req.params.id as string;
             await prisma.tour_itineraries.delete({
               where: { id: itineraryId },
