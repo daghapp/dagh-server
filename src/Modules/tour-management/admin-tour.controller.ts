@@ -20,8 +20,18 @@
 //delete tour review by user
 
 import { Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { prisma } from "../../config/index.js";
-import { TourSchema, UpdateTourSchema, ItineraryActivitySchema, TourItinerarySchema } from "../../validator/index.js";
+import { TourSchema, UpdateTourSchema, TourItinerarySchema } from "../../validator/index.js";
+
+const isPrismaNotFoundError = (error: unknown): error is { code: string } => {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2025"
+  );
+};
 
 export class AdminTourController {
   // Create a new tour
@@ -55,6 +65,9 @@ export class AdminTourController {
             });
             return res.json({ message: "Tour updated successfully", tour: updatedTour });
         } catch (error) {
+          if (isPrismaNotFoundError(error)) {
+            return res.status(404).json({ message: "Tour not found" });
+          }
           console.error("Error updating tour:", error);
           return res.status(500).json({
             success: false,
@@ -73,6 +86,9 @@ export class AdminTourController {
             });
             return res.json({ message: "Tour deleted successfully" });
         } catch (error) {
+          if (isPrismaNotFoundError(error)) {
+            return res.status(404).json({ message: "Tour not found" });
+          }
           console.error("Error deleting tour:", error);
           return res.status(500).json({
             success: false,
@@ -86,7 +102,8 @@ export class AdminTourController {
     async addTourItinerary(req: Request, res: Response) {
         try{
             const tourId = req.params.id as string;
-            const itineraryData = req.body as ItineraryActivitySchema;
+            const itineraryData = req.body as TourItinerarySchema;
+            const { activities, ...itineraryFields } = itineraryData;
 
             // Check if the tour exists before adding itinerary
             const tour = await prisma.tour_packages.findUnique({
@@ -97,8 +114,24 @@ export class AdminTourController {
             }
             const newItinerary = await prisma.tour_itineraries.create({
               data: {
-                ...itineraryData,
-                tourId: tourId,},
+                ...itineraryFields,
+                tourId,
+                itinerary_activities: activities?.length
+                  ? {
+                      create: activities.map((activity) => ({
+                        id: randomUUID(),
+                        activityTime: activity.activityTime,
+                        activity: activity.activity,
+                        durationMinutes: activity.durationMinutes,
+                        included: activity.included,
+                        cost: activity.cost,
+                        locationName: activity.locationName,
+                        locationAddress: activity.locationAddress,
+                      })),
+                    }
+                  : undefined,
+              },
+              include: { itinerary_activities: true },
             });
             return res.status(201).json({ message: "Tour itinerary added successfully", itinerary: newItinerary });
         } catch (error) {
@@ -116,12 +149,49 @@ export class AdminTourController {
         try{
             const itineraryId = req.params.id as string;
             const itineraryData = req.body as TourItinerarySchema;
-            const updatedItinerary = await prisma.tour_itineraries.update({
-              where: { id: itineraryId },
-              data: itineraryData,
+            const { activities, ...itineraryFields } = itineraryData;
+
+            const updatedItinerary = await prisma.$transaction(async (tx) => {
+              const updated = await tx.tour_itineraries.update({
+                where: { id: itineraryId },
+                data: itineraryFields,
+              });
+
+              if (activities !== undefined) {
+                await tx.itinerary_activities.deleteMany({
+                  where: { itineraryId },
+                });
+
+                if (activities.length > 0) {
+                  await tx.itinerary_activities.createMany({
+                    data: activities.map((activity) => ({
+                      id: randomUUID(),
+                      itineraryId,
+                      activityTime: activity.activityTime,
+                      activity: activity.activity,
+                      durationMinutes: activity.durationMinutes,
+                      included: activity.included,
+                      cost: activity.cost,
+                      locationName: activity.locationName,
+                      locationAddress: activity.locationAddress,
+                    })),
+                  });
+                }
+              }
+
+              const itineraryWithActivities = await tx.tour_itineraries.findUnique({
+                where: { id: itineraryId },
+                include: { itinerary_activities: true },
+              });
+
+              return itineraryWithActivities ?? updated;
             });
+
             return res.json({ message: "Tour itinerary updated successfully", itinerary: updatedItinerary });
         } catch (error) {
+          if (isPrismaNotFoundError(error)) {
+            return res.status(404).json({ message: "Itinerary not found" });
+          }
           console.error("Error updating tour itinerary:", error);
           return res.status(500).json({
             success: false,
@@ -140,6 +210,9 @@ export class AdminTourController {
             });
             return res.json({ message: "Tour itinerary deleted successfully" });
         } catch (error) {
+          if (isPrismaNotFoundError(error)) {
+            return res.status(404).json({ message: "Itinerary not found" });
+          }
           console.error("Error deleting tour itinerary:", error);
           return res.status(500).json({
             success: false,

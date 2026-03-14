@@ -8,7 +8,6 @@ import {
   tourSchema,
   updateTourSchema,
   tourBookingSchema,
-  itineraryActivitySchema,
   tourItinerarySchema,
 } from "../validator/index.js";
 
@@ -444,39 +443,105 @@ router.delete(
  *         application/json:
  *           schema:
  *             type: object
+ *             example:
+ *               dayNumber: 1
+ *               title: Day 1 - Arrival in Accra
+ *               description: Airport pickup, hotel check-in, and evening cultural orientation.
+ *               breakfast: false
+ *               lunch: true
+ *               dinner: true
+ *               accommodationName: Movenpick Ambassador Hotel
+ *               accommodationType: 4-star hotel
+ *               accommodationRating: 4.5
+ *               activities:
+ *                 - activityTime: "09:00"
+ *                   activity: Airport pickup and transfer
+ *                   durationMinutes: 60
+ *                   included: true
+ *                   cost: 0
+ *                   locationName: Kotoka International Airport
+ *                   locationAddress: Accra, Ghana
  *             properties:
- *               activityTime:
- *                 type: string
- *                 description: Time of the activity
- *                 example: 09:00 AM
- *               activity:
- *                 type: string
- *                 maxLength: 255
- *                 description: Activity description
- *                 example: Visit to Elmina Castle
- *               durationMinutes:
+ *               dayNumber:
  *                 type: integer
  *                 minimum: 1
- *                 description: Duration in minutes
- *                 example: 120
- *               included:
- *                 type: boolean
- *                 description: Whether the activity is included in the price
- *                 example: true
- *               cost:
- *                 type: number
- *                 minimum: 0
- *                 description: Additional cost if not included
- *                 example: 50.00
- *               locationName:
+ *                 description: Day number in the tour itinerary
+ *                 example: 1
+ *               title:
  *                 type: string
  *                 maxLength: 255
- *                 description: Name of the location
- *                 example: Elmina Castle
- *               locationAddress:
+ *                 description: Title for the itinerary day
+ *                 example: Day 1 - Arrival and Welcome
+ *               description:
  *                 type: string
- *                 description: Address of the location
- *                 example: Elmina, Central Region, Ghana
+ *                 description: Description of the day's schedule
+ *                 example: Arrive at Kotoka International Airport and transfer to hotel.
+ *               breakfast:
+ *                 type: boolean
+ *                 description: Whether breakfast is included
+ *                 example: false
+ *               lunch:
+ *                 type: boolean
+ *                 description: Whether lunch is included
+ *                 example: true
+ *               dinner:
+ *                 type: boolean
+ *                 description: Whether dinner is included
+ *                 example: true
+ *               accommodationName:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Name of the accommodation for the day
+ *                 example: Movenpick Ambassador Hotel
+ *               accommodationType:
+ *                 type: string
+ *                 maxLength: 100
+ *                 description: Type of accommodation
+ *                 example: 4-star hotel
+ *               accommodationRating:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 5
+ *                 description: Accommodation rating
+ *                 example: 4.5
+ *               activities:
+ *                 type: array
+ *                 description: Optional list of activities for the itinerary day
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     activityTime:
+ *                       type: string
+ *                       description: Time of the activity
+ *                       example: "09:00"
+ *                     activity:
+ *                       type: string
+ *                       maxLength: 255
+ *                       description: Activity description
+ *                       example: Visit to Elmina Castle
+ *                     durationMinutes:
+ *                       type: integer
+ *                       minimum: 1
+ *                       description: Duration in minutes
+ *                       example: 120
+ *                     included:
+ *                       type: boolean
+ *                       description: Whether the activity is included in the package price
+ *                       example: true
+ *                     cost:
+ *                       type: number
+ *                       minimum: 0
+ *                       description: Additional cost if not included in the package
+ *                       example: 50
+ *                     locationName:
+ *                       type: string
+ *                       maxLength: 255
+ *                       description: Name of the activity location
+ *                       example: Elmina Castle
+ *                     locationAddress:
+ *                       type: string
+ *                       description: Address of the activity location
+ *                       example: Elmina, Central Region, Ghana
  *     responses:
  *       201:
  *         description: Tour itinerary added successfully
@@ -490,6 +555,78 @@ router.delete(
  *                   example: Tour itinerary added successfully
  *                 itinerary:
  *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                       example: 123e4567-e89b-12d3-a456-426614174000
+ *                     tourId:
+ *                       type: string
+ *                       format: uuid
+ *                       example: 123e4567-e89b-12d3-a456-426614174111
+ *                     dayNumber:
+ *                       type: integer
+ *                       example: 1
+ *                     title:
+ *                       type: string
+ *                       example: Day 1 - Arrival and Welcome
+ *                     description:
+ *                       type: string
+ *                       example: Arrive at Kotoka International Airport and transfer to hotel.
+ *                     breakfast:
+ *                       type: boolean
+ *                       example: false
+ *                     lunch:
+ *                       type: boolean
+ *                       example: true
+ *                     dinner:
+ *                       type: boolean
+ *                       example: true
+ *                     accommodationName:
+ *                       type: string
+ *                       example: Movenpick Ambassador Hotel
+ *                     accommodationType:
+ *                       type: string
+ *                       example: 4-star hotel
+ *                     accommodationRating:
+ *                       type: string
+ *                       description: Decimal fields are serialized as strings in JSON responses.
+ *                       example: "4.5"
+ *                     itinerary_activities:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                             example: 123e4567-e89b-12d3-a456-426614174222
+ *                           itineraryId:
+ *                             type: string
+ *                             format: uuid
+ *                             example: 123e4567-e89b-12d3-a456-426614174000
+ *                           activityTime:
+ *                             type: string
+ *                             example: "09:00"
+ *                           activity:
+ *                             type: string
+ *                             example: Airport pickup and transfer
+ *                           durationMinutes:
+ *                             type: integer
+ *                             example: 60
+ *                           included:
+ *                             type: boolean
+ *                             example: true
+ *                           cost:
+ *                             type: string
+ *                             description: Decimal fields are serialized as strings in JSON responses.
+ *                             example: "0"
+ *                           locationName:
+ *                             type: string
+ *                             example: Kotoka International Airport
+ *                           locationAddress:
+ *                             type: string
+ *                             example: Accra, Ghana
  *       400:
  *         description: Invalid request data
  *       401:
@@ -505,7 +642,7 @@ router.post(
   "/:id/itinerary",
   protectedRoute,
   requireAdmin,
-  validate(itineraryActivitySchema),
+  validate(tourItinerarySchema),
   adminTourController.addTourItinerary.bind(adminTourController)
 );
 
@@ -533,6 +670,24 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
+ *             example:
+ *               dayNumber: 2
+ *               title: Day 2 - Cape Coast Heritage Tour
+ *               description: Travel to Cape Coast and tour historic heritage sites.
+ *               breakfast: true
+ *               lunch: true
+ *               dinner: false
+ *               accommodationName: Ridge Royal Hotel
+ *               accommodationType: Hotel
+ *               accommodationRating: 4
+ *               activities:
+ *                 - activityTime: "08:00"
+ *                   activity: Depart Accra for Cape Coast
+ *                   durationMinutes: 180
+ *                   included: true
+ *                   cost: 0
+ *                   locationName: Accra
+ *                   locationAddress: Greater Accra Region, Ghana
  *             properties:
  *               dayNumber:
  *                 type: integer
@@ -576,6 +731,37 @@ router.post(
  *                 maximum: 5
  *                 description: Accommodation rating
  *                 example: 4.5
+ *               activities:
+ *                 type: array
+ *                 description: Replace the itinerary activities with this new list. Send an empty array to clear activities.
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     activityTime:
+ *                       type: string
+ *                       example: "08:00"
+ *                     activity:
+ *                       type: string
+ *                       maxLength: 255
+ *                       example: Depart Accra for Cape Coast
+ *                     durationMinutes:
+ *                       type: integer
+ *                       minimum: 1
+ *                       example: 180
+ *                     included:
+ *                       type: boolean
+ *                       example: true
+ *                     cost:
+ *                       type: number
+ *                       minimum: 0
+ *                       example: 0
+ *                     locationName:
+ *                       type: string
+ *                       maxLength: 255
+ *                       example: Accra
+ *                     locationAddress:
+ *                       type: string
+ *                       example: Greater Accra Region, Ghana
  *     responses:
  *       200:
  *         description: Tour itinerary updated successfully
@@ -589,6 +775,58 @@ router.post(
  *                   example: Tour itinerary updated successfully
  *                 itinerary:
  *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     tourId:
+ *                       type: string
+ *                       format: uuid
+ *                     dayNumber:
+ *                       type: integer
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     breakfast:
+ *                       type: boolean
+ *                     lunch:
+ *                       type: boolean
+ *                     dinner:
+ *                       type: boolean
+ *                     accommodationName:
+ *                       type: string
+ *                     accommodationType:
+ *                       type: string
+ *                     accommodationRating:
+ *                       type: string
+ *                       description: Decimal fields are serialized as strings in JSON responses.
+ *                     itinerary_activities:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                           itineraryId:
+ *                             type: string
+ *                             format: uuid
+ *                           activityTime:
+ *                             type: string
+ *                           activity:
+ *                             type: string
+ *                           durationMinutes:
+ *                             type: integer
+ *                           included:
+ *                             type: boolean
+ *                           cost:
+ *                             type: string
+ *                             description: Decimal fields are serialized as strings in JSON responses.
+ *                           locationName:
+ *                             type: string
+ *                           locationAddress:
+ *                             type: string
  *       400:
  *         description: Invalid request data
  *       401:
