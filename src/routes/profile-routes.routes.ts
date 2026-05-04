@@ -110,6 +110,51 @@ const profileController = new ProfileController();
  *                   example: Profile created successfully
  *                 profile:
  *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     userId:
+ *                       type: string
+ *                       format: uuid
+ *                     username:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     dateOfBirth:
+ *                       type: string
+ *                       format: date
+ *                     gender:
+ *                       type: string
+ *                       enum: [MALE, FEMALE, OTHER]
+ *                     nationality:
+ *                       type: string
+ *                     residenceCountry:
+ *                       type: string
+ *                     residenceCity:
+ *                       type: string
+ *                     residenceState:
+ *                       type: string
+ *                     profilePhotoUrl:
+ *                       type: string
+ *                       format: uri
+ *                     profilePhotoUploadedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     bio:
+ *                       type: string
+ *                     languages:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
  *       400:
  *         description: Invalid input data
  *       401:
@@ -214,6 +259,45 @@ router.post(
  *                   example: Profile updated successfully
  *                 profile:
  *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     userId:
+ *                       type: string
+ *                       format: uuid
+ *                     username:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     dateOfBirth:
+ *                       type: string
+ *                       format: date
+ *                     gender:
+ *                       type: string
+ *                       enum: [MALE, FEMALE, OTHER]
+ *                     nationality:
+ *                       type: string
+ *                     residenceCountry:
+ *                       type: string
+ *                     residenceCity:
+ *                       type: string
+ *                     residenceState:
+ *                       type: string
+ *                     profilePhotoUrl:
+ *                       type: string
+ *                       format: uri
+ *                     bio:
+ *                       type: string
+ *                     languages:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
  *       400:
  *         description: Invalid input data
  *       401:
@@ -309,6 +393,9 @@ router.delete(
  *                       type: string
  *                     profilePhotoUrl:
  *                       type: string
+ *                     profilePhotoUploadedAt:
+ *                       type: string
+ *                       format: date-time
  *                     bio:
  *                       type: string
  *                     languages:
@@ -384,6 +471,9 @@ router.get(
  *                       type: string
  *                     profilePhotoUrl:
  *                       type: string
+ *                     profilePhotoUploadedAt:
+ *                       type: string
+ *                       format: date-time
  *                     bio:
  *                       type: string
  *                     languages:

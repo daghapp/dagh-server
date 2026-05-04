@@ -105,12 +105,76 @@ const paymentController = new PaymentController();
  *                 error:
  *                   type: string
  */
-router.post("/initialize", 
-    validate(initializePaymentSchema),
+router.post("/initialize",
     protectedRoute,
+    validate(initializePaymentSchema),
     paymentController.initializePayment.bind(paymentController) )
 
-
+/**
+ * @swagger
+ * /payment/verify/{reference}:
+ *   get:
+ *     summary: Verify a payment transaction
+ *     description: Verifies the status of a payment using the payment reference and updates the payment record in the database
+ *     tags: [Payment]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique payment reference returned during payment initialization
+ *         example: HBT_20260304_ABC123
+ *     responses:
+ *       200:
+ *         description: Payment verified successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Payment verified
+ *                 data:
+ *                   type: object
+ *                   description: Raw transaction status data from Hubtel
+ *       400:
+ *         description: Unable to verify payment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Unable to verify payment
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       500:
+ *         description: Payment verification failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Payment verification failed
+ *                 error:
+ *                   type: string
+ */
 router.get("/verify/:reference", protectedRoute, paymentController.verifyPayment.bind(paymentController) )
 
 /**

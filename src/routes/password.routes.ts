@@ -7,6 +7,7 @@ import protectedRoute from "../middleware/protected.js";
 import {
   loginSchema,
   registrationSchema,
+  requestResetPasswordSchema,
 } from "../validator/password-auth-validator.js";
 import { verifyOtpSchema, resendOtpSchema } from "../validator/otp-validator.js";
 import { refreshTokenSchema } from "../validator/token-validator.js";
@@ -63,6 +64,48 @@ const passwordAuthController = new PasswordAuthController();
  *     responses:
  *       201:
  *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                       example: 123e4567-e89b-12d3-a456-426614174000
+ *                     fullName:
+ *                       type: string
+ *                       example: John Doe
+ *                     email:
+ *                       type: string
+ *                       format: email
+ *                       example: user@example.com
+ *                     phoneNumber:
+ *                       type: string
+ *                       example: +233201234567
+ *                     gender:
+ *                       type: string
+ *                       example: MALE
+ *                     dateOfBirth:
+ *                       type: string
+ *                       format: date
+ *                       example: 1990-01-01
+ *                     accountType:
+ *                       type: string
+ *                       example: USER
+ *                     emailVerified:
+ *                       type: boolean
+ *                       example: false
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: 2026-05-04T10:00:00Z
  *       400:
  *         description: Invalid input or user already exists
  *         content:
@@ -321,10 +364,22 @@ router.post(
  * @swagger
  * /auth/request-reset-password:
  *   post:
- *     summary: Request password reset OTP for authenticated user
+ *     summary: Request a password reset OTP
+ *     description: Sends a password reset OTP to the provided email address. No authentication required.
  *     tags: [Authentication]
- *     security:
- *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
  *     responses:
  *       200:
  *         description: Password reset OTP sent successfully
@@ -339,26 +394,16 @@ router.post(
  *                 message:
  *                   type: string
  *                   example: Password reset OTP sent successfully
- *       401:
- *         description: Not authenticated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Not authenticated
+ *       400:
+ *         description: Invalid email address
  *       404:
  *         description: User not found
  *       500:
  *         description: Failed to send password reset OTP
  */
-router.post(  "/request-reset-password",
-  protectedRoute,
+router.post(
+  "/request-reset-password",
+  validate(requestResetPasswordSchema),
   passwordAuthController.requestResetPassword.bind(passwordAuthController),
 );
 

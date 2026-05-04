@@ -370,68 +370,244 @@ router.delete(
  *               title:
  *                 type: string
  *                 maxLength: 255
- *                 description: Title of the tour
+ *                 description: Title of the tour (required)
  *                 example: Heritage Tour of Ghana
  *               slug:
  *                 type: string
  *                 maxLength: 255
- *                 description: URL-friendly slug
+ *                 description: URL-friendly slug (optional)
  *                 example: heritage-tour-ghana
  *               description:
  *                 type: string
- *                 description: Detailed description of the tour
+ *                 description: Detailed description of the tour (optional)
  *                 example: Experience the rich cultural heritage of Ghana
  *               shortDescription:
  *                 type: string
- *                 description: Brief description for listings
+ *                 description: Brief description for listings (optional)
  *                 example: 7-day cultural heritage tour
  *               category:
  *                 type: string
  *                 maxLength: 100
- *                 description: Tour category
+ *                 description: Tour category (optional)
  *                 example: Cultural
+ *               subcategory:
+ *                 type: string
+ *                 maxLength: 100
+ *                 description: Tour subcategory (optional)
+ *                 example: Heritage
  *               durationDays:
  *                 type: integer
  *                 minimum: 1
- *                 description: Duration in days
+ *                 description: Duration in days (optional)
  *                 example: 7
  *               durationNights:
  *                 type: integer
  *                 minimum: 0
- *                 description: Duration in nights
+ *                 description: Duration in nights (optional)
  *                 example: 6
  *               basePrice:
  *                 type: number
  *                 minimum: 0.01
- *                 description: Base price per person
+ *                 description: Base price per person (optional)
  *                 example: 1200.00
  *               currency:
  *                 type: string
  *                 maxLength: 10
  *                 default: GHS
- *                 description: Currency code
+ *                 description: Currency code (optional, defaults to GHS)
  *                 example: GHS
  *               status:
  *                 type: string
  *                 enum: [draft, published, archived, pending_review]
  *                 default: draft
- *                 description: Tour status
+ *                 description: Tour status (optional, defaults to draft)
  *               featured:
  *                 type: boolean
  *                 default: false
- *                 description: Whether the tour is featured
+ *                 description: Whether the tour is featured (optional)
  *               trending:
  *                 type: boolean
  *                 default: false
- *                 description: Whether the tour is trending
+ *                 description: Whether the tour is trending (optional)
+ *               cancellationPolicy:
+ *                 type: string
+ *                 description: Tour cancellation policy details (optional)
+ *                 example: Free cancellation up to 48 hours before departure
+ *               bookingDeadline:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Number of days before tour start that bookings close (optional)
+ *                 example: 7
+ *               minimumBooking:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Minimum number of people required to run the tour (optional)
+ *                 example: 4
+ *               accessibility:
+ *                 type: string
+ *                 description: Accessibility information for the tour (optional)
+ *                 example: Wheelchair accessible
  *               coverImage:
  *                 type: string
  *                 format: uri
- *                 description: URL of the cover image
+ *                 description: URL of the cover image (optional)
  *               heritageDnaTesting:
  *                 type: boolean
  *                 default: false
- *                 description: Whether heritage DNA testing is included
+ *                 description: Whether heritage DNA testing is included (optional)
+ *               itineraries:
+ *                 type: array
+ *                 description: List of daily itinerary items (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     dayNumber:
+ *                       type: integer
+ *                       minimum: 1
+ *                     title:
+ *                       type: string
+ *                       maxLength: 255
+ *                     description:
+ *                       type: string
+ *                     breakfast:
+ *                       type: boolean
+ *                     lunch:
+ *                       type: boolean
+ *                     dinner:
+ *                       type: boolean
+ *                     accommodationName:
+ *                       type: string
+ *                     accommodationType:
+ *                       type: string
+ *                     accommodationRating:
+ *                       type: number
+ *                       minimum: 0
+ *                       maximum: 5
+ *                     activities:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           activityTime:
+ *                             type: string
+ *                           activity:
+ *                             type: string
+ *                           durationMinutes:
+ *                             type: integer
+ *                           included:
+ *                             type: boolean
+ *                           cost:
+ *                             type: number
+ *                           locationName:
+ *                             type: string
+ *                           locationAddress:
+ *                             type: string
+ *               locations:
+ *                 type: array
+ *                 description: List of tour locations (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     city:
+ *                       type: string
+ *                     region:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     visitDuration:
+ *                       type: integer
+ *                     photos:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                         format: uri
+ *               media:
+ *                 type: array
+ *                 description: Tour media files (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     mediaType:
+ *                       type: string
+ *                       enum: [image, video]
+ *                     url:
+ *                       type: string
+ *                       format: uri
+ *               heritageElements:
+ *                 type: array
+ *                 description: Heritage elements associated with this tour (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     type:
+ *                       type: string
+ *                       enum: [ancestral, historical, cultural, tribal]
+ *                     value:
+ *                       type: string
+ *               pricingIncludes:
+ *                 type: array
+ *                 description: Items included in the tour price (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     item:
+ *                       type: string
+ *                       example: Airport transfers
+ *               pricingExcludes:
+ *                 type: array
+ *                 description: Items excluded from the tour price (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     item:
+ *                       type: string
+ *                       example: International flights
+ *               groupDiscounts:
+ *                 type: array
+ *                 description: Group size discounts (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     minSize:
+ *                       type: integer
+ *                       minimum: 1
+ *                     discountPercentage:
+ *                       type: number
+ *                       minimum: 0
+ *                       maximum: 100
+ *               seasonalPricing:
+ *                 type: array
+ *                 description: Seasonal price adjustments (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     season:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date-time
+ *                     endDate:
+ *                       type: string
+ *                       format: date-time
+ *                     priceModifier:
+ *                       type: number
+ *               guides:
+ *                 type: array
+ *                 description: Tour guides assigned to this tour (optional)
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     guideId:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     photo:
+ *                       type: string
+ *                       format: uri
+ *                     bio:
+ *                       type: string
  *     responses:
  *       201:
  *         description: Tour created successfully

@@ -376,18 +376,11 @@ export class PasswordAuthController {
 
   //password request reset
   async requestResetPassword(req: Request, res: Response) {
-    //Verify if user is logged in
-    const user = req.user as { id: string; email: string; accountType: string } | undefined;
-    if (!user) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Not authenticated" });
-    }
-    
-    //send otp for password reset
+    const { email } = req.body as { email: string };
+
     try{
       const existingUser = await prisma.user.findUnique({
-        where: { id: user.id },
+        where: { email },
       });
 
       if (!existingUser) {
