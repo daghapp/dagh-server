@@ -473,7 +473,6 @@ router.post(
  */
 router.post(
   "/reset-password",
-  protectedRoute,
   passwordAuthController.resetPassword.bind(passwordAuthController),
 );
 export { router };
