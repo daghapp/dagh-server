@@ -36,7 +36,13 @@ deleteInactiveUsersJob();
 // Setup Swagger
 setupSwagger(app);
 
-
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    uptime: process.uptime(),
+    timestamp: new Date()
+  });
+});
 
 //user authentication routes
 app.use('/auth', PasswordRoutes);

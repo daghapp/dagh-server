@@ -14,7 +14,7 @@ passport.use(
     {
       clientID: CLIENTID,
       clientSecret: CLIENTSECRETE,
-      callbackURL: REDIRECTURI,
+      callbackURL: REDIRECTURI  || "http://localhost:3000/auth/google/callback",
     },
     async (_accessToken, _refreshToken, profile, done) => {
       try {
