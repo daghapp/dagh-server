@@ -3,6 +3,7 @@ FROM node:20
 WORKDIR /app
 
 COPY package*.json ./
+COPY prisma ./prisma
 
 RUN npm install
 
@@ -14,9 +15,6 @@ ENV DATABASE_URL=$DATABASE_URL
 
 # Build project
 RUN npm run build
-
-# Generate Prisma client
-RUN npx prisma generate
 
 EXPOSE 3000
 
