@@ -1,5 +1,6 @@
 import expres from 'express';
 import { ImageUploadController } from '../Modules/common/image-upload.controller.js';
+import upload from '../middleware/cloudinary-upload.js';
 
 const router = expres.Router();
 const imageUploadController = new ImageUploadController();
@@ -52,7 +53,7 @@ const imageUploadController = new ImageUploadController();
  *       500:
  *         description: Internal server error - Upload failed
  */
-router.post('/upload', imageUploadController.uploadImage.bind(imageUploadController));
+router.post('/', upload.single('image'), imageUploadController.uploadImage.bind(imageUploadController));
 
 
 export {router}

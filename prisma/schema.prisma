@@ -29,6 +29,8 @@ model User {
   subscription        UserSubscription?
   verification        UserVerification?
   tourBookings        tour_bookings[]
+  sentMessages        Message[]         @relation("SentMessages")
+  receivedMessages    Message[]         @relation("ReceivedMessages")
 
   @@map("users")
 }
@@ -315,6 +317,30 @@ model tour_bookings {
   @@index([status])
   @@index([bookingDate])
   @@map("tour_bookings")
+}
+
+model Message {
+  id         String    @id @default(uuid())
+  senderId   String
+  receiverId String
+  content    String
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  participants  String[]
+  lastMessage   String?
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@map("conversations")
 }
 
 enum AccountStatus {
