@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io'
-import { prisma } from '../lib/prisma'
+import {prisma} from '../config/index.js'
 import jwt from 'jsonwebtoken'
 
 interface AuthenticatedSocket extends Socket {
