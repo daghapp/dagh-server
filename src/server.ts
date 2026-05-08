@@ -27,7 +27,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || '*',
+    origin: process.env.API_URL || '*',
     credentials: true,
     methods: ['GET', 'POST']
   }
@@ -35,7 +35,12 @@ const io = new Server(server, {
 
 app.use(helmet());
 app.use(express.json());
-app.use(cors({ origin: '*' }));
+app.use(
+  cors({
+    origin: process.env.API_URL || '*',
+    credentials: true,
+  })
+);
 app.use(morgan('dev'));
 app.use(sessionConfig);
 app.use(passport.initialize());

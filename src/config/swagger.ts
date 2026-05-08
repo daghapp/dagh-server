@@ -13,16 +13,16 @@ const swaggerOptions: swaggerJSDoc.Options = {
         name: 'API Support',
       },
     },
-    servers: [
-      {
-        url:'http://localhost:3000',
-        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
-      },{
-        url:"https://dagh-server-3.onrender.com" ,
-        description: "Production server on Render",
-      },
-
-    ],
+    servers:
+      process.env.NODE_ENV === 'production'
+        ? [
+            { url: 'https://dagh-server-3.onrender.com', description: 'Production server' },
+            { url: 'http://localhost:3000', description: 'Local development' },
+          ]
+        : [
+            { url: 'http://localhost:3000', description: 'Local development' },
+            { url: 'https://dagh-server-3.onrender.com', description: 'Production server' },
+          ],
     components: {
       securitySchemes: {
         bearerAuth: {
