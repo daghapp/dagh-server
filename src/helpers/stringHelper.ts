@@ -1,4 +1,4 @@
-export const generateSlug = (text) => {
+export const generateSlug = (text: string) => {
   return text
     .toLowerCase()
     .replace(/[^\w\s-]/g, '') // Remove special characters
