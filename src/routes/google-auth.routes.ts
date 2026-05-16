@@ -17,10 +17,14 @@ const googleAuthController = new GoogleAuthController();
  *       302:
  *         description: Redirects to Google OAuth
  */
-router.get(
-  "/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
-);
+router.get("/google", (req, res, next) => {
+  const redirect = req.query.redirect as string | undefined;
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+    // encode the app redirect URI into state so it survives the OAuth round-trip
+    state: redirect ? Buffer.from(redirect).toString("base64") : undefined,
+  })(req, res, next);
+});
 
 
 router.get(
@@ -33,12 +37,12 @@ router.get(
 );
 
 
-router.get("/google/failed", (req, res) => {
+router.get("/google/failed", (_req, res) => {
   res.status(401).sendFile(path.join(process.cwd(), "src/views/auth-failed.html"));
 });
 
 
-router.get("/google/success", (req, res) => {
+router.get("/google/success", (_req, res) => {
   res.sendFile(path.join(process.cwd(), "src/views/auth-success.html"));
 });
 
