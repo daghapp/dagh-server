@@ -36,7 +36,8 @@ export class GoogleAuthController {
       if (appRedirect && isAllowedRedirect(appRedirect)) {
         const separator = appRedirect.includes("?") ? "&" : "?";
         return res.redirect(
-          `${appRedirect}${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`,
+          // `${appRedirect}${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`,
+          `daghapp:///oauth${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`
         );
       }
 
