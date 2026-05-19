@@ -8,29 +8,30 @@ datasource db {
 }
 
 model User {
-  id                  String            @id @default(uuid())
+  id                  String                  @id @default(uuid())
   authProvider        AuthProvider
-  email               String            @unique
+  email               String                  @unique
   passwordHash        String?
   passwordLastChanged DateTime?
-  accountStatus       AccountStatus     @default(PENDING_VERIFICATION)
-  accountType         AccountType       @default(USER)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @default(now())
+  accountStatus       AccountStatus           @default(PENDING_VERIFICATION)
+  accountType         AccountType             @default(USER)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @default(now())
   lastLoginAt         DateTime?
   lastActiveAt        DateTime?
   fullName            String
   dateOfBirth         DateTime?
   gender              String?
-  phoneNumber         String?           @unique
+  phoneNumber         String?                 @unique
   deviceTokens        DeviceToken[]
   payments            Payment[]
   profile             UserProfile?
   subscription        UserSubscription?
   verification        UserVerification?
   tourBookings        tour_bookings[]
-  sentMessages        Message[]         @relation("SentMessages")
-  receivedMessages    Message[]         @relation("ReceivedMessages")
+  sentMessages        Message[]               @relation("SentMessages")
+  receivedMessages    Message[]               @relation("ReceivedMessages")
+  userTourItineraries user_tour_itineraries[]
 
   @@map("users")
 }
@@ -280,37 +281,38 @@ model tour_packages {
 }
 
 model tour_bookings {
-  id                 String        @id @default(uuid())
-  userId             String
-  tourId             String
-  bookingReference   String        @unique
-  numberOfPeople     Int
-  bookingDate        DateTime      @default(now())
-  tourStartDate      DateTime
-  tourEndDate        DateTime?
-  totalPrice         Decimal
-  currency           String        @default("GHS")
-  status             BookingStatus @default(PENDING)
-  paymentId          String?       @unique
-  paymentStatus      PaymentStatus @default(PENDING)
-  specialRequests    String?
-  contactName        String?
-  contactEmail       String?
-  contactPhone       String?
-  emergencyContact   String?
-  emergencyPhone     String?
-  cancellationReason String?
-  cancelledAt        DateTime?
-  cancelledBy        String?
-  refundAmount       Decimal?
-  refundedAt         DateTime?
-  confirmedAt        DateTime?
-  completedAt        DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  payment            Payment?      @relation(fields: [paymentId], references: [id])
-  tour               tour_packages @relation(fields: [tourId], references: [id], onDelete: Cascade)
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String                  @id @default(uuid())
+  userId              String
+  tourId              String
+  bookingReference    String                  @unique
+  numberOfPeople      Int
+  bookingDate         DateTime                @default(now())
+  tourStartDate       DateTime
+  tourEndDate         DateTime?
+  totalPrice          Decimal
+  currency            String                  @default("GHS")
+  status              BookingStatus           @default(PENDING)
+  paymentId           String?                 @unique
+  paymentStatus       PaymentStatus           @default(PENDING)
+  specialRequests     String?
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  emergencyContact    String?
+  emergencyPhone      String?
+  cancellationReason  String?
+  cancelledAt         DateTime?
+  cancelledBy         String?
+  refundAmount        Decimal?
+  refundedAt          DateTime?
+  confirmedAt         DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  payment             Payment?                @relation(fields: [paymentId], references: [id])
+  tour                tour_packages           @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userTourItineraries user_tour_itineraries[]
 
   @@index([userId])
   @@index([tourId])
@@ -341,6 +343,41 @@ model Conversation {
   createdAt     DateTime  @default(now())
 
   @@map("conversations")
+}
+
+model user_tour_itineraries {
+  id                  String                             @id @default(uuid())
+  userId              String
+  bookingId           String
+  dayNumber           Int?
+  title               String?                            @db.VarChar(255)
+  description         String?
+  breakfast           Boolean?
+  lunch               Boolean?
+  dinner              Boolean?
+  accommodationName   String?
+  accommodationType   String?
+  accommodationRating Decimal?
+  activities          user_tour_itineraries_activities[]
+  user                User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking             tour_bookings                      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("user_tour_itineraries")
+}
+
+model user_tour_itineraries_activities {
+  id              String                @id @default(uuid())
+  userItineraryId String
+  activityTime    String?
+  activity        String?
+  durationMinutes Int?
+  included        Boolean?
+  cost            Decimal?
+  locationName    String?
+  locationAddress String?
+  userItinerary   user_tour_itineraries @relation(fields: [userItineraryId], references: [id], onDelete: Cascade)
+
+  @@map("user_tour_itineraries_activities")
 }
 
 enum AccountStatus {

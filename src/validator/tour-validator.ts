@@ -25,6 +25,32 @@ export const tourItinerarySchema = z.object({
     activities: z.array(itineraryActivitySchema).optional(),
 });
 
+// User Tour Itinerary Activity Schema
+export const userItineraryActivitySchema = z.object({
+  activityTime: z.string().optional(),
+  activity: z.string().max(255).optional(),
+  durationMinutes: z.number().int().positive().optional(),
+  included: z.boolean().optional(),
+  cost: z.number().nonnegative().optional(),
+  locationName: z.string().max(255).optional(),
+  locationAddress: z.string().optional(),
+});
+
+// User Tour Itinerary Schema
+export const userTourItinerarySchema = z.object({
+  dayNumber: z.number().int().positive().optional(),
+  title: z.string().max(255).optional(),
+  description: z.string().optional(),
+  breakfast: z.boolean().optional(),
+  lunch: z.boolean().optional(),
+  dinner: z.boolean().optional(),
+  accommodationName: z.string().max(255).optional(),
+  accommodationType: z.string().max(100).optional(),
+  accommodationRating: z.number().min(0).max(5).optional(),
+  activities: z.array(userItineraryActivitySchema).optional(),
+});
+
+
 // Tour Location Schema
 const tourLocationSchema = z.object({
     name: z.string().max(255).optional(),

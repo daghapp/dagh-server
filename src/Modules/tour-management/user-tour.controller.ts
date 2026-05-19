@@ -89,6 +89,51 @@ export class UserTourController {
       });
     }
   }
+
+// Helper: copy default itinerary into user tables
+private async copyItineraryToUserTables(userId: string, bookingId: string, tourId: string) {
+  // Fetch the tour itineraries and activities
+  const itineraries = await prisma.tour_itineraries.findMany({
+    where: { tourId },
+    include: { itinerary_activities: true },
+  });
+
+  // Loop through each itinerary and create user-specific copies
+  for (const itinerary of itineraries) {
+    const userItinerary = await prisma.user_tour_itineraries.create({
+      data: {
+        userId,
+        bookingId,
+        dayNumber: itinerary.dayNumber,
+        title: itinerary.title,
+        description: itinerary.description,
+        breakfast: itinerary.breakfast,
+        lunch: itinerary.lunch,
+        dinner: itinerary.dinner,
+        accommodationName: itinerary.accommodationName,
+        accommodationType: itinerary.accommodationType,
+        accommodationRating: itinerary.accommodationRating,
+      },
+    });
+
+    // Copy activities into user_tour_itineraries_activities
+    for (const activity of itinerary.itinerary_activities) {
+      await prisma.user_tour_itineraries_activities.create({
+        data: {
+          userItineraryId: userItinerary.id,
+          activityTime: activity.activityTime,
+          activity: activity.activity,
+          durationMinutes: activity.durationMinutes,
+          included: activity.included,
+          cost: activity.cost,
+          locationName: activity.locationName,
+          locationAddress: activity.locationAddress,
+        },
+      });
+    }
+  }
+}
+
   // Book a tour
   async bookTour(req: Request, res: Response) {
     try {
@@ -127,6 +172,10 @@ export class UserTourController {
           specialRequests: bookingData.specialRequests,
         },
       });
+
+      // Copy default itinerary into user-specific tables
+      await this.copyItineraryToUserTables(userId, newBooking.id, bookingData.tourId);
+
 
       //send email after successful booking
       await sendEmail({
