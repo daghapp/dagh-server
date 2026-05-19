@@ -289,12 +289,105 @@ private async copyItineraryToUserTables(userId: string, bookingId: string, tourI
     }
   }
 
+
+
+  // PATCH: Update a user’s custom itinerary
+async updateUserItinerary(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id as string;
+    const { itineraryId }  = req.params; // user_tour_itineraries.id
+    const updates = req.body; // validated against userTourItinerarySchema
+
+    // Check if itinerary exists and belongs to this user
+    const itinerary = await prisma.user_tour_itineraries.findUnique({
+      where: { id: itineraryId as string },
+      include: { activities: true },
+    });
+
+    if (!itinerary) {
+      return res.status(404).json({ success: false, message: "Itinerary not found" });
+    }
+    if (itinerary.userId !== userId) {
+      return res.status(403).json({ success: false, message: "Not authorized to edit this itinerary" });
+    }
+
+    // Update itinerary details
+    const updatedItinerary = await prisma.user_tour_itineraries.update({
+      where: { id: itineraryId  as string},
+      data: {
+        dayNumber: updates.dayNumber,
+        title: updates.title,
+        description: updates.description,
+        breakfast: updates.breakfast,
+        lunch: updates.lunch,
+        dinner: updates.dinner,
+        accommodationName: updates.accommodationName,
+        accommodationType: updates.accommodationType,
+        accommodationRating: updates.accommodationRating,
+      },
+      include: { activities: true },
+    });
+
+    // If activities are provided, update them too
+    if (updates.activities && Array.isArray(updates.activities)) {
+      for (const activity of updates.activities) {
+        if (activity.id) {
+          // Update existing activity
+          await prisma.user_tour_itineraries_activities.update({
+            where: { id: activity.id },
+            data: {
+              activityTime: activity.activityTime,
+              activity: activity.activity,
+              durationMinutes: activity.durationMinutes,
+              included: activity.included,
+              cost: activity.cost,
+              locationName: activity.locationName,
+              locationAddress: activity.locationAddress,
+            },
+          });
+        } else {
+          // Create new activity
+          await prisma.user_tour_itineraries_activities.create({
+            data: {
+              userItineraryId: itineraryId as string,
+              activityTime: activity.activityTime,
+              activity: activity.activity,
+              durationMinutes: activity.durationMinutes,
+              included: activity.included,
+              cost: activity.cost,
+              locationName: activity.locationName,
+              locationAddress: activity.locationAddress,
+            },
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Itinerary updated successfully",
+      itinerary: updatedItinerary,
+    });
+  } catch (error) {
+    console.error("Error updating itinerary:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update itinerary",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
+
+
+
   //review a tour by user
   //get all tours booked by user
 
 
   //get all tours 
 
+
+  
   
   
 }

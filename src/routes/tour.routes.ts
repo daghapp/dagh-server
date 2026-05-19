@@ -293,6 +293,47 @@ router.post(
 
 /**
  * @swagger
+ * /tours/user-itineraries/{itineraryId}:
+ *   patch:
+ *     summary: Update a user’s custom itinerary
+ *     description: Allows the authenticated user to update their customized itinerary and activities
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itineraryId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the user itinerary to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UserTourItinerary'
+ *     responses:
+ *       200:
+ *         description: Itinerary updated successfully
+ *       400:
+ *         description: Invalid input
+ *       403:
+ *         description: Not authorized to edit this itinerary
+ *       404:
+ *         description: Itinerary not found
+ *       500:
+ *         description: Failed to update itinerary
+ */
+router.patch(
+  "/user-itineraries/:itineraryId",
+  protectedRoute,
+  userTourController.updateUserItinerary.bind(userTourController)
+);
+
+/**
+ * @swagger
  * /tours/bookings/{bookingId}:
  *   delete:
  *     summary: Cancel a tour booking
