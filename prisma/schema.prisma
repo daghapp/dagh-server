@@ -32,6 +32,7 @@ model User {
   sentMessages        Message[]               @relation("SentMessages")
   receivedMessages    Message[]               @relation("ReceivedMessages")
   userTourItineraries user_tour_itineraries[]
+  visaRequests       VisaOnArrivalRequest[]
 
   @@map("users")
 }
@@ -132,21 +133,21 @@ model DeviceToken {
   @@map("device_tokens")
 }
 
-model Payment {
-  id               String         @id @default(uuid())
-  userId           String
-  amount           Float
-  description      String?
-  status           PaymentStatus  @default(PENDING)
-  paymentReference String         @unique
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  clientReference  String         @unique
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tourBooking      tour_bookings?
-
-  @@map("payments")
-}
+//model Payment {
+//  id               String         @id @default(uuid())
+//  userId           String
+//  amount           Float
+//  description      String?
+//  status           PaymentStatus  @default(PENDING)
+//  paymentReference String         @unique
+//  createdAt        DateTime       @default(now())
+//  updatedAt        DateTime       @updatedAt
+//  clientReference  String         @unique
+//  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+//  tourBooking      tour_bookings?
+//
+//  @@map("payments")
+//}
 
 model UserSubscription {
   id             String             @id @default(uuid())
@@ -309,7 +310,6 @@ model tour_bookings {
   completedAt         DateTime?
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
-  payment             Payment?                @relation(fields: [paymentId], references: [id])
   tour                tour_packages           @relation(fields: [tourId], references: [id], onDelete: Cascade)
   user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userTourItineraries user_tour_itineraries[]
@@ -380,6 +380,100 @@ model user_tour_itineraries_activities {
   @@map("user_tour_itineraries_activities")
 }
 
+
+
+model VisaOnArrivalRequest {
+  id             String        @id @default(uuid())
+  userId         String
+  status         VisaRequestStatus @default(PENDING) // pending, approved, rejected
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  approval       VisaApproval?
+  paymentId        String? // from the polymorphic payment table.
+  visaData       VisaOnArrivalData?
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("visa_on_arrival_requests")
+}
+
+model VisaOnArrivalData {
+  id                      String    @id @default(uuid())
+  requestId               String   @unique
+  passport                String
+  surname                 String
+  first_name              String
+  previous_name           String?
+  date_of_birth           String
+  place_of_birth          String
+  nationality             String
+  former_nationality      String?
+  passport_number         String
+  date_of_issue           String
+  place_of_issue          String
+  date_of_expiration      String
+  email                   String
+  whatsapp_number         String?
+  date_of_arrival         DateTime?
+  date_of_departure       DateTime?
+  duration_of_stay        Int?
+  purpose_of_trip         String
+  primary_place_of_stay   String
+  proof_of_accommodation  String
+  request                 VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+ 
+  @@map("visa_on_arrival_data")
+}
+
+
+model VisaApproval {
+  id          String               @id @default(uuid())
+  requestId   String               @unique
+  approvedBy  String?
+  approvedAt  DateTime?
+  status      VisaApprovalStatus   @default(PENDING) // pending, approved, rejected
+  notes       String?
+  request     VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("visa_on_arrival_approvals")
+}
+
+
+model Payment {
+  id                String           @id @default(uuid())
+  reference         String           @unique
+  userId            String           @unique
+
+  targetType        PaymentTargetType // the module access this
+  targetId          String // the module's id
+
+  amount            Float
+  currency          String           @default("GHS")
+
+  status            PaymentStatus    @default(PENDING)
+  method            PaymentMethod?
+  provider          PaymentProvider?
+
+  providerReference String?
+  transactionId     String?
+
+  paidAt            DateTime?
+
+  metadata          Json?
+
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+
+}
+
+
+enum PaymentTargetType {
+  VISA_ON_ARRIVAL
+  TOUR_BOOKING
+}
+
 enum AccountStatus {
   ACTIVE
   SUSPENDED
@@ -434,4 +528,32 @@ enum BookingStatus {
   COMPLETED
   REFUNDED
   NO_SHOW
+}
+
+enum VisaRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VisaApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+} 
+
+enum PaymentMethod {
+  MTN_MOMO
+  TELECEL_MOMO
+  AT_MOMO
+  CARD
+  BANK_TRANSFER
+  CASH
+}
+
+enum PaymentProvider {
+  HUBTEL
+  PAYSTACK
+  STRIPE
+  FLUTTERWAVE
 }
