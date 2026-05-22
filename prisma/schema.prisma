@@ -284,7 +284,7 @@ model tour_packages {
 model tour_bookings {
   id                  String                  @id @default(uuid())
   userId              String
-  tourId              String
+  tourId              String?
   bookingReference    String                  @unique
   numberOfPeople      Int
   bookingDate         DateTime                @default(now())
@@ -310,9 +310,11 @@ model tour_bookings {
   completedAt         DateTime?
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
-  tour                tour_packages           @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  tour                tour_packages?           @relation(fields: [tourId], references: [id], onDelete: Cascade)
   user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userTourItineraries user_tour_itineraries[]
+  systemGenerated     Boolean @default(false)
+
 
   @@index([userId])
   @@index([tourId])
