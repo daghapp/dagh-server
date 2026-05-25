@@ -25,6 +25,32 @@ export const tourItinerarySchema = z.object({
     activities: z.array(itineraryActivitySchema).optional(),
 });
 
+// User Tour Itinerary Activity Schema
+export const userItineraryActivitySchema = z.object({
+  activityTime: z.string().optional(),
+  activity: z.string().max(255).optional(),
+  durationMinutes: z.number().int().positive().optional(),
+  included: z.boolean().optional(),
+  cost: z.number().nonnegative().optional(),
+  locationName: z.string().max(255).optional(),
+  locationAddress: z.string().optional(),
+});
+
+// User Tour Itinerary Schema
+export const userTourItinerarySchema = z.object({
+  dayNumber: z.number().int().positive().optional(),
+  title: z.string().max(255).optional(),
+  description: z.string().optional(),
+  breakfast: z.boolean().optional(),
+  lunch: z.boolean().optional(),
+  dinner: z.boolean().optional(),
+  accommodationName: z.string().max(255).optional(),
+  accommodationType: z.string().max(100).optional(),
+  accommodationRating: z.number().min(0).max(5).optional(),
+  activities: z.array(userItineraryActivitySchema).optional(),
+});
+
+
 // Tour Location Schema
 const tourLocationSchema = z.object({
     name: z.string().max(255).optional(),
@@ -124,6 +150,16 @@ export const tourBookingSchema = z.object({
     paymentMethodId: z.string().uuid().optional(),
 });
 
+export const tourBookingSchema_momo = z.object({
+    tourId: z.string().uuid('Invalid tour ID'),
+    numberOfPeople: z.number().int().positive('Number of people must be positive'),
+    bookingDate: z.string().datetime().or(z.date()),
+    tourStartDate: z.string().datetime().or(z.date()),
+    specialRequests: z.string().optional(),
+    paymentMethod: z.enum(["MTN_MOMO", "TELECEL_MOMO", "AT_MOMO"]),
+    phoneNumber:  z.string().regex(/^233\d{9}$/, "Phone must be a valid Ghana MSISDN"),
+});
+
 // Tour Review Schema
 export const tourReviewSchema = z.object({
     tourId: z.string().uuid('Invalid tour ID'),
@@ -148,6 +184,7 @@ export const tourReportSchema = z.object({
 export type TourSchema = z.infer<typeof tourSchema>;
 export type UpdateTourSchema = z.infer<typeof updateTourSchema>;
 export type TourBookingSchema = z.infer<typeof tourBookingSchema>;
+export type TourBookingSchema_MOMO = z.infer<typeof tourBookingSchema_momo>;
 export type TourReviewSchema = z.infer<typeof tourReviewSchema>;
 export type TourReportSchema = z.infer<typeof tourReportSchema>;
 export type ItineraryActivitySchema = z.infer<typeof itineraryActivitySchema>;

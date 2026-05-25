@@ -1,59 +1,96 @@
 import { Request, Response } from "express";
-import { prisma, hubtelClient, hubtelStatusClient } from "../../config/index.js";
-import { InitializePaymentSchema, SubscribtionPaymentSchema } from "../../validator/index.js";
+import { prisma, hubtelClient, hubtelStatusClient, hubtelDirectMoneyReceive } from "../../config/index.js";
+import { HubtelDirectReceiveResponseSchema, initializePaymentSchema_momo, InitializePaymentSchema_MOMO, SubscribtionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
+import { mapMomoProvider } from "src/helpers/stringHelper.js";
+import { AxiosResponse } from "axios";
+import { PaymentProvider, PaymentStatus } from "@prisma/client";
+
+export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
 
 export class PaymentController {
-
-//initializes a payment by sending a request to Hubtel and storing the payment details in the database
   async initializePayment(req: Request, res: Response) {
     try {
       const user = req.user as any;
       if (!user) {
         return res.status(401).json({ message: "Unauthorized" });
       }
+      const {  userId,
+  targetType,
+  targetId,
+  amount,
+  currency,
+  customerPhone,
+  description,
+  method
+} = initializePaymentSchema_momo.parse(req.body);
+   const reference = generateClientReference()
 
-      const payload = req.body as InitializePaymentSchema;
-      const reference = generateClientReference()
+   const payment = await prisma.payment.create({
+    data: {
+      userId,
+      targetType,
+      targetId,
+      amount,
+      currency,
+      description,
+      reference,
+      status: PaymentStatus.INITIALIZED,
+      provider: PaymentProvider.HUBTEL,
+    },
+  });
+  const response: AxiosResponse<HubtelDirectReceiveResponseSchema> = await hubtelDirectMoneyReceive.post("", {
+    amount,
+    customerMsisdn: customerPhone,
+    clientReference: payment.reference,
+    primaryCallbackUrl: HUBTEL_CALLBACK_URL,
+    description: `Payment for tour ${targetId}`,
+    Channel: mapMomoProvider(method),
+    CustomerEmail: user.email,
+  });
+
+    const log = await prisma.hubtelDirectReceiveLog.create({
+      data: {
+        message: response.data.Message,
+        responseCode: response.data.ResponseCode,
+        amount: response.data.Data.Amount,
+        charges: response.data.Data.Charges,
+        amountAfterCharges: response.data.Data.AmountAfterCharges,
+        amountCharged: response.data.Data.AmountCharged,
+        description: response.data.Data.Description,
+        clientReference: response.data.Data.ClientReference,
+        transactionId: response.data.Data.TransactionId,
+        deliveryFee: response.data.Data.DeliveryFee,
+      },
+    });
+
+        // Map ResponseCode to Payment status
+    let newStatus: "SUCCESS" | "FAILED" | "PENDING";
+    switch (response.data.ResponseCode) {
+      case "0000":
+        newStatus = PaymentStatus.SUCCESS;
+        break;
+      case "2001":
+        newStatus = PaymentStatus.FAILED;
+        break;
+      case "0001":
+      default:
+        newStatus = PaymentStatus.PENDING;
+        break;
+    }
+
+    // Update Payment record
+    await prisma.payment.update({
+      where: { id: payment.id },   // you already have the instance
+      data: { status: newStatus },
+    });
 
 
-      const hubtelResponse = await hubtelClient.post(
-        "/items/initiate",
-         {...payload,
-          merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
-          clientReference: reference,
-
-        }
-      );
-      console.log(hubtelResponse.data, "Hubtel response data") // Debug log for Hubtel response
-
-      const data = hubtelResponse.data;
-
-      if (!data || !data.data || !data.data.checkoutId) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid response from Hubtel",
-          data,
-        });
-      }
-
-      const paymentData = data.data;
-
-      await prisma.payment.create({
-        data: {
-          userId: user.id,
-          amount: payload.totalAmount,
-          description: payload.description,
-          status: "INITIALIZED",
-          paymentReference: paymentData.checkoutId,
-          clientReference: reference,
-        },
-      });
 
       return res.status(200).json({
         success: true,
         message: "Payment initialized successfully",
-        data: paymentData,
+        data: response.data,
       });
 
     } catch (error: any) {
@@ -64,6 +101,98 @@ export class PaymentController {
         message: "Payment initialization failed",
         error: error?.response?.data || error.message,
       });
+    }
+  }
+
+//initializes a payment by sending a request to Hubtel and storing the payment details in the database
+ static async initializePayment(payload:InitializePaymentSchema_MOMO) {
+    try {
+      const {  userId,
+  targetType,
+  targetId,
+  amount,
+  currency,
+  customerPhone,
+  description,
+  method,
+} = payload;
+   const reference = generateClientReference()
+
+   const payment = await prisma.payment.create({
+    data: {
+      userId,
+      targetType,
+      targetId,
+      amount,
+      currency,
+      description,
+      reference,
+      status: PaymentStatus.INITIALIZED,
+      provider: PaymentProvider.HUBTEL,
+    },
+  });
+  const response: AxiosResponse<HubtelDirectReceiveResponseSchema> = await hubtelDirectMoneyReceive.post("", {
+    amount,
+    customerMsisdn: customerPhone,
+    primaryCallbackUrl: HUBTEL_CALLBACK_URL,
+    clientReference: payment.reference,
+    description: `Payment for tour ${targetId}`,
+    Channel: mapMomoProvider(method),
+  });
+
+    const log = await prisma.hubtelDirectReceiveLog.create({
+      data: {
+        message: response.data.Message,
+        responseCode: response.data.ResponseCode,
+        amount: response.data.Data.Amount,
+        charges: response.data.Data.Charges,
+        amountAfterCharges: response.data.Data.AmountAfterCharges,
+        amountCharged: response.data.Data.AmountCharged,
+        description: response.data.Data.Description,
+        clientReference: response.data.Data.ClientReference,
+        transactionId: response.data.Data.TransactionId,
+        deliveryFee: response.data.Data.DeliveryFee,
+      },
+    });
+
+        // Map ResponseCode to Payment status
+    let newStatus: "SUCCESS" | "FAILED" | "PENDING";
+    switch (response.data.ResponseCode) {
+      case "0000":
+        newStatus = PaymentStatus.SUCCESS;
+        break;
+      case "2001":
+        newStatus = PaymentStatus.FAILED;
+        break;
+      case "0001":
+      default:
+        newStatus = PaymentStatus.PENDING;
+        break;
+    }
+
+    // Update Payment record
+    await prisma.payment.update({
+      where: { id: payment.id },   // you already have the instance
+      data: { status: newStatus },
+    });
+
+
+
+      return {
+        success: true,
+        paymentId: payment.id,
+        message: "Payment initialized successfully",
+      }
+
+    } catch (error: any) {
+      console.error("Payment initialization error:", error?.response || error);
+      console.error("Payment initialization error:", error?.response?.data || error);
+      
+      return{
+        success: false,
+        message: "Payment initialization failed",
+        error: error?.response?.data || error.message,
+      }
     }
   }
 //handles subscription payments by creating an invoice with Hubtel and recording the subscription details in the database
@@ -167,7 +296,7 @@ export class PaymentController {
       if (data.status === "Failed") status = "FAILED";
 
       await prisma.payment.update({
-        where: { paymentReference: reference },
+        where: { reference: reference },
         data: { status },
       });
 
@@ -220,8 +349,8 @@ export class PaymentController {
       const payment = await prisma.payment.findFirst({
         where: { 
           OR: [
-            { paymentReference: posSalesId },
-            { clientReference: posSalesId }
+            { reference: posSalesId },
+            { providerReference: posSalesId }
           ]
         },
       });

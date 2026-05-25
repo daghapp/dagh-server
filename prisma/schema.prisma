@@ -8,29 +8,31 @@ datasource db {
 }
 
 model User {
-  id                  String            @id @default(uuid())
+  id                  String                  @id @default(uuid())
   authProvider        AuthProvider
-  email               String            @unique
+  email               String                  @unique
   passwordHash        String?
   passwordLastChanged DateTime?
-  accountStatus       AccountStatus     @default(PENDING_VERIFICATION)
-  accountType         AccountType       @default(USER)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @default(now())
+  accountStatus       AccountStatus           @default(PENDING_VERIFICATION)
+  accountType         AccountType             @default(USER)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @default(now())
   lastLoginAt         DateTime?
   lastActiveAt        DateTime?
   fullName            String
   dateOfBirth         DateTime?
   gender              String?
-  phoneNumber         String?           @unique
+  phoneNumber         String?                 @unique
   deviceTokens        DeviceToken[]
   payments            Payment[]
   profile             UserProfile?
   subscription        UserSubscription?
   verification        UserVerification?
   tourBookings        tour_bookings[]
-  sentMessages        Message[]         @relation("SentMessages")
-  receivedMessages    Message[]         @relation("ReceivedMessages")
+  sentMessages        Message[]               @relation("SentMessages")
+  receivedMessages    Message[]               @relation("ReceivedMessages")
+  userTourItineraries user_tour_itineraries[]
+  visaRequests       VisaOnArrivalRequest[]
 
   @@map("users")
 }
@@ -131,21 +133,21 @@ model DeviceToken {
   @@map("device_tokens")
 }
 
-model Payment {
-  id               String         @id @default(uuid())
-  userId           String
-  amount           Float
-  description      String?
-  status           PaymentStatus  @default(PENDING)
-  paymentReference String         @unique
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  clientReference  String         @unique
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tourBooking      tour_bookings?
-
-  @@map("payments")
-}
+//model Payment {
+//  id               String         @id @default(uuid())
+//  userId           String
+//  amount           Float
+//  description      String?
+//  status           PaymentStatus  @default(PENDING)
+//  paymentReference String         @unique
+//  createdAt        DateTime       @default(now())
+//  updatedAt        DateTime       @updatedAt
+//  clientReference  String         @unique
+//  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+//  tourBooking      tour_bookings?
+//
+//  @@map("payments")
+//}
 
 model UserSubscription {
   id             String             @id @default(uuid())
@@ -280,37 +282,39 @@ model tour_packages {
 }
 
 model tour_bookings {
-  id                 String        @id @default(uuid())
-  userId             String
-  tourId             String
-  bookingReference   String        @unique
-  numberOfPeople     Int
-  bookingDate        DateTime      @default(now())
-  tourStartDate      DateTime
-  tourEndDate        DateTime?
-  totalPrice         Decimal
-  currency           String        @default("GHS")
-  status             BookingStatus @default(PENDING)
-  paymentId          String?       @unique
-  paymentStatus      PaymentStatus @default(PENDING)
-  specialRequests    String?
-  contactName        String?
-  contactEmail       String?
-  contactPhone       String?
-  emergencyContact   String?
-  emergencyPhone     String?
-  cancellationReason String?
-  cancelledAt        DateTime?
-  cancelledBy        String?
-  refundAmount       Decimal?
-  refundedAt         DateTime?
-  confirmedAt        DateTime?
-  completedAt        DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  payment            Payment?      @relation(fields: [paymentId], references: [id])
-  tour               tour_packages @relation(fields: [tourId], references: [id], onDelete: Cascade)
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String                  @id @default(uuid())
+  userId              String
+  tourId              String?
+  bookingReference    String                  @unique
+  numberOfPeople      Int
+  bookingDate         DateTime                @default(now())
+  tourStartDate       DateTime
+  tourEndDate         DateTime?
+  totalPrice          Decimal
+  currency            String                  @default("GHS")
+  status              BookingStatus           @default(PENDING)
+  paymentId           String?                 @unique
+  paymentStatus       PaymentStatus           @default(PENDING)
+  specialRequests     String?
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  emergencyContact    String?
+  emergencyPhone      String?
+  cancellationReason  String?
+  cancelledAt         DateTime?
+  cancelledBy         String?
+  refundAmount        Decimal?
+  refundedAt          DateTime?
+  confirmedAt         DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  tour                tour_packages?           @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userTourItineraries user_tour_itineraries[]
+  systemGenerated     Boolean @default(false)
+
 
   @@index([userId])
   @@index([tourId])
@@ -341,6 +345,159 @@ model Conversation {
   createdAt     DateTime  @default(now())
 
   @@map("conversations")
+}
+
+model user_tour_itineraries {
+  id                  String                             @id @default(uuid())
+  userId              String
+  bookingId           String
+  dayNumber           Int?
+  title               String?                            @db.VarChar(255)
+  description         String?
+  breakfast           Boolean?
+  lunch               Boolean?
+  dinner              Boolean?
+  accommodationName   String?
+  accommodationType   String?
+  accommodationRating Decimal?
+  activities          user_tour_itineraries_activities[]
+  user                User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking             tour_bookings                      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("user_tour_itineraries")
+}
+
+model user_tour_itineraries_activities {
+  id              String                @id @default(uuid())
+  userItineraryId String
+  activityTime    String?
+  activity        String?
+  durationMinutes Int?
+  included        Boolean?
+  cost            Decimal?
+  locationName    String?
+  locationAddress String?
+  userItinerary   user_tour_itineraries @relation(fields: [userItineraryId], references: [id], onDelete: Cascade)
+
+  @@map("user_tour_itineraries_activities")
+}
+
+
+
+model VisaOnArrivalRequest {
+  id             String        @id @default(uuid())
+  userId         String
+  status         VisaRequestStatus @default(PENDING) // pending, approved, rejected
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  approval       VisaApproval?
+  paymentId        String? // from the polymorphic payment table.
+  visaData       VisaOnArrivalData?
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("visa_on_arrival_requests")
+}
+
+model VisaOnArrivalData {
+  id                      String    @id @default(uuid())
+  requestId               String   @unique
+  passport                String
+  surname                 String
+  first_name              String
+  previous_name           String?
+  date_of_birth           String
+  place_of_birth          String
+  nationality             String
+  former_nationality      String?
+  passport_number         String
+  date_of_issue           String
+  place_of_issue          String
+  date_of_expiration      String
+  email                   String
+  whatsapp_number         String?
+  date_of_arrival         DateTime?
+  date_of_departure       DateTime?
+  duration_of_stay        Int?
+  purpose_of_trip         String
+  primary_place_of_stay   String
+  proof_of_accommodation  String
+  request                 VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+ 
+  @@map("visa_on_arrival_data")
+}
+
+
+model VisaApproval {
+  id          String               @id @default(uuid())
+  requestId   String               @unique
+  approvedBy  String?
+  approvedAt  DateTime?
+  status      VisaApprovalStatus   @default(PENDING) // pending, approved, rejected
+  notes       String?
+  request     VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("visa_on_arrival_approvals")
+}
+
+
+model Payment {
+  id                String           @id @default(uuid())
+  reference         String           @unique
+  userId            String           @unique
+
+  description       String?
+
+  targetType        PaymentTargetType // the module access this
+  targetId          String // the module's id
+
+  amount            Float
+  currency          String           @default("GHS")
+
+  status            PaymentStatus    @default(PENDING)
+  method            PaymentMethod?
+  provider          PaymentProvider?
+
+  providerReference String?
+  transactionId     String?
+
+  paidAt            DateTime?
+
+  metadata          Json?
+
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+
+}
+
+model HubtelDirectReceiveLog {
+  id                    String   @id @default(uuid())
+  message               String?
+  responseCode          String?
+  amount                Float?
+  charges               Float?
+  amountAfterCharges    Float?
+  amountCharged         Float?
+  description           String?
+  clientReference       String?  // your merchant reference
+  transactionId         String?  // Hubtel transaction ID
+  externalTransactionId String?  // telco reference
+  orderId               String?
+  deliveryFee           Float?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("hubtel_direct_receive_logs")
+}
+
+
+
+enum PaymentTargetType {
+  VISA_ON_ARRIVAL
+  TOUR_BOOKING
 }
 
 enum AccountStatus {
@@ -397,4 +554,32 @@ enum BookingStatus {
   COMPLETED
   REFUNDED
   NO_SHOW
+}
+
+enum VisaRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VisaApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+} 
+
+enum PaymentMethod {
+  MTN_MOMO
+  TELECEL_MOMO
+  AT_MOMO
+  CARD
+  BANK_TRANSFER
+  CASH
+}
+
+enum PaymentProvider {
+  HUBTEL
+  PAYSTACK
+  STRIPE
+  FLUTTERWAVE
 }
