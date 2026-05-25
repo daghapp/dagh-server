@@ -9,6 +9,7 @@ import {
   updateTourSchema,
   tourBookingSchema,
   tourItinerarySchema,
+  tourBookingSchema_momo,
 } from "../validator/index.js";
 
 const router = express.Router();
@@ -192,12 +193,13 @@ router.get(
   userTourController.getUserBookings.bind(userTourController)
 );
 
+
 /**
  * @swagger
- * /tours/bookings:
+ * /tour/initiate-booking-momo:
  *   post:
- *     summary: Book a tour
- *     description: Create a new tour booking for the authenticated user
+ *     summary: Initiate Tour Booking Payment (MoMo)
+ *     description: Initiates a payment for a tour booking using mobile money. Creates a Payment record and awaits Hubtel callback for final confirmation.
  *     tags: [Tours - User]
  *     security:
  *       - bearerAuth: []
@@ -207,125 +209,91 @@ router.get(
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - tourId
- *               - numberOfPeople
- *               - bookingDate
- *               - tourStartDate
  *             properties:
  *               tourId:
  *                 type: string
  *                 format: uuid
- *                 description: ID of the tour to book
- *                 example: 123e4567-e89b-12d3-a456-426614174000
+ *                 description: Unique identifier of the tour package.
+ *                 example: "d290f1ee-6c54-4b01-90e6-d701748f0851"
  *               numberOfPeople:
  *                 type: integer
  *                 minimum: 1
- *                 description: Number of people for the booking
+ *                 description: Number of people included in the booking.
  *                 example: 2
  *               bookingDate:
  *                 type: string
  *                 format: date-time
- *                 description: Date when the booking is made
- *                 example: 2026-02-26T10:00:00Z
+ *                 description: Date when the booking is made.
+ *                 example: "2026-05-25T10:00:00Z"
  *               tourStartDate:
  *                 type: string
  *                 format: date-time
- *                 description: Date when the tour starts
- *                 example: 2026-03-15T09:00:00Z
+ *                 description: Scheduled start date of the tour.
+ *                 example: "2026-06-01T08:00:00Z"
  *               specialRequests:
  *                 type: string
- *                 description: Any special requests or requirements
- *                 example: Vegetarian meals required
- *               paymentMethodId:
+ *                 description: Optional special requests by the customer.
+ *                 example: "Vegetarian meals"
+ *               paymentMethod:
  *                 type: string
- *                 format: uuid
- *                 description: Optional payment method ID
- *                 example: 789e4567-e89b-12d3-a456-426614174000
+ *                 enum: ["MTN_MOMO", "TELECEL_MOMO", "AT_MOMO"]
+ *                 description: Mobile money provider selected for payment.
+ *                 example: "MTN_MOMO"
+ *               phoneNumber:
+ *                 type: string
+ *                 pattern: "^233\\d{9}$"
+ *                 description: Ghana MSISDN phone number of the customer.
+ *                 example: "233501234567"
  *     responses:
- *       201:
- *         description: Tour booked successfully
+ *       200:
+ *         description: Payment initiation successful
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
  *                 message:
  *                   type: string
- *                   example: Tour booked successfully
- *                 booking:
+ *                   example: "Payment initiated. Awaiting confirmation."
+ *                 bookingId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Unique identifier of the created booking.
+ *                 paymentId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: Unique identifier of the created payment.
+ *                 hubtelResponse:
  *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                       format: uuid
- *                     tourId:
- *                       type: string
- *                       format: uuid
- *                     userId:
- *                       type: string
- *                       format: uuid
- *                     numberOfPeople:
- *                       type: integer
- *                     totalPrice:
- *                       type: number
- *                     currency:
- *                       type: string
- *                     bookingReference:
- *                       type: string
- *                     status:
- *                       type: string
+ *                   description: Raw response from Hubtel DirectReceive API.
  *       400:
- *         description: Invalid request data
- *       401:
- *         description: Unauthorized - User not authenticated
+ *         description: Invalid request or payment initiation failed
  *       404:
- *         description: Tour not found or price not available
+ *         description: Tour not found
  *       500:
- *         description: Failed to book tour
+ *         description: Internal server error
  */
+router.post(
+  "/initiate-booking-momo",
+  protectedRoute,
+  validate(tourBookingSchema_momo),
+  userTourController.initiateTourBookingMoMo.bind(userTourController)
+);
+
+router.post(
+  "/hubtel-callback",
+  userTourController.hubtelCallbackController.bind(userTourController)
+);
+
 router.post(
   "/bookings",
   protectedRoute,
   validate(tourBookingSchema),
   userTourController.bookTour.bind(userTourController)
 );
-
-/**
- * @swagger
- * /tours/user-itineraries/{itineraryId}:
- *   patch:
- *     summary: Update a user’s custom itinerary
- *     description: Allows the authenticated user to update their customized itinerary and activities
- *     tags: [Tours - User]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: itineraryId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: The ID of the user itinerary to update
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/UserTourItinerary'
- *     responses:
- *       200:
- *         description: Itinerary updated successfully
- *       400:
- *         description: Invalid input
- *       403:
- *         description: Not authorized to edit this itinerary
- *       404:
- *         description: Itinerary not found
- *       500:
- *         description: Failed to update itinerary
- */
 router.patch(
   "/user-itineraries/:itineraryId",
   protectedRoute,

@@ -6,6 +6,8 @@ import { mapMomoProvider } from "src/helpers/stringHelper.js";
 import { AxiosResponse } from "axios";
 import { PaymentProvider, PaymentStatus } from "@prisma/client";
 
+export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
+
 export class PaymentController {
   async initializePayment(req: Request, res: Response) {
     try {
@@ -40,8 +42,8 @@ export class PaymentController {
   const response: AxiosResponse<HubtelDirectReceiveResponseSchema> = await hubtelDirectMoneyReceive.post("", {
     amount,
     customerMsisdn: customerPhone,
-    primaryCallbackUrl: process.env.HUBTEL_CALLBACK_URL,
     clientReference: payment.reference,
+    primaryCallbackUrl: HUBTEL_CALLBACK_URL,
     description: `Payment for tour ${targetId}`,
     Channel: mapMomoProvider(method),
     CustomerEmail: user.email,
@@ -132,7 +134,7 @@ export class PaymentController {
   const response: AxiosResponse<HubtelDirectReceiveResponseSchema> = await hubtelDirectMoneyReceive.post("", {
     amount,
     customerMsisdn: customerPhone,
-    primaryCallbackUrl: process.env.HUBTEL_CALLBACK_URL,
+    primaryCallbackUrl: HUBTEL_CALLBACK_URL,
     clientReference: payment.reference,
     description: `Payment for tour ${targetId}`,
     Channel: mapMomoProvider(method),
@@ -183,6 +185,7 @@ export class PaymentController {
       }
 
     } catch (error: any) {
+      console.error("Payment initialization error:", error?.response || error);
       console.error("Payment initialization error:", error?.response?.data || error);
       
       return{

@@ -15,7 +15,7 @@ import {
 import sendEmail from "../../config/resend.config.js";
 import { ca } from "zod/v4/locales";
 import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "@prisma/client";
-import { PaymentController } from "../payment-management/payment.controller.js";
+import { HUBTEL_CALLBACK_URL, PaymentController } from "../payment-management/payment.controller.js";
 
 export class UserTourController {
 
@@ -422,7 +422,7 @@ async updateUserItinerary(req: Request, res: Response) {
       currency: tour.currency || "GHS",
       method: bookingData.paymentMethod,
       provider: PaymentProvider.HUBTEL,
-      callbackUrl: process.env.HUBTEL_CALLBACK_URL??"",
+      callbackUrl: HUBTEL_CALLBACK_URL,
       description: `Payment for tour ${tour.title}`,
       customerPhone: bookingData.phoneNumber,
     };
@@ -458,7 +458,6 @@ async updateUserItinerary(req: Request, res: Response) {
             <p>Your booking has been successfully confirmed.</p>
             <p>Thank you for choosing our tour!</p>`,
       });
-
       return res.status(200).json({
         success: true,
         message: "Tour booking initiated. Awaiting payment confirmation.",
@@ -467,6 +466,7 @@ async updateUserItinerary(req: Request, res: Response) {
       });
     }
 
+      console.log("payment response ", paymentResponse)
     return res.status(400).json({
       success: false,
       message: "Payment initiation failed",
