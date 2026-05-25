@@ -12,6 +12,6 @@
       "@prisma/client": ["./generated/prisma/client.js"]
     }
   },
-  "include": ["src/**/*.ts", "generated/prisma/**/*.ts"],
+  "include": ["src/**/*.ts", "generated/prisma/**/*.ts", "src/routes/payment.routes.ts"],
   "exclude": ["node_modules"]
 }

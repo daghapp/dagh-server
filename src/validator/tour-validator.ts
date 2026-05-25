@@ -150,6 +150,16 @@ export const tourBookingSchema = z.object({
     paymentMethodId: z.string().uuid().optional(),
 });
 
+export const tourBookingSchema_momo = z.object({
+    tourId: z.string().uuid('Invalid tour ID'),
+    numberOfPeople: z.number().int().positive('Number of people must be positive'),
+    bookingDate: z.string().datetime().or(z.date()),
+    tourStartDate: z.string().datetime().or(z.date()),
+    specialRequests: z.string().optional(),
+    paymentMethod: z.enum(["MTN_MOMO", "TELECEL_MOMO", "AT_MOMO"]),
+    phoneNumber:  z.string().regex(/^233\d{9}$/, "Phone must be a valid Ghana MSISDN"),
+});
+
 // Tour Review Schema
 export const tourReviewSchema = z.object({
     tourId: z.string().uuid('Invalid tour ID'),
@@ -174,6 +184,7 @@ export const tourReportSchema = z.object({
 export type TourSchema = z.infer<typeof tourSchema>;
 export type UpdateTourSchema = z.infer<typeof updateTourSchema>;
 export type TourBookingSchema = z.infer<typeof tourBookingSchema>;
+export type TourBookingSchema_MOMO = z.infer<typeof tourBookingSchema_momo>;
 export type TourReviewSchema = z.infer<typeof tourReviewSchema>;
 export type TourReportSchema = z.infer<typeof tourReportSchema>;
 export type ItineraryActivitySchema = z.infer<typeof itineraryActivitySchema>;

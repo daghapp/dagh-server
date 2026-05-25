@@ -445,6 +445,8 @@ model Payment {
   reference         String           @unique
   userId            String           @unique
 
+  description       String?
+
   targetType        PaymentTargetType // the module access this
   targetId          String // the module's id
 
@@ -469,6 +471,28 @@ user             User       @relation(fields: [userId], references: [id], onDele
   @@map("payments")
 
 }
+
+model HubtelDirectReceiveLog {
+  id                    String   @id @default(uuid())
+  message               String?
+  responseCode          String?
+  amount                Float?
+  charges               Float?
+  amountAfterCharges    Float?
+  amountCharged         Float?
+  description           String?
+  clientReference       String?  // your merchant reference
+  transactionId         String?  // Hubtel transaction ID
+  externalTransactionId String?  // telco reference
+  orderId               String?
+  deliveryFee           Float?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("hubtel_direct_receive_logs")
+}
+
 
 
 enum PaymentTargetType {

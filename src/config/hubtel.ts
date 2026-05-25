@@ -26,7 +26,7 @@ const hubtelClient = axios.create({
 
 // Separate client for transaction status API
 const hubtelStatusClient = axios.create({
-  baseURL: "https://api-txnstatus.hubtel.com",
+  baseURL: "https://api-txnstatus.hubtel.com/transactions/"+process.env.HUBTEL_MERCHANT_NUMBER+"/status",
   headers: {
     "Content-Type": "application/json",
     Authorization: `Basic ${Buffer.from(

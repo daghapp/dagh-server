@@ -6,13 +6,16 @@
 //get all tours with filtering
 //report scam tour by user
 import { Request, Response } from "express";
-import { prisma } from "../../config/index.js";
+import { hubtelDirectMoneyReceive, prisma } from "../../config/index.js";
 import {
   TourBookingSchema,
+  TourBookingSchema_MOMO,
   TourReviewSchema,
 } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
 import { ca } from "zod/v4/locales";
+import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "@prisma/client";
+import { PaymentController } from "../payment-management/payment.controller.js";
 
 export class UserTourController {
 
@@ -91,7 +94,7 @@ export class UserTourController {
   }
 
 // Helper: copy default itinerary into user tables
-private async copyItineraryToUserTables(userId: string, bookingId: string, tourId: string) {
+static async copyItineraryToUserTables(userId: string, bookingId: string, tourId: string) {
   // Fetch the tour itineraries and activities
   const itineraries = await prisma.tour_itineraries.findMany({
     where: { tourId },
@@ -174,7 +177,7 @@ private async copyItineraryToUserTables(userId: string, bookingId: string, tourI
       });
 
       // Copy default itinerary into user-specific tables
-      await this.copyItineraryToUserTables(userId, newBooking.id, bookingData.tourId);
+      await UserTourController.copyItineraryToUserTables(userId, newBooking.id, bookingData.tourId);
 
 
       //send email after successful booking
@@ -291,6 +294,9 @@ private async copyItineraryToUserTables(userId: string, bookingId: string, tourI
 
 
 
+
+
+
   // PATCH: Update a user’s custom itinerary
 async updateUserItinerary(req: Request, res: Response) {
   try {
@@ -377,6 +383,169 @@ async updateUserItinerary(req: Request, res: Response) {
     });
   }
 }
+
+
+ async  initiateTourBookingMoMo(req: Request, res: Response) {
+  // const { tourId, numberOfPeople, phoneNumber, fullName, paymentMethod } = req.body;
+  try {
+
+  
+      const userId = req.user?.id as string;
+      const bookingData = req.body as TourBookingSchema_MOMO;
+
+      // Fetch tour details to get the price
+      const tour = await prisma.tour_packages.findUnique({
+        where: { id: bookingData.tourId },
+        select: { basePrice: true, currency: true, title:true },
+      });
+
+      if (!tour || !tour.basePrice) {
+        return res.status(404).json({
+          success: false,
+          message: "Tour not found or price not available",
+        });
+      }
+
+      // Calculate total price
+      const totalPrice = Number(tour.basePrice) * bookingData.numberOfPeople;
+
+      // Generate unique booking reference
+      const bookingReference = `TBK-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+
+
+    // 2. Build universal payment request body
+    const paymentPayload = {
+      userId,
+      targetType: PaymentTargetType.TOUR_BOOKING,
+      targetId: bookingData.tourId,
+      amount: totalPrice,
+      currency: tour.currency || "GHS",
+      method: bookingData.paymentMethod,
+      provider: PaymentProvider.HUBTEL,
+      callbackUrl: process.env.HUBTEL_CALLBACK_URL??"",
+      description: `Payment for tour ${tour.title}`,
+      customerPhone: bookingData.phoneNumber,
+    };
+
+    // 3. Validate payload with Zod
+
+    // 4. Call universal payment controller
+    const paymentResponse = await PaymentController.initializePayment(paymentPayload);
+
+    // 5. If payment initiation succeeded, create booking with paymentStatus = PENDING
+    if (paymentResponse.success) {
+      const booking = await prisma.tour_bookings.create({
+        data: {
+          userId,
+          paymentId: paymentResponse.paymentId, // link to payment record
+          paymentStatus: PaymentStatus.PENDING,  // always pending until Hubtel callback
+          tourId: bookingData.tourId,
+          numberOfPeople: bookingData.numberOfPeople,
+          bookingDate: new Date(bookingData.bookingDate),
+          tourStartDate: new Date(bookingData.tourStartDate),
+          bookingReference,
+          totalPrice,
+          currency: tour.currency || "GHS",
+          specialRequests: bookingData.specialRequests,
+        },
+      });
+
+      //send email after successful booking
+      await sendEmail({
+        email: req.user?.email as string,
+        subject: "Tour Booking Confirmation",
+        html: `<p>Dear ${req.user?.fullName as string},</p>
+            <p>Your booking has been successfully confirmed.</p>
+            <p>Thank you for choosing our tour!</p>`,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Tour booking initiated. Awaiting payment confirmation.",
+        bookingId: booking.id,
+        paymentId: paymentResponse.paymentId,
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: "Payment initiation failed",
+    });
+  } catch (error) {
+    console.error("Error initiating tour booking:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+
+
+// Step 2: Hubtel callback handler
+async hubtelCallbackController(req: Request, res: Response) {
+  const body = req.body;
+
+  try {
+    const { ResponseCode, Message, Data } = body;
+
+    // 1. Log Hubtel callback payload
+    await prisma.hubtelDirectReceiveLog.create({
+      data: {
+        message: Message,
+        responseCode: ResponseCode,
+        data: Data,
+        amount: Data.Amount,
+        charges: Data.Charges,
+        amountAfterCharges: Data.AmountAfterCharges,
+        amountCharged: Data.AmountCharged,
+        description: Data.Description,
+        clientReference: Data.ClientReference,
+        transactionId: Data.TransactionId,
+        externalTransactionId: Data.ExternalTransactionId,
+        orderId: Data.OrderId,
+        deliveryFee: Data.DeliveryFee ?? 0.0,
+      },
+    });
+
+    // 2. Map ResponseCode to PaymentStatus
+    let newStatus: PaymentStatus;
+    switch (ResponseCode) {
+      case "0000":
+        newStatus = PaymentStatus.SUCCESS;
+        break;
+      case "2001":
+        newStatus = PaymentStatus.FAILED;
+        break;
+      case "0001":
+      default:
+        newStatus = PaymentStatus.PENDING;
+        break;
+    }
+
+    // 3. Update Payment record
+    const payment = await prisma.payment.update({
+      where: { reference: Data.ClientReference },
+      data: { status: newStatus },
+    });
+
+    // 4. Update linked Tour Booking record
+    const booking = await prisma.tour_bookings.update({
+      where: { paymentId: payment.id },
+      data: { paymentStatus: newStatus },
+    });
+
+    if (newStatus === 'SUCCESS')
+    await UserTourController.copyItineraryToUserTables(payment.userId, booking.id, payment.targetId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Callback processed successfully",
+      paymentStatus: newStatus,
+    });
+  } catch (error) {
+    console.error("Hubtel callback error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}  
+
 
 
 
