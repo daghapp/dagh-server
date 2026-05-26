@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import axios from "axios";
-import { prisma } from "../config/prisma";
+import { prisma } from "../config/prisma.js";
 import { PaymentStatus } from "@prisma/client";
 import { UserTourController } from "src/Modules/tour-management/user-tour.controller";
 import { hubtelStatusClient } from "src/config";
