@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma, hubtelClient, hubtelStatusClient, hubtelDirectMoneyReceive } from "../../config/index.js";
 import { HubtelDirectReceiveResponseSchema, initializePaymentSchema_momo, InitializePaymentSchema_MOMO, SubscribtionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
-import { mapMomoProvider } from "src/helpers/stringHelper.js";
+import { mapMomoProvider } from "../../helpers/stringHelper.js";
 import { AxiosResponse } from "axios";
 import { PaymentProvider, PaymentStatus } from "@prisma/client";
 
