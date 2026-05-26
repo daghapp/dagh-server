@@ -491,7 +491,6 @@ async hubtelCallbackController(req: Request, res: Response) {
       data: {
         message: Message,
         responseCode: ResponseCode,
-        data: Data,
         amount: Data.Amount,
         charges: Data.Charges,
         amountAfterCharges: Data.AmountAfterCharges,
