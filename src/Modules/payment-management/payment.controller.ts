@@ -4,7 +4,7 @@ import { HubtelDirectReceiveResponseSchema, initializePaymentSchema_momo, Initia
 import { generateClientReference } from "../../helpers/client-ref.js";
 import { mapMomoProvider } from "../../helpers/stringHelper.js";
 import { AxiosResponse } from "axios";
-import { PaymentProvider, PaymentStatus } from "@prisma/client";
+import { PaymentProvider, PaymentStatus } from "../../../generated/prisma/client.js";
 
 export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
 

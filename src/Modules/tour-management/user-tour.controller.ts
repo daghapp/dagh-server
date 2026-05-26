@@ -14,7 +14,7 @@ import {
 } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
 import { ca } from "zod/v4/locales";
-import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "@prisma/client";
+import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
 import { HUBTEL_CALLBACK_URL, PaymentController } from "../payment-management/payment.controller.js";
 
 export class UserTourController {
