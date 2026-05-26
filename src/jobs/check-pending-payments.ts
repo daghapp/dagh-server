@@ -2,8 +2,8 @@ import cron from "node-cron";
 import axios from "axios";
 import { prisma } from "../config/prisma.js";
 import { PaymentStatus } from "@prisma/client";
-import { UserTourController } from "src/Modules/tour-management/user-tour.controller";
-import { hubtelStatusClient } from "src/config";
+import { UserTourController } from "../Modules/tour-management/user-tour.controller.js";
+import { hubtelStatusClient } from "../config/index.js";
 
 export const checkPendingPaymentsJob = () => {
   // Run every minute
