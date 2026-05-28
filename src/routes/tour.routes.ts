@@ -1353,4 +1353,133 @@ router.post(
   userTourController.bookTour.bind(userTourController)
 );
 
+
+/**
+ * @swagger
+ * /api/tours/{tourId}/details:
+ *   get:
+ *     summary: Get full tour details
+ *     description: Retrieve a complete tour package with all related data including itineraries, activities, locations, media, pricing, and bookings.
+ *     tags:
+ *       - Tours
+ *     parameters:
+ *       - in: path
+ *         name: tourId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The unique ID of the tour package
+ *     responses:
+ *       200:
+ *         description: Tour details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Tour details retrieved successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: "uuid-of-tour"
+ *                     title:
+ *                       type: string
+ *                       example: "Cape Coast Heritage Tour"
+ *                     description:
+ *                       type: string
+ *                       example: "Explore the historic Cape Coast Castle and surrounding heritage sites."
+ *                     tour_itineraries:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           dayNumber:
+ *                             type: integer
+ *                             example: 1
+ *                           title:
+ *                             type: string
+ *                             example: "Arrival and Orientation"
+ *                           itinerary_activities:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 activityTime:
+ *                                   type: string
+ *                                   example: "10:00 AM"
+ *                                 activity:
+ *                                   type: string
+ *                                   example: "Visit Cape Coast Castle"
+ *                     tour_locations:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "Cape Coast Castle"
+ *                           city:
+ *                             type: string
+ *                             example: "Cape Coast"
+ *                     tour_media:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           media_type:
+ *                             type: string
+ *                             example: "image"
+ *                           url:
+ *                             type: string
+ *                             example: "https://example.com/photo.jpg"
+ *                     pricing_includes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           item:
+ *                             type: string
+ *                             example: "Breakfast included"
+ *                     pricing_excludes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           item:
+ *                             type: string
+ *                             example: "Flights not included"
+ *                     bookings:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           bookingReference:
+ *                             type: string
+ *                             example: "BOOK12345"
+ *                           numberOfPeople:
+ *                             type: integer
+ *                             example: 2
+ *                           status:
+ *                             type: string
+ *                             example: "PENDING"
+ *       404:
+ *         description: Tour not found
+ *       500:
+ *         description: Failed to fetch tour details
+ */
+router.get("/:tourId", 
+  userTourController.getTourDetails.bind(userTourController)
+);
+
+
+
+
+
 export {router};

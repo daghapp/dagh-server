@@ -574,7 +574,65 @@ async hubtelCallbackController(req: Request, res: Response) {
 
 
   //get all tours 
+// controllers/tourController.ts
 
+ async  getTourDetails(req: Request, res: Response) {
+  try {
+    const { tourId  } = req.params;
+
+    const tour = await prisma.tour_packages.findUnique({
+      where: { id: tourId as string },
+      include: {
+        // Nested relations
+        tour_itineraries: {
+          include: {
+            itinerary_activities: true,
+          },
+        },
+        tour_locations: true,
+        tour_media: true,
+        pricing_includes: true,
+        pricing_excludes: true,
+        bookings: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+            userTourItineraries: {
+              include: {
+                activities: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tour) {
+      return res.status(404).json({
+        success: false,
+        message: "Tour not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Tour details retrieved successfully",
+      data: tour,
+    });
+  } catch (error) {
+    console.error("Error fetching tour details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch tour details",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
 
   
   
