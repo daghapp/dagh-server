@@ -1,15 +1,166 @@
 import { Request, Response } from "express";
 import { prisma, hubtelClient, hubtelStatusClient, hubtelDirectMoneyReceive } from "../../config/index.js";
-import { HubtelDirectReceiveResponseSchema, initializePaymentSchema_momo, InitializePaymentSchema_MOMO, SubscribtionPaymentSchema } from "../../validator/index.js";
-import { generateClientReference } from "../../helpers/client-ref.js";
+import { HubtelDirectReceiveResponseSchema, initializePaymentSchema_momo, InitializePaymentSchema_MOMO, SubscribtionPaymentSchema, InitializePaymentSchema } from "../../validator/index.js";
+import { generateClientReference, generateClientReference_targetType } from "../../helpers/client-ref.js";
 import { mapMomoProvider } from "../../helpers/stringHelper.js";
 import { AxiosResponse } from "axios";
-import { PaymentProvider, PaymentStatus } from "../../../generated/prisma/client.js";
+import { PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
 
-export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
+// export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
+// export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
+export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/payment/hubtel_callback"
+export const HUBTEL_CANCELLATION_URL = process.env.API_URL+"/payment/hubtel_cancellation"
+export const HUBTEL_RETURN_URL = process.env.API_URL+"/payment/processing"
 
 export class PaymentController {
+
+  //initializes a payment by sending a request to Hubtel and storing the payment details in the database
+//initializes a payment by sending a request to Hubtel and storing the payment details in the database
   async initializePayment(req: Request, res: Response) {
+    try {
+      const user = req.user as any;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const payload = req.body as InitializePaymentSchema;
+      const reference = generateClientReference()
+
+
+      const hubtelResponse = await hubtelClient.post(
+        "/items/initiate",
+         {...payload,
+          merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
+          clientReference: reference,
+
+        }
+      );
+      console.log(hubtelResponse.data, "Hubtel response data") // Debug log for Hubtel response
+
+      const data = hubtelResponse.data;
+
+      // if (!data || !data.data || !data.data.checkoutId) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: "Invalid response from Hubtel",
+      //     data,
+      //   });
+      // }
+
+      // const paymentData = data.data;
+
+      // await prisma.payment.create({
+      //   data: {
+      //     userId: user.id,
+      //     amount: payload.totalAmount,
+      //     description: payload.description,
+      //     status: "INITIALIZED",
+      //     paymentReference: paymentData.checkoutId,
+      //     clientReference: reference,
+      //   },
+      // });
+
+      return res.status(200).json({
+        success: true,
+        message: "Payment initialized successfully",
+        // data: paymentData,
+      });
+
+    } catch (error: any) {
+      console.error("Payment initialization error:", error?.response?.data || error);
+      
+      return res.status(500).json({
+        success: false,
+        message: "Payment initialization failed",
+        error: error?.response?.data || error.message,
+      });
+    }
+
+  } 
+
+
+  static async initializePayment(paymentPaylod: InitializePaymentSchema&{targetType: PaymentTargetType, targetId:string, userId: string, currency: string}) {
+    try {
+      const reference = generateClientReference_targetType(paymentPaylod.targetType)
+
+      console.log({paymentPaylod, reference})
+
+      const hubtelResponse = await hubtelClient.post(
+        "/items/initiate",
+         {...paymentPaylod,
+          merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
+          clientReference: reference,
+
+        }
+      );
+      console.log(hubtelResponse.data, "Hubtel response data") // Debug log for Hubtel response
+
+      const data = hubtelResponse.data;
+
+      if (data.responseCode != "0000"){
+
+        console.log("Error status code from hubtel ", data)
+      return {
+        success: false,
+        message: "Error code from hubtel: "+data.responseCode,
+        data: {},
+        paymentId: "",
+        paymentStatus: "",
+      };
+      }
+
+    const log = await prisma.hubtelDirectReceiveLog.create({
+      data: {
+        message: data.data.message,
+        responseCode: data.responseCode,
+        amount: paymentPaylod.totalAmount,
+        charges: 0,
+        amountAfterCharges: 0,
+        amountCharged: paymentPaylod.totalAmount,
+        description: data.data.message,
+        clientReference: data.data.clientReference,
+        transactionId: data.data.checkoutId,
+        deliveryFee: 0,
+      },
+    });
+
+         const payment = await prisma.payment.create({
+    data: {
+      userId: paymentPaylod.userId,
+      targetType:paymentPaylod.targetType,
+      targetId: paymentPaylod.targetId,
+      amount: paymentPaylod.totalAmount,
+      currency: paymentPaylod.currency,
+      description: paymentPaylod.description,
+      reference,
+      status: PaymentStatus.INITIALIZED,
+      provider: PaymentProvider.HUBTEL,
+    },
+  });
+
+      return {
+        success: true,
+        message: "Payment initialized successfully",
+        paymentId: payment.id,
+        paymentStatus: payment.status,
+        data: data
+      };
+
+    } catch (error: any) {
+      console.error("Payment initialization error:", error?.response?.data || error);
+      
+      return {
+        success: false,
+        message: "Payment initialization failed",
+        error: error?.response?.data || error.message,
+        paymentId: "",
+        paymentStatus: "",
+      };
+    }
+  } 
+
+
+  async initializePayment_MOMO(req: Request, res: Response) {
     try {
       const user = req.user as any;
       if (!user) {
@@ -105,7 +256,7 @@ export class PaymentController {
   }
 
 //initializes a payment by sending a request to Hubtel and storing the payment details in the database
- static async initializePayment(payload:InitializePaymentSchema_MOMO) {
+ static async initializePayment_MOMO(payload:InitializePaymentSchema_MOMO) {
     try {
       const {  userId,
   targetType,

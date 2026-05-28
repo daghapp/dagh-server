@@ -147,7 +147,8 @@ export const tourBookingSchema = z.object({
     bookingDate: z.string().datetime().or(z.date()),
     tourStartDate: z.string().datetime().or(z.date()),
     specialRequests: z.string().optional(),
-    paymentMethodId: z.string().uuid().optional(),
+    returnURL: z.string(),
+    // paymentMethodId: z.string().uuid().optional(),
 });
 
 export const tourBookingSchema_momo = z.object({

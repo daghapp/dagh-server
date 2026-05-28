@@ -3,6 +3,7 @@ import {PaymentController} from "../Modules/payment-management/payment.controlle
 import { initializePaymentSchema_momo, subscribtionPaymentSchema } from "../validator/index.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
+import path from "node:path";
 
 const router = express.Router();
 const paymentController = new PaymentController();
@@ -219,5 +220,14 @@ router.get("/verify/:reference", protectedRoute, paymentController.verifyPayment
  *         description: Transaction status check failed
  */
 router.get("/transaction-status/:posSalesId", protectedRoute, paymentController.checkTransactionStatus.bind(paymentController) )
+
+router.get("/processing", (_req, res) => {
+  res.status(200).sendFile(path.join(process.cwd(), "src/views/payment-reroute.html"));
+});
+router.get("/p.js", (_req, res) => {
+  res.status(200).sendFile(path.join(process.cwd(), "src/views/p.js"));
+});
+
+
 
 export { router }

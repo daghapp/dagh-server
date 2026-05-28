@@ -1253,4 +1253,104 @@ router.delete(
   adminTourController.deleteTourItinerary.bind(adminTourController)
 );
 
+/**
+ * @swagger
+ * /tours/bookings:
+ *   post:
+ *     summary: Book a tour
+ *     description: Create a new tour booking for the authenticated user
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tourId
+ *               - numberOfPeople
+ *               - bookingDate
+ *               - tourStartDate
+ *             properties:
+ *               tourId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the tour to book
+ *                 example: 123e4567-e89b-12d3-a456-426614174000
+ *               numberOfPeople:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Number of people for the booking
+ *                 example: 2
+ *               bookingDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Date when the booking is made
+ *                 example: 2026-02-26T10:00:00Z
+ *               tourStartDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Date when the tour starts
+ *                 example: 2026-03-15T09:00:00Z
+ *               specialRequests:
+ *                 type: string
+ *                 description: Any special requests or requirements
+ *                 example: Vegetarian meals required
+ *               returnURL:
+ *                 type: string
+ *                 description: A valid url to re-route to after payment form is submitted
+ *                 example: daghapp://home
+ *           
+ *     responses:
+ *       200:
+ *         description: Payment initiation response
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Tour booking initialized, awaiting payment"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     checkoutUrl:
+ *                       type: string
+ *                       format: uri
+ *                       example: "https://pay.hubtel.com/7569a11e8b784f21baa9443b3fce31ed"
+ *                     checkoutId:
+ *                       type: string
+ *                       example: "7569a11e8b784f21baa9443b3fce31ed"
+ *                     clientReference:
+ *                       type: string
+ *                       example: "inv0012"
+ *                     message:
+ *                       type: string
+ *                       example: ""
+ *                     checkoutDirectUrl:
+ *                       type: string
+ *                       format: uri
+ *                       example: "https://pay.hubtel.com/7569a11e8b784f21baa9443b3fce31ed/direct"
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       404:
+ *         description: Tour not found or price not available
+ *       500:
+ *         description: Failed to book tour
+ */
+router.post(
+  "/bookings",
+  protectedRoute,
+  validate(tourBookingSchema),
+  userTourController.bookTour.bind(userTourController)
+);
+
 export {router};

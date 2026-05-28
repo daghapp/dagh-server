@@ -15,7 +15,7 @@ import {
 import sendEmail from "../../config/resend.config.js";
 import { ca } from "zod/v4/locales";
 import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
-import { HUBTEL_CALLBACK_URL, PaymentController } from "../payment-management/payment.controller.js";
+import { HUBTEL_CALLBACK_URL, HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL, PaymentController } from "../payment-management/payment.controller.js";
 
 export class UserTourController {
 
@@ -146,7 +146,7 @@ static async copyItineraryToUserTables(userId: string, bookingId: string, tourId
       // Fetch tour details to get the price
       const tour = await prisma.tour_packages.findUnique({
         where: { id: bookingData.tourId },
-        select: { basePrice: true, currency: true },
+        select: { basePrice: true, currency: true, id:true },
       });
 
       if (!tour || !tour.basePrice) {
@@ -162,6 +162,25 @@ static async copyItineraryToUserTables(userId: string, bookingId: string, tourId
       // Generate unique booking reference
       const bookingReference = `TBK-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
+      const paymentResponse = await PaymentController.initializePayment({
+        totalAmount:totalPrice, 
+        description:"Payment for tour: "+tour.id, 
+        returnUrl:HUBTEL_RETURN_URL || "", 
+        callbackUrl:HUBTEL_CALLBACK_URL || "", 
+        cancellationUrl: HUBTEL_CANCELLATION_URL || "", 
+        targetType: PaymentTargetType.TOUR_BOOKING,
+        targetId: tour.id,
+        userId: userId,
+        currency: tour.currency || "GHS"
+      })
+
+      if (!paymentResponse.success)
+        return res.status(500).json({
+        success: false,
+        message: "Failed to book tour",
+        error: paymentResponse.error || paymentResponse.message
+      });
+
       const newBooking = await prisma.tour_bookings.create({
         data: {
           userId: userId,
@@ -171,6 +190,8 @@ static async copyItineraryToUserTables(userId: string, bookingId: string, tourId
           tourStartDate: new Date(bookingData.tourStartDate),
           bookingReference,
           totalPrice,
+          paymentId:paymentResponse.paymentId,
+          paymentStatus:paymentResponse.paymentStatus as PaymentStatus,
           currency: tour.currency || "GHS",
           specialRequests: bookingData.specialRequests,
         },
@@ -191,7 +212,7 @@ static async copyItineraryToUserTables(userId: string, bookingId: string, tourId
 
       return res
         .status(201)
-        .json({ message: "Tour booked successfully", booking: newBooking });
+        .json({ paymentData: paymentResponse.data, booking: newBooking });
     } catch (error) {
       console.error("Error booking tour:", error);
       return res.status(500).json({
@@ -422,7 +443,7 @@ async updateUserItinerary(req: Request, res: Response) {
       currency: tour.currency || "GHS",
       method: bookingData.paymentMethod,
       provider: PaymentProvider.HUBTEL,
-      callbackUrl: HUBTEL_CALLBACK_URL,
+      callbackUrl: HUBTEL_CALLBACK_URL || "",
       description: `Payment for tour ${tour.title}`,
       customerPhone: bookingData.phoneNumber,
     };
@@ -430,7 +451,7 @@ async updateUserItinerary(req: Request, res: Response) {
     // 3. Validate payload with Zod
 
     // 4. Call universal payment controller
-    const paymentResponse = await PaymentController.initializePayment(paymentPayload);
+    const paymentResponse = await PaymentController.initializePayment_MOMO(paymentPayload);
 
     // 5. If payment initiation succeeded, create booking with paymentStatus = PENDING
     if (paymentResponse.success) {

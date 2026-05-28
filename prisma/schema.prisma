@@ -443,7 +443,7 @@ model VisaApproval {
 model Payment {
   id                String           @id @default(uuid())
   reference         String           @unique
-  userId            String           @unique
+  userId            String           
 
   description       String?
 

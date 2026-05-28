@@ -79,7 +79,16 @@ export const subscribtionPaymentSchema = z.object({
     ).min(1, { message: "At least one item is required" })
 })
 
+export const initializePaymentSchema = z.object({
+    totalAmount: z.number().positive({ message: "Total amount must be a positive number" }),
+    description : z.string().min(1, { message: "Description is required" }),
+    returnUrl: z.string().url({ message: "Return URL must be a valid URL" }),
+    callbackUrl: z.string().url({ message: "Callback URL must be a valid URL" }),
+    cancellationUrl: z.string().url({ message: "Cancellation URL must be a valid URL" }),
+})
+
 export type InitializePaymentSchema_MOMO = z.infer<typeof initializePaymentSchema_momo>;
 export type InitializePaymentSchema_CARD = z.infer<typeof initializePaymentSchema_card>;
+export type InitializePaymentSchema = z.infer<typeof initializePaymentSchema>;
 export type SubscribtionPaymentSchema = z.infer<typeof subscribtionPaymentSchema>;
 export type HubtelDirectReceiveResponseSchema = z.infer<typeof hubtelDirectReceiveResponseSchema>;
