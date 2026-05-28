@@ -2,6 +2,8 @@ import swaggerJSDoc from 'swagger-jsdoc';
 import { Application } from 'express';
 import swaggerUi from 'swagger-ui-express';
 
+const BackendURL = process.env.API_URL
+
 const swaggerOptions: swaggerJSDoc.Options = {
   definition: {
     openapi: '3.0.0',
@@ -16,12 +18,12 @@ const swaggerOptions: swaggerJSDoc.Options = {
     servers:
       process.env.NODE_ENV === 'production'
         ? [
-            { url: 'https://dagh-server-3.onrender.com', description: 'Production server' },
+            { url: BackendURL, description: 'Production server' },
             { url: 'http://localhost:3000', description: 'Local development' },
           ]
         : [
             { url: 'http://localhost:3000', description: 'Local development' },
-            { url: 'https://dagh-server-3.onrender.com', description: 'Production server' },
+            { url: BackendURL, description: 'Production server' },
           ],
     components: {
       securitySchemes: {
