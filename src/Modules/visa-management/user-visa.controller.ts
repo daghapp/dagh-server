@@ -2,10 +2,10 @@
 import { Request, Response } from "express";
 import { hubtelDirectMoneyReceive, prisma } from "../../config/index.js";
 import { HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL, PaymentController } from "../payment-management/payment.controller.js";
-import { PaymentStatus, PaymentTargetType, VisaApprovalStatus, VisaOnArrivalData, VisaRequestStatus } from "@prisma/client";
-import { InitiateVisaPaymentSchema, VisaOnArrivalDataSchema } from "src/validator/visaValidation.js";
-import { convertUSDToGHS } from "src/helpers/stringHelper.js";
-import sendEmail from "src/config/resend.config.js";
+import { PaymentStatus, PaymentTargetType, VisaApprovalStatus, VisaOnArrivalData, VisaRequestStatus } from "../../../generated/prisma/client.js";
+import { InitiateVisaPaymentSchema, VisaOnArrivalDataSchema } from "../../validator/visaValidation.js";
+import { convertUSDToGHS } from "../../helpers/stringHelper.js";
+import sendEmail from "../../config/resend.config.js";
 
 
 export class UserVisaController {

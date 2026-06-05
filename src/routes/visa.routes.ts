@@ -1,11 +1,11 @@
-import { UserVisaController } from "src/Modules/visa-management/user-visa.controller.js";
+import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
 import { validate } from "../middleware/validation.js";
 import express from "express";
-import protectedRoute from "src/middleware/protected.js";
+import protectedRoute from "../middleware/protected.js";
 import {
   initiateVisaPaymentSchema,
   visaOnArrivalDataSchema,
-} from "src/validator/visaValidation.js";
+} from "../validator/visaValidation.js";
 
 const router = express.Router();
 const userVisaController = new UserVisaController();

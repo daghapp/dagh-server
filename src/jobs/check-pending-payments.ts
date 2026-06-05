@@ -9,9 +9,9 @@ import {
 } from "../../generated/prisma/client.js";
 import { UserTourController } from "../Modules/tour-management/user-tour.controller.js";
 import { hubtelStatusClient } from "../config/index.js";
-import { UserVisaController } from "src/Modules/visa-management/user-visa.controller.js";
-import { convertUSDToGHS } from "src/helpers/stringHelper.js";
-import sendEmail from "src/config/resend.config.js";
+import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
+import { convertUSDToGHS } from "../helpers/stringHelper.js";
+import sendEmail from "../config/resend.config.js";
 
 export const checkPendingPaymentsJob = () => {
   // Run every minute

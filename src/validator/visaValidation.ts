@@ -1,4 +1,4 @@
-import { VisaPackageType } from '@prisma/client';
+import { VisaPackageType } from '../../generated/prisma/client.js';
 import { z } from 'zod';
 
 export const placeOfLodgingSchema = z.object({
