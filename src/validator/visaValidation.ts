@@ -1,3 +1,4 @@
+import { VisaPackageType } from '@prisma/client';
 import { z } from 'zod';
 
 export const placeOfLodgingSchema = z.object({
@@ -70,3 +71,28 @@ export const getAllApplicationsSchema = z.object({
     limit: z.string().regex(/^\d+$/).transform(Number).optional(),
   }),
 });
+
+export const visaOnArrivalDataSchema = z.object({
+
+  passport_image_url: z.string().url("Invalid passport image URL"),
+  // full_name: z.string().min(2, "Full name required"),
+
+  passport_number: z.string().regex(/^[A-Z0-9]{6,9}$/, "Invalid passport number"),
+
+  purpose_of_trip: z.string().min(3, "Purpose of trip required"),
+  primary_place_of_stay: z.string().min(3, "Primary place of stay required"),
+
+  phone: z.string().regex(/^\+?[0-9]{7,15}$/, "Invalid phone number"),
+  email: z.string().email("Invalid email address"),
+});
+
+
+export const initiateVisaPaymentSchema = z.object({
+    // requestId: z.string().uuid('Invalid application ID format'),
+    packageType: z.enum(VisaPackageType)
+})
+
+
+
+export type VisaOnArrivalDataSchema = z.infer<typeof visaOnArrivalDataSchema>;
+export type InitiateVisaPaymentSchema = z.infer<typeof initiateVisaPaymentSchema>;

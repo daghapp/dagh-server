@@ -17,9 +17,11 @@ export const generateClientReference_targetType = (
 
   const randomNum = Math.floor(Math.random() * Math.pow(10, length));
   const paddedNum = randomNum.toString().padStart(length, "0");
+  const randomNum2 = Math.floor(Math.random() * Math.pow(10, 4));
+  const paddedNum2 = randomNum2.toString().padStart(4, "0");
 
   const normalizedTarget = targetType.toUpperCase();
 
   // Example: TXN-2026-05-TOUR-123-4821
-  return `TXN-${year}-${month}-${normalizedTarget}-${paddedNum}`;
+  return `TXN-${normalizedTarget}-${paddedNum}-${paddedNum2}`;
 };

@@ -17,6 +17,7 @@ import { router as TourRoutes } from './routes/tour.routes.js';
 import { router as ProfileRoutes } from './routes/profile-routes.routes.js';
 import { router as AdminRoutes } from './routes/admin.routes.js';
 import { router as MessageRoutes } from './routes/message.routes.js';
+import { router as VisaRoutes } from './routes/visa.routes.js';
 import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
 import { setupSocketHandlers } from './sockets/socketHandlers.js';
 import { checkPendingPaymentsJob } from './jobs/check-pending-payments.js';
@@ -68,6 +69,7 @@ app.use('/tours', TourRoutes);
 app.use('/profile', ProfileRoutes);
 app.use('/admin', AdminRoutes);
 app.use('/api/messages', MessageRoutes);
+app.use("/visa-request", VisaRoutes)
 
 app.use('/*path', (req: express.Request, res: express.Response) => {
   res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });

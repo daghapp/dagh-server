@@ -391,8 +391,9 @@ model VisaOnArrivalRequest {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   approval       VisaApproval?
-  paymentId        String? // from the polymorphic payment table.
+  paymentId        String?      @unique  // from the polymorphic payment table.
   visaData       VisaOnArrivalData?
+  packageType     VisaPackageType?
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("visa_on_arrival_requests")
@@ -401,26 +402,12 @@ model VisaOnArrivalRequest {
 model VisaOnArrivalData {
   id                      String    @id @default(uuid())
   requestId               String   @unique
-  passport                String
-  surname                 String
-  first_name              String
-  previous_name           String?
-  date_of_birth           String
-  place_of_birth          String
-  nationality             String
-  former_nationality      String?
+  passport_image_url      String
   passport_number         String
-  date_of_issue           String
-  place_of_issue          String
-  date_of_expiration      String
-  email                   String
-  whatsapp_number         String?
-  date_of_arrival         DateTime?
-  date_of_departure       DateTime?
-  duration_of_stay        Int?
   purpose_of_trip         String
   primary_place_of_stay   String
-  proof_of_accommodation  String
+  phone                   String
+  email                   String
   request                 VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
  
   @@map("visa_on_arrival_data")
@@ -462,6 +449,8 @@ model Payment {
 
   paidAt            DateTime?
 
+  ledgerEntries LedgerTransaction[]
+
   metadata          Json?
 
   createdAt         DateTime         @default(now())
@@ -486,6 +475,7 @@ model HubtelDirectReceiveLog {
   externalTransactionId String?  // telco reference
   orderId               String?
   deliveryFee           Float?
+  paymentDetails        String?
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -493,7 +483,29 @@ model HubtelDirectReceiveLog {
   @@map("hubtel_direct_receive_logs")
 }
 
+model LedgerAccount {
+  id          String   @id @default(uuid())
+  name        String   @unique  // e.g. "Account_DAGh_Revenue", "Account_GIS_Statutory_Reserve"
+  currency    String   // GHS or USD
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  transactions LedgerTransaction[]
+}
 
+
+
+model LedgerTransaction {
+  id            String        @id @default(uuid())
+  accountId     String
+  account       LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  paymentId     String
+  payment       Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amount        Float
+  currency      String
+  type          String        // CREDIT or DEBIT
+  description   String?
+  createdAt     DateTime      @default(now())
+}
 
 enum PaymentTargetType {
   VISA_ON_ARRIVAL
@@ -560,6 +572,9 @@ enum VisaRequestStatus {
   PENDING
   APPROVED
   REJECTED
+  PAYMENT_FAILED
+  READY_FOR_GIS_SUBMISSION
+  EXPEDITED_AIRPORT_PAYMENT_PENDING
 }
 
 enum VisaApprovalStatus {
@@ -567,6 +582,11 @@ enum VisaApprovalStatus {
   APPROVED
   REJECTED
 } 
+
+enum VisaPackageType {
+  STANDARD
+  EXPEDITED
+}
 
 enum PaymentMethod {
   MTN_MOMO
