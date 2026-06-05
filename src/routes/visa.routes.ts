@@ -116,37 +116,36 @@ router.post(
  *           schema:
  *             type: object
  *             properties:
- *               requestId:
- *                 type: string
- *                 format: uuid
- *               passport_image_url:
- *                 type: string
- *                 format: uri
- *               surname:
- *                 type: string
- *               full_name:
- *                 type: string
- *               passport_number:
- *                 type: string
- *               purpose_of_trip:
- *                 type: string
- *               primary_place_of_stay:
- *                 type: string
- *               phone:
- *                 type: string
- *               email:
- *                 type: string
- *                 format: email
- *             required:
- *               - requestId
- *               - passport_image_url
- *               - surname
- *               - full_name
- *               - passport_number
- *               - purpose_of_trip
- *               - primary_place_of_stay
- *               - phone
- *               - email
+  *               passport_image_url:
+  *                 type: string
+  *                 format: uri
+  *               bio_page_image_url:
+  *                 type: string
+  *                 format: uri
+  *               flight_itenary_image_url:
+  *                 type: string
+  *                 format: uri
+  *               passport_number:
+  *                 type: string
+  *               purpose_of_trip:
+  *                 type: string
+  *               date_of_departure:
+  *                 type: string
+  *                 format: date-time
+  *               date_of_arrival:
+  *                 type: string
+  *                 format: date-time
+
+  *             required:
+  *               - requestId
+  *               - passport_image_url
+  *               - bio_page_image_url
+  *               - flight_itenary_image_url
+  *               - passport_number
+  *               - purpose_of_trip
+  *               - date_of_departure
+  *               - date_of_arrival
+  *               - primary_place_of_stay
  *     responses:
  *       200:
  *         description: Visa request created successfully
@@ -165,12 +164,85 @@ router.post(
   userVisaController.createVisaRequest.bind(userVisaController),
 );
 
+/**
+ * @swagger
+ * /visa:
+ *   get:
+ *     summary: Get all Visa on Arrival requests for the authenticated user
+ *     tags: [VisaOnArrival]
+ *     responses:
+ *       200:
+ *         description: List of visa requests retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     format: uuid
+ *                   userId:
+ *                     type: string
+ *                     format: uuid
+ *                   status:
+ *                     type: string
+ *                     enum: [PENDING, APPROVED, REJECTED, READY_FOR_GIS_SUBMISSION, EXPEDITED_AIRPORT_PAYMENT_PENDING]
+ *                   createdAt:
+ *                     type: string
+ *                     format: date-time
+ *                   updatedAt:
+ *                     type: string
+ *                     format: date-time
+ *                   paymentId:
+ *                     type: string
+ *                     format: uuid
+ *                     nullable: true
+ *                   packageType:
+ *                     type: string
+ *                     enum: [STANDARD, EXPEDITED]
+ *                     nullable: true
+ */
 router.get(
   "",
   protectedRoute,
   userVisaController.getVisaRequest.bind(userVisaController),
 );
 
+/**
+ * @swagger
+ * /visa/:requestId/status:
+ *   get:
+ *     summary: Get the status of a Visa on Arrival request
+ *     tags: [VisaOnArrival]
+ *     parameters:
+ *       - in: path
+ *         name: requestId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the visa request
+ *     responses:
+ *       200:
+ *         description: Visa request status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [PENDING, APPROVED, REJECTED, READY_FOR_GIS_SUBMISSION, EXPEDITED_AIRPORT_PAYMENT_PENDING]
+ */
 router.get(
   "/:requestId/status",
   protectedRoute,

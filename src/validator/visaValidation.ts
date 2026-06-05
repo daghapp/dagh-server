@@ -73,17 +73,15 @@ export const getAllApplicationsSchema = z.object({
 });
 
 export const visaOnArrivalDataSchema = z.object({
-
   passport_image_url: z.string().url("Invalid passport image URL"),
-  // full_name: z.string().min(2, "Full name required"),
-
-  passport_number: z.string().regex(/^[A-Z0-9]{6,9}$/, "Invalid passport number"),
-
+  bio_page_image_url: z.string().url("Invalid bio page image URL"),
+  flight_itenary_image_url: z.string().url("Invalid flight itinerary image URL"),
+  passport_number: z.string().regex(/^[A-Z0-9]{6,12}$/, "Invalid passport number"),
   purpose_of_trip: z.string().min(3, "Purpose of trip required"),
-  primary_place_of_stay: z.string().min(3, "Primary place of stay required"),
-
-  phone: z.string().regex(/^\+?[0-9]{7,15}$/, "Invalid phone number"),
-  email: z.string().email("Invalid email address"),
+  // date_of_departure: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, "Invalid date format (YYYY-MM-DDTHH:MM:SS)"),
+  // date_of_arrival: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, "Invalid date format (YYYY-MM-DDTHH:MM:SS)")
+  date_of_departure: z.iso.datetime(),
+  date_of_arrival: z.iso.datetime()
 });
 
 

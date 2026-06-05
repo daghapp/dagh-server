@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { generateAccessToken, generateRefreshToken } from "../../helpers/index.js";
 
-const ALLOWED_APP_SCHEMES = ["daghapp://"];
+const ALLOWED_APP_SCHEMES = ["daghapp://", "daghgaurd://"];
 
 function isAllowedRedirect(uri: string): boolean {
   return ALLOWED_APP_SCHEMES.some((scheme) => uri.startsWith(scheme));
@@ -37,7 +37,7 @@ export class GoogleAuthController {
         const separator = appRedirect.includes("?") ? "&" : "?";
         return res.redirect(
           // `${appRedirect}${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`,
-          `daghapp:///oauth${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`
+          `daghguard:///oauth${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`
         );
       }
 

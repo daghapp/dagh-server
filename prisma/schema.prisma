@@ -403,13 +403,14 @@ model VisaOnArrivalData {
   id                      String    @id @default(uuid())
   requestId               String   @unique
   passport_image_url      String
+  bio_page_image_url      String
+  flight_itenary_image_url      String
   passport_number         String
   purpose_of_trip         String
-  primary_place_of_stay   String
-  phone                   String
-  email                   String
+  date_of_departure       DateTime
+  date_of_arrival         DateTime
   request                 VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
- 
+
   @@map("visa_on_arrival_data")
 }
 
@@ -430,7 +431,7 @@ model VisaApproval {
 model Payment {
   id                String           @id @default(uuid())
   reference         String           @unique
-  userId            String           
+  userId            String
 
   description       String?
 
@@ -581,7 +582,7 @@ enum VisaApprovalStatus {
   PENDING
   APPROVED
   REJECTED
-} 
+}
 
 enum VisaPackageType {
   STANDARD
