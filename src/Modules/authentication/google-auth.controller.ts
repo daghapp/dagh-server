@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { generateAccessToken, generateRefreshToken } from "../../helpers/index.js";
 
-const ALLOWED_APP_SCHEMES = ["daghapp://", "daghgaurd://"];
+const ALLOWED_APP_SCHEMES = ["daghapp://", "daghguard://"];
 
 function isAllowedRedirect(uri: string): boolean {
   return ALLOWED_APP_SCHEMES.some((scheme) => uri.startsWith(scheme));
