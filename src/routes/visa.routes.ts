@@ -1,5 +1,5 @@
 import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
-import { UserTourController } from "../Modules/tour-management/user-tour.controller.js";
+
 import { validate } from "../middleware/validation.js";
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
@@ -10,7 +10,7 @@ import {
 
 const router = express.Router();
 const userVisaController = new UserVisaController();
-const userTourController = new UserTourController();
+// const userTourController = new UserTourController();
 
 /**
  * @swagger
@@ -305,7 +305,7 @@ router.post(
 
 router.get(
   "/pricing/:visaType",
-  userTourController.getVisaPricing.bind(userTourController),
+  userVisaController.getVisaPricing.bind(userVisaController),
 );
 
 export { router };

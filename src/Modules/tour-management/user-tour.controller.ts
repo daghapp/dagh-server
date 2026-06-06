@@ -569,44 +569,44 @@ async hubtelCallbackController(req: Request, res: Response) {
 
 
 
-  // Get visa pricing breakdown by visa type
-  async getVisaPricing(req: Request, res: Response) {
-    try {
-      const { visaType } = req.params;
+  // // Get visa pricing breakdown by visa type
+  // async getVisaPricing(req: Request, res: Response) {
+  //   try {
+  //     const { visaType } = req.params;
 
-      const pricingMap: Record<string, Array<{ key: string; value: number }>> = {
-        STANDARD: [
-          { key: "Visa Facilitation Fee", value: 464 },
-          { key: "Statutory GIS Fee (USD 200)", value: 0 },
-        ],
-        EXPEDITED: [
-          { key: "Expedited Visa Facilitation Fee", value: 1450 },
-        ],
-      };
+  //     const pricingMap: Record<string, Array<{ key: string; value: number }>> = {
+  //       STANDARD: [
+  //         { key: "Visa Facilitation Fee", value: 464 },
+  //         { key: "Statutory GIS Fee (USD 200)", value: 0 },
+  //       ],
+  //       EXPEDITED: [
+  //         { key: "Expedited Visa Facilitation Fee", value: 1450 },
+  //       ],
+  //     };
 
-      const pricing = pricingMap[visaType?.toUpperCase()];
+  //     const pricing = pricingMap[visaType?.toUpperCase()];
 
-      if (!pricing) {
-        return res.status(400).json({
-          success: false,
-          message: `Pricing not available for visa type: ${visaType}`,
-        });
-      }
+  //     if (!pricing) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: `Pricing not available for visa type: ${visaType}`,
+  //       });
+  //     }
 
-      return res.status(200).json({
-        success: true,
-        visaType: visaType?.toUpperCase(),
-        pricing: pricing,
-      });
-    } catch (error) {
-      console.error("Error fetching visa pricing:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch visa pricing",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  }
+  //     return res.status(200).json({
+  //       success: true,
+  //       visaType: visaType?.toUpperCase(),
+  //       pricing: pricing,
+  //     });
+  //   } catch (error) {
+  //     console.error("Error fetching visa pricing:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Failed to fetch visa pricing",
+  //       error: error instanceof Error ? error.message : "Unknown error",
+  //     });
+  //   }
+  // }
 
   //review a tour by user
   //get all tours booked by user
