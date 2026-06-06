@@ -391,9 +391,8 @@ model VisaOnArrivalRequest {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   approval       VisaApproval?
-  paymentId        String?      @unique  // from the polymorphic payment table.
+  paymentId        String? // from the polymorphic payment table.
   visaData       VisaOnArrivalData?
-  packageType     VisaPackageType?
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("visa_on_arrival_requests")
@@ -402,15 +401,28 @@ model VisaOnArrivalRequest {
 model VisaOnArrivalData {
   id                      String    @id @default(uuid())
   requestId               String   @unique
-  passport_image_url      String
-  bio_page_image_url      String
-  flight_itenary_image_url      String
+  passport                String
+  surname                 String
+  first_name              String
+  previous_name           String?
+  date_of_birth           String
+  place_of_birth          String
+  nationality             String
+  former_nationality      String?
   passport_number         String
+  date_of_issue           String
+  place_of_issue          String
+  date_of_expiration      String
+  email                   String
+  whatsapp_number         String?
+  date_of_arrival         DateTime?
+  date_of_departure       DateTime?
+  duration_of_stay        Int?
   purpose_of_trip         String
-  date_of_departure       DateTime
-  date_of_arrival         DateTime
+  primary_place_of_stay   String
+  proof_of_accommodation  String
   request                 VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
+ 
   @@map("visa_on_arrival_data")
 }
 
@@ -431,7 +443,7 @@ model VisaApproval {
 model Payment {
   id                String           @id @default(uuid())
   reference         String           @unique
-  userId            String
+  userId            String           
 
   description       String?
 
@@ -449,8 +461,6 @@ model Payment {
   transactionId     String?
 
   paidAt            DateTime?
-
-  ledgerEntries LedgerTransaction[]
 
   metadata          Json?
 
@@ -476,7 +486,6 @@ model HubtelDirectReceiveLog {
   externalTransactionId String?  // telco reference
   orderId               String?
   deliveryFee           Float?
-  paymentDetails        String?
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -484,29 +493,7 @@ model HubtelDirectReceiveLog {
   @@map("hubtel_direct_receive_logs")
 }
 
-model LedgerAccount {
-  id          String   @id @default(uuid())
-  name        String   @unique  // e.g. "Account_DAGh_Revenue", "Account_GIS_Statutory_Reserve"
-  currency    String   // GHS or USD
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  transactions LedgerTransaction[]
-}
 
-
-
-model LedgerTransaction {
-  id            String        @id @default(uuid())
-  accountId     String
-  account       LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  paymentId     String
-  payment       Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  amount        Float
-  currency      String
-  type          String        // CREDIT or DEBIT
-  description   String?
-  createdAt     DateTime      @default(now())
-}
 
 enum PaymentTargetType {
   VISA_ON_ARRIVAL
@@ -573,21 +560,13 @@ enum VisaRequestStatus {
   PENDING
   APPROVED
   REJECTED
-  PAYMENT_FAILED
-  READY_FOR_GIS_SUBMISSION
-  EXPEDITED_AIRPORT_PAYMENT_PENDING
 }
 
 enum VisaApprovalStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-enum VisaPackageType {
-  STANDARD
-  EXPEDITED
-}
+} 
 
 enum PaymentMethod {
   MTN_MOMO
@@ -603,4 +582,95 @@ enum PaymentProvider {
   PAYSTACK
   STRIPE
   FLUTTERWAVE
+}
+
+
+model Provider {
+  provider_id         String    @id @default(uuid())
+  verification_status Boolean   @default(false)
+  display_name        String
+  media_assets        String[]  // Array of URLs
+  location_lat        Float
+  location_lng        Float
+  location_address    String
+  avg_rating          Float     @default(0)
+  review_count        Int       @default(0)
+  response_time_secs  Int       @default(3600)
+  bio_description     String    @db.Text
+  
+  // Polymorphic relationship (one of these will be populated)
+  tour_guide      TourGuide?
+  car_rental      CarRental?
+  hotel           Hotel?
+  
+  audit_logs      AuditLog[]
+  service_requests ServiceRequest[]
+}
+
+model TourGuide {
+  provider_id         String   @id
+  language_capability String[] // ["English", "Twi", "French"]
+  expertise_tags      String[] // ["Historical", "Nature"]
+  charge_per_day      Float
+  certification_docs  String[] // URLs to PDFs
+  provider            Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+model CarRental {
+  provider_id        String   @id
+  vehicle_make       String
+  vehicle_model      String
+  vehicle_year       Int
+  transmission       String
+  fuel_type          String
+  safety_features    String[]
+  rental_terms_url   String
+  daily_rate         Float
+  driver_required    Boolean
+  provider           Provider @relation(fields: [provider_id], references: [provider_id])
+}
+
+model Hotel {
+  provider_id            String   @id
+  accommodation_type     String   // "hotel", "guesthouse", "apartment"
+  has_wifi               Boolean  @default(false)
+  has_backup_power       Boolean  @default(false)
+  has_security_staff     Boolean  @default(false)
+  distance_to_airport_km Float
+  distance_to_business_km Float
+  check_in_instructions  String   @db.Text
+  base_price_per_night   Float
+  provider               Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+// ============================================
+// SERVICE REQUEST MODEL (For PII sanitization)
+// ============================================
+
+model ServiceRequest {
+  request_token  String   @id @default(uuid())
+  provider_id    String
+  user_id        String   // This is the CUSTOMER's ID
+  status         String   @default("pending") // pending, confirmed, cancelled, completed
+  requested_date DateTime
+  confirmed_at   DateTime?
+  created_at     DateTime @default(now())
+  
+  provider       Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+// ============================================
+// AUDIT LOG MODEL (For the diary/audit trail)
+// ============================================
+
+model AuditLog {
+  log_id      String   @id @default(uuid())
+  user_id     String   // Who did the action? (customer or provider)
+  provider_id String   // Which provider was involved?
+  action      String   // "viewed_profile", "requested_service", "confirmed", etc.
+  metadata    Json     // Extra details stored as JSON
+  ip_address  String   // Where did the request come from?
+  timestamp   DateTime @default(now())
+  
+  provider    Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
 }
