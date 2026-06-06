@@ -151,7 +151,7 @@ router.post(
 
 /**
  * @swagger
- * /visa-requests/request:
+ * /visa-requests:
 
  *   post:
  *     summary: Create a Visa on Arrival request with passport details
@@ -205,7 +205,7 @@ router.post(
  *                   $ref: '#/components/schemas/VisaOnArrivalRequest'
  */
 router.post(
-  "/passport",
+  "",
   protectedRoute,
   validate(visaOnArrivalDataSchema),
   userVisaController.createVisaRequest.bind(userVisaController),
