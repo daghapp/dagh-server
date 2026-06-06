@@ -69,7 +69,7 @@ app.use('/tours', TourRoutes);
 app.use('/profile', ProfileRoutes);
 app.use('/admin', AdminRoutes);
 app.use('/api/messages', MessageRoutes);
-app.use("/visa-request", VisaRoutes)
+app.use("/visa-requests", VisaRoutes)
 
 app.use('/*path', (req: express.Request, res: express.Response) => {
   res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });

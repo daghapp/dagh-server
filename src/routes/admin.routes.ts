@@ -1,9 +1,12 @@
 import express from "express";
 import { AuthAdminController } from "../Modules/authentication/auth-admin.controller.js";
 import protectedRoute from "../middleware/protected.js";
+import { AdminVisaController } from "../Modules/visa-management/admin-visa.controller.js";
 
 const router = express.Router();
 const authAdminController = new AuthAdminController();
+const adminVisaController = new AdminVisaController();
+
 
 /**
  * @swagger
@@ -473,4 +476,50 @@ router.delete(
   authAdminController.deleteUser.bind(authAdminController),
 );
 
+/**
+ * @swagger
+ * /admin/visa-requests/paid:
+ *   get:
+ *     summary: Get paid visa requests ready for admin processing
+ *     tags: [Admin - Visa]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of paid visa requests
+ */
+router.get(
+  "/visa-requests/paid",
+  protectedRoute,
+  adminVisaController.getPaidVisaRequests.bind(adminVisaController),
+);
+
+/**
+ * @swagger
+ * /admin/visa-requests/approve:
+ *   post:
+ *     summary: Approve a visa request
+ *     tags: [Admin - Visa]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               requestId:
+ *                 type: string
+ *                 format: uuid
+ *             required: [requestId]
+ *     responses:
+ *       200:
+ *         description: Visa request approved
+ */
+router.post(
+  "/visa-requests/approve",
+  protectedRoute,
+  adminVisaController.approveVisaRequest.bind(adminVisaController),
+);
+
 export { router };
+

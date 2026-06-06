@@ -80,7 +80,7 @@ async initiateVisaPayment(req:Request, res:Response) {
       totalAmount: totalAmount,
       currency: "GHS",
       description: `Visa on Arrival - ${packageType}`,
-      callbackUrl: `${process.env.API_URL}/visa/payment-callback`,
+      callbackUrl: `${process.env.API_URL}/visa-request/payment-callback`,
       returnUrl: HUBTEL_RETURN_URL || "",
       cancellationUrl: HUBTEL_CANCELLATION_URL
     });

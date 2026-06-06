@@ -1,4 +1,5 @@
 import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
+import { UserTourController } from "../Modules/tour-management/user-tour.controller.js";
 import { validate } from "../middleware/validation.js";
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
@@ -9,6 +10,47 @@ import {
 
 const router = express.Router();
 const userVisaController = new UserVisaController();
+const userTourController = new UserTourController();
+
+/**
+ * @swagger
+ * /visa-requests/pricing/{visaType}:
+
+ *   get:
+ *     summary: Get pricing breakdown for a visa type
+ *     tags: [VisaOnArrival]
+ *     parameters:
+ *       - in: path
+ *         name: visaType
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [STANDARD, EXPEDITED]
+ *         description: The visa package type
+ *     responses:
+ *       200:
+ *         description: Pricing breakdown retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 visaType:
+ *                   type: string
+ *                 pricing:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       key:
+ *                         type: string
+ *                       value:
+ *                         type: number
+ *       400:
+ *         description: Invalid visa type
+ */
 
 /**
  * @swagger
@@ -19,10 +61,18 @@ const userVisaController = new UserVisaController();
 
 /**
  * @swagger
- * /visa-request/payment:
+ * /visa-requests/{requestId}/payment:
  *   post:
  *     summary: Initiate payment for Visa on Arrival request
  *     tags: [VisaOnArrival]
+ *     parameters:
+ *       - in: path
+ *         name: requestId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Visa request id
  *     requestBody:
  *       required: true
  *       content:
@@ -30,14 +80,10 @@ const userVisaController = new UserVisaController();
  *           schema:
  *             type: object
  *             properties:
- *               requestId:
- *                 type: string
- *                 format: uuid
  *               packageType:
  *                 type: string
  *                 enum: [STANDARD, EXPEDITED]
  *             required:
- *               - requestId
  *               - packageType
  *     responses:
  *       200:
@@ -105,7 +151,8 @@ router.post(
 
 /**
  * @swagger
- * /visa/request:
+ * /visa-requests/request:
+
  *   post:
  *     summary: Create a Visa on Arrival request with passport details
  *     tags: [VisaOnArrival]
@@ -166,7 +213,8 @@ router.post(
 
 /**
  * @swagger
- * /visa:
+ * /visa-requests:
+
  *   get:
  *     summary: Get all Visa on Arrival requests for the authenticated user
  *     tags: [VisaOnArrival]
@@ -212,7 +260,8 @@ router.get(
 
 /**
  * @swagger
- * /visa/:requestId/status:
+ * /visa-requests/:requestId/status:
+
  *   get:
  *     summary: Get the status of a Visa on Arrival request
  *     tags: [VisaOnArrival]
@@ -247,6 +296,16 @@ router.get(
   "/:requestId/status",
   protectedRoute,
   userVisaController.getVisaStatus.bind(userVisaController),
+);
+
+router.post(
+  "/payment-callback",
+  userVisaController.handleVisaPaymentCallback.bind(userVisaController),
+);
+
+router.get(
+  "/pricing/:visaType",
+  userTourController.getVisaPricing.bind(userTourController),
 );
 
 export { router };
