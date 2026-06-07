@@ -19,10 +19,10 @@ const swaggerOptions: swaggerJSDoc.Options = {
       process.env.NODE_ENV === 'production'
         ? [
             { url: BackendURL, description: 'Production server' },
-            { url: 'http://localhost:3000', description: 'Local development' },
+            { url: 'http://localhost:5000', description: 'Local development' },
           ]
         : [
-            { url: 'http://localhost:3000', description: 'Local development' },
+            { url: 'http://localhost:5000', description: 'Local development' },
             { url: BackendURL, description: 'Production server' },
           ],
     components: {

@@ -54,17 +54,12 @@ const userVisaController = new UserVisaController();
 
 /**
  * @swagger
- * tags:
- *   name: VisaOnArrival
- *   description: Visa on Arrival API
- */
-
-/**
- * @swagger
  * /visa-requests/{requestId}/payment:
  *   post:
  *     summary: Initiate payment for Visa on Arrival request
  *     tags: [VisaOnArrival]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: requestId
@@ -156,6 +151,8 @@ router.post(
  *   post:
  *     summary: Create a Visa on Arrival request with passport details
  *     tags: [VisaOnArrival]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -218,6 +215,8 @@ router.post(
  *   get:
  *     summary: Get all Visa on Arrival requests for the authenticated user
  *     tags: [VisaOnArrival]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of visa requests retrieved successfully
@@ -260,11 +259,13 @@ router.get(
 
 /**
  * @swagger
- * /visa-requests/:requestId/status:
+ * /visa-requests/{requestId}/status:
 
  *   get:
  *     summary: Get the status of a Visa on Arrival request
  *     tags: [VisaOnArrival]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: requestId
