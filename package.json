@@ -6,7 +6,12 @@
     "dev": "nodemon",
     "build": "prisma generate && tsc",
     "start": "node dist/src/index.js",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+
+        "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx src/seed.ts",
+    "db:studio": "prisma studio"
   },
   "type": "module",
   "author": "",

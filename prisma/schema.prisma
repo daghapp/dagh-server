@@ -34,6 +34,9 @@ model User {
   userTourItineraries user_tour_itineraries[]
   visaRequests       VisaOnArrivalRequest[]
 
+
+  tourRequests        TourRequest[]
+
   @@map("users")
 }
 
@@ -132,23 +135,6 @@ model DeviceToken {
 
   @@map("device_tokens")
 }
-
-//model Payment {
-//  id               String         @id @default(uuid())
-//  userId           String
-//  amount           Float
-//  description      String?
-//  status           PaymentStatus  @default(PENDING)
-//  paymentReference String         @unique
-//  createdAt        DateTime       @default(now())
-//  updatedAt        DateTime       @updatedAt
-//  clientReference  String         @unique
-//  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-//  tourBooking      tour_bookings?
-//
-//  @@map("payments")
-//}
-
 model UserSubscription {
   id             String             @id @default(uuid())
   userId         String             @unique
@@ -507,6 +493,148 @@ model LedgerTransaction {
   description   String?
   createdAt     DateTime      @default(now())
 }
+
+
+
+
+// ─────────────────────────────────────────
+// STATIC LOOKUP TABLE — seeded with real Ghana locations
+// ─────────────────────────────────────────
+model TourSite {
+  id          String       @id @default(uuid())
+  name        String      @unique
+  region      String
+  latitude    Float
+  longitude   Float
+  description String
+  imageUrl    String?
+  category    SiteCategory
+  createdAt   DateTime     @default(now())
+
+  requestSites      TourRequestSite[]
+  itineraryDaySites ItineraryDaySite[]
+
+  @@map("tour_sites")
+}
+
+// ─────────────────────────────────────────
+// TOUR REQUEST — submitted by user from frontend
+// ─────────────────────────────────────────
+model TourRequest {
+  id                      String        @id @default(uuid())
+  userId                   String
+  tourType                TourType
+  durationDays            Int           // touring days only (excl. prep + departure)
+  primaryPlaceOfStay      String        @default("East Legon, Accra")
+  proofOfAccommodationUrl String?
+  relocationInterest      Boolean       @default(false) // saved, not acted on yet
+  status                  RequestStatus @default(PENDING)
+  createdAt               DateTime      @default(now())
+
+  selectedSites TourRequestSite[]
+  itinerary     Itinerary?
+  user          User  @relation(fields: [userId], references: [id], onDelete:Cascade)
+
+  @@map("tour_requests")
+}
+
+// ─────────────────────────────────────────
+// JUNCTION — which sites the user selected
+// ─────────────────────────────────────────
+model TourRequestSite {
+  id            String @id @default(uuid())
+  tourRequestId String
+  tourSiteId    String
+
+  tourRequest TourRequest @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
+  tourSite    TourSite    @relation(fields: [tourSiteId], references: [id])
+
+  @@unique([tourRequestId, tourSiteId])
+  @@map("tour_request_sites")
+}
+
+// ─────────────────────────────────────────
+// ITINERARY — generated after validation
+// ─────────────────────────────────────────
+model Itinerary {
+  id               String   @id @default(uuid())
+  tourRequestId    String   @unique
+  isFeasible       Boolean
+  feasibilityError String?  // populated if validation fails
+  totalDays        Int      // durationDays + 2 (prep + departure)
+  createdAt        DateTime @default(now())
+
+  tourRequest TourRequest    @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
+  days        ItineraryDay[]
+
+  @@map("itineraries")
+}
+
+// ─────────────────────────────────────────
+// ITINERARY DAY — one row per day of the trip
+// ─────────────────────────────────────────
+model ItineraryDay {
+  id                 String  @id @default(uuid())
+  itineraryId        String
+  dayNumber          Int     // 1-based
+  dayType            DayType
+  relocationRequired Boolean @default(false) // saved, not acted on yet
+  suggestedHotel     String? // saved, not acted on yet
+
+  itinerary Itinerary          @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  sites     ItineraryDaySite[]
+
+  @@unique([itineraryId, dayNumber])
+  @@map("itinerary_days")
+}
+
+// ─────────────────────────────────────────
+// ITINERARY DAY SITES — sites assigned to each touring day
+// ─────────────────────────────────────────
+model ItineraryDaySite {
+  id             String @id @default(uuid())
+  itineraryDayId String
+  tourSiteId     String
+  visitOrder     Int    // 1, 2, or 3 — order within the day
+
+  itineraryDay ItineraryDay @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
+  tourSite     TourSite     @relation(fields: [tourSiteId], references: [id])
+
+  @@unique([itineraryDayId, visitOrder])
+  @@unique([itineraryDayId, tourSiteId])
+  @@map("itinerary_day_sites")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+enum TourType {
+  GROUP
+  SINGLE
+}
+
+enum RequestStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum DayType {
+  PREPARATION
+  TOURING
+  DEPARTURE
+}
+
+enum SiteCategory {
+  NATURE
+  CULTURAL
+  HISTORICAL
+  BEACH
+  WILDLIFE
+  RELIGIOUS
+  SCENIC
+}
+
 
 enum PaymentTargetType {
   VISA_ON_ARRIVAL
