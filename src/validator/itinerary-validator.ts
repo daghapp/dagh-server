@@ -129,6 +129,14 @@ export interface FeasibilityResult {
 //   relocationInterest: boolean;
 // };
 
+export type ItineraryDayInput = 
+{
+     dayNumber: number; 
+     dayType: DayType;
+      relocationRequired: boolean; 
+
+    }
+
 
 
 export type CreateTourRequestInput = z.infer<typeof createTourRequestSchema>&{userId: string};
