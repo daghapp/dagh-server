@@ -81,7 +81,7 @@ router.post("/request", protectedRoute,postTourRequest);
  *       200:
  *         description: Itinerary retrieved successfully
  */
-router.get("/itinerary/:tourRequestId", protectedRoute,getItinerary);
+router.get("/:tourRequestId", protectedRoute,getItinerary);
 
 export { router };
 
