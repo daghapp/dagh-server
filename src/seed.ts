@@ -5,7 +5,6 @@
 import { prisma } from "./config";
 
 // const prisma = new PrismaClient();
-prisma
 
 const tourSites = [
   // ── Greater Accra ──────────────────────────────────────────────────
@@ -46,13 +45,33 @@ const tourSites = [
 
 async function main() {
   console.log("🌱 Seeding tour sites...");
-//   await prisma.tourSite.deleteMany();
-
+  const siteCount = await prisma.tourSite.count();
+  if (siteCount == 0) {
   for (const site of tourSites) {
     await prisma.tourSite.create({ data: site as any });
   }
 
   console.log(`✅ Seeded ${tourSites.length} tour sites successfully.`);
+
+  }
+
+
+    // Seed Ledger Accounts
+  await prisma.ledgerAccount.createMany({
+    data: [
+      {
+        name: "Account_DAGh_Revenue",
+        currency: "GHS",
+      },
+      {
+        name: "Account_GIS_Statutory_Reserve",
+        currency: "GHS",
+      },
+    ],
+    skipDuplicates: true, // prevents errors if already seeded
+  });
+
+  console.log("✅ Ledger accounts seeded successfully");
 }
 
 main()
