@@ -1,14 +1,21 @@
 import { Router } from "express";
-import { getTourSites, postTourRequest, getItinerary } from "../Modules/itinerary/itinerary.controller.js";
+import {
+  getTourSites,
+  postTourRequest,
+  getItinerary,
+  getUserTourRequests,
+} from "../Modules/itinerary/itinerary.controller.js";
+import { ItineraryPaymentController } from "../Modules/itinerary/itinerary.payment.controller.js";
 import protectedRoute from "../middleware/protected.js";
 
 const router = Router();
+const itineraryPaymentController = new ItineraryPaymentController();
 
 /**
  * @swagger
  * tags:
  *   name: Itinerary
- *   description: Itinerary generation and retrieval
+ *   description: Itinerary generation, payment initiation, and retrieval
  */
 
 /**
@@ -29,7 +36,7 @@ router.get("/sites", getTourSites);
  *   post:
  *     security:
  *       - bearerAuth: []
- *     summary: Submit a tour request and generate an itinerary
+ *     summary: Create a tour request (itinerary is generated lazily after payment)
  *     tags: [Itinerary]
  *     requestBody:
  *       required: true
@@ -60,9 +67,64 @@ router.get("/sites", getTourSites);
  *             required: [tourSiteIds, tourType, durationDays]
  *     responses:
  *       201:
- *         description: Itinerary generation request processed
+ *         description: Tour request created successfully (payment required to view itinerary)
+ *       400:
+ *         description: Validation failed
+ *       422:
+ *         description: Request was created but is not feasible (cannot generate itinerary)
  */
-router.post("/request", protectedRoute,postTourRequest);
+router.post("/request", protectedRoute, postTourRequest);
+
+/**
+ * @swagger
+ * /itinerary/{tourRequestId}/payment:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Initiate Hubtel payment for an existing tour request
+ *     tags: [Itinerary]
+ *     parameters:
+ *       - in: path
+ *         name: tourRequestId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Payment initiated successfully
+ *       400:
+ *         description: Failed to initiate payment
+ *       403:
+ *         description: Forbidden (tour request does not belong to the authenticated user)
+ *       404:
+ *         description: Tour request not found
+ */
+router.post(
+  "/:tourRequestId/payment",
+  protectedRoute,
+  itineraryPaymentController.initiateItineraryPayment.bind(itineraryPaymentController)
+);
+
+/**
+ * @swagger
+ * /itinerary/payment-callback:
+ *   post:
+ *     summary: Hubtel payment callback for itinerary payments
+ *     tags: [Itinerary]
+ *     description: Updates tourRequest.paymentStatus based on Hubtel callback payload
+ *     responses:
+ *       200:
+ *         description: Callback processed successfully
+ *       400:
+ *         description: Invalid callback payload
+ *       404:
+ *         description: Payment or tour request not found
+ *       500:
+ *         description: Failed to handle callback
+ */
+router.post(
+  "/payment-callback",
+  itineraryPaymentController.handleHubtelPaymentCallback.bind(itineraryPaymentController)
+);
 
 /**
  * @swagger
@@ -70,7 +132,7 @@ router.post("/request", protectedRoute,postTourRequest);
  *   get:
  *     security:
  *       - bearerAuth: []
- *     summary: Retrieve a generated itinerary by tour request ID
+ *     summary: Retrieve itinerary for a tour request (only after payment SUCCESS)
  *     tags: [Itinerary]
  *     parameters:
  *       - in: path
@@ -80,8 +142,28 @@ router.post("/request", protectedRoute,postTourRequest);
  *     responses:
  *       200:
  *         description: Itinerary retrieved successfully
+ *       403:
+ *         description: PAYMENT_REQUIRED (initiate and complete payment first)
+ *       404:
+ *         description: Tour request not found or itinerary not available
  */
-router.get("/:tourRequestId", protectedRoute,getItinerary);
+/**
+ * @swagger
+ * /itinerary/requests:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get all itinerary requests for the authenticated user
+ *     tags: [Itinerary]
+ *     responses:
+ *       200:
+ *         description: Tour requests retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/requests", protectedRoute, getUserTourRequests);
+
+router.get("/:tourRequestId", protectedRoute, getItinerary);
 
 export { router };
 

@@ -3,6 +3,7 @@ import {
   createTourRequest,
   getAllTourSites,
   getItineraryByRequestId,
+  getTourRequestsByUserId,
 } from "./itinerary.service.js";
 import { createTourRequestSchema } from "../../validator/itinerary-validator.js";
 
@@ -97,9 +98,48 @@ export async function getItinerary(req: Request, res: Response) {
     });
   } catch (error) {
     console.error("[getItinerary]", error);
+
+    const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+
+    let status = 500;
+    if (code === "TOUR_REQUEST_NOT_FOUND") status = 404;
+    if (code === "PAYMENT_REQUIRED") status = 403;
+    if (code === "ITINERARY_NOT_FEASIBLE") status = 400;
+    if (code === "NO_SITES_FOR_ITINERARY") status = 400;
+
+    return res.status(status).json({
+      success: false,
+      message: code,
+      data: null,
+      error: code,
+    });
+  }
+}
+
+export async function getUserTourRequests(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id as string;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+        data: null,
+      });
+    }
+
+    const requests = await getTourRequestsByUserId(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Tour requests retrieved successfully.",
+      data: requests,
+    });
+  } catch (error) {
+    console.error("[getUserTourRequests]", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to retrieve itinerary.",
+      message: "Failed to retrieve tour requests.",
       data: null,
     });
   }

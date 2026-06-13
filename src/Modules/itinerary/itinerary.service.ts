@@ -73,13 +73,24 @@ export async function createTourRequest(
   }
 
   // ── Step 2: Attach distance from origin to each site ──────────────────────
-  const sites: SiteWithCoords[] = rawSites.map((site: { id: string; name: string; region: string; latitude: number; longitude: number; description: string; imageUrl: string | null; category: SiteCategory }) => ({
-    ...site,
-    distanceFromOrigin: haversineDistance(ORIGIN, {
-      latitude: site.latitude,
-      longitude: site.longitude,
-    }),
-  }));
+  const sites: SiteWithCoords[] = rawSites.map(
+    (site: {
+      id: string;
+      name: string;
+      region: string;
+      latitude: number;
+      longitude: number;
+      description: string;
+      imageUrl: string | null;
+      category: SiteCategory;
+    }) => ({
+      ...site,
+      distanceFromOrigin: haversineDistance(ORIGIN, {
+        latitude: site.latitude,
+        longitude: site.longitude,
+      }),
+    })
+  );
 
   // ── Step 3: Sort sites by distance from origin (closest first) ─────────────
   sites.sort((a, b) => a.distanceFromOrigin - b.distanceFromOrigin);
@@ -87,10 +98,10 @@ export async function createTourRequest(
   // ── Step 4: Feasibility checks ────────────────────────────────────────────
   const feasibility = checkFeasibility(sites, durationDays);
 
-  // ── Step 5: Save tour request to DB ───────────────────────────────────────
+  // ── Step 5: Save tour request to DB (NO itinerary generation here) ──────
   const tourRequest = await prisma.tourRequest.create({
     data: {
-        userId: userId,
+      userId: userId,
       tourType,
       durationDays,
       primaryPlaceOfStay: primaryPlaceOfStay ?? "East Legon, Accra",
@@ -103,44 +114,133 @@ export async function createTourRequest(
     },
   });
 
-  // ── Step 6: If not feasible — save itinerary with error, return early ──────
+  // If not feasible: keep behavior consistent: return 422 from controller path.
   if (!feasibility.feasible) {
-    const itinerary = await prisma.itinerary.create({
-      data: {
-        tourRequestId: tourRequest.id,
-        isFeasible: false,
-        feasibilityError: feasibility.error,
-        totalDays: durationDays + 2,
-      },
-    });
-
     return {
       success: false,
       message: feasibility.error!,
       data: {
         tourRequestId: tourRequest.id,
-        itinerary: {
-          id: itinerary.id,
-          tourRequestId: tourRequest.id,
-          isFeasible: false,
-          feasibilityError: feasibility.error,
-          totalDays: durationDays + 2,
-          days: [],
-        },
+        itinerary: null,
       },
       error: feasibility.error ?? undefined,
     };
   }
 
-  // ── Step 7: Build day groups from sorted sites ────────────────────────────
-  const dayGroups = buildDayGroups(sites);
+  // If feasible: do not create itinerary yet. It will be generated lazily
+  // when the user requests itinerary after payment SUCCESS.
+  return {
+    success: true,
+    message: "Tour request created successfully. Proceed to complete payment to view itinerary.",
+    data: {
+      tourRequestId: tourRequest.id,
+      itinerary: null,
+    },
+  };
+}
 
-  // ── Step 8: Persist the itinerary and all its days ────────────────────────
-  const totalDays = durationDays + 2; // prep + touring days + departure
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC: Get a previously generated itinerary by tour request ID
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getItineraryByRequestId(
+  tourRequestId: string
+): Promise<ItineraryResponse> {
+  // Payment gating: itinerary is only visible after payment SUCCESS
+  const tourRequest = await prisma.tourRequest.findUnique({
+    where: { id: tourRequestId },
+    select: {
+      id: true,
+      durationDays: true,
+      paymentStatus: true,
+      selectedSites: {
+        include: {
+          tourSite: true,
+        },
+      },
+    },
+  });
+
+  if (!tourRequest) {
+    throw new Error("TOUR_REQUEST_NOT_FOUND");
+  }
+  if (tourRequest.paymentStatus !== "SUCCESS") {
+    throw new Error("PAYMENT_REQUIRED");
+  }
+
+  // If itinerary already exists, return it mapped to ItineraryResponse
+  const existing = await prisma.itinerary.findUnique({
+    where: { tourRequestId },
+    include: {
+      days: {
+        orderBy: { dayNumber: "asc" },
+        include: {
+          sites: {
+            orderBy: { visitOrder: "asc" },
+            include: { tourSite: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (existing) {
+    return mapItineraryToResponse(existing);
+  }
+
+  // Otherwise generate itinerary lazily now that payment succeeded
+  const rawSites = tourRequest.selectedSites.map((rs) => rs.tourSite);
+  if (!rawSites.length) {
+    throw new Error("NO_SITES_FOR_ITINERARY");
+  }
+
+  const sites: SiteWithCoords[] = rawSites.map(
+    (site: {
+      id: string;
+      name: string;
+      region: string;
+      latitude: number;
+      longitude: number;
+      description: string;
+      imageUrl: string | null;
+      category: SiteCategory;
+    }) => ({
+      ...site,
+      distanceFromOrigin: haversineDistance(ORIGIN, {
+        latitude: site.latitude,
+        longitude: site.longitude,
+      }),
+    })
+  );
+
+  // Sort sites by distance from origin (closest first)
+  sites.sort((a, b) => a.distanceFromOrigin - b.distanceFromOrigin);
+
+  const durationDays = tourRequest.durationDays;
+  const totalDays = durationDays + 2;
+
+  const feasibility = checkFeasibility(sites, durationDays);
+
+  // If not feasible, still persist itinerary row for traceability
+  if (!feasibility.feasible) {
+    // Persist trace, but do not return an itinerary structure to caller
+    await prisma.itinerary.create({
+      data: {
+        tourRequestId: tourRequestId,
+        isFeasible: false,
+        feasibilityError: feasibility.error,
+        totalDays,
+      },
+    });
+
+    throw new Error("ITINERARY_NOT_FEASIBLE");
+  }
+
+  // Generate itinerary
+  const dayGroups = buildDayGroups(sites);
 
   const itinerary = await prisma.itinerary.create({
     data: {
-      tourRequestId: tourRequest.id,
+      tourRequestId: tourRequestId,
       isFeasible: true,
       feasibilityError: null,
       totalDays,
@@ -161,57 +261,20 @@ export async function createTourRequest(
     },
   });
 
-  // ── Step 9: Shape response ────────────────────────────────────────────────
-  const itineraryResponse: ItineraryResponse = {
-    id: itinerary.id,
-    tourRequestId: itinerary.tourRequestId,
-    isFeasible: itinerary.isFeasible,
-    feasibilityError: itinerary.feasibilityError,
-    totalDays: itinerary.totalDays,
-    days: itinerary.days.map((day: { dayNumber: number; dayType: string; sites: Array<{ visitOrder: number; tourSite: { id: string; name: string; region: string; latitude: number; longitude: number; description: string; imageUrl: string | null; category: string } }> }) => ({
-      dayNumber: day.dayNumber,
-      dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
-      sites: day.sites.map((ds) => ({
-        visitOrder: ds.visitOrder,
-        site: {
-          id: ds.tourSite.id,
-          name: ds.tourSite.name,
-          region: ds.tourSite.region,
-          latitude: ds.tourSite.latitude,
-          longitude: ds.tourSite.longitude,
-          description: ds.tourSite.description,
-          imageUrl: ds.tourSite.imageUrl,
-          category: ds.tourSite.category as "NATURE" | "CULTURAL" | "HISTORICAL" | "BEACH" | "WILDLIFE" | "RELIGIOUS" | "SCENIC",
-        },
-      })),
-    })),
-  };
-
-  return {
-    success: true,
-    message: "Itinerary generated successfully.",
-    data: {
-      tourRequestId: tourRequest.id,
-      itinerary: itineraryResponse,
-    },
-  };
+  return mapItineraryToResponse(itinerary);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC: Get a previously generated itinerary by tour request ID
+// PUBLIC: Get all itinerary requests for the authenticated user
+// (Payment gating is handled by itinerary GET endpoint. This lists requests only.)
 // ─────────────────────────────────────────────────────────────────────────────
-export async function getItineraryByRequestId(tourRequestId: string) {
-  return prisma.itinerary.findUnique({
-    where: { tourRequestId },
+export async function getTourRequestsByUserId(userId: string) {
+  return prisma.tourRequest.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
     include: {
-      days: {
-        orderBy: { dayNumber: "asc" },
-        include: {
-          sites: {
-            orderBy: { visitOrder: "asc" },
-            include: { tourSite: true },
-          },
-        },
+      selectedSites: {
+        include: { tourSite: true },
       },
     },
   });
@@ -225,7 +288,7 @@ function checkFeasibility(
   durationDays: number
 ): FeasibilityResult {
   const maxAllowedSites = durationDays * MAX_SITES_PER_DAY;
-
+  const simulatedGroups = buildDayGroups(sites);
   // ── Check 1: Capacity ─────────────────────────────────────────────────────
   if (sites.length > maxAllowedSites) {
     return {
@@ -256,7 +319,7 @@ function checkFeasibility(
     }
   } else {
     // Simulate grouping and check each group for internal distance violations
-    const simulatedGroups = buildDayGroups(sites);
+    // const simulatedGroups = buildDayGroups(sites);
     for (let i = 0; i < simulatedGroups.length; i++) {
       const group = simulatedGroups[i];
       if (group.sites.length < 2) continue;
@@ -277,6 +340,18 @@ function checkFeasibility(
       }
     }
   }
+
+  const requiredDays = simulatedGroups.length;
+if (requiredDays > durationDays) {
+  return {
+    feasible: false,
+    error:
+      `Your selected locations are too geographically spread out to fit into ${durationDays} touring day(s). ` +
+      `Based on the distances between your chosen sites, you would need at least ` +
+      `${requiredDays} touring day(s) to complete this itinerary. ` +
+      `Please increase your trip duration to ${requiredDays} day(s) or more.`,
+  };
+}
 
   return { feasible: true, error: null };
 }
@@ -325,6 +400,41 @@ function buildDayGroups(sortedSites: SiteWithCoords[]): DayGroup[] {
 // Days 2..N-1 = TOURING    (up to 3 sites per day, closest to furthest)
 // Day N     = DEPARTURE    (no sites)
 // ─────────────────────────────────────────────────────────────────────────────
+function mapItineraryToResponse(itinerary: any): ItineraryResponse {
+  // itinerary.days -> days[] in response
+  return {
+    id: itinerary.id,
+    tourRequestId: itinerary.tourRequestId,
+    isFeasible: itinerary.isFeasible,
+    feasibilityError: itinerary.feasibilityError,
+    totalDays: itinerary.totalDays,
+    days: (itinerary.days ?? []).map((day: any) => ({
+      dayNumber: day.dayNumber,
+      dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
+      sites: (day.sites ?? []).map((ds: any) => ({
+        visitOrder: ds.visitOrder,
+        site: {
+          id: ds.tourSite.id,
+          name: ds.tourSite.name,
+          region: ds.tourSite.region,
+          latitude: ds.tourSite.latitude,
+          longitude: ds.tourSite.longitude,
+          description: ds.tourSite.description,
+          imageUrl: ds.tourSite.imageUrl,
+          category: ds.tourSite.category as
+            | "NATURE"
+            | "CULTURAL"
+            | "HISTORICAL"
+            | "BEACH"
+            | "WILDLIFE"
+            | "RELIGIOUS"
+            | "SCENIC",
+        },
+      })),
+    })),
+  };
+}
+
 function buildItineraryDaysPayload(
   dayGroups: DayGroup[],
   durationDays: number
@@ -372,6 +482,8 @@ function buildItineraryDaysPayload(
     dayType: DayType.DEPARTURE,
     relocationRequired: false,
   });
+
+  console.log("days ", {days})
 
   return days;
 }

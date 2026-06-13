@@ -529,6 +529,10 @@ model TourRequest {
   proofOfAccommodationUrl String?
   relocationInterest      Boolean       @default(false) // saved, not acted on yet
   status                  RequestStatus @default(PENDING)
+
+  paymentId     String?       @unique
+  paymentStatus PaymentStatus @default(INITIALIZED)
+
   createdAt               DateTime      @default(now())
 
   selectedSites TourRequestSite[]
@@ -639,6 +643,7 @@ enum SiteCategory {
 enum PaymentTargetType {
   VISA_ON_ARRIVAL
   TOUR_BOOKING
+  TOUR_REQUEST
 }
 
 enum AccountStatus {

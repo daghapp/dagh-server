@@ -89,7 +89,7 @@ export interface CreateTourResponse {
   message: string;
   data: {
     tourRequestId: string;
-    itinerary: ItineraryResponse;
+    itinerary: ItineraryResponse | null;
   } | null;
   error?: string;
 }
