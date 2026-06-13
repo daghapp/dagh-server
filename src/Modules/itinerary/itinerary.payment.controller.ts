@@ -133,6 +133,12 @@ export class ItineraryPaymentController {
           data: { paymentStatus: "SUCCESS" },
         });
 
+        // keep Payment table in sync with successful Hubtel callback
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.SUCCESS },
+        });
+
         // itinerary generation happens in itinerary.service during getItinerary
         // (to keep callback lightweight and consistent)
         return res.json({ success: true });
