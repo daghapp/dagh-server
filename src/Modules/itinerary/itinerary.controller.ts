@@ -55,6 +55,17 @@ export async function postTourRequest(req: Request, res: Response) {
       return res.status(422).json(result);
     }
 
+    // If feasible, frontend needs price before initiating payment
+    if (result.success && result.data?.itinerary === null) {
+      const durationDays = parsed.data.durationDays;
+      const price = durationDays <= 4 ? 350 : 500;
+
+      return res.status(201).json({
+        ...result,
+        price,
+      });
+    }
+
     return res.status(201).json(result);
   } catch (error) {
     console.error("[postTourRequest]", error);
@@ -91,10 +102,14 @@ export async function getItinerary(req: Request, res: Response) {
       });
     }
 
+    const durationDays = itinerary.totalDays - 2;
+    const price = durationDays <= 4 ? 350 : 500;
+
     return res.status(200).json({
       success: true,
       message: "Itinerary retrieved successfully.",
       data: itinerary,
+      price: itinerary.isFeasible ? price : null,
     });
   } catch (error) {
     console.error("[getItinerary]", error);
