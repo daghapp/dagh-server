@@ -7,6 +7,7 @@ import {
 } from "../Modules/itinerary/itinerary.controller.js";
 import { ItineraryPaymentController } from "../Modules/itinerary/itinerary.payment.controller.js";
 import protectedRoute from "../middleware/protected.js";
+import { getUserItineraries } from "../Modules/itinerary/user-itineraries.controller.js";
 
 const router = Router();
 const itineraryPaymentController = new ItineraryPaymentController();
@@ -164,6 +165,22 @@ router.post(
 router.get("/requests", protectedRoute, getUserTourRequests);
 
 router.get("/:tourRequestId", protectedRoute, getItinerary);
+
+/**
+ * @swagger
+ * /itinerary/my-itineraries:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get all created itineraries for the authenticated user
+ *     tags: [Itinerary]
+ *     responses:
+ *       200:
+ *         description: Itineraries retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/my-itineraries", protectedRoute, getUserItineraries);
 
 export { router };
 
