@@ -76,6 +76,25 @@ router.get("/sites", getTourSites);
  */
 router.post("/request", protectedRoute, postTourRequest);
 
+
+/**
+ * @swagger
+ * /itinerary/my-itineraries:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get all created itineraries for the authenticated user
+ *     tags: [Itinerary]
+ *     responses:
+ *       200:
+ *         description: Itineraries retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/my-itineraries", protectedRoute, getUserItineraries);
+
+
+
 /**
  * @swagger
  * /itinerary/{tourRequestId}/payment:
@@ -165,22 +184,5 @@ router.post(
 router.get("/requests", protectedRoute, getUserTourRequests);
 
 router.get("/:tourRequestId", protectedRoute, getItinerary);
-
-/**
- * @swagger
- * /itinerary/my-itineraries:
- *   get:
- *     security:
- *       - bearerAuth: []
- *     summary: Get all created itineraries for the authenticated user
- *     tags: [Itinerary]
- *     responses:
- *       200:
- *         description: Itineraries retrieved successfully
- *       401:
- *         description: Unauthorized
- */
-router.get("/my-itineraries", protectedRoute, getUserItineraries);
-
 export { router };
 
