@@ -232,6 +232,9 @@ export class UserVisaController {
       const user = req.user?.id as string;
       const visaRequest = await prisma.visaOnArrivalRequest.findMany({
         where: { userId: user },
+        include: {
+          visaData: true,
+        },
       });
       return res.status(200).json({
         success: true,
