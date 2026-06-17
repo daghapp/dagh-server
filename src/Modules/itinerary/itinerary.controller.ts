@@ -6,6 +6,8 @@ import {
   getTourRequestsByUserId,
 } from "./itinerary.service.js";
 import { createTourRequestSchema } from "../../validator/itinerary-validator.js";
+import { prisma } from "../../config/index.js";
+
 
 // ─────────────────────────────────────────
 // GET /api/tours/sites
@@ -102,13 +104,39 @@ export async function getItinerary(req: Request, res: Response) {
       });
     }
 
+    const tourRequest = await prisma.tourRequest.findUnique({
+      where: { id: tourRequestId },
+      select: {
+        id: true,
+        userId: true,
+        tourType: true,
+        durationDays: true,
+        paymentStatus: true,
+        paymentId: true,
+        status: true,
+        primaryPlaceOfStay: true,
+        proofOfAccommodationUrl: true,
+        relocationInterest: true,
+        createdAt: true,
+        // updatedAt: true,
+        selectedSites: {
+          include: {
+            tourSite: true,
+          },
+        },
+      },
+    });
+
     const durationDays = itinerary.totalDays - 2;
     const price = durationDays <= 4 ? 350 : 500;
 
     return res.status(200).json({
       success: true,
       message: "Itinerary retrieved successfully.",
-      data: itinerary,
+      data: {
+        itinerary,
+        request: tourRequest,
+      },
       price: itinerary.isFeasible ? price : null,
     });
   } catch (error) {
