@@ -162,6 +162,30 @@ router.post(
  *     responses:
  *       200:
  *         description: Itinerary retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     itinerary:
+ *                       type: object
+ *                       description: Generated itinerary (only after payment success)
+ *                     request:
+ *                       type: object
+ *                       description: Tour request data used to generate the itinerary
+ *                 price:
+ *                   type: number
+ *                   description: Feasible itinerary price (before payment)
+ *                 error:
+ *                   type: string
+ *               required: [success, message, data, price]
  *       403:
  *         description: PAYMENT_REQUIRED (initiate and complete payment first)
  *       404:
