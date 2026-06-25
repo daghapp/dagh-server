@@ -19,6 +19,8 @@ import { router as AdminRoutes } from './routes/admin.routes.js';
 import { router as MessageRoutes } from './routes/message.routes.js';
 import { router as VisaRoutes } from './routes/visa.routes.js';
 import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
+import { router as ProviderRoutes } from './routes/provider.routes.js'
+
 import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
 import { setupSocketHandlers } from './sockets/socketHandlers.js';
 import { checkPendingPaymentsJob } from './jobs/check-pending-payments.js';
@@ -78,6 +80,8 @@ app.get("/health", (_req, res) => {
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use("/itinerary", ItineraryGenRoutes);
+app.use("/providers", ProviderRoutes);
+
 
 app.use('/*path', (req: express.Request, res: express.Response) => {
   res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });

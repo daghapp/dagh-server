@@ -185,7 +185,8 @@ router.post(
  *                   description: Feasible itinerary price (before payment)
  *                 error:
  *                   type: string
- *               required: [success, message, data, price]
+ *              required: [success, message, data, price]
+ *               
  *       403:
  *         description: PAYMENT_REQUIRED (initiate and complete payment first)
  *       404:
