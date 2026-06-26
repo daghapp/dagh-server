@@ -65,6 +65,16 @@ router.get("/sites", getTourSites);
  *                 nullable: true
  *               relocationInterest:
  *                 type: boolean
+ *               apartmentType:
+ *                 type: string
+ *                 enum: [HOTEL, GUESTHOUSE, AIRBNB, APARTMENTS]
+ *                 nullable: true
+ *               transportType:
+ *                 type: string
+ *                 enum: [TROTRO, UBER, RENTED_VEHICLE, NONE]
+ *                 nullable: true
+ *               companionInterest:
+ *                 type: boolean
  *             required: [tourSiteIds, tourType, durationDays]
  *     responses:
  *       201:
@@ -185,7 +195,7 @@ router.post(
  *                   description: Feasible itinerary price (before payment)
  *                 error:
  *                   type: string
- *              required: [success, message, data, price]
+ *               required: [success, message, data, price]
  *               
  *       403:
  *         description: PAYMENT_REQUIRED (initiate and complete payment first)

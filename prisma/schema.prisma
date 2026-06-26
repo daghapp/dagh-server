@@ -530,6 +530,10 @@ model TourRequest {
   relocationInterest      Boolean       @default(false) // saved, not acted on yet
   status                  RequestStatus @default(PENDING)
 
+  apartmentType      ApartmentType?
+  transportType      TransportType?
+  companionInterest  Boolean         @default(false)
+
   paymentId     String?       @unique
   paymentStatus PaymentStatus @default(INITIALIZED)
 
@@ -541,6 +545,7 @@ model TourRequest {
 
   @@map("tour_requests")
 }
+
 
 // ─────────────────────────────────────────
 // JUNCTION — which sites the user selected

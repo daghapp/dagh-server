@@ -26,7 +26,18 @@ export const createTourRequestSchema = z.object({
     .optional(),
 
   relocationInterest: z.boolean().optional().default(false),
+
+  apartmentType: z
+    .enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"])
+    .optional(),
+
+  transportType: z
+    .enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"])
+    .optional(),
+
+  companionInterest: z.boolean().optional().default(false),
 });
+
 
 // ─────────────────────────────────────────
 // LOCAL ENUMS (mirror Prisma enums)

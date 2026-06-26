@@ -54,6 +54,9 @@ export async function createTourRequest(
     primaryPlaceOfStay,
     proofOfAccommodationUrl,
     relocationInterest,
+    apartmentType,
+    transportType,
+    companionInterest,
   } = input;
 
   // ── Step 1: Fetch all selected tour sites from DB ──────────────────────────
@@ -107,7 +110,11 @@ export async function createTourRequest(
       primaryPlaceOfStay: primaryPlaceOfStay ?? "East Legon, Accra",
       proofOfAccommodationUrl,
       relocationInterest: relocationInterest ?? false,
+      apartmentType: apartmentType ?? undefined,
+      transportType: transportType ?? undefined,
+      companionInterest: companionInterest ?? false,
       status: feasibility.feasible ? "CONFIRMED" : "FAILED",
+
       selectedSites: {
         create: tourSiteIds.map((id: string) => ({ tourSiteId: id })),
       },
