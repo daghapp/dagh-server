@@ -191,8 +191,18 @@ export async function getItineraryByRequestId(
   });
 
   if (existing) {
-    return mapItineraryToResponse(existing);
+    const availableParams = {
+      apartmentType: (tourRequest as any).apartmentType ?? null,
+      transportType: (tourRequest as any).transportType ?? null,
+      itinerarySites: tourRequest.selectedSites.map((rs: any) => rs.tourSite).map((s: any) => ({
+        id: s.id,
+        latitude: s.latitude,
+        longitude: s.longitude,
+      })),
+    };
+    return mapItineraryToResponseWithRecommendations(existing, availableParams);
   }
+
 
   // Otherwise generate itinerary lazily now that payment succeeded
   const rawSites = tourRequest.selectedSites.map((rs) => rs.tourSite);
@@ -268,8 +278,21 @@ export async function getItineraryByRequestId(
     },
   });
 
-  return mapItineraryToResponse(itinerary);
+  const availableParams = {
+    apartmentType: (tourRequest as any)?.apartmentType ?? null,
+    transportType: (tourRequest as any)?.transportType ?? null,
+    itinerarySites: tourRequest.selectedSites
+      .map((rs: any) => rs.tourSite)
+      .map((s: any) => ({
+        id: s.id,
+        latitude: s.latitude,
+        longitude: s.longitude,
+      })),
+  };
+
+  return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC: Get all itinerary requests for the authenticated user
@@ -407,8 +430,17 @@ function buildDayGroups(sortedSites: SiteWithCoords[]): DayGroup[] {
 // Days 2..N-1 = TOURING    (up to 3 sites per day, closest to furthest)
 // Day N     = DEPARTURE    (no sites)
 // ─────────────────────────────────────────────────────────────────────────────
-function mapItineraryToResponse(itinerary: any): ItineraryResponse {
-  // itinerary.days -> days[] in response
+async function mapItineraryToResponseWithRecommendations(
+  itinerary: any,
+  params: {
+    apartmentType: string | null;
+    transportType: string | null;
+    itinerarySites: Array<{ id: string; latitude: number; longitude: number; region?: string }>;
+  }
+): Promise<ItineraryResponse> {
+  const available_hotels = await getAvailableHotels(params.apartmentType, params.itinerarySites);
+  const available_transports = await getAvailableTransports(params.transportType, params.itinerarySites);
+
   return {
     id: itinerary.id,
     tourRequestId: itinerary.tourRequestId,
@@ -439,8 +471,107 @@ function mapItineraryToResponse(itinerary: any): ItineraryResponse {
         },
       })),
     })),
+
+    available_hotels,
+    available_transports,
   };
 }
+
+async function getAvailableHotels(
+  apartmentType: string | null,
+  itinerarySites: Array<{ id: string; latitude: number; longitude: number }>
+) {
+  // Only search among providers that have a hotel row.
+  // If apartmentType is provided, match that. Otherwise match any apartment_type.
+  const hotels = await prisma.provider.findMany({
+    where: {
+      verification_status: true,
+      hotel: { isNot: null },
+    },
+    include: { hotel: true },
+  });
+
+  const filtered = hotels
+    .map((p) => {
+      const hotelRow = p.hotel;
+      if (!hotelRow) return null;
+
+      // Find closest distance from provider hotel to ANY itinerary site.
+      const distanceKm = Math.min(
+        ...itinerarySites.map((s) =>
+          haversineDistance(
+            { latitude: s.latitude, longitude: s.longitude },
+            { latitude: p.location_lat, longitude: p.location_lng }
+          )
+        )
+      );
+
+      // Filter by apartmentType when provided.
+      if (apartmentType && hotelRow.apartment_type !== apartmentType) {
+        return null;
+      }
+
+      return {
+        id: p.provider_id,
+        name: p.display_name,
+        latitude: p.location_lat,
+        longitude: p.location_lng,
+        region: undefined,
+        distanceKm,
+        imageUrl: undefined as string | null | undefined,
+      };
+    })
+    .filter(Boolean) as any[];
+
+  return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);
+}
+
+async function getAvailableTransports(
+  transportType: string | null,
+  itinerarySites: Array<{ id: string; latitude: number; longitude: number }>
+) {
+  const cars = await prisma.provider.findMany({
+    where: {
+      verification_status: true,
+      car_rental: { isNot: null },
+    },
+    include: { car_rental: true },
+  });
+
+  const filtered = cars
+    .map((p) => {
+      const carRow = p.car_rental;
+      if (!carRow) return null;
+
+      if (transportType && carRow.transport_type !== transportType) {
+        return null;
+      }
+
+      const distanceKm = Math.min(
+        ...itinerarySites.map((s) =>
+          haversineDistance(
+            { latitude: s.latitude, longitude: s.longitude },
+            { latitude: p.location_lat, longitude: p.location_lng }
+          )
+        )
+      );
+
+      return {
+        id: p.provider_id,
+        name: p.display_name,
+        latitude: p.location_lat,
+        longitude: p.location_lng,
+        region: undefined,
+        distanceKm,
+        imageUrl: undefined as string | null | undefined,
+      };
+    })
+    .filter(Boolean) as any[];
+
+  // If transportType is null, return top 3 anyway.
+  return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);
+}
+
 
 function buildItineraryDaysPayload(
   dayGroups: DayGroup[],

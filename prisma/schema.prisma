@@ -41,79 +41,91 @@ model User {
 }
 
 model UserProfile {
-  id                     String    @id @default(uuid())
-  userId                 String    @unique
-  username               String?
-  firstName              String?
-  lastName               String?
-  dateOfBirth            DateTime?
-  gender                 Gender?
-  nationality            String?
-  residenceCountry       String?
-  residenceCity          String?
-  residenceState         String?
-  profilePhotoUrl        String?
-  profilePhotoUploadedAt DateTime?
-  bio                    String?
-  languages              String[]
-  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                           String    @id @default(uuid())
+  userId                       String    @unique
+
+  // Public profile fields
+  profileUrl                   String?
+  phoneNumber                  String?
+
+
+  // Bio profile image
+  bio_profile_image_url       String?
+  bio_profile_image_uploaded_at DateTime?
+
+  // Bio document uploads
+  bio_document_urls           String[]
+  bio_document_type           BioDocumentType?
+  bio_document_uploaded_at    DateTime?
+
+  // Opposite relation: one profile -> one ProfileVerification
+  profileVerification          ProfileVerification?
+
+  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
 }
+
+
+enum BioDocumentType {
+  PASSPORT
+  GHANA_CARD
+}
+
 
 model UserVerification {
   id                 String              @id @default(uuid())
   userId             String              @unique
   isVerified         Boolean             @default(false)
   verificationLevel  VerificationLevel?
-  backgroundCheck    BackgroundCheck?
-  governmentId       GovernmentId?
-  selfieVerification SelfieVerification?
+  //backgroundCheck    BackgroundCheck?
+ // governmentId       GovernmentId?
+  //selfieVerification SelfieVerification?
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_verifications")
 }
 
-model GovernmentId {
-  id             String           @id @default(uuid())
-  verificationId String           @unique
-  idType         String?
-  number         String?          @unique
-  country        String?
-  expiryDate     DateTime?
-  frontImageUrl  String?
-  backImageUrl   String?
-  uploadedAt     DateTime?
-  verifiedAt     DateTime?
-  verifiedBy     String?
-  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+//model GovernmentId {
+//  id             String           @id @default(uuid())
+//  verificationId String           @unique
+//  idType         String?
+//  number         String?          @unique
+//  country        String?
+//  expiryDate     DateTime?
+//  frontImageUrl  String?
+//  backImageUrl   String?
+//  uploadedAt     DateTime?
+//  verifiedAt     DateTime?
+//  verifiedBy     String?
+//  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+//
+//  @@map("government_ids")
+//}
 
-  @@map("government_ids")
-}
+//model SelfieVerification {
+//  id             String           @id @default(uuid())
+//  verificationId String           @unique
+//  imageUrl       String?
+//  matchScore     Int?
+//  verifiedAt     DateTime?
+//  aiProvider     String?
+//  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+//
+//  @@map("selfie_verifications")
+//}
 
-model SelfieVerification {
-  id             String           @id @default(uuid())
-  verificationId String           @unique
-  imageUrl       String?
-  matchScore     Int?
-  verifiedAt     DateTime?
-  aiProvider     String?
-  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-
-  @@map("selfie_verifications")
-}
-
-model BackgroundCheck {
-  id             String           @id @default(uuid())
-  verificationId String           @unique
-  status         String?
-  provider       String?
-  completedAt    DateTime?
-  reportUrl      String?
-  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-
-  @@map("background_checks")
-}
+//model BackgroundCheck {
+//  id             String           @id @default(uuid())
+//  verificationId String           @unique
+//  status         String?
+//  provider       String?
+//  completedAt    DateTime?
+//  reportUrl      String?
+//  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+//
+//  @@map("background_checks")
+//}
 
 model otp {
   id        String   @id @default(uuid())
@@ -679,10 +691,38 @@ enum Gender {
 }
 
 enum VerificationLevel {
-  BASIC
-  ADVANCED
-  FULL
+  // 1) Phone number verification
+  PHONE_NUMBER_VERIFICATION
+
+  // 2) IP address check
+  IP_ADDRESS_CHECK
+
+  // 3) Bio/profile image check
+  BIO_PROFILE_IMAGE_CHECK
+
+  // 4) Document check
+  DOCUMENT_CHECK
 }
+
+model ProfileVerification {
+  id                      String   @id @default(uuid())
+  userProfileId          String   @unique
+  userProfile            UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  isVerifided             Boolean  @default(false)
+  lastUpdatedAt          DateTime @updatedAt
+
+  phone_number_verified   Boolean   @default(false)
+  ip_address_verification  Boolean   @default(false)
+  bio_profile_verification Boolean   @default(false)
+  document_verificaiton   Boolean   @default(false)
+  verification_message     String?
+
+  @@map("profile_verification")
+}
+
+
+
 
 enum PaymentStatus {
   INITIALIZED

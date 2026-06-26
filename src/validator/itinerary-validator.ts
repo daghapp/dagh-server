@@ -86,6 +86,16 @@ export interface ItineraryDayResponse {
   sites: ItineraryDaySiteResponse[];
 }
 
+export interface ItineraryLocationRecommendation {
+  id: string;
+  name?: string;
+  latitude?: number;
+  longitude?: number;
+  region?: string;
+  distanceKm?: number;
+  imageUrl?: string | null;
+}
+
 export interface ItineraryResponse {
   id: string;
   tourRequestId: string;
@@ -93,7 +103,12 @@ export interface ItineraryResponse {
   feasibilityError: string | null;
   totalDays: number;
   days: ItineraryDayResponse[];
+
+  // Recommendations derived from the user's selected accommodation/transport preferences
+  available_hotels: ItineraryLocationRecommendation[];
+  available_transports: ItineraryLocationRecommendation[];
 }
+
 
 export interface CreateTourResponse {
   success: boolean;
