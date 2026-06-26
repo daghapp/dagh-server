@@ -16,7 +16,7 @@ import { router as PaymentRoutes } from './routes/payment.routes.js';
 import { router as TourRoutes } from './routes/tour.routes.js';
 import { router as ProfileRoutes } from './routes/profile-routes.routes.js';
 import { router as AdminRoutes } from './routes/admin.routes.js';
-import { router as MessageRoutes } from './routes/message.routes.js';
+// import { router as MessageRoutes } from './routes/message.routes.js';
 import { router as VisaRoutes } from './routes/visa.routes.js';
 import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
 import { router as ProviderRoutes } from './routes/provider.routes.js'
@@ -71,7 +71,7 @@ app.use('/payment', PaymentRoutes);
 app.use('/tours', TourRoutes);
 app.use('/profile', ProfileRoutes);
 app.use('/admin', AdminRoutes);
-app.use('/api/messages', MessageRoutes);
+// app.use('/api/messages', MessageRoutes);
 app.use("/visa-requests", VisaRoutes)
 // ── Health check ────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
