@@ -76,7 +76,7 @@ export const getConversations = async (req: Request, res: Response) => {
         })
         const profile = await prisma.userProfile.findUnique({
           where: { userId: otherParticipantId },
-          select: { profilePhotoUrl: true, bio: true }
+          select: { profileUrl: true, bio: true }
         })
 
         return { ...conv, otherUser, profile }
