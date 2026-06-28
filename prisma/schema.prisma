@@ -852,15 +852,6 @@ model Hotel {
 
   apartment_type     ApartmentType?
 
-  // e.g. "hotel", "guesthouse", "apartment"
-  accommodation_type String
-
-  has_wifi               Boolean  @default(false)
-  has_backup_power       Boolean  @default(false)
-  has_security_staff     Boolean  @default(false)
-  distance_to_airport_km Float
-  distance_to_business_km Float
-  check_in_instructions  String   @db.Text
   base_price_per_night   Float
   provider               Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
 }

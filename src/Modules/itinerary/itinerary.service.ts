@@ -147,7 +147,7 @@ export async function createTourRequest(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC: Get a previously generated itinerary by tour request ID
+// PUBLIC: Get a previously generated itinerary or generate if payment is made using tour request ID
 // ─────────────────────────────────────────────────────────────────────────────
 export async function getItineraryByRequestId(
   tourRequestId: string
@@ -159,6 +159,7 @@ export async function getItineraryByRequestId(
       id: true,
       durationDays: true,
       paymentStatus: true,
+      relocationInterest: true,
       selectedSites: {
         include: {
           tourSite: true,
@@ -194,11 +195,14 @@ export async function getItineraryByRequestId(
     const availableParams = {
       apartmentType: (tourRequest as any).apartmentType ?? null,
       transportType: (tourRequest as any).transportType ?? null,
-      itinerarySites: tourRequest.selectedSites.map((rs: any) => rs.tourSite).map((s: any) => ({
-        id: s.id,
-        latitude: s.latitude,
-        longitude: s.longitude,
-      })),
+      itinerarySites: tourRequest.selectedSites
+        .map((rs: any) => rs.tourSite)
+        .map((s: any) => ({
+          id: s.id,
+          latitude: s.latitude,
+          longitude: s.longitude,
+        })),
+      relocationInterest: !!(tourRequest as any).relocationInterest,
     };
     return mapItineraryToResponseWithRecommendations(existing, availableParams);
   }
@@ -278,7 +282,7 @@ export async function getItineraryByRequestId(
     },
   });
 
-  const availableParams = {
+const availableParams = {
     apartmentType: (tourRequest as any)?.apartmentType ?? null,
     transportType: (tourRequest as any)?.transportType ?? null,
     itinerarySites: tourRequest.selectedSites
@@ -288,6 +292,7 @@ export async function getItineraryByRequestId(
         latitude: s.latitude,
         longitude: s.longitude,
       })),
+    relocationInterest: !!(tourRequest as any)?.relocationInterest,
   };
 
   return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
@@ -436,10 +441,30 @@ async function mapItineraryToResponseWithRecommendations(
     apartmentType: string | null;
     transportType: string | null;
     itinerarySites: Array<{ id: string; latitude: number; longitude: number; region?: string }>;
+    relocationInterest: boolean;
   }
 ): Promise<ItineraryResponse> {
   const available_hotels = await getAvailableHotels(params.apartmentType, params.itinerarySites);
   const available_transports = await getAvailableTransports(params.transportType, params.itinerarySites);
+
+  // If relocationInterest is enabled, attach availableAccomodation per itinerary touring site.
+  // We resolve the closest hotel/provider within 30km to each site.
+  const shouldAttachRelocation = !!params.relocationInterest;
+
+  let bestRelocationsByDaySite: Record<string, any> = {};
+      console.log("attach relocation ", shouldAttachRelocation);
+  if (shouldAttachRelocation) {
+    const locationsToResolve = params.itinerarySites;
+    for (const site of locationsToResolve) {
+      console.log("site ", site);
+      bestRelocationsByDaySite[site.id] = await getClosestAccommodationWithin30km(
+        params.apartmentType,
+        site.latitude,
+        site.longitude,
+        /*maxKm*/ 30,
+      );
+    }
+  }
 
   return {
     id: itinerary.id,
@@ -450,32 +475,41 @@ async function mapItineraryToResponseWithRecommendations(
     days: (itinerary.days ?? []).map((day: any) => ({
       dayNumber: day.dayNumber,
       dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
-      sites: (day.sites ?? []).map((ds: any) => ({
-        visitOrder: ds.visitOrder,
-        site: {
-          id: ds.tourSite.id,
-          name: ds.tourSite.name,
-          region: ds.tourSite.region,
-          latitude: ds.tourSite.latitude,
-          longitude: ds.tourSite.longitude,
-          description: ds.tourSite.description,
-          imageUrl: ds.tourSite.imageUrl,
-          category: ds.tourSite.category as
-            | "NATURE"
-            | "CULTURAL"
-            | "HISTORICAL"
-            | "BEACH"
-            | "WILDLIFE"
-            | "RELIGIOUS"
-            | "SCENIC",
-        },
-      })),
+      sites: (day.sites ?? []).map((ds: any) => {
+        const touringSiteId = ds.tourSite?.id ?? ds.tourSiteId;
+        const availableAccomodation = shouldAttachRelocation
+          ? bestRelocationsByDaySite[String(touringSiteId)] ?? null
+          : null;
+
+        return {
+          visitOrder: ds.visitOrder,
+          site: {
+            id: ds.tourSite.id,
+            name: ds.tourSite.name,
+            region: ds.tourSite.region,
+            latitude: ds.tourSite.latitude,
+            longitude: ds.tourSite.longitude,
+            description: ds.tourSite.description,
+            imageUrl: ds.tourSite.imageUrl,
+            category: ds.tourSite.category as
+              | "NATURE"
+              | "CULTURAL"
+              | "HISTORICAL"
+              | "BEACH"
+              | "WILDLIFE"
+              | "RELIGIOUS"
+              | "SCENIC",
+          },
+          availableAccomodation,
+        };
+      }),
     })),
 
     available_hotels,
     available_transports,
   };
 }
+
 
 async function getAvailableHotels(
   apartmentType: string | null,
@@ -526,10 +560,59 @@ async function getAvailableHotels(
   return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);
 }
 
+async function getClosestAccommodationWithin30km(
+  apartmentType: string | null,
+  siteLatitude: number,
+  siteLongitude: number,
+  maxKm: number,
+) {
+  console.log("got here ")
+  const hotels = await prisma.provider.findMany({
+    where: {
+      verification_status: true,
+      hotel: { isNot: null },
+    },
+    include: { hotel: true },
+  });
+
+  console.log("the hotels ", hotels);
+
+  const within = hotels
+    .map((p) => {
+      const hotelRow = p.hotel;
+      if (!hotelRow) return null;
+      if (apartmentType && hotelRow.apartment_type !== apartmentType) return null;
+
+      const distanceKm = haversineDistance(
+        { latitude: siteLatitude, longitude: siteLongitude },
+        { latitude: p.location_lat, longitude: p.location_lng },
+      );
+
+      console.log("distance ", distanceKm)
+
+      if (distanceKm > maxKm) return null;
+
+      return {
+        id: p.provider_id,
+        name: p.display_name,
+        latitude: p.location_lat,
+        longitude: p.location_lng,
+        apartmentType: hotelRow.apartment_type,
+        distanceKm,
+      };
+    })
+    .filter(Boolean) as any[];
+
+  if (!within.length) return null;
+  within.sort((a, b) => a.distanceKm - b.distanceKm);
+  return within[0];
+}
+
 async function getAvailableTransports(
   transportType: string | null,
   itinerarySites: Array<{ id: string; latitude: number; longitude: number }>
 ) {
+
   const cars = await prisma.provider.findMany({
     where: {
       verification_status: true,
@@ -621,7 +704,7 @@ function buildItineraryDaysPayload(
     relocationRequired: false,
   });
 
-  console.log("days ", {days})
+  // console.log("days ", {days})
 
   return days;
 }
