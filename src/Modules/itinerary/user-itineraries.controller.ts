@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import { getItineraryByRequestId } from "./itinerary.service.js";
+
 
 export async function getUserItineraries(req: Request, res: Response) {
   try {
@@ -9,34 +11,27 @@ export async function getUserItineraries(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: "Unauthorized", data: null });
     }
 
-    const itineraries = await prisma.itinerary.findMany({
-      orderBy: { createdAt: "desc" },
+    // Load all tour requests for the user that are paid.
+    // We then lazily generate itinerary per request if it doesn't exist.
+    const paidRequests = await prisma.tourRequest.findMany({
       where: {
-        tourRequest: {
-          userId,
-        },
+        userId,
+        paymentStatus: "SUCCESS",
       },
-      include: {
-        tourRequest: {
-          select: {
-            id: true,
-            durationDays: true,
-            paymentStatus: true,
-          },
-        },
-        days: {
-          orderBy: { dayNumber: "asc" },
-          include: {
-            sites: {
-              orderBy: { visitOrder: "asc" },
-              include: {
-                tourSite: true,
-              },
-            },
-          },
-        },
+      select: {
+        id: true,
+        paymentStatus: true,
       },
+      orderBy: { createdAt: "desc" },
     });
+
+    const itineraries = await Promise.all(
+      paidRequests.map(async (r) => {
+        // getItineraryByRequestId handles: request-not-found, payment gating,
+        // existing itinerary retrieval OR lazy generation.
+        return getItineraryByRequestId(r.id);
+      }),
+    );
 
     return res.status(200).json({
       success: true,
@@ -52,4 +47,5 @@ export async function getUserItineraries(req: Request, res: Response) {
     });
   }
 }
+
 
