@@ -115,7 +115,7 @@ export async function getItinerary(req: Request, res: Response) {
         paymentId: true,
         status: true,
         primaryPlaceOfStay: true,
-        proofOfAccommodationUrl: true,
+        // proofOfAccommodationUrl: true,
         relocationInterest: true,
         createdAt: true,
         // updatedAt: true,
