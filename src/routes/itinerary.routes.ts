@@ -56,13 +56,6 @@ router.get("/sites", getTourSites);
  *                 type: integer
  *                 minimum: 1
  *                 maximum: 30
- *               primaryPlaceOfStay:
- *                 type: string
- *                 nullable: true
- *               proofOfAccommodationUrl:
- *                 type: string
- *                 format: uri
- *                 nullable: true
  *               relocationInterest:
  *                 type: boolean
  *               apartmentType:
