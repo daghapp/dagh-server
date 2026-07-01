@@ -52,7 +52,6 @@ export async function createTourRequest(
     tourType,
     durationDays,
     primaryPlaceOfStay,
-    proofOfAccommodationUrl,
     relocationInterest,
     apartmentType,
     transportType,
@@ -108,7 +107,6 @@ export async function createTourRequest(
       tourType,
       durationDays,
       primaryPlaceOfStay: primaryPlaceOfStay ?? "East Legon, Accra",
-      proofOfAccommodationUrl,
       relocationInterest: relocationInterest ?? false,
       apartmentType: apartmentType ?? undefined,
       transportType: transportType ?? undefined,
@@ -295,7 +293,7 @@ const availableParams = {
     relocationInterest: !!(tourRequest as any)?.relocationInterest,
   };
 
-  return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
+    return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
 }
 
 
@@ -472,6 +470,7 @@ async function mapItineraryToResponseWithRecommendations(
     isFeasible: itinerary.isFeasible,
     feasibilityError: itinerary.feasibilityError,
     totalDays: itinerary.totalDays,
+    dateCreated: itinerary.createdAt,
     days: (itinerary.days ?? []).map((day: any) => ({
       dayNumber: day.dayNumber,
       dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",

@@ -20,10 +20,7 @@ export const createTourRequestSchema = z.object({
 
   primaryPlaceOfStay: z.string().optional().default("East Legon, Accra"),
 
-  proofOfAccommodationUrl: z
-    .string()
-    .url({ message: "Proof of accommodation must be a valid URL" })
-    .optional(),
+
 
   relocationInterest: z.boolean().optional().default(false),
 
@@ -56,8 +53,8 @@ export interface CreateTourRequestBody {
   tourType: TourType;
   durationDays: number;            // touring days only
   primaryPlaceOfStay?: string;     // defaults to East Legon
-  proofOfAccommodationUrl?: string;
   relocationInterest?: boolean;
+
 }
 
 // ─────────────────────────────────────────
@@ -102,12 +99,14 @@ export interface ItineraryResponse {
   isFeasible: boolean;
   feasibilityError: string | null;
   totalDays: number;
+  dateCreated: Date;
   days: ItineraryDayResponse[];
 
   // Recommendations derived from the user's selected accommodation/transport preferences
   available_hotels: ItineraryLocationRecommendation[];
   available_transports: ItineraryLocationRecommendation[];
 }
+
 
 
 export interface CreateTourResponse {
