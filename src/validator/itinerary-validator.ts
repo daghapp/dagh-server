@@ -18,11 +18,8 @@ export const createTourRequestSchema = z.object({
     .min(1, { message: "Tour must be at least 1 touring day" })
     .max(30, { message: "Tour cannot exceed 30 touring days" }),
 
-  primaryPlaceOfStay: z.string().optional().default("East Legon, Accra"),
-
-
-
   relocationInterest: z.boolean().optional().default(false),
+
 
   apartmentType: z
     .enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"])
@@ -52,8 +49,8 @@ export interface CreateTourRequestBody {
   tourSiteIds: string[];
   tourType: TourType;
   durationDays: number;            // touring days only
-  primaryPlaceOfStay?: string;     // defaults to East Legon
   relocationInterest?: boolean;
+
 
 }
 

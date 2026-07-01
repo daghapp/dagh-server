@@ -537,8 +537,8 @@ model TourRequest {
   userId                   String
   tourType                TourType
   durationDays            Int           // touring days only (excl. prep + departure)
-  primaryPlaceOfStay      String        @default("East Legon, Accra")
   relocationInterest      Boolean       @default(false) // saved, not acted on yet
+
 
   status                  RequestStatus @default(PENDING)
 

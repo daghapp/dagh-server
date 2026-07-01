@@ -51,8 +51,8 @@ export async function createTourRequest(
     tourSiteIds,
     tourType,
     durationDays,
-    primaryPlaceOfStay,
     relocationInterest,
+
     apartmentType,
     transportType,
     companionInterest,
@@ -106,9 +106,10 @@ export async function createTourRequest(
       userId: userId,
       tourType,
       durationDays,
-      primaryPlaceOfStay: primaryPlaceOfStay ?? "East Legon, Accra",
       relocationInterest: relocationInterest ?? false,
+
       apartmentType: apartmentType ?? undefined,
+
       transportType: transportType ?? undefined,
       companionInterest: companionInterest ?? false,
       status: feasibility.feasible ? "CONFIRMED" : "FAILED",

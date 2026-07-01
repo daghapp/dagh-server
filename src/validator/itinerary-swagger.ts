@@ -49,9 +49,8 @@ export const itinerarySchemas = {
       },
       tourType: { type: "string", enum: ["GROUP", "SINGLE"] },
       durationDays: { type: "integer", minimum: 1, maximum: 30 },
-      primaryPlaceOfStay: { type: "string", nullable: true },
-      proofOfAccommodationUrl: { type: "string", format: "uri", nullable: true },
       relocationInterest: { type: "boolean", default: false },
+
     },
   },
 
@@ -80,6 +79,7 @@ export const itinerarySchemas = {
       isFeasible: { type: "boolean" },
       feasibilityError: { type: "string", nullable: true },
       totalDays: { type: "integer" },
+      dateCreated: { type: "string", format: "date-time" },
       days: { type: "array", items: { $ref: "#/components/schemas/ItineraryDay" } },
     },
   },
