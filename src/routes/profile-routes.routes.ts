@@ -4,15 +4,20 @@ import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 // import { profileSchema, updateProfileSchema } from "../validator/index.js";
 
-// import { ProfileController } from "../Modules/profile-managemnt/profile.controller.js";
-import { ProfilePhoneVerificationController } from "../Modules/profile-managemnt/profile.phone-verification.controller.js";
+import { ProfileVerificationController } from "../Modules/profile-managemnt/profile.verification.controller.js";
+import { initProfile } from "../Modules/profile-managemnt/profile.init.controller.js";
+
 import {
   sendPhoneOtpSchema,
   verifyPhoneOtpSchema,
 } from "../validator/profile-phone-verification-validator.js";
 
-// const profileController = new ProfileController();
-const profilePhoneVerificationController = new ProfilePhoneVerificationController();
+
+
+const profileVerificationController = new ProfileVerificationController();
+
+
+
 /**
  * @swagger
  * /profile/phone/send-otp:
@@ -43,10 +48,11 @@ router.post(
   "/phone/send-otp",
   protectedRoute,
   validate(sendPhoneOtpSchema),
-  profilePhoneVerificationController.sendOtpForPhone.bind(
-    profilePhoneVerificationController,
+  profileVerificationController.sendPhoneOtpForVerification.bind(
+    profileVerificationController,
   ),
 );
+
 
 /**
  * @swagger
@@ -83,10 +89,34 @@ router.post(
   "/phone/verify-otp",
   protectedRoute,
   validate(verifyPhoneOtpSchema),
-  profilePhoneVerificationController.verifyOtpForPhone.bind(
-    profilePhoneVerificationController,
+  profileVerificationController.verifyPhoneOtpForVerification.bind(
+    profileVerificationController,
   ),
 );
+
+// ─────────────────────────────────────────
+// POST /profile/init
+// ─────────────────────────────────────────
+/**
+ * @swagger
+ * /profile/init:
+ *   post:
+ *     summary: Initialize user profile
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile initialized (or already existed)
+ *       401:
+ *         description: Unauthorized
+ */
+router.post(
+  "/init",
+  protectedRoute,
+  async (req, res) => initProfile(req, res),
+);
+
 
 export  {router};
 

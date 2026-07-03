@@ -7,7 +7,11 @@ import { sendOtp } from "../../helpers/otp.js";
 // We still generate an OTP record to keep behavior consistent.
 const HARDCODED_OTP = "123456";
 
+// Deprecated: use ProfileVerificationController (profile.verification.controller.ts)
+// Keeping file for backward compatibility, but not used by routes.
+
 export class ProfilePhoneVerificationController {
+
   /**
    * POST /profile/phone/send-otp
    * - sets/uses the phone number from UserProfile.phoneNumber
@@ -27,13 +31,35 @@ export class ProfilePhoneVerificationController {
         return res.status(404).json({ success: false, message: "Profile not found", data: null });
       }
 
-      // In this module, we only validate OTP against the hardcoded value `123456`.
-      // We store verification result on ProfileVerification linked to this user profile.
+      // We take phone number from request first (if provided), otherwise from the profile.
+      // Validator guarantees the OTP code format, but we still validate the phone string here.
+      const phoneNumberFromRequest = (body as any).phoneNumber as string | undefined;
+      const phoneNumberFromProfile = (profile as any).phoneNumber ?? (profile as any).user?.phoneNumber ?? null;
+      const phoneNumber = phoneNumberFromRequest ?? phoneNumberFromProfile;
 
-      const phoneNumber = (profile as any).phoneNumber ?? (profile as any).user?.phoneNumber ?? null;
       if (!phoneNumber) {
         return res.status(400).json({ success: false, message: "Phone number is required", data: null });
       }
+
+      // Basic phone validation: digits only, length 10..15 (keeps it generic for GH/intl)
+      const phoneNormalized = String(phoneNumber).trim();
+      const phoneDigits = phoneNormalized.replace(/\s+/g, "");
+      if (!/^\d{10,15}$/.test(phoneDigits)) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone number must be a valid phone number",
+          data: null,
+        });
+      }
+
+      // Save (or update) phone number on profile so subsequent OTP verify uses it.
+      await prisma.userProfile.update({
+        where: { userId: user.id },
+        data: {
+          phoneNumber: phoneDigits,
+        },
+      });
+
 
 
       // Create an OTP record to keep behavior consistent with the existing OTP table.
