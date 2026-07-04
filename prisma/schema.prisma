@@ -532,6 +532,17 @@ model TourSite {
 // ─────────────────────────────────────────
 // TOUR REQUEST — submitted by user from frontend
 // ─────────────────────────────────────────
+enum Ethnicity {
+  AFRICAN
+  ASIAN
+  EUROPEAN
+  NORTH_AMERICAN
+  SOUTH_AMERICAN
+  OCEANIAN
+  MIDDLE_EASTERN
+  OTHER
+}
+
 model TourRequest {
   id                      String        @id @default(uuid())
   userId                   String
@@ -545,6 +556,8 @@ model TourRequest {
   apartmentType      ApartmentType?
   transportType      TransportType?
   companionInterest  Boolean         @default(false)
+  ethnicity          Ethnicity?
+
 
   paymentId     String?       @unique
   paymentStatus PaymentStatus @default(INITIALIZED)
