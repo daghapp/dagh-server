@@ -6,10 +6,12 @@ const router = express.Router();
 
 /**
  * @swagger
- * /profile/validation-step/status:
+ * /verification/validation-step/status:
  *   get:
  *     summary: Get validation status for a validation step (or the current step)
- *     tags: [Profile]
+ *     tags: [Verification]
+
+
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -33,6 +35,7 @@ router.get(
   protectedRoute,
   getValidationStepStatus,
 );
+
 
 export { router };
 

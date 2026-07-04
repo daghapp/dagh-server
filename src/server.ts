@@ -14,7 +14,9 @@ import { router as FacebookRoutes } from './routes/facebook-auth.routes.js';
 import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
 import { router as PaymentRoutes } from './routes/payment.routes.js';
 import { router as TourRoutes } from './routes/tour.routes.js';
-import { router as ProfileRoutes } from './routes/profile-routes.routes.js';
+import { router as ProfileRoutes } from './routes/profile-routes.routes.js'
+import { router as VerificationRoutes } from './routes/verification.routes.js'
+
 import { router as AdminRoutes } from './routes/admin.routes.js';
 // import { router as MessageRoutes } from './routes/message.routes.js';
 import { router as VisaRoutes } from './routes/visa.routes.js';
@@ -77,10 +79,13 @@ app.use('/upload', ImageUploadRoutes);
 app.use('/payment', PaymentRoutes);
 app.use('/tours', TourRoutes);
 app.use('/profile', ProfileRoutes);
-app.use('/profile', ProfileValidationStepRoutes);
-app.use('/profile', BioProfileUrlRoutes);
-app.use('/profile', BioProfileDocumentRoutes);
+// app.use('/profile', ProfileValidationStepRoutes);
+app.use('/verification', VerificationRoutes);
+app.use('/verification', ProfileValidationStepRoutes);
+
 app.use('/admin', AdminRoutes);
+
+
 
 
 
