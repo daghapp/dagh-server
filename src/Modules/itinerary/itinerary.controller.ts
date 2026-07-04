@@ -6,7 +6,9 @@ import {
   getTourRequestsByUserId,
 } from "./itinerary.service.js";
 import { createTourRequestSchema } from "../../validator/itinerary-validator.js";
+
 import { prisma } from "../../config/index.js";
+
 
 
 // ─────────────────────────────────────────
@@ -118,13 +120,16 @@ export async function getItinerary(req: Request, res: Response) {
         // proofOfAccommodationUrl: true,
 
         relocationInterest: true,
+        ethnicity: true,
         createdAt: true,
+
         // updatedAt: true,
         selectedSites: {
           include: {
             tourSite: true,
           },
         },
+
       },
     });
 

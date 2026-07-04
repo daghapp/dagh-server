@@ -56,7 +56,9 @@ export async function createTourRequest(
     apartmentType,
     transportType,
     companionInterest,
+    ethnicity,
   } = input;
+
 
   // ── Step 1: Fetch all selected tour sites from DB ──────────────────────────
   const rawSites = await prisma.tourSite.findMany({
@@ -112,7 +114,10 @@ export async function createTourRequest(
 
       transportType: transportType ?? undefined,
       companionInterest: companionInterest ?? false,
+      // Persist user preference for later itinerary personalization
+      ethnicity: (ethnicity as any) ?? undefined,
       status: feasibility.feasible ? "CONFIRMED" : "FAILED",
+
 
       selectedSites: {
         create: tourSiteIds.map((id: string) => ({ tourSiteId: id })),

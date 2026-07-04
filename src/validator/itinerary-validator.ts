@@ -20,7 +20,6 @@ export const createTourRequestSchema = z.object({
 
   relocationInterest: z.boolean().optional().default(false),
 
-
   apartmentType: z
     .enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"])
     .optional(),
@@ -30,7 +29,22 @@ export const createTourRequestSchema = z.object({
     .optional(),
 
   companionInterest: z.boolean().optional().default(false),
+
+  // Optional user preference: used downstream for itinerary personalization.
+  ethnicity: z
+    .enum([
+      "AFRICAN",
+      "ASIAN",
+      "EUROPEAN",
+      "NORTH_AMERICAN",
+      "SOUTH_AMERICAN",
+      "OCEANIAN",
+      "MIDDLE_EASTERN",
+      "OTHER",
+    ])
+    .optional(),
 });
+
 
 
 // ─────────────────────────────────────────
