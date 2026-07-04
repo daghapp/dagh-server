@@ -20,6 +20,13 @@ import { router as AdminRoutes } from './routes/admin.routes.js';
 import { router as VisaRoutes } from './routes/visa.routes.js';
 import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
 import { router as ProviderRoutes } from './routes/provider.routes.js'
+import { router as ProfileValidationStepRoutes } from './routes/profile-validation-step.routes.js'
+import { router as BioProfileUrlRoutes } from './routes/bio_profile_url.routes.js'
+import { router as BioProfileDocumentRoutes } from './routes/bio_profile_document_url.routes.js'
+
+
+
+
 
 import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
 import { setupSocketHandlers } from './sockets/socketHandlers.js';
@@ -70,7 +77,13 @@ app.use('/upload', ImageUploadRoutes);
 app.use('/payment', PaymentRoutes);
 app.use('/tours', TourRoutes);
 app.use('/profile', ProfileRoutes);
+app.use('/profile', ProfileValidationStepRoutes);
+app.use('/profile', BioProfileUrlRoutes);
+app.use('/profile', BioProfileDocumentRoutes);
 app.use('/admin', AdminRoutes);
+
+
+
 // app.use('/api/messages', MessageRoutes);
 app.use("/visa-requests", VisaRoutes)
 // ── Health check ────────────────────────────────────────────────────────────

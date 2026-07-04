@@ -716,10 +716,17 @@ model ProfileVerification {
   ip_address_verification  Boolean   @default(false)
   bio_profile_verification Boolean   @default(false)
   document_verificaiton   Boolean   @default(false)
+
+  // Which verification step should be shown/considered "current" for the user.
+  // Example values: PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION
+  // (kept as String to avoid schema migration complexity for now)
+  validationStep          String?  @default("PHONE_NUMBER_VERIFICATION")
+
   verification_message     String?
 
   @@map("profile_verification")
 }
+
 
 
 

@@ -30,8 +30,26 @@ export async function initProfile(req: Request, res: Response) {
         bio_document_urls: [],
         bio_document_type: null,
         bio_document_uploaded_at: null,
+
+        // Create related row(s) on init
+        profileVerification: {
+          create: {
+            phone_number_verified: false,
+            isVerifided: false,
+            verification_message: null,
+            lastUpdatedAt: new Date(),
+            document_verificaiton: false,
+            bio_profile_verification: false,
+            ip_address_verification: false,
+
+          },
+        },
+      },
+      include: {
+        profileVerification: true,
       },
     });
+
 
     return res.status(200).json({
       success: true,
