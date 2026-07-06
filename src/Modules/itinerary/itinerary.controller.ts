@@ -120,7 +120,7 @@ export async function getItinerary(req: Request, res: Response) {
         // proofOfAccommodationUrl: true,
 
         relocationInterest: true,
-        ethnicity: true,
+
         createdAt: true,
 
         // updatedAt: true,

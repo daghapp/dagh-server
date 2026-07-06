@@ -10,6 +10,9 @@ datasource db {
 model User {
   id                  String                  @id @default(uuid())
   authProvider        AuthProvider
+  // Optional user preference used for itinerary personalization
+  ethnicity          Ethnicity?
+
   email               String                  @unique
   passwordHash        String?
   passwordLastChanged DateTime?

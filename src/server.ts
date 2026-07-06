@@ -25,6 +25,14 @@ import { router as ProviderRoutes } from './routes/provider.routes.js'
 import { router as ProfileValidationStepRoutes } from './routes/profile-validation-step.routes.js'
 import { router as BioProfileUrlRoutes } from './routes/bio_profile_url.routes.js'
 import { router as BioProfileDocumentRoutes } from './routes/bio_profile_document_url.routes.js'
+import { router as ProfileEthnicityRoutes } from './routes/profile-ethnicity.routes.js'
+
+
+
+
+
+
+
 
 
 
@@ -82,8 +90,10 @@ app.use('/profile', ProfileRoutes);
 // app.use('/profile', ProfileValidationStepRoutes);
 app.use('/verification', VerificationRoutes);
 app.use('/verification', ProfileValidationStepRoutes);
+app.use('/profile', ProfileEthnicityRoutes);
 
 app.use('/admin', AdminRoutes);
+
 
 
 

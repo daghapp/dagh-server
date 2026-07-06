@@ -30,20 +30,8 @@ export const createTourRequestSchema = z.object({
 
   companionInterest: z.boolean().optional().default(false),
 
-  // Optional user preference: used downstream for itinerary personalization.
-  ethnicity: z
-    .enum([
-      "AFRICAN",
-      "ASIAN",
-      "EUROPEAN",
-      "NORTH_AMERICAN",
-      "SOUTH_AMERICAN",
-      "OCEANIAN",
-      "MIDDLE_EASTERN",
-      "OTHER",
-    ])
-    .optional(),
 });
+
 
 
 

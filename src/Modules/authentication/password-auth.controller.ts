@@ -103,10 +103,12 @@ export class PasswordAuthController {
           email: user.email,
           fullName: user.fullName,
           accountType: user.accountType,
+          ethnicity: user.ethnicity ?? null,
           accessToken,
           refreshToken,
         },
       });
+
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({

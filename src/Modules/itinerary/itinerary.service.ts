@@ -56,7 +56,6 @@ export async function createTourRequest(
     apartmentType,
     transportType,
     companionInterest,
-    ethnicity,
   } = input;
 
 
@@ -102,6 +101,7 @@ export async function createTourRequest(
   // ── Step 4: Feasibility checks ────────────────────────────────────────────
   const feasibility = checkFeasibility(sites, durationDays);
 
+
   // ── Step 5: Save tour request to DB (NO itinerary generation here) ──────
   const tourRequest = await prisma.tourRequest.create({
     data: {
@@ -114,8 +114,7 @@ export async function createTourRequest(
 
       transportType: transportType ?? undefined,
       companionInterest: companionInterest ?? false,
-      // Persist user preference for later itinerary personalization
-      ethnicity: (ethnicity as any) ?? undefined,
+
       status: feasibility.feasible ? "CONFIRMED" : "FAILED",
 
 
@@ -301,6 +300,7 @@ const availableParams = {
 
     return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
 }
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────

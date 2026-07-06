@@ -36,8 +36,8 @@ export const itineraryRequestSchema = z.object({
 
   companionInterest: z.boolean().optional().default(false),
 
-  ethnicity: EthnicityEnum.optional(),
 });
+
 
 export type ItineraryRequestInput = z.infer<typeof itineraryRequestSchema>;
 

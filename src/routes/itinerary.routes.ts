@@ -68,10 +68,7 @@ router.get("/sites", getTourSites);
  *                 nullable: true
  *               companionInterest:
  *                 type: boolean
- *               ethnicity:
- *                 type: string
- *                 enum: [AFRICAN, ASIAN, EUROPEAN, NORTH_AMERICAN, SOUTH_AMERICAN, OCEANIAN, MIDDLE_EASTERN, OTHER]
- *                 nullable: true
+
  *             required: [tourSiteIds, tourType, durationDays]
  *     responses:
  *       201:
