@@ -27,11 +27,14 @@ const router = express.Router();
  *             type: object
  *             required: [ethnicity]
  *             properties:
- *               ethnicity:
- *                 type: string
- *                 enum: [AFRICAN, ASIAN, EUROPEAN, NORTH_AMERICAN, SOUTH_AMERICAN, OCEANIAN, MIDDLE_EASTERN, OTHER]
+ *                ethnicity:
+ *                  type: string
+ *                  enum: [African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other]
+
+ *     
  *     responses:
  *       200:
+
  *         description: Ethnicity updated successfully
  *       400:
  *         description: Invalid request

@@ -2,17 +2,23 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 
 const EthnicityValues = [
-  "AFRICAN",
-  "ASIAN",
-  "EUROPEAN",
-  "NORTH_AMERICAN",
-  "SOUTH_AMERICAN",
-  "OCEANIAN",
-  "MIDDLE_EASTERN",
-  "OTHER",
+  "African",
+  "Asian",
+  "Black_African_American",
+  "Caribbean",
+  "Caucassian_White",
+  "Hispanic_Latino",
+  "Middle_Eastern",
+  "Mixed",
+  "Native_American_Indigenous",
+  "Pacific_Islander",
+  "Other",
 ] as const;
 
+
+
 type Ethnicity = (typeof EthnicityValues)[number];
+
 
 export async function setUserEthnicity(req: Request, res: Response) {
   try {

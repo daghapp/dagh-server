@@ -536,15 +536,20 @@ model TourSite {
 // TOUR REQUEST — submitted by user from frontend
 // ─────────────────────────────────────────
 enum Ethnicity {
-  AFRICAN
-  ASIAN
-  EUROPEAN
-  NORTH_AMERICAN
-  SOUTH_AMERICAN
-  OCEANIAN
-  MIDDLE_EASTERN
-  OTHER
+  African
+  Asian
+  Black_African_American
+  Caribbean
+  Caucassian_White
+  Hispanic_Latino
+  Middle_Eastern
+  Mixed
+  Native_American_Indigenous
+  Pacific_Islander
+  Other
 }
+
+
 
 model TourRequest {
   id                      String        @id @default(uuid())
