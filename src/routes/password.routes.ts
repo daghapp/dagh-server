@@ -61,6 +61,11 @@ const passwordAuthController = new PasswordAuthController();
  *                 minLength: 6
  *                 description: Must contain at least one uppercase, lowercase, number, and special character
  *                 example: Password123!
+ *               ethnicity:
+ *                 type: string
+ *                 required: false
+ *                 enum: [African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other]
+ *                 description: Optional ethnicity preference
  *     responses:
  *       201:
  *         description: User registered successfully
