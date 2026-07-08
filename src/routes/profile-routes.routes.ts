@@ -4,7 +4,7 @@ import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 // import { profileSchema, updateProfileSchema } from "../validator/index.js";
 
-import { initProfile } from "../Modules/profile-managemnt/profile.init.controller.js";
+import { initProfile } from "../Modules/profile-management/profile.init.controller.js";
 
 
 

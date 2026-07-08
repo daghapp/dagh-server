@@ -731,6 +731,7 @@ model ProfileVerification {
   userProfile            UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
 
   isVerifided             Boolean  @default(false)
+  createdAt               DateTime @default(now())
   lastUpdatedAt          DateTime @updatedAt
 
   phone_number_verified   Boolean   @default(false)
@@ -740,10 +741,37 @@ model ProfileVerification {
 
   // Which verification step should be shown/considered "current" for the user.
   // Example values: PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION
-  // (kept as String to avoid schema migration complexity for now)
+  // (kept as String to avoid schema complexity for now)
   validationStep          String?  @default("PHONE_NUMBER_VERIFICATION")
 
   verification_message     String?
+
+  // Bio Data approval
+  bioDataStatus           VerificationStatus @default(PENDING)
+  bioDataApprovedBy       String?
+  bioDataApprovedAt       DateTime?
+  bioDataApprovalReason   String?
+  bioDataRejectedBy       String?
+  bioDataRejectedAt       DateTime?
+  bioDataRejectionReason  String?
+
+  // Face Verification approval
+  faceStatus              VerificationStatus @default(PENDING)
+  faceApprovedBy          String?
+  faceApprovedAt          DateTime?
+  faceApprovalReason      String?
+  faceRejectedBy          String?
+  faceRejectedAt          DateTime?
+  faceRejectionReason     String?
+
+  // Documents (Passport/Ghana Card) approval
+  documentStatus          VerificationStatus @default(PENDING)
+  documentApprovedBy      String?
+  documentApprovedAt      DateTime?
+  documentApprovalReason  String?
+  documentRejectedBy      String?
+  documentRejectedAt      DateTime?
+  documentRejectionReason String?
 
   @@map("profile_verification")
 }
@@ -764,6 +792,12 @@ enum SubscriptionStatus {
   CANCELLED
   EXPIRED
   SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum BookingStatus {

@@ -18,6 +18,7 @@ import { router as ProfileRoutes } from './routes/profile-routes.routes.js'
 import { router as VerificationRoutes } from './routes/verification.routes.js'
 
 import { router as AdminRoutes } from './routes/admin.routes.js';
+import { router as AdminProfileRoutes } from './routes/admin-profile-routes.js';
 // import { router as MessageRoutes } from './routes/message.routes.js';
 import { router as VisaRoutes } from './routes/visa.routes.js';
 import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
@@ -93,6 +94,7 @@ app.use('/verification', ProfileValidationStepRoutes);
 app.use('/profile', ProfileEthnicityRoutes);
 
 app.use('/admin', AdminRoutes);
+app.use('/admin', AdminProfileRoutes);
 
 
 

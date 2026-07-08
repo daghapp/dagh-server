@@ -1,15 +1,15 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import { validate } from "../middleware/validation.js";
-import { ProfileVerificationController } from "../Modules/profile-managemnt/profile.verification.controller.js";
+import { ProfileVerificationController } from "../Modules/profile-management/profile.verification.controller.js";
 import {
   sendPhoneOtpSchema,
   verifyPhoneOtpSchema,
 } from "../validator/profile-phone-verification-validator.js";
 import { postBioDocumentSchema } from "../validator/profile-bio-document-validator.js";
-import { postBioProfileUrl } from "../Modules/profile-managemnt/profile.bio-url.controller.js";
-import { postBioDocument } from "../Modules/profile-managemnt/profile-bio-document.controller.js";
-import { initProfile } from "../Modules/profile-managemnt/profile.init.controller.js";
+import { postBioProfileUrl } from "../Modules/profile-management/profile.bio-url.controller.js";
+import { postBioDocument } from "../Modules/profile-management/profile-bio-document.controller.js";
+import { initProfile } from "../Modules/profile-management/profile.init.controller.js";
 
 const router = express.Router();
 
