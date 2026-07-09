@@ -125,6 +125,7 @@ const adminTourController = new AdminTourController();
  */
 router.get(
   "/",
+  protectedRoute,
   userTourController.getAllTours.bind(userTourController)
 );
 
@@ -285,6 +286,7 @@ router.post(
 
 router.post(
   "/hubtel-callback",
+  protectedRoute,
   userTourController.hubtelCallbackController.bind(userTourController)
 );
 
@@ -1474,7 +1476,8 @@ router.post(
  *       500:
  *         description: Failed to fetch tour details
  */
-router.get("/:tourId", 
+router.get("/:tourId",
+  protectedRoute,
   userTourController.getTourDetails.bind(userTourController)
 );
 
