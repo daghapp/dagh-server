@@ -24,6 +24,19 @@ export class PasswordAuthController {
           .json({ success: false, message: "User already exists" });
       }
 
+      // phoneNumber is unique too
+      if (userData.phoneNumber) {
+        const phoneExists = await prisma.user.findUnique({
+          where: { phoneNumber: userData.phoneNumber },
+        });
+        if (phoneExists) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Phone number already in use" });
+        }
+      }
+
+
       const hashedPassword = bcrypt.hashSync(userData.password, 10);
       const newUser = await prisma.user.create({
         data: {
@@ -35,9 +48,12 @@ export class PasswordAuthController {
             ? new Date(userData.dateOfBirth)
             : undefined,
           gender: userData.gender,
+          ethnicity: (userData.ethnicity ?? undefined) as any,
+
           passwordHash: hashedPassword,
         },
       });
+
       
       await  sendOtp({ email: newUser.email, subject: "Verify Your Email", purpose: "EMAIL_VERIFICATION" });
       return res.status(201).json({ success: true, data: newUser });
