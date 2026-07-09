@@ -69,10 +69,98 @@ model UserProfile {
   @@map("user_profiles")
 }
 
-
 enum BioDocumentType {
   PASSPORT
   GHANA_CARD
+}
+
+model DatingUserProfile{
+  id                           String        @id @default(uuid())
+
+  userId                       String     @unique
+  user                         UserModel  @relation(fields: [userId], references: [id], onDelete: [Cascade])
+
+  profile                      DatingUserProfile  @unique
+
+  createdAt                    DateTime     @default(now())
+  updatedAt                    DateTime     @updatedAt
+
+  // Basic Info fields
+  fullName                     String
+  aboutMe                      String        db.VarChar(500)
+  dateOfBirth                  DateTime
+  gender                       Gender
+  height                       Float
+  city                         String
+
+  // Education & Career fields
+  highestLevelOfEducation      EducationLevel
+  university/School            String
+  profession/JobTitle          String
+  industry                     Industry
+  company                      String
+
+  // Cultural Background fields
+  heritageEthnicity            String
+  languageSpoken               String
+  religiousValues              ReligiousValues
+  homeTownAncestralVillage     String?
+
+  // Relationship Goal fields
+  relationshipIntention        RelationshipIntention
+  interest                     String[]
+
+  // Photo fields
+  profileImageUrl              String  
+  galleryImageUrl              String
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+enum EducationLevel {
+  HIGH_SCHOOL
+  ASSOCIATES
+  BACHELORS
+  MASTERS
+  DOCTORATE
+  OTHER
+}
+
+enum RelationshipIntention {
+  LONG_TERM
+  SHORT_TERM
+  MARRIAGE
+  CASUAL
+  FRIENDSHIP
+  NOT_SURE
+}
+
+enum ReligiousValues {
+  CHRISTIANITY
+  ISLAM
+  HINDUISM
+  BUDDHISM
+  JUDAISM
+  AGNOSTIC
+  ATHEIST
+  SPIRITUAL
+  OTHER
+}
+
+enum Industry {
+  TECHNOLOGY
+  HEALTHCARE
+  FINANCE
+  EDUCATION
+  MARKETING_SALES
+  ARTS_ENTERTAINMENT
+  ENGINEERING_CONSTRUCTION
+  OTHER
 }
 
 
