@@ -95,8 +95,8 @@ model DatingUserProfile{
 
   // Education & Career fields
   highestLevelOfEducation      EducationLevel
-  university/School            String
-  profession/JobTitle          String
+  universitySchool            String
+  professionJobTitle          String
   industry                     Industry
   company                      String
 
@@ -104,7 +104,7 @@ model DatingUserProfile{
   heritageEthnicity            String
   languageSpoken               String
   religiousValues              ReligiousValues
-  homeTownAncestralVillage     String?
+  homeTownAncestralVillage     String
 
   // Relationship Goal fields
   relationshipIntention        RelationshipIntention
