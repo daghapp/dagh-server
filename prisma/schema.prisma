@@ -8,10 +8,10 @@ datasource db {
 }
 
 model User {
-  id                  String                  @id @default(uuid())
-  authProvider        AuthProvider
+  id           String       @id @default(uuid())
+  authProvider AuthProvider
   // Optional user preference used for itinerary personalization
-  ethnicity          Ethnicity?
+  ethnicity    Ethnicity?
 
   email               String                  @unique
   passwordHash        String?
@@ -35,56 +35,52 @@ model User {
   sentMessages        Message[]               @relation("SentMessages")
   receivedMessages    Message[]               @relation("ReceivedMessages")
   userTourItineraries user_tour_itineraries[]
-  visaRequests       VisaOnArrivalRequest[]
+  visaRequests        VisaOnArrivalRequest[]
 
-
-  tourRequests        TourRequest[]
+  tourRequests TourRequest[]
 
   @@map("users")
 }
 
 model UserProfile {
-  id                           String    @id @default(uuid())
-  userId                       String    @unique
+  id     String @id @default(uuid())
+  userId String @unique
 
   // Public profile fields
-  profileUrl                   String?
-  phoneNumber                  String?
-
+  profileUrl  String?
+  phoneNumber String?
 
   // Bio profile image
-  bio_profile_image_url       String?
+  bio_profile_image_url         String?
   bio_profile_image_uploaded_at DateTime?
 
   // Bio document uploads
-  bio_document_urls           String[]
-  bio_document_type           BioDocumentType?
-  bio_document_uploaded_at    DateTime?
+  bio_document_urls        String[]
+  bio_document_type        BioDocumentType?
+  bio_document_uploaded_at DateTime?
 
   // Opposite relation: one profile -> one ProfileVerification
-  profileVerification          ProfileVerification?
+  profileVerification ProfileVerification?
 
-  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
 }
-
 
 enum BioDocumentType {
   PASSPORT
   GHANA_CARD
 }
 
-
 model UserVerification {
-  id                 String              @id @default(uuid())
-  userId             String              @unique
-  isVerified         Boolean             @default(false)
-  verificationLevel  VerificationLevel?
+  id                String             @id @default(uuid())
+  userId            String             @unique
+  isVerified        Boolean            @default(false)
+  verificationLevel VerificationLevel?
   //backgroundCheck    BackgroundCheck?
- // governmentId       GovernmentId?
+  // governmentId       GovernmentId?
   //selfieVerification SelfieVerification?
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_verifications")
 }
@@ -150,6 +146,7 @@ model DeviceToken {
 
   @@map("device_tokens")
 }
+
 model UserSubscription {
   id             String             @id @default(uuid())
   userId         String             @unique
@@ -311,11 +308,10 @@ model tour_bookings {
   completedAt         DateTime?
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
-  tour                tour_packages?           @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  tour                tour_packages?          @relation(fields: [tourId], references: [id], onDelete: Cascade)
   user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userTourItineraries user_tour_itineraries[]
-  systemGenerated     Boolean @default(false)
-
+  systemGenerated     Boolean                 @default(false)
 
   @@index([userId])
   @@index([tourId])
@@ -383,88 +379,83 @@ model user_tour_itineraries_activities {
   @@map("user_tour_itineraries_activities")
 }
 
-
-
 model VisaOnArrivalRequest {
-  id             String        @id @default(uuid())
-  userId         String
-  status         VisaRequestStatus @default(PENDING) // pending, approved, rejected
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  approval       VisaApproval?
-  paymentId        String?      @unique  // from the polymorphic payment table.
-  visaData       VisaOnArrivalData?
-  packageType     VisaPackageType?
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String             @id @default(uuid())
+  userId      String
+  status      VisaRequestStatus  @default(PENDING) // pending, approved, rejected
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  approval    VisaApproval?
+  paymentId   String?            @unique // from the polymorphic payment table.
+  visaData    VisaOnArrivalData?
+  packageType VisaPackageType?
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("visa_on_arrival_requests")
 }
 
 model VisaOnArrivalData {
-  id                      String    @id @default(uuid())
-  requestId               String   @unique
-  passport_image_url      String
-  bio_page_image_url      String
-  flight_itenary_image_url      String
-  passport_number         String
-  purpose_of_trip         String
-  date_of_departure       DateTime
-  date_of_arrival         DateTime
-  request                 VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id                       String               @id @default(uuid())
+  requestId                String               @unique
+  passport_image_url       String
+  bio_page_image_url       String
+  flight_itenary_image_url String
+  passport_number          String
+  purpose_of_trip          String
+  date_of_departure        DateTime
+  date_of_arrival          DateTime
+  request                  VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@map("visa_on_arrival_data")
 }
 
-
 model VisaApproval {
-  id          String               @id @default(uuid())
-  requestId   String               @unique
-  approvedBy  String?
-  approvedAt  DateTime?
-  status      VisaApprovalStatus   @default(PENDING) // pending, approved, rejected
-  notes       String?
-  request     VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id         String               @id @default(uuid())
+  requestId  String               @unique
+  approvedBy String?
+  approvedAt DateTime?
+  status     VisaApprovalStatus   @default(PENDING) // pending, approved, rejected
+  notes      String?
+  request    VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@map("visa_on_arrival_approvals")
 }
 
-
 model Payment {
-  id                String           @id @default(uuid())
-  reference         String           @unique
-  userId            String
+  id        String @id @default(uuid())
+  reference String @unique
+  userId    String
 
-  description       String?
+  description String?
 
-  targetType        PaymentTargetType // the module access this
-  targetId          String // the module's id
+  targetType PaymentTargetType // the module access this
+  targetId   String // the module's id
 
-  amount            Float
-  currency          String           @default("GHS")
+  amount   Float
+  currency String @default("GHS")
 
-  status            PaymentStatus    @default(PENDING)
-  method            PaymentMethod?
-  provider          PaymentProvider?
+  status   PaymentStatus    @default(PENDING)
+  method   PaymentMethod?
+  provider PaymentProvider?
 
   providerReference String?
   transactionId     String?
 
-  paidAt            DateTime?
+  paidAt DateTime?
 
   ledgerEntries LedgerTransaction[]
 
-  metadata          Json?
+  metadata Json?
 
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("payments")
-
 }
 
 model HubtelDirectReceiveLog {
-  id                    String   @id @default(uuid())
+  id                    String  @id @default(uuid())
   message               String?
   responseCode          String?
   amount                Float?
@@ -472,52 +463,47 @@ model HubtelDirectReceiveLog {
   amountAfterCharges    Float?
   amountCharged         Float?
   description           String?
-  clientReference       String?  // your merchant reference
-  transactionId         String?  // Hubtel transaction ID
-  externalTransactionId String?  // telco reference
+  clientReference       String? // your merchant reference
+  transactionId         String? // Hubtel transaction ID
+  externalTransactionId String? // telco reference
   orderId               String?
   deliveryFee           Float?
   paymentDetails        String?
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("hubtel_direct_receive_logs")
 }
 
 model LedgerAccount {
-  id          String   @id @default(uuid())
-  name        String   @unique  // e.g. "Account_DAGh_Revenue", "Account_GIS_Statutory_Reserve"
-  currency    String   // GHS or USD
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String              @id @default(uuid())
+  name         String              @unique // e.g. "Account_DAGh_Revenue", "Account_GIS_Statutory_Reserve"
+  currency     String // GHS or USD
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
   transactions LedgerTransaction[]
 }
 
-
-
 model LedgerTransaction {
-  id            String        @id @default(uuid())
-  accountId     String
-  account       LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  paymentId     String
-  payment       Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  amount        Float
-  currency      String
-  type          String        // CREDIT or DEBIT
-  description   String?
-  createdAt     DateTime      @default(now())
+  id          String        @id @default(uuid())
+  accountId   String
+  account     LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  paymentId   String
+  payment     Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amount      Float
+  currency    String
+  type        String // CREDIT or DEBIT
+  description String?
+  createdAt   DateTime      @default(now())
 }
-
-
-
 
 // ─────────────────────────────────────────
 // STATIC LOOKUP TABLE — seeded with real Ghana locations
 // ─────────────────────────────────────────
 model TourSite {
   id          String       @id @default(uuid())
-  name        String      @unique
+  name        String       @unique
   region      String
   latitude    Float
   longitude   Float
@@ -549,36 +535,31 @@ enum Ethnicity {
   Other
 }
 
-
-
 model TourRequest {
-  id                      String        @id @default(uuid())
-  userId                   String
-  tourType                TourType
-  durationDays            Int           // touring days only (excl. prep + departure)
-  relocationInterest      Boolean       @default(false) // saved, not acted on yet
+  id                 String   @id @default(uuid())
+  userId             String
+  tourType           TourType
+  durationDays       Int // touring days only (excl. prep + departure)
+  relocationInterest Boolean  @default(false) // saved, not acted on yet
 
+  status RequestStatus @default(PENDING)
 
-  status                  RequestStatus @default(PENDING)
-
-  apartmentType      ApartmentType?
-  transportType      TransportType?
-  companionInterest  Boolean         @default(false)
-  ethnicity          Ethnicity?
-
+  apartmentType     ApartmentType?
+  transportType     TransportType?
+  companionInterest Boolean        @default(false)
+  ethnicity         Ethnicity?
 
   paymentId     String?       @unique
   paymentStatus PaymentStatus @default(INITIALIZED)
 
-  createdAt               DateTime      @default(now())
+  createdAt DateTime @default(now())
 
   selectedSites TourRequestSite[]
   itinerary     Itinerary?
-  user          User  @relation(fields: [userId], references: [id], onDelete:Cascade)
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("tour_requests")
 }
-
 
 // ─────────────────────────────────────────
 // JUNCTION — which sites the user selected
@@ -602,8 +583,8 @@ model Itinerary {
   id               String   @id @default(uuid())
   tourRequestId    String   @unique
   isFeasible       Boolean
-  feasibilityError String?  // populated if validation fails
-  totalDays        Int      // durationDays + 2 (prep + departure)
+  feasibilityError String? // populated if validation fails
+  totalDays        Int // durationDays + 2 (prep + departure)
   createdAt        DateTime @default(now())
 
   tourRequest TourRequest    @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
@@ -618,7 +599,7 @@ model Itinerary {
 model ItineraryDay {
   id                 String  @id @default(uuid())
   itineraryId        String
-  dayNumber          Int     // 1-based
+  dayNumber          Int // 1-based
   dayType            DayType
   relocationRequired Boolean @default(false) // saved, not acted on yet
   suggestedHotel     String? // saved, not acted on yet
@@ -637,7 +618,7 @@ model ItineraryDaySite {
   id             String @id @default(uuid())
   itineraryDayId String
   tourSiteId     String
-  visitOrder     Int    // 1, 2, or 3 — order within the day
+  visitOrder     Int // 1, 2, or 3 — order within the day
 
   itineraryDay ItineraryDay @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
   tourSite     TourSite     @relation(fields: [tourSiteId], references: [id])
@@ -676,7 +657,6 @@ enum SiteCategory {
   RELIGIOUS
   SCENIC
 }
-
 
 enum PaymentTargetType {
   VISA_ON_ARRIVAL
@@ -726,43 +706,43 @@ enum VerificationLevel {
 }
 
 model ProfileVerification {
-  id                      String   @id @default(uuid())
-  userProfileId          String   @unique
-  userProfile            UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  userProfileId String      @unique
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
 
-  isVerifided             Boolean  @default(false)
-  createdAt               DateTime @default(now())
-  lastUpdatedAt          DateTime @updatedAt
+  isVerifided   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  lastUpdatedAt DateTime @updatedAt
 
-  phone_number_verified   Boolean   @default(false)
-  ip_address_verification  Boolean   @default(false)
-  bio_profile_verification Boolean   @default(false)
-  document_verificaiton   Boolean   @default(false)
+  phone_number_verified    Boolean @default(false)
+  ip_address_verification  Boolean @default(false)
+  bio_profile_verification Boolean @default(false)
+  document_verificaiton    Boolean @default(false)
 
   // Which verification step should be shown/considered "current" for the user.
   // Example values: PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION
   // (kept as String to avoid schema complexity for now)
-  validationStep          String?  @default("PHONE_NUMBER_VERIFICATION")
+  validationStep String? @default("PHONE_NUMBER_VERIFICATION")
 
-  verification_message     String?
+  verification_message String?
 
   // Bio Data approval
-  bioDataStatus           VerificationStatus @default(PENDING)
-  bioDataApprovedBy       String?
-  bioDataApprovedAt       DateTime?
-  bioDataApprovalReason   String?
-  bioDataRejectedBy       String?
-  bioDataRejectedAt       DateTime?
-  bioDataRejectionReason  String?
+  bioDataStatus          VerificationStatus @default(PENDING)
+  bioDataApprovedBy      String?
+  bioDataApprovedAt      DateTime?
+  bioDataApprovalReason  String?
+  bioDataRejectedBy      String?
+  bioDataRejectedAt      DateTime?
+  bioDataRejectionReason String?
 
   // Face Verification approval
-  faceStatus              VerificationStatus @default(PENDING)
-  faceApprovedBy          String?
-  faceApprovedAt          DateTime?
-  faceApprovalReason      String?
-  faceRejectedBy          String?
-  faceRejectedAt          DateTime?
-  faceRejectionReason     String?
+  faceStatus          VerificationStatus @default(PENDING)
+  faceApprovedBy      String?
+  faceApprovedAt      DateTime?
+  faceApprovalReason  String?
+  faceRejectedBy      String?
+  faceRejectedAt      DateTime?
+  faceRejectionReason String?
 
   // Documents (Passport/Ghana Card) approval
   documentStatus          VerificationStatus @default(PENDING)
@@ -775,10 +755,6 @@ model ProfileVerification {
 
   @@map("profile_verification")
 }
-
-
-
-
 
 enum PaymentStatus {
   INITIALIZED
@@ -859,27 +835,25 @@ enum TransportType {
   NONE
 }
 
-
-
 model Provider {
-  provider_id         String    @id @default(uuid())
-  verification_status Boolean   @default(false)
+  provider_id         String   @id @default(uuid())
+  verification_status Boolean  @default(false)
   display_name        String
-  media_assets        String[]  // Array of URLs
+  media_assets        String[] // Array of URLs
   location_lat        Float
   location_lng        Float
   location_address    String
-  avg_rating          Float     @default(0)
-  review_count        Int       @default(0)
-  response_time_secs  Int       @default(3600)
-  bio_description     String    @db.Text
-  
+  avg_rating          Float    @default(0)
+  review_count        Int      @default(0)
+  response_time_secs  Int      @default(3600)
+  bio_description     String   @db.Text
+
   // Polymorphic relationship (one of these will be populated)
-  tour_guide      TourGuide?
-  car_rental      CarRental?
-  hotel           Hotel?
-  
-  audit_logs      AuditLog[]
+  tour_guide TourGuide?
+  car_rental CarRental?
+  hotel      Hotel?
+
+  audit_logs       AuditLog[]
   service_requests ServiceRequest[]
 }
 
@@ -893,46 +867,45 @@ model TourGuide {
 }
 
 model CarRental {
-  provider_id        String   @id
-  vehicle_make       String
-  vehicle_model      String
-  vehicle_year       Int
-  transmission       String
-  fuel_type          String
-  safety_features    String[]
-  rental_terms_url   String
-  daily_rate         Float
-  driver_required    Boolean
+  provider_id      String   @id
+  vehicle_make     String
+  vehicle_model    String
+  vehicle_year     Int
+  transmission     String
+  fuel_type        String
+  safety_features  String[]
+  rental_terms_url String
+  daily_rate       Float
+  driver_required  Boolean
 
-  transport_type     TransportType?
+  transport_type TransportType?
 
-  provider           Provider @relation(fields: [provider_id], references: [provider_id])
+  provider Provider @relation(fields: [provider_id], references: [provider_id])
 }
 
 model Hotel {
-  provider_id        String   @id
+  provider_id String @id
 
-  apartment_type     ApartmentType?
+  apartment_type ApartmentType?
 
-  base_price_per_night   Float
-  provider               Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+  base_price_per_night Float
+  provider             Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
 }
-
 
 // ============================================
 // SERVICE REQUEST MODEL (For PII sanitization)
 // ============================================
 
 model ServiceRequest {
-  request_token  String   @id @default(uuid())
+  request_token  String    @id @default(uuid())
   provider_id    String
-  user_id        String   // This is the CUSTOMER's ID
-  status         String   @default("pending") // pending, confirmed, cancelled, completed
+  user_id        String // This is the CUSTOMER's ID
+  status         String    @default("pending") // pending, confirmed, cancelled, completed
   requested_date DateTime
   confirmed_at   DateTime?
-  created_at     DateTime @default(now())
-  
-  provider       Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+  created_at     DateTime  @default(now())
+
+  provider Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
 }
 
 // ============================================
@@ -941,12 +914,12 @@ model ServiceRequest {
 
 model AuditLog {
   log_id      String   @id @default(uuid())
-  user_id     String   // Who did the action? (customer or provider)
-  provider_id String   // Which provider was involved?
-  action      String   // "viewed_profile", "requested_service", "confirmed", etc.
-  metadata    Json     // Extra details stored as JSON
-  ip_address  String   // Where did the request come from?
+  user_id     String // Who did the action? (customer or provider)
+  provider_id String // Which provider was involved?
+  action      String // "viewed_profile", "requested_service", "confirmed", etc.
+  metadata    Json // Extra details stored as JSON
+  ip_address  String // Where did the request come from?
   timestamp   DateTime @default(now())
-  
-  provider    Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+
+  provider Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
 }
