@@ -283,6 +283,28 @@ router.post(
   userTourController.initiateTourBookingMoMo.bind(userTourController)
 );
 
+/**
+ * @swagger
+ * /tours/hubtel-callback:
+ *   post:
+ *     summary: Handle Hubtel payment callback for tour bookings
+ *     description: Receives payment confirmation callback from Hubtel after a tour booking payment
+ *     tags: [Tours - User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Hubtel callback payload containing payment status and transaction details
+ *     responses:
+ *       200:
+ *         description: Callback processed successfully
+ *       400:
+ *         description: Invalid callback payload
+ *       500:
+ *         description: Failed to process callback
+ */
 router.post(
   "/hubtel-callback",
   userTourController.hubtelCallbackController.bind(userTourController)
@@ -294,6 +316,60 @@ router.post(
   validate(tourBookingSchema),
   userTourController.bookTour.bind(userTourController)
 );
+/**
+ * @swagger
+ * /tours/user-itineraries/{itineraryId}:
+ *   patch:
+ *     summary: Update user itinerary for a tour
+ *     description: Update the user's personalized itinerary for a booked tour
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itineraryId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the user itinerary to update
+ *         example: 123e4567-e89b-12d3-a456-426614174000
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes:
+ *                 type: string
+ *                 description: Additional notes or preferences for the itinerary
+ *                 example: Prefer vegetarian meals
+ *     responses:
+ *       200:
+ *         description: User itinerary updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: User itinerary updated successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       403:
+ *         description: Forbidden - User doesn't own this itinerary
+ *       404:
+ *         description: Itinerary not found
+ *       500:
+ *         description: Failed to update user itinerary
+ */
 router.patch(
   "/user-itineraries/:itineraryId",
   protectedRoute,

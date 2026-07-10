@@ -73,6 +73,33 @@ deleteInactiveUsersJob();
 checkPendingPaymentsJob();
 setupSwagger(app);
 
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     description: Returns the current status, uptime, and timestamp of the server
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: OK
+ *                 uptime:
+ *                   type: number
+ *                   description: Server uptime in seconds
+ *                   example: 12345.678
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: 2026-05-04T10:00:00Z
+ */
 app.get('/health', (_req, res) => {
   res.status(200).json({
     status: 'OK',
@@ -103,10 +130,6 @@ app.use('/admin', AdminProfileRoutes);
 
 // app.use('/api/messages', MessageRoutes);
 app.use("/visa-requests", VisaRoutes)
-// ── Health check ────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
-});
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use("/itinerary", ItineraryGenRoutes);

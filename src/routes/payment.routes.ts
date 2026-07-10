@@ -221,9 +221,40 @@ router.get("/verify/:reference", protectedRoute, paymentController.verifyPayment
  */
 router.get("/transaction-status/:posSalesId", protectedRoute, paymentController.checkTransactionStatus.bind(paymentController) )
 
+/**
+ * @swagger
+ * /payment/processing:
+ *   get:
+ *     summary: Payment processing page
+ *     description: Serves the payment reroute HTML page during payment processing
+ *     tags: [Payment]
+ *     responses:
+ *       200:
+ *         description: Payment processing page
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ */
 router.get("/processing", (_req, res) => {
   res.status(200).sendFile(path.join(process.cwd(), "src/views/payment-reroute.html"));
 });
+
+/**
+ * @swagger
+ * /payment/p.js:
+ *   get:
+ *     summary: Payment processing JavaScript
+ *     description: Serves the payment processing JavaScript file
+ *     tags: [Payment]
+ *     responses:
+ *       200:
+ *         description: JavaScript file content
+ *         content:
+ *           application/javascript:
+ *             schema:
+ *               type: string
+ */
 router.get("/p.js", (_req, res) => {
   res.status(200).sendFile(path.join(process.cwd(), "src/views/p.js"));
 });

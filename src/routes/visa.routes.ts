@@ -299,6 +299,28 @@ router.get(
   userVisaController.getVisaStatus.bind(userVisaController),
 );
 
+/**
+ * @swagger
+ * /visa-requests/payment-callback:
+ *   post:
+ *     summary: Handle Hubtel payment callback for visa requests
+ *     description: Receives payment confirmation callback from Hubtel after a visa request payment
+ *     tags: [VisaOnArrival]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Hubtel callback payload containing payment status and transaction details
+ *     responses:
+ *       200:
+ *         description: Callback processed successfully
+ *       400:
+ *         description: Invalid callback payload
+ *       500:
+ *         description: Failed to process callback
+ */
 router.post(
   "/payment-callback",
   userVisaController.handleVisaPaymentCallback.bind(userVisaController),
