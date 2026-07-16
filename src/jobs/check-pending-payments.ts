@@ -1,21 +1,19 @@
 import cron from "node-cron";
-import axios from "axios";
 import { prisma } from "../config/prisma.js";
 import {
   PaymentStatus,
   PaymentTargetType,
-  VisaApprovalStatus,
   VisaRequestStatus,
 } from "../../generated/prisma/client.js";
-import { UserTourController } from "../Modules/tour-management/user-tour.controller.js";
 import { hubtelStatusClient } from "../config/index.js";
-import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
 import { convertUSDToGHS } from "../helpers/stringHelper.js";
 import sendEmail from "../config/resend.config.js";
+import { getAccountId } from "../helpers/ledger.js";
+import { paymentStatusFromHubtel } from "../helpers/payment.js";
 
 export const checkPendingPaymentsJob = () => {
-  // Run every minute
-  cron.schedule("* * * * *", async () => {
+  // Run every 5 minutes
+  cron.schedule("*/5 * * * *", async () => {
     try {
       const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
@@ -99,7 +97,7 @@ export const checkPendingPaymentsJob = () => {
                   await prisma.ledgerTransaction.createMany({
                     data: [
                       {
-                        accountId: await UserVisaController.getAccountId(
+                        accountId: await getAccountId(
                           "Account_DAGh_Revenue",
                         ),
                         paymentId: payment.id,
@@ -109,7 +107,7 @@ export const checkPendingPaymentsJob = () => {
                         description: "Visa Facilitation Fee",
                       },
                       {
-                        accountId: await UserVisaController.getAccountId(
+                        accountId: await getAccountId(
                           "Account_GIS_Statutory_Reserve",
                         ),
                         paymentId: payment.id,
@@ -130,7 +128,7 @@ export const checkPendingPaymentsJob = () => {
                 if (visaRequest.packageType === "EXPEDITED") {
                   await prisma.ledgerTransaction.create({
                     data: {
-                      accountId: await UserVisaController.getAccountId(
+                      accountId: await getAccountId(
                         "Account_DAGh_Revenue",
                       ),
                       paymentId: payment.id,

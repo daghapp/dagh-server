@@ -1,5 +1,5 @@
 import express from "express";
-import {PaymentController} from "../Modules/payment-management/payment.controller.js";
+import {PaymentController} from "../modules/payment-management/payment.controller.js";
 import { initializePaymentSchema_momo, subscribtionPaymentSchema } from "../validator/index.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";

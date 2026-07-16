@@ -1,7 +1,8 @@
 import express from "express";
-import { AuthAdminController } from "../Modules/authentication/auth-admin.controller.js";
+import { AuthAdminController } from "../modules/authentication/auth-admin.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import { AdminVisaController } from "../Modules/visa-management/admin-visa.controller.js";
+import requireAdmin from "../middleware/admin.js";
+import { AdminVisaController } from "../modules/visa-management/admin-visa.controller.js";
 
 const router = express.Router();
 const authAdminController = new AuthAdminController();
@@ -99,6 +100,7 @@ const adminVisaController = new AdminVisaController();
 router.get(
   "/users",
   protectedRoute,
+  requireAdmin,
   authAdminController.getAllUsers.bind(authAdminController),
 );
 
@@ -173,6 +175,7 @@ router.get(
 router.patch(
   "/users/:userId/promote",
   protectedRoute,
+  requireAdmin,
   authAdminController.promoteToAdmin.bind(authAdminController),
 );
 
@@ -247,6 +250,7 @@ router.patch(
 router.patch(
   "/users/:userId/demote",
   protectedRoute,
+  requireAdmin,
   authAdminController.demoteToUser.bind(authAdminController),
 );
 
@@ -321,6 +325,7 @@ router.patch(
 router.patch(
   "/users/:userId/suspend",
   protectedRoute,
+  requireAdmin,
   authAdminController.suspendUser.bind(authAdminController),
 );
 
@@ -395,6 +400,7 @@ router.patch(
 router.patch(
   "/users/:userId/reactivate",
   protectedRoute,
+  requireAdmin,
   authAdminController.reactivateUser.bind(authAdminController),
 );
 
@@ -473,6 +479,7 @@ router.patch(
 router.delete(
   "/users/:userId",
   protectedRoute,
+  requireAdmin,
   authAdminController.deleteUser.bind(authAdminController),
 );
 
@@ -491,6 +498,7 @@ router.delete(
 router.get(
   "/visa-requests/paid",
   protectedRoute,
+  requireAdmin,
   adminVisaController.getPaidVisaRequests.bind(adminVisaController),
 );
 
@@ -518,6 +526,7 @@ router.get(
 router.post(
   "/visa-requests/approve",
   protectedRoute,
+  requireAdmin,
   adminVisaController.approveVisaRequest.bind(adminVisaController),
 );
 

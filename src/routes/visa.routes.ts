@@ -1,8 +1,9 @@
-import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
+import { UserVisaController } from "../modules/visa-management/user-visa.controller.js";
 
 import { validate } from "../middleware/validation.js";
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
+import verifyHubtelCallback from "../middleware/hubtel-callback.js";
 import {
   initiateVisaPaymentSchema,
   visaOnArrivalDataSchema,
@@ -10,7 +11,6 @@ import {
 
 const router = express.Router();
 const userVisaController = new UserVisaController();
-// const userTourController = new UserTourController();
 
 /**
  * @swagger
@@ -323,6 +323,7 @@ router.get(
  */
 router.post(
   "/payment-callback",
+  verifyHubtelCallback,
   userVisaController.handleVisaPaymentCallback.bind(userVisaController),
 );
 

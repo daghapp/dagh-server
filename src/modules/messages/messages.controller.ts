@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'
 import { prisma } from '../../config/index.js'
 import { Server } from 'socket.io'
-import { Conversation } from '../../../generated/prisma/client.js'
 
 let io: Server
 
@@ -67,21 +66,32 @@ export const getConversations = async (req: Request, res: Response) => {
       orderBy: { lastMessageAt: 'desc' }
     })
 
-    const conversationsWithDetails = await Promise.all(
-      conversations.map(async (conv: Conversation) => {
-        const otherParticipantId = conv.participants.find((p: string) => p !== userId) ?? ''
-        const otherUser = await prisma.user.findUnique({
-          where: { id: otherParticipantId },
-          select: { id: true, email: true }
-        })
-        const profile = await prisma.userProfile.findUnique({
-          where: { userId: otherParticipantId },
-          select: { profileUrl: true}
-        })
+    const otherParticipantIds = conversations.map((conv) =>
+      conv.participants.find((p) => p !== userId) ?? ''
+    ).filter(Boolean)
 
-        return { ...conv, otherUser, profile }
+    const [users, profiles] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: otherParticipantIds } },
+        select: { id: true, email: true }
+      }),
+      prisma.userProfile.findMany({
+        where: { userId: { in: otherParticipantIds } },
+        select: { userId: true, profileUrl: true }
       })
-    )
+    ])
+
+    const userMap = new Map(users.map((u) => [u.id, u]))
+    const profileMap = new Map(profiles.map((p) => [p.userId, p]))
+
+    const conversationsWithDetails = conversations.map((conv) => {
+      const otherParticipantId = conv.participants.find((p) => p !== userId) ?? ''
+      return {
+        ...conv,
+        otherUser: userMap.get(otherParticipantId) ?? null,
+        profile: profileMap.get(otherParticipantId) ?? null
+      }
+    })
 
     res.json({ success: true, data: conversationsWithDetails })
   } catch (error) {

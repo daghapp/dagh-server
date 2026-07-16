@@ -1,6 +1,6 @@
 import { Router } from "express";
 import passport from "passport";
-import { FacebookAuthController } from "../Modules/authentication/facebook-auth.controller.js";
+import { FacebookAuthController } from "../modules/authentication/facebook-auth.controller.js";
 import path from "path";
 
 const router = Router();

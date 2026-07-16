@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { router as PasswordRoutes } from './routes/password.routes.js';
 import passport from './config/passport.js';
 import { router as OauthRoutes } from './routes/google-auth.routes.js';
@@ -19,25 +20,11 @@ import { router as VerificationRoutes } from './routes/verification.routes.js'
 
 import { router as AdminRoutes } from './routes/admin.routes.js';
 import { router as AdminProfileRoutes } from './routes/admin-profile-routes.js';
-// import { router as MessageRoutes } from './routes/message.routes.js';
 import { router as VisaRoutes } from './routes/visa.routes.js';
 import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
 import { router as ProviderRoutes } from './routes/provider.routes.js'
 import { router as ProfileValidationStepRoutes } from './routes/profile-validation-step.routes.js'
-import { router as BioProfileUrlRoutes } from './routes/bio_profile_url.routes.js'
-import { router as BioProfileDocumentRoutes } from './routes/bio_profile_document_url.routes.js'
 import { router as ProfileEthnicityRoutes } from './routes/profile-ethnicity.routes.js'
-
-
-
-
-
-
-
-
-
-
-
 
 import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
 import { setupSocketHandlers } from './sockets/socketHandlers.js';
@@ -56,6 +43,14 @@ const io = new Server(server, {
   }
 });
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { success: false, message: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use(helmet());
 app.use(express.json());
 app.use(
@@ -64,7 +59,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(morgan('dev'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(sessionConfig);
 app.use(passport.initialize());
 app.use(passport.session());
@@ -108,14 +103,21 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.use('/auth', PasswordRoutes);
+app.use('/auth', authLimiter, PasswordRoutes);
 app.use('/auth', OauthRoutes);
 app.use('/auth', FacebookRoutes);
 app.use('/upload', ImageUploadRoutes);
-app.use('/payment', PaymentRoutes);
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: { success: false, message: 'Too many payment requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/payment', paymentLimiter, PaymentRoutes);
 app.use('/tours', TourRoutes);
 app.use('/profile', ProfileRoutes);
-// app.use('/profile', ProfileValidationStepRoutes);
 app.use('/verification', VerificationRoutes);
 app.use('/verification', ProfileValidationStepRoutes);
 app.use('/profile', ProfileEthnicityRoutes);
@@ -123,18 +125,10 @@ app.use('/profile', ProfileEthnicityRoutes);
 app.use('/admin', AdminRoutes);
 app.use('/admin', AdminProfileRoutes);
 
-
-
-
-
-
-// app.use('/api/messages', MessageRoutes);
 app.use("/visa-requests", VisaRoutes)
 
-// ── Routes ──────────────────────────────────────────────────────────────────
 app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
-
 
 app.use('/*path', (req: express.Request, res: express.Response) => {
   res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });

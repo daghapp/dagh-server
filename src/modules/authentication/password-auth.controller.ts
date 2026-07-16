@@ -3,7 +3,7 @@ import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, Refr
 import { prisma } from "../../config/index.js";
 import * as bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { sendOtp , generateAccessToken, generateRefreshToken} from "../../helpers/index.js";
+import { sendOtp , verifyOtp, generateAccessToken, generateRefreshToken} from "../../helpers/index.js";
 
 
 
@@ -111,7 +111,6 @@ export class PasswordAuthController {
         email: user.email,
         accountType: user.accountType,
       })
-      console.log(req.headers.authorization);
       return res.status(200).json({
         success: true,
         data: {
@@ -279,7 +278,6 @@ export class PasswordAuthController {
       const otpRecord = await prisma.otp.findFirst({
         where: {
           email: otpData.email,
-          code: otpData.code,
           purpose:otpData.purpose,
         },
         orderBy: {
@@ -297,6 +295,13 @@ export class PasswordAuthController {
         return res
           .status(400)
           .json({ success: false, message: "OTP has expired" });
+      }
+
+      const isOtpValid = await verifyOtp(otpRecord.code, otpData.code);
+      if (!isOtpValid) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid OTP code" });
       }
 
       // Update user status to ACTIVE only for email verification
@@ -437,14 +442,31 @@ export class PasswordAuthController {
           .json({ success: false, message: "User not found" });
       }
 
-      const passwordMatch = bcrypt.compareSync(
-        resetData.oldPassword,
-        user.passwordHash,
-      );
-      if (!passwordMatch) {
+      const otpRecord = await prisma.otp.findFirst({
+        where: {
+          email: resetData.email,
+          purpose: "PASSWORD_RESET",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!otpRecord) {
         return res
           .status(400)
-          .json({ success: false, message: "Old password is incorrect" });
+          .json({ success: false, message: "Invalid or expired OTP" });
+      }
+
+      if (new Date() > otpRecord.expiresAt) {
+        return res
+          .status(400)
+          .json({ success: false, message: "OTP has expired" });
+      }
+
+      const isOtpValid = await verifyOtp(otpRecord.code, resetData.otp);
+      if (!isOtpValid) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid OTP code" });
       }
 
       const hashedNewPassword = bcrypt.hashSync(resetData.newPassword, 10);
@@ -452,6 +474,8 @@ export class PasswordAuthController {
         where: { email: resetData.email },
         data: { passwordHash: hashedNewPassword },
       });
+
+      await prisma.otp.delete({ where: { id: otpRecord.id } });
 
       return res.status(200).json({
         success: true,

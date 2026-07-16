@@ -5,17 +5,14 @@ import { generateClientReference, generateClientReference_targetType } from "../
 import { mapMomoProvider } from "../../helpers/stringHelper.js";
 import { AxiosResponse } from "axios";
 import { PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
+import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 
-// export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
-// export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/tour/hubtel-callback"
 export const HUBTEL_CALLBACK_URL = process.env.API_URL+"/payment/hubtel_callback"
 export const HUBTEL_CANCELLATION_URL = process.env.API_URL+"/payment/hubtel_cancellation"
 export const HUBTEL_RETURN_URL = process.env.API_URL+"/payment/processing"
 
 export class PaymentController {
 
-  //initializes a payment by sending a request to Hubtel and storing the payment details in the database
-//initializes a payment by sending a request to Hubtel and storing the payment details in the database
   async initializePayment(req: Request, res: Response) {
     try {
       const user = req.user as any;
@@ -26,44 +23,17 @@ export class PaymentController {
       const payload = req.body as InitializePaymentSchema;
       const reference = generateClientReference()
 
-
       const hubtelResponse = await hubtelClient.post(
         "/items/initiate",
          {...payload,
           merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
           clientReference: reference,
-
         }
       );
-      console.log(hubtelResponse.data, "Hubtel response data") // Debug log for Hubtel response
-
-      const data = hubtelResponse.data;
-
-      // if (!data || !data.data || !data.data.checkoutId) {
-      //   return res.status(400).json({
-      //     success: false,
-      //     message: "Invalid response from Hubtel",
-      //     data,
-      //   });
-      // }
-
-      // const paymentData = data.data;
-
-      // await prisma.payment.create({
-      //   data: {
-      //     userId: user.id,
-      //     amount: payload.totalAmount,
-      //     description: payload.description,
-      //     status: "INITIALIZED",
-      //     paymentReference: paymentData.checkoutId,
-      //     clientReference: reference,
-      //   },
-      // });
 
       return res.status(200).json({
         success: true,
         message: "Payment initialized successfully",
-        // data: paymentData,
       });
 
     } catch (error: any) {
@@ -83,23 +53,17 @@ export class PaymentController {
     try {
       const reference = generateClientReference_targetType(paymentPaylod.targetType)
 
-      console.log({paymentPaylod, reference})
-
       const hubtelResponse = await hubtelClient.post(
         "/items/initiate",
          {...paymentPaylod,
           merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
           clientReference: reference,
-
         }
       );
-      console.log(hubtelResponse.data, "Hubtel response data") // Debug log for Hubtel response
 
       const data = hubtelResponse.data;
 
       if (data.responseCode != "0000"){
-
-        console.log("Error status code from hubtel ", data)
       return {
         success: false,
         message: "Error code from hubtel: "+data.responseCode,
@@ -216,19 +180,7 @@ export class PaymentController {
     });
 
         // Map ResponseCode to Payment status
-    let newStatus: "SUCCESS" | "FAILED" | "PENDING";
-    switch (response.data.ResponseCode) {
-      case "0000":
-        newStatus = PaymentStatus.SUCCESS;
-        break;
-      case "2001":
-        newStatus = PaymentStatus.FAILED;
-        break;
-      case "0001":
-      default:
-        newStatus = PaymentStatus.PENDING;
-        break;
-    }
+    const newStatus = paymentStatusFromHubtel(response.data.ResponseCode);
 
     // Update Payment record
     await prisma.payment.update({
@@ -307,19 +259,7 @@ export class PaymentController {
     });
 
         // Map ResponseCode to Payment status
-    let newStatus: "SUCCESS" | "FAILED" | "PENDING";
-    switch (response.data.ResponseCode) {
-      case "0000":
-        newStatus = PaymentStatus.SUCCESS;
-        break;
-      case "2001":
-        newStatus = PaymentStatus.FAILED;
-        break;
-      case "0001":
-      default:
-        newStatus = PaymentStatus.PENDING;
-        break;
-    }
+    const newStatus = paymentStatusFromHubtel(response.data.ResponseCode);
 
     // Update Payment record
     await prisma.payment.update({
@@ -336,9 +276,6 @@ export class PaymentController {
       }
 
     } catch (error: any) {
-      console.error("Payment initialization error:", error?.response || error);
-      console.error("Payment initialization error:", error?.response?.data || error);
-      
       return{
         success: false,
         message: "Payment initialization failed",

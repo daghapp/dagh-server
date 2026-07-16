@@ -85,47 +85,6 @@ model UserVerification {
   @@map("user_verifications")
 }
 
-//model GovernmentId {
-//  id             String           @id @default(uuid())
-//  verificationId String           @unique
-//  idType         String?
-//  number         String?          @unique
-//  country        String?
-//  expiryDate     DateTime?
-//  frontImageUrl  String?
-//  backImageUrl   String?
-//  uploadedAt     DateTime?
-//  verifiedAt     DateTime?
-//  verifiedBy     String?
-//  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-//
-//  @@map("government_ids")
-//}
-
-//model SelfieVerification {
-//  id             String           @id @default(uuid())
-//  verificationId String           @unique
-//  imageUrl       String?
-//  matchScore     Int?
-//  verifiedAt     DateTime?
-//  aiProvider     String?
-//  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-//
-//  @@map("selfie_verifications")
-//}
-
-//model BackgroundCheck {
-//  id             String           @id @default(uuid())
-//  verificationId String           @unique
-//  status         String?
-//  provider       String?
-//  completedAt    DateTime?
-//  reportUrl      String?
-//  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-//
-//  @@map("background_checks")
-//}
-
 model otp {
   id        String   @id @default(uuid())
   email     String
@@ -133,6 +92,8 @@ model otp {
   createdAt DateTime @default(now())
   expiresAt DateTime
   purpose   String
+
+  @@index([email, purpose])
 }
 
 model DeviceToken {
@@ -331,6 +292,8 @@ model Message {
   sender     User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
 
+  @@index([senderId])
+  @@index([receiverId])
   @@map("messages")
 }
 
@@ -451,6 +414,8 @@ model Payment {
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([status])
+  @@index([userId])
   @@map("payments")
 }
 

@@ -156,14 +156,195 @@ The `GET /admin/profile-verifications` endpoint was missing fields specified in 
 
 ---
 
+## 9. Directory Restructuring — `src/Modules` → `src/modules`
+
+All module directories renamed from uppercase `Modules` to lowercase `modules` for consistency. All route imports across the codebase updated to reference `../modules/` instead of `../Modules/`.
+
+**Affected route files (import path changes):**
+- `src/routes/admin-profile-routes.ts`
+- `src/routes/admin.routes.ts`
+- `src/routes/bio_profile_document_url.routes.ts`
+- `src/routes/bio_profile_url.routes.ts`
+- `src/routes/facebook-auth.routes.ts`
+- `src/routes/google-auth.routes.ts`
+- `src/routes/image-upload.route.ts`
+- `src/routes/itinerary.routes.ts`
+- `src/routes/message.routes.ts`
+- `src/routes/password.routes.ts`
+- `src/routes/payment.routes.ts`
+- `src/routes/profile-ethnicity.routes.ts`
+- `src/routes/profile-routes.routes.ts`
+- `src/routes/profile-validation-step.routes.ts`
+- `src/routes/provider.routes.ts`
+- `src/routes/tour.routes.ts`
+- `src/routes/verification.routes.ts`
+- `src/routes/visa.routes.ts`
+
+Swagger config (`src/config/swagger.ts`) also updated to scan `./src/modules/**/*.ts`.
+
+---
+
+## 10. Security Hardening
+
+### Rate Limiting (`src/server.ts`)
+- **Auth rate limiter**: 20 requests per 15-minute window on `/auth` password routes
+- **Payment rate limiter**: 50 requests per 15-minute window on `/payment` routes
+- Uses `express-rate-limit` with standard headers
+
+### OTP Hashing (`src/helpers/otp.ts`)
+- OTP codes are now **hashed with bcrypt** (10 rounds) before being stored in the database
+- New `verifyOtp()` function exported for comparing plain OTP against stored hash
+
+### Password Validation (`src/validator/password-auth-validator.ts`)
+- Minimum password length increased from **6 → 8** characters
+- `resetPasswordSchema` now enforces the same strength rules as registration:
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one number
+  - At least one special character
+- Removed redundant `oldPassword` field from reset password schema
+
+### Hubtel Callback Verification (`src/middleware/hubtel-callback.ts`)
+- New middleware validates Hubtel payment callbacks by:
+  1. Checking payload structure (`ResponseCode`, `Data`, `ClientReference`, `TransactionId`)
+  2. Verifying the transaction status with Hubtel's Transaction Status API
+  3. Rejecting callbacks for transactions Hubtel reports as `FAILED`
+- Applied to all Hubtel callback endpoints:
+  - `POST /tours/hubtel-callback`
+  - `POST /visa-requests/payment-callback`
+  - `POST /itinerary/payment-callback`
+
+### Admin Route Protection (`src/routes/admin.routes.ts`)
+- Added `requireAdmin` middleware to all admin-only endpoints:
+  - `GET /admin/users`
+  - `PATCH /admin/users/:userId/promote`
+  - `PATCH /admin/users/:userId/demote`
+  - `PATCH /admin/users/:userId/suspend`
+  - `PATCH /admin/users/:userId/reactivate`
+  - `DELETE /admin/users/:userId`
+  - `GET /admin/visa-requests/paid`
+  - `POST /admin/visa-requests/approve`
+
+### Other Security Changes
+- **Hubtel config** (`src/config/hubtel.ts`): Throws error instead of `console.error` when credentials are missing
+- **JWT secret key**: Socket handlers now use `JWT_ACCESS_SECRET` instead of `JWT_SECRET`
+- **Socket `mark_read`**: Now validates that the authenticated user is the message receiver before marking as read
+- **Removed credential logging**: Deleted commented-out Hubtel credential debug block
+- **USD-to-GHS rate** (`src/helpers/stringHelper.ts`): Read from `USD_TO_GHS_RATE` env var instead of hardcoded `12.5`
+- **Morgan logging**: Uses `combined` format in production, `dev` in development
+
+---
+
+## 11. Cryptographic Improvements
+
+### Client Reference Generation (`src/helpers/client-ref.ts`)
+- `generateClientReference()` and `generateClientReference_targetType()` now use **`crypto.randomBytes()`** instead of `Math.random()`
+- Produces cryptographically secure random reference strings
+
+---
+
+## 12. Performance & Database Optimizations
+
+### Database Indexes (`prisma/schema.prisma`)
+- `otp`: Added composite index on `[email, purpose]`
+- `Message`: Added indexes on `senderId` and `receiverId`
+- `Payment`: Added indexes on `status` and `userId`
+
+### Cron Job Adjustments
+| Job | Before | After |
+|-----|--------|-------|
+| `checkPendingPaymentsJob` | Every minute | Every 5 minutes |
+| `deleteInactiveUsersJob` | Every minute, 30 min threshold, deletes all non-ACTIVE users | Hourly, 24 hour threshold, deletes only `PENDING_VERIFICATION` users |
+
+---
+
+## 13. New Helper Modules
+
+### `src/helpers/ledger.ts`
+Extracted `getAccountId(accountName)` helper — looks up a `LedgerAccount` by name and returns its ID. Replaces inline `UserVisaController.getAccountId()` calls in `check-pending-payments.ts`.
+
+### `src/helpers/payment.ts`
+Extracted `paymentStatusFromHubtel(responseCode)` helper — maps Hubtel response codes to `PaymentStatus` enum values (`"0000"` → SUCCESS, `"2001"` → FAILED, default → PENDING).
+
+---
+
+## 14. Graceful Shutdown (`src/index.ts`)
+- Added `SIGTERM` and `SIGINT` handlers
+- HTTP server closes gracefully before exit
+- 10-second timeout forces exit if graceful shutdown stalls
+
+---
+
+## 15. Code Cleanup
+
+### Removed Unused Dependencies (`package.json`)
+- `bcryptjs`, `install`, `passport-google-oauth`, `session`, `socket.io-client`, `@types/bcryptjs`
+
+### Removed Commented-Out Code (`prisma/schema.prisma`)
+- Deleted commented-out `GovernmentId`, `SelfieVerification`, and `BackgroundCheck` models
+
+### Removed Duplicate Exports (`src/validator/index.ts`)
+- Removed duplicate `export * from "./token-validator.js"` and `export * from "./profile-validator.js"`
+
+### Removed Dead Routes (`src/routes/tour.routes.ts`)
+- Removed unused `POST /tours/bookings` endpoint and its Swagger documentation
+
+### Removed Console Logs
+- Deleted `console.log` statements from:
+  - `src/config/resend.config.ts`
+  - `src/sockets/socketHandlers.ts`
+  - `src/config/hubtel.ts`
+
+### TypeScript Config (`tsconfig.json`)
+- Removed `paths` override for `@prisma/client`
+- Simplified `include` to just `["src/**/*.ts"]`
+
+### Dockerfile (`Dockerfile`)
+- Converted to **multi-stage build** (builder + runner) using `node:20.19-alpine3.21`
+- Production image excludes dev dependencies (`npm ci --omit=dev`)
+- Changed exposed port from `3000` → `5000`
+
+### Build/Deploy
+- `render.yaml`: Changed `npm install` → `npm ci` for reproducible installs
+- `.gitignore`: Added `.env.*`, `endpoints.txt`, `hollali.md`, `*.docx`
+
+---
+
 ## File Inventory
 
 | File | Status |
 |------|--------|
 | `.env` | Created |
+| `.gitignore` | Modified |
+| `Dockerfile` | Modified (multi-stage build) |
+| `package.json` | Modified (dependency cleanup) |
+| `render.yaml` | Modified |
 | `tsconfig.json` | Modified |
-| `prisma/schema.prisma` | Modified |
+| `prisma/schema.prisma` | Modified (indexes, removed commented models) |
 | `prisma/migrations/20260707154431_add_admin_verification_approval_fields/` | Created |
-| `src/Modules/profile-management/admin-profile.controller.ts` | Created (moved from `src/modules/profile-management/admin-profile-controller.ts`) |
+| `src/Modules/` | Deleted (renamed to `src/modules/`) |
+| `src/modules/` | Created (all module controllers) |
+| `src/config/hubtel.ts` | Modified |
+| `src/config/resend.config.ts` | Modified |
+| `src/config/swagger.ts` | Modified |
+| `src/helpers/client-ref.ts` | Modified (crypto.randomBytes) |
+| `src/helpers/ledger.ts` | Created |
+| `src/helpers/otp.ts` | Modified (bcrypt hashing) |
+| `src/helpers/payment.ts` | Created |
+| `src/helpers/stringHelper.ts` | Modified |
+| `src/index.ts` | Modified (graceful shutdown) |
+| `src/jobs/check-pending-payments.ts` | Modified |
+| `src/jobs/user-cleanup.ts` | Modified |
+| `src/middleware/hubtel-callback.ts` | Created |
+| `src/routes/admin-profile-routes.ts` | Modified |
+| `src/routes/admin.routes.ts` | Modified (requireAdmin added) |
+| `src/routes/itinerary.routes.ts` | Modified |
+| `src/routes/tour.routes.ts` | Modified (removed bookings endpoint) |
+| `src/routes/visa.routes.ts` | Modified |
+| `src/routes/*.ts` (all others) | Modified (import path fix) |
+| `src/server.ts` | Modified (rate limiting, cleanup) |
+| `src/sockets/socketHandlers.ts` | Modified |
+| `src/validator/index.ts` | Modified |
+| `src/validator/password-auth-validator.ts` | Modified |
+| `src/Modules/profile-management/admin-profile.controller.ts` | Created |
 | `src/routes/admin-profile-routes.ts` | Created |
-| `src/server.ts` | Modified |

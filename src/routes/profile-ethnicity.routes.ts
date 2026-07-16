@@ -1,6 +1,6 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import { setUserEthnicity } from "../Modules/profile-management/profile-ethnicity.controller.js";
+import { setUserEthnicity } from "../modules/profile-management/profile-ethnicity.controller.js";
 
 const router = express.Router();
 

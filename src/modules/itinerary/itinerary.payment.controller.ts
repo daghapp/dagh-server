@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
-import { prisma, hubtelClient } from "../../config/index.js";
+import { prisma } from "../../config/index.js";
 import {
-  HUBTEL_CALLBACK_URL,
   HUBTEL_CANCELLATION_URL,
   HUBTEL_RETURN_URL,
   PaymentController,
@@ -10,21 +9,9 @@ import {
   PaymentStatus,
   PaymentTargetType,
 } from "../../../generated/prisma/client.js";
-import { randomUUID } from "crypto";
-import sendEmail from "../../config/resend.config.js";
+import { getAccountId } from "../../helpers/ledger.js";
 
 export class ItineraryPaymentController {
-  static async getAccountId(accountName: string): Promise<string> {
-    const account = await prisma.ledgerAccount.findUnique({
-      where: { name: accountName },
-    });
-
-    if (!account) {
-      throw new Error(`Ledger account not found: ${accountName}`);
-    }
-
-    return account.id;
-  }
 
   async initiateItineraryPayment(req: Request, res: Response) {
     try {
@@ -155,7 +142,7 @@ export class ItineraryPaymentController {
         // (mirrors visa callback behavior; uses DAGh revenue account)
         await prisma.ledgerTransaction.create({
           data: {
-            accountId: await ItineraryPaymentController.getAccountId(
+            accountId: await getAccountId(
               "Account_DAGh_Revenue",
             ),
             paymentId: payment.id,

@@ -1,6 +1,6 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import { getValidationStepStatus } from "../Modules/profile-management/profile.validation-step.controller.js";
+import { getValidationStepStatus } from "../modules/profile-management/profile.validation-step.controller.js";
 
 const router = express.Router();
 

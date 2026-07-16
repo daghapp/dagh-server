@@ -7,7 +7,7 @@ import {
   getConversations,
   getMessages,
   markAsRead
-} from '../Modules/messages/messages.controller.js'
+} from '../modules/messages/messages.controller.js'
 
 const router = express.Router()
 

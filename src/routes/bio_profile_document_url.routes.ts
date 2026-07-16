@@ -1,7 +1,7 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import { validate } from "../middleware/validation.js";
-import { postBioDocument } from "../Modules/profile-management/profile-bio-document.controller.js";
+import { postBioDocument } from "../modules/profile-management/profile-bio-document.controller.js";
 import { postBioDocumentSchema } from "../validator/profile-bio-document-validator.js";
 
 const router = express.Router();

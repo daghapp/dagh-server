@@ -31,8 +31,6 @@ export function mapMomoProvider(method: "MTN_MOMO" | "TELECEL_MOMO" | "AT_MOMO")
 
 // utils/currency.ts
 export async function convertUSDToGHS(amountUSD: number): Promise<number> {
-  // Hard‑coded conversion rate for now
-  const conversionRate = 12.5; // Example: 1 USD = 12.5 GHS
-
+  const conversionRate = parseFloat(process.env.USD_TO_GHS_RATE || '15.5');
   return amountUSD * conversionRate;
 }

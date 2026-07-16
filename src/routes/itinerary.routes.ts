@@ -4,10 +4,11 @@ import {
   postTourRequest,
   getItinerary,
   getUserTourRequests,
-} from "../Modules/itinerary/itinerary.controller.js";
-import { ItineraryPaymentController } from "../Modules/itinerary/itinerary.payment.controller.js";
+} from "../modules/itinerary/itinerary.controller.js";
+import { ItineraryPaymentController } from "../modules/itinerary/itinerary.payment.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import { getUserItineraries } from "../Modules/itinerary/user-itineraries.controller.js";
+import verifyHubtelCallback from "../middleware/hubtel-callback.js";
+import { getUserItineraries } from "../modules/itinerary/user-itineraries.controller.js";
 
 const router = Router();
 const itineraryPaymentController = new ItineraryPaymentController();
@@ -147,6 +148,7 @@ router.post(
  */
 router.post(
   "/payment-callback",
+  verifyHubtelCallback,
   itineraryPaymentController.handleHubtelPaymentCallback.bind(itineraryPaymentController)
 );
 

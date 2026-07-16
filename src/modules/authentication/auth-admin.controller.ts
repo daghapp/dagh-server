@@ -12,7 +12,7 @@ const ensureAdmin = (req: Request, res: Response) => {
 };
 
 export class AuthAdminController {
-  // Get all users on app
+  // Get all users on app (paginated)
   async getAllUsers(req: Request, res: Response) {
     try {
       const unauthorizedResponse = ensureAdmin(req, res);
@@ -20,24 +20,41 @@ export class AuthAdminController {
         return unauthorizedResponse;
       }
 
-      const users = await prisma.user.findMany({
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          phoneNumber: true,
-          accountType: true,
-          accountStatus: true,
-          authProvider: true,
-          createdAt: true,
-          lastLoginAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+      const skip = (page - 1) * limit;
 
-      return res.status(200).json({ success: true, data: users });
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phoneNumber: true,
+            accountType: true,
+            accountStatus: true,
+            authProvider: true,
+            createdAt: true,
+            lastLoginAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        }),
+        prisma.user.count(),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        data: users,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
     } catch (error) {
-      console.error("Get all users error:", error);
       return res.status(500).json({
         success: false,
         message: "Failed to fetch users",

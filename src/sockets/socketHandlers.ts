@@ -15,7 +15,7 @@ export const setupSocketHandlers = (io: Server) => {
         return next(new Error('Authentication required'))
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as jwt.JwtPayload
       const user = await prisma.user.findUnique({
         where: { id: decoded.id }
       })
@@ -32,9 +32,6 @@ export const setupSocketHandlers = (io: Server) => {
   })
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`User ${socket.userId} connected`)
-
-    // Join user to their private room
     if (socket.userId) {
       socket.join(`user:${socket.userId}`)
     }
@@ -48,18 +45,26 @@ export const setupSocketHandlers = (io: Server) => {
     })
 
     // Handle message read receipts
-    socket.on('mark_read', async ({ messageId, senderId }) => {
+    socket.on('mark_read', async ({ messageId }) => {
+      if (!socket.userId) return
+
+      const message = await prisma.message.findUnique({
+        where: { id: messageId },
+        select: { receiverId: true },
+      })
+
+      if (!message || message.receiverId !== socket.userId) return
+
       await prisma.message.update({
         where: { id: messageId },
         data: { isRead: true, readAt: new Date() }
       })
-      
-      socket.to(`user:${senderId}`).emit('message_read', { messageId })
+
+      socket.to(`user:${message.receiverId}`).emit('message_read', { messageId })
     })
 
     // Handle disconnection
     socket.on('disconnect', () => {
-      console.log(`User ${socket.userId} disconnected`)
     })
   })
 

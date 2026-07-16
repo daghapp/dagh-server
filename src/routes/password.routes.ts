@@ -1,7 +1,7 @@
 import express from "express";
 const router = express.Router();
 
-import { PasswordAuthController } from "../Modules/authentication/password-auth.controller.js";
+import { PasswordAuthController } from "../modules/authentication/password-auth.controller.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import {

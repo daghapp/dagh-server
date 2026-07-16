@@ -1,6 +1,6 @@
 import { Router } from "express";
 import passport from "passport";
-import { GoogleAuthController } from "../Modules/authentication/index.js";
+import { GoogleAuthController } from "../modules/authentication/index.js";
 import path from "path";
 
 const router = Router();

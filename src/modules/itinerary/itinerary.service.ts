@@ -163,6 +163,8 @@ export async function getItineraryByRequestId(
       durationDays: true,
       paymentStatus: true,
       relocationInterest: true,
+      apartmentType: true,
+      transportType: true,
       selectedSites: {
         include: {
           tourSite: true,
@@ -196,16 +198,16 @@ export async function getItineraryByRequestId(
 
   if (existing) {
     const availableParams = {
-      apartmentType: (tourRequest as any).apartmentType ?? null,
-      transportType: (tourRequest as any).transportType ?? null,
+      apartmentType: tourRequest.apartmentType ?? null,
+      transportType: tourRequest.transportType ?? null,
       itinerarySites: tourRequest.selectedSites
-        .map((rs: any) => rs.tourSite)
+        .map((rs) => (rs as any).tourSite)
         .map((s: any) => ({
           id: s.id,
           latitude: s.latitude,
           longitude: s.longitude,
         })),
-      relocationInterest: !!(tourRequest as any).relocationInterest,
+      relocationInterest: !!tourRequest.relocationInterest,
     };
     return mapItineraryToResponseWithRecommendations(existing, availableParams);
   }
@@ -286,16 +288,16 @@ export async function getItineraryByRequestId(
   });
 
 const availableParams = {
-    apartmentType: (tourRequest as any)?.apartmentType ?? null,
-    transportType: (tourRequest as any)?.transportType ?? null,
+    apartmentType: tourRequest.apartmentType ?? null,
+    transportType: tourRequest.transportType ?? null,
     itinerarySites: tourRequest.selectedSites
-      .map((rs: any) => rs.tourSite)
+      .map((rs) => (rs as any).tourSite)
       .map((s: any) => ({
         id: s.id,
         latitude: s.latitude,
         longitude: s.longitude,
       })),
-    relocationInterest: !!(tourRequest as any)?.relocationInterest,
+    relocationInterest: !!tourRequest.relocationInterest,
   };
 
     return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
@@ -456,11 +458,9 @@ async function mapItineraryToResponseWithRecommendations(
   const shouldAttachRelocation = !!params.relocationInterest;
 
   let bestRelocationsByDaySite: Record<string, any> = {};
-      console.log("attach relocation ", shouldAttachRelocation);
   if (shouldAttachRelocation) {
     const locationsToResolve = params.itinerarySites;
     for (const site of locationsToResolve) {
-      console.log("site ", site);
       bestRelocationsByDaySite[site.id] = await getClosestAccommodationWithin30km(
         params.apartmentType,
         site.latitude,
@@ -571,7 +571,6 @@ async function getClosestAccommodationWithin30km(
   siteLongitude: number,
   maxKm: number,
 ) {
-  console.log("got here ")
   const hotels = await prisma.provider.findMany({
     where: {
       verification_status: true,
@@ -579,8 +578,6 @@ async function getClosestAccommodationWithin30km(
     },
     include: { hotel: true },
   });
-
-  console.log("the hotels ", hotels);
 
   const within = hotels
     .map((p) => {
@@ -592,8 +589,6 @@ async function getClosestAccommodationWithin30km(
         { latitude: siteLatitude, longitude: siteLongitude },
         { latitude: p.location_lat, longitude: p.location_lng },
       );
-
-      console.log("distance ", distanceKm)
 
       if (distanceKm > maxKm) return null;
 

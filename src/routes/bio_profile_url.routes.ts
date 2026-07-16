@@ -1,6 +1,6 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import { postBioProfileUrl } from "../Modules/profile-management/profile.bio-url.controller.js";
+import { postBioProfileUrl } from "../modules/profile-management/profile.bio-url.controller.js";
 
 const router = express.Router();
 

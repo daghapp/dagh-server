@@ -1,16 +1,8 @@
 import axios from "axios";
 
-// Log credentials for debugging (remove in production)
-// console.log("Hubtel Config:", {
-//   baseURL: process.env.HUBTEL_BASE_URL,
-//   clientId: process.env.HUBTEL_CLIENT_ID,
-//   hasSecret: !!process.env.HUBTEL_CLIENT_SECRET,
-//   secretLength: process.env.HUBTEL_CLIENT_SECRET?.length,
-// });
-
 // Validate required env vars
 if (!process.env.HUBTEL_CLIENT_ID || !process.env.HUBTEL_CLIENT_SECRET || !process.env.HUBTEL_MERCHANT_NUMBER ) {
-  console.error("❌ Missing Hubtel credentials in environment variables!");
+  throw new Error("Missing Hubtel credentials in environment variables");
 }
 
 const hubtelClient = axios.create({

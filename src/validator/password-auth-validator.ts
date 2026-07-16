@@ -6,7 +6,7 @@ import { z} from 'zod';
 
 export const loginSchema = z.object({
     email: z.string().email({ message: 'Invalid email address' }),
-    password: z.string().min(6, { message: 'Password must be at least 6 characters long' })
+    password: z.string().min(8, { message: 'Password must be at least 8 characters long' })
 });
 
 
@@ -17,7 +17,7 @@ export const registrationSchema = z.object({
     dateOfBirth: z.iso.date({ message: 'Invalid date of birth' }),
     email: z.string().email({ message: 'Invalid email address' }),
     ethnicity: z.string().optional(),
-    password: z.string().min(6, { message: 'Password must be at least 6 characters long' })
+    password: z.string().min(8, { message: 'Password must be at least 8 characters long' })
     .regex(/[A-Z]/, { message: 'Password must contain at least one uppercase letter' })
     .regex(/[a-z]/, { message: 'Password must contain at least one lowercase letter' })
     .regex(/[0-9]/, { message: 'Password must contain at least one number' })
@@ -33,8 +33,11 @@ export const requestResetPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
     email: z.string().email({ message: 'Invalid email address' }),
     otp: z.string().length(6, { message: 'OTP must be 6 digits long' }),
-    oldPassword: z.string().min(6, { message: 'Password must be at least 6 characters long' }),
-    newPassword: z.string().min(6, { message: 'Password must be at least 6 characters long' })
+    newPassword: z.string().min(8, { message: 'Password must be at least 8 characters long' })
+    .regex(/[A-Z]/, { message: 'Password must contain at least one uppercase letter' })
+    .regex(/[a-z]/, { message: 'Password must contain at least one lowercase letter' })
+    .regex(/[0-9]/, { message: 'Password must contain at least one number' })
+    .regex(/[\W_]/, { message: 'Password must contain at least one special character' })
 });
 
 

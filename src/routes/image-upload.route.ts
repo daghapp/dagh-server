@@ -1,5 +1,5 @@
 import expres from 'express';
-import { ImageUploadController } from '../Modules/common/image-upload.controller.js';
+import { ImageUploadController } from '../modules/common/image-upload.controller.js';
 import upload from '../middleware/cloudinary-upload.js';
 
 const router = expres.Router();

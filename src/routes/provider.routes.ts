@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ProviderNearbyHotelsController } from "../Modules/provider-management/provider-nearby-hotels.controller.js";
+import { ProviderNearbyHotelsController } from "../modules/provider-management/provider-nearby-hotels.controller.js";
 import protectedRoute from "../middleware/protected.js";
 
 const router = Router();

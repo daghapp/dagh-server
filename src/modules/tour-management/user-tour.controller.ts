@@ -13,9 +13,9 @@ import {
   TourReviewSchema,
 } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
-import { ca } from "zod/v4/locales";
 import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
 import { HUBTEL_CALLBACK_URL, HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL, PaymentController } from "../payment-management/payment.controller.js";
+import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 
 export class UserTourController {
 
@@ -487,7 +487,6 @@ async updateUserItinerary(req: Request, res: Response) {
       });
     }
 
-      console.log("payment response ", paymentResponse)
     return res.status(400).json({
       success: false,
       message: "Payment initiation failed",
@@ -526,19 +525,7 @@ async hubtelCallbackController(req: Request, res: Response) {
     });
 
     // 2. Map ResponseCode to PaymentStatus
-    let newStatus: PaymentStatus;
-    switch (ResponseCode) {
-      case "0000":
-        newStatus = PaymentStatus.SUCCESS;
-        break;
-      case "2001":
-        newStatus = PaymentStatus.FAILED;
-        break;
-      case "0001":
-      default:
-        newStatus = PaymentStatus.PENDING;
-        break;
-    }
+    const newStatus = paymentStatusFromHubtel(ResponseCode);
 
     // 3. Update Payment record
     const payment = await prisma.payment.update({

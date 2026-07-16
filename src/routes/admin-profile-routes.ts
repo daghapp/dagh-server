@@ -1,7 +1,7 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import requireAdmin from "../middleware/admin.js";
-import { AdminProfileController } from "../Modules/profile-management/admin-profile.controller.js";
+import { AdminProfileController } from "../modules/profile-management/admin-profile.controller.js";
 
 const router = express.Router();
 const adminProfileController = new AdminProfileController();

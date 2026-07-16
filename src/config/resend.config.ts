@@ -23,8 +23,6 @@ async function sendEmail({ email, subject, html }: EmailParams) {
   if (error) {
     throw error;
   }
-
-  console.log({ data });
 }
 
 export default sendEmail;

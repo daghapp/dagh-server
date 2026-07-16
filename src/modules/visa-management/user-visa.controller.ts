@@ -5,6 +5,7 @@ import { PaymentStatus, PaymentTargetType, VisaApprovalStatus, VisaOnArrivalData
 import { InitiateVisaPaymentSchema, VisaOnArrivalDataSchema } from "../../validator/visaValidation.js";
 import { convertUSDToGHS } from "../../helpers/stringHelper.js";
 import sendEmail from "../../config/resend.config.js";
+import { getAccountId } from "../../helpers/ledger.js";
 
 export class UserVisaController {
   async createVisaRequest(req: Request, res: Response) {
@@ -35,7 +36,7 @@ export class UserVisaController {
 
       res.status(201).json({ visaRequest });
     } catch (err) {
-      console.log("failed to create visa request ", err);
+      console.error("failed to create visa request ", err);
       res.status(400).json({ error: "failed to create visa request" });
     }
   }
@@ -81,7 +82,7 @@ export class UserVisaController {
 
       res.json({ visaRequest, payment });
     } catch (err) {
-      console.log("failed to initiate visa payment ", err);
+      console.error("failed to initiate visa payment ", err);
       res.status(400).json({ error: "failed to initiate visa payment " });
     }
   }
@@ -111,7 +112,7 @@ export class UserVisaController {
           await prisma.ledgerTransaction.createMany({
             data: [
               {
-                accountId: await UserVisaController.getAccountId("Account_DAGh_Revenue"),
+              accountId: await getAccountId("Account_DAGh_Revenue"),
                 paymentId: payment.id,
                 amount: 464,
                 currency: "GHS",
@@ -119,7 +120,7 @@ export class UserVisaController {
                 description: "Visa Facilitation Fee",
               },
               {
-                accountId: await UserVisaController.getAccountId("Account_GIS_Statutory_Reserve"),
+                accountId: await getAccountId("Account_GIS_Statutory_Reserve"),
                 paymentId: payment.id,
                 amount: await convertUSDToGHS(200),
                 currency: "GHS",
@@ -138,7 +139,7 @@ export class UserVisaController {
         if (visaRequest.packageType === "EXPEDITED") {
           await prisma.ledgerTransaction.create({
             data: {
-              accountId: await UserVisaController.getAccountId("Account_DAGh_Revenue"),
+              accountId: await getAccountId("Account_DAGh_Revenue"),
               paymentId: payment.id,
               amount: 1450,
               currency: "GHS",
@@ -206,25 +207,13 @@ export class UserVisaController {
 
       res.json({ success: true });
     } catch (e) {
-      console.log("visa callback failed ", e);
+      console.error("visa callback failed ", e);
       return res.status(500).json({
         success: false,
         message: "Failed to handle callback",
         error: e instanceof Error ? e.message : "Unknown error occured",
       });
     }
-  }
-
-  static async getAccountId(accountName: string): Promise<string> {
-    const account = await prisma.ledgerAccount.findUnique({
-      where: { name: accountName },
-    });
-
-    if (!account) {
-      throw new Error(`Ledger account not found: ${accountName}`);
-    }
-
-    return account.id;
   }
 
   async getVisaRequest(req: Request, res: Response) {
@@ -262,7 +251,7 @@ export class UserVisaController {
       });
       return res.status(200).json({ success: true, message: "success", data: visaRequest });
     } catch (e) {
-      console.log("Failed to get visa status ", e);
+      console.error("Failed to get visa status ", e);
       return res.status(500).json({
         success: false,
         message: "Failed to get visa status ",

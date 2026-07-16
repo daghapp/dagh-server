@@ -18,16 +18,15 @@ export class GoogleAuthController {
       const accessToken = generateAccessToken({
         id: user.id,
         email: user.email,
-        accountType: user.role,
+        accountType: user.accountType,
       });
 
       const refreshToken = await generateRefreshToken({
         id: user.id,
         email: user.email,
-        accountType: user.role,
+        accountType: user.accountType,
       });
 
-      // Decode the app redirect URI passed through OAuth state
       const rawState = req.query.state as string | undefined;
       const appRedirect = rawState
         ? Buffer.from(rawState, "base64").toString("utf8")
@@ -36,12 +35,10 @@ export class GoogleAuthController {
       if (appRedirect && isAllowedRedirect(appRedirect)) {
         const separator = appRedirect.includes("?") ? "&" : "?";
         return res.redirect(
-          // `${appRedirect}${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`,
-          `daghguard:///oauth${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`
+          `daghguard:///oauth${separator}accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}&email=${encodeURIComponent(user.email)}`,
         );
       }
 
-      // Web fallback
       res.redirect(
         `/auth/google/success?email=${encodeURIComponent(user.email)}&accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}`,
       );

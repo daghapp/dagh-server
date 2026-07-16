@@ -12,16 +12,15 @@ export class FacebookAuthController {
       const accessToken = generateAccessToken({
         id: user.id,
         email: user.email,
-        accountType: user.role,
+        accountType: user.accountType,
       });
 
       const refreshToken = await generateRefreshToken({
         id: user.id,
         email: user.email,
-        accountType: user.role,
+        accountType: user.accountType,
       });
 
-      // Redirect to success page with tokens in query params
       res.redirect(
         `/auth/facebook/success?email=${encodeURIComponent(user.email)}&accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken!)}`,
       );
