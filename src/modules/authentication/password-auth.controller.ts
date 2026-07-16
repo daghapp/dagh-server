@@ -56,7 +56,9 @@ export class PasswordAuthController {
 
       
       await  sendOtp({ email: newUser.email, subject: "Verify Your Email", purpose: "EMAIL_VERIFICATION" });
-      return res.status(201).json({ success: true, data: newUser });
+
+      const { passwordHash, ...safeUser } = newUser;
+      return res.status(201).json({ success: true, data: safeUser });
     } catch (error) {
       console.error("Registration error:", error);
       return res.status(500).json({

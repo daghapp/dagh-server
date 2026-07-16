@@ -1,8 +1,9 @@
 import axios from "axios";
 
-// Validate required env vars
-if (!process.env.HUBTEL_CLIENT_ID || !process.env.HUBTEL_CLIENT_SECRET || !process.env.HUBTEL_MERCHANT_NUMBER ) {
-  throw new Error("Missing Hubtel credentials in environment variables");
+const requiredEnvVars = ['HUBTEL_CLIENT_ID', 'HUBTEL_CLIENT_SECRET', 'HUBTEL_MERCHANT_NUMBER', 'HUBTEL_BASE_URL'] as const;
+const missing = requiredEnvVars.filter(key => !process.env[key]);
+if (missing.length) {
+  throw new Error(`Missing required Hubtel env vars: ${missing.join(', ')}`);
 }
 
 const hubtelClient = axios.create({
