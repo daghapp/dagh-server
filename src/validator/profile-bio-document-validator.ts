@@ -14,4 +14,3 @@ export const postBioDocumentSchema = z.object({
 });
 
 export type PostBioDocumentInput = z.infer<typeof postBioDocumentSchema>;
-

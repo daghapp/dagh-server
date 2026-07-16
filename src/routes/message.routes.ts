@@ -1,17 +1,17 @@
-import express from 'express'
-import protectedRoute from '../middleware/protected.js'
-import { validate } from '../middleware/validation.js'
-import { sendMessageSchema } from '../validator/messageValidation.js'
+import express from "express";
+import protectedRoute from "../middleware/protected.js";
+import { validate } from "../middleware/validation.js";
+import { sendMessageSchema } from "../validator/messageValidation.js";
 import {
   sendMessage,
   getConversations,
   getMessages,
-  markAsRead
-} from '../modules/messages/messages.controller.js'
+  markAsRead,
+} from "../modules/messages/messages.controller.js";
 
-const router = express.Router()
+const router = express.Router();
 
-router.use(protectedRoute)
+router.use(protectedRoute);
 
 /**
  * @swagger
@@ -45,7 +45,7 @@ router.use(protectedRoute)
  *       401:
  *         description: Unauthorized
  */
-router.post('/', validate(sendMessageSchema), sendMessage)
+router.post("/", validate(sendMessageSchema), sendMessage);
 
 /**
  * @swagger
@@ -61,7 +61,7 @@ router.post('/', validate(sendMessageSchema), sendMessage)
  *       401:
  *         description: Unauthorized
  */
-router.get('/conversations', getConversations)
+router.get("/conversations", getConversations);
 
 /**
  * @swagger
@@ -86,7 +86,7 @@ router.get('/conversations', getConversations)
  *       404:
  *         description: Conversation not found
  */
-router.get('/conversations/:conversationId', getMessages)
+router.get("/conversations/:conversationId", getMessages);
 
 /**
  * @swagger
@@ -109,6 +109,6 @@ router.get('/conversations/:conversationId', getMessages)
  *       401:
  *         description: Unauthorized
  */
-router.patch('/:messageId/read', markAsRead)
+router.patch("/:messageId/read", markAsRead);
 
-export { router }
+export { router };

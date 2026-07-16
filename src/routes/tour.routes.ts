@@ -124,10 +124,7 @@ const adminTourController = new AdminTourController();
  *       500:
  *         description: Failed to fetch tours
  */
-router.get(
-  "/",
-  userTourController.getAllTours.bind(userTourController)
-);
+router.get("/", userTourController.getAllTours.bind(userTourController));
 
 /**
  * @swagger
@@ -191,9 +188,8 @@ router.get(
 router.get(
   "/bookings/my",
   protectedRoute,
-  userTourController.getUserBookings.bind(userTourController)
+  userTourController.getUserBookings.bind(userTourController),
 );
-
 
 /**
  * @swagger
@@ -281,7 +277,7 @@ router.post(
   "/initiate-booking-momo",
   protectedRoute,
   validate(tourBookingSchema_momo),
-  userTourController.initiateTourBookingMoMo.bind(userTourController)
+  userTourController.initiateTourBookingMoMo.bind(userTourController),
 );
 
 /**
@@ -309,14 +305,14 @@ router.post(
 router.post(
   "/hubtel-callback",
   verifyHubtelCallback,
-  userTourController.hubtelCallbackController.bind(userTourController)
+  userTourController.hubtelCallbackController.bind(userTourController),
 );
 
 router.post(
   "/bookings",
   protectedRoute,
   validate(tourBookingSchema),
-  userTourController.bookTour.bind(userTourController)
+  userTourController.bookTour.bind(userTourController),
 );
 /**
  * @swagger
@@ -375,7 +371,7 @@ router.post(
 router.patch(
   "/user-itineraries/:itineraryId",
   protectedRoute,
-  userTourController.updateUserItinerary.bind(userTourController)
+  userTourController.updateUserItinerary.bind(userTourController),
 );
 
 /**
@@ -433,7 +429,7 @@ router.patch(
 router.delete(
   "/bookings/:bookingId",
   protectedRoute,
-  userTourController.cancelBooking.bind(userTourController)
+  userTourController.cancelBooking.bind(userTourController),
 );
 
 /**
@@ -722,7 +718,7 @@ router.post(
   protectedRoute,
   requireAdmin,
   validate(tourSchema),
-  adminTourController.createTour.bind(adminTourController)
+  adminTourController.createTour.bind(adminTourController),
 );
 
 /**
@@ -811,7 +807,7 @@ router.put(
   protectedRoute,
   requireAdmin,
   validate(updateTourSchema),
-  adminTourController.updateTour.bind(adminTourController)
+  adminTourController.updateTour.bind(adminTourController),
 );
 
 /**
@@ -856,7 +852,7 @@ router.delete(
   "/:id",
   protectedRoute,
   requireAdmin,
-  adminTourController.deleteTour.bind(adminTourController)
+  adminTourController.deleteTour.bind(adminTourController),
 );
 
 /**
@@ -1083,7 +1079,7 @@ router.post(
   protectedRoute,
   requireAdmin,
   validate(tourItinerarySchema),
-  adminTourController.addTourItinerary.bind(adminTourController)
+  adminTourController.addTourItinerary.bind(adminTourController),
 );
 
 /**
@@ -1283,7 +1279,7 @@ router.put(
   protectedRoute,
   requireAdmin,
   validate(tourItinerarySchema),
-  adminTourController.updateTourItinerary.bind(adminTourController)
+  adminTourController.updateTourItinerary.bind(adminTourController),
 );
 
 /**
@@ -1328,9 +1324,8 @@ router.delete(
   "/itinerary/:id",
   protectedRoute,
   requireAdmin,
-  adminTourController.deleteTourItinerary.bind(adminTourController)
+  adminTourController.deleteTourItinerary.bind(adminTourController),
 );
-
 
 /**
  * @swagger
@@ -1452,12 +1447,6 @@ router.delete(
  *       500:
  *         description: Failed to fetch tour details
  */
-router.get("/:tourId", 
-  userTourController.getTourDetails.bind(userTourController)
-);
+router.get("/:tourId", userTourController.getTourDetails.bind(userTourController));
 
-
-
-
-
-export {router};
+export { router };

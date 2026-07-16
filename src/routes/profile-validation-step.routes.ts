@@ -30,12 +30,6 @@ const router = express.Router();
  *       404:
  *         description: Profile not found
  */
-router.get(
-  "/validation-step/status",
-  protectedRoute,
-  getValidationStepStatus,
-);
-
+router.get("/validation-step/status", protectedRoute, getValidationStepStatus);
 
 export { router };
-

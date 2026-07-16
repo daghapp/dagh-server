@@ -81,7 +81,6 @@ router.get("/sites", getTourSites);
  */
 router.post("/request", protectedRoute, postTourRequest);
 
-
 /**
  * @swagger
  * /itinerary/my-itineraries:
@@ -97,8 +96,6 @@ router.post("/request", protectedRoute, postTourRequest);
  *         description: Unauthorized
  */
 router.get("/my-itineraries", protectedRoute, getUserItineraries);
-
-
 
 /**
  * @swagger
@@ -126,7 +123,7 @@ router.get("/my-itineraries", protectedRoute, getUserItineraries);
 router.post(
   "/:tourRequestId/payment",
   protectedRoute,
-  itineraryPaymentController.initiateItineraryPayment.bind(itineraryPaymentController)
+  itineraryPaymentController.initiateItineraryPayment.bind(itineraryPaymentController),
 );
 
 /**
@@ -149,7 +146,7 @@ router.post(
 router.post(
   "/payment-callback",
   verifyHubtelCallback,
-  itineraryPaymentController.handleHubtelPaymentCallback.bind(itineraryPaymentController)
+  itineraryPaymentController.handleHubtelPaymentCallback.bind(itineraryPaymentController),
 );
 
 /**
@@ -192,7 +189,7 @@ router.post(
  *                 error:
  *                   type: string
  *               required: [success, message, data, price]
- *               
+ *
  *       403:
  *         description: PAYMENT_REQUIRED (initiate and complete payment first)
  *       404:
@@ -216,4 +213,3 @@ router.get("/requests", protectedRoute, getUserTourRequests);
 
 router.get("/:tourRequestId", protectedRoute, getItinerary);
 export { router };
-

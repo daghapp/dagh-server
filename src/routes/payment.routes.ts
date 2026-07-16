@@ -1,6 +1,6 @@
 import express from "express";
-import {PaymentController} from "../modules/payment-management/payment.controller.js";
-import { initializePaymentSchema_momo, subscribtionPaymentSchema } from "../validator/index.js";
+import { PaymentController } from "../modules/payment-management/payment.controller.js";
+import { initializePaymentSchema_momo } from "../validator/index.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import path from "node:path";
@@ -106,10 +106,12 @@ const paymentController = new PaymentController();
  *                 error:
  *                   type: string
  */
-router.post("/initialize",
-    protectedRoute,
-    validate(initializePaymentSchema_momo),
-    paymentController.initializePayment.bind(paymentController) )
+router.post(
+  "/initialize",
+  protectedRoute,
+  validate(initializePaymentSchema_momo),
+  paymentController.initializePayment.bind(paymentController),
+);
 
 /**
  * @swagger
@@ -176,7 +178,11 @@ router.post("/initialize",
  *                 error:
  *                   type: string
  */
-router.get("/verify/:reference", protectedRoute, paymentController.verifyPayment.bind(paymentController) )
+router.get(
+  "/verify/:reference",
+  protectedRoute,
+  paymentController.verifyPayment.bind(paymentController),
+);
 
 /**
  * @swagger
@@ -219,7 +225,11 @@ router.get("/verify/:reference", protectedRoute, paymentController.verifyPayment
  *       500:
  *         description: Transaction status check failed
  */
-router.get("/transaction-status/:posSalesId", protectedRoute, paymentController.checkTransactionStatus.bind(paymentController) )
+router.get(
+  "/transaction-status/:posSalesId",
+  protectedRoute,
+  paymentController.checkTransactionStatus.bind(paymentController),
+);
 
 /**
  * @swagger
@@ -259,6 +269,4 @@ router.get("/p.js", (_req, res) => {
   res.status(200).sendFile(path.join(process.cwd(), "src/views/p.js"));
 });
 
-
-
-export { router }
+export { router };

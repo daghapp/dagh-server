@@ -40,4 +40,3 @@ export async function postBioProfileUrl(req: Request, res: Response) {
     });
   }
 }
-

@@ -13,7 +13,6 @@ import { initProfile } from "../modules/profile-management/profile.init.controll
 
 const router = express.Router();
 
-
 const profileVerificationController = new ProfileVerificationController();
 
 /**
@@ -53,9 +52,7 @@ router.post(
   "/phone/send-otp",
   protectedRoute,
   validate(sendPhoneOtpSchema),
-  profileVerificationController.sendPhoneOtpForVerification.bind(
-    profileVerificationController,
-  ),
+  profileVerificationController.sendPhoneOtpForVerification.bind(profileVerificationController),
 );
 
 /**
@@ -93,9 +90,7 @@ router.post(
   "/phone/verify-otp",
   protectedRoute,
   validate(verifyPhoneOtpSchema),
-  profileVerificationController.verifyPhoneOtpForVerification.bind(
-    profileVerificationController,
-  ),
+  profileVerificationController.verifyPhoneOtpForVerification.bind(profileVerificationController),
 );
 
 /**
@@ -125,11 +120,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/bio_profile_url",
-  protectedRoute,
-  postBioProfileUrl,
-);
+router.post("/bio_profile_url", protectedRoute, postBioProfileUrl);
 
 /**
  * @swagger
@@ -165,12 +156,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/bio_document_urls",
-  protectedRoute,
-  validate(postBioDocumentSchema),
-  postBioDocument,
-);
+router.post("/bio_document_urls", protectedRoute, validate(postBioDocumentSchema), postBioDocument);
 
 /**
  * @swagger
@@ -187,12 +173,6 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/init",
-  protectedRoute,
-  async (req, res) => initProfile(req, res),
-);
-
+router.post("/init", protectedRoute, async (req, res) => initProfile(req, res));
 
 export { router };
-

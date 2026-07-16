@@ -15,10 +15,7 @@ const EthnicityValues = [
   "Other",
 ] as const;
 
-
-
 type Ethnicity = (typeof EthnicityValues)[number];
-
 
 export async function setUserEthnicity(req: Request, res: Response) {
   try {
@@ -65,4 +62,3 @@ export async function setUserEthnicity(req: Request, res: Response) {
     });
   }
 }
-

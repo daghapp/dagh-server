@@ -3,7 +3,14 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as FacebookStrategy } from "passport-facebook";
 import { prisma } from "./prisma.js";
 
-const { CLIENTID, CLIENTSECRETE, REDIRECTURI, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET, FACEBOOK_CALLBACK_URL } = process.env;
+const {
+  CLIENTID,
+  CLIENTSECRETE,
+  REDIRECTURI,
+  FACEBOOK_APP_ID,
+  FACEBOOK_APP_SECRET,
+  FACEBOOK_CALLBACK_URL,
+} = process.env;
 
 if (!CLIENTID || !CLIENTSECRETE || !REDIRECTURI) {
   throw new Error("Google OAuth env vars missing");
@@ -14,7 +21,7 @@ passport.use(
     {
       clientID: CLIENTID,
       clientSecret: CLIENTSECRETE,
-      callbackURL: REDIRECTURI  || "http://localhost:3000/auth/google/callback",
+      callbackURL: REDIRECTURI || "http://localhost:3000/auth/google/callback",
     },
     async (_accessToken, _refreshToken, profile, done) => {
       try {
@@ -45,8 +52,8 @@ passport.use(
       } catch (err) {
         done(err, false);
       }
-    }
-  )
+    },
+  ),
 );
 
 // Facebook Strategy
@@ -88,8 +95,8 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET && FACEBOOK_CALLBACK_URL) {
         } catch (err) {
           done(err, false);
         }
-      }
-    )
+      },
+    ),
   );
 }
 

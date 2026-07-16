@@ -89,7 +89,9 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountType: true },
       });
 
-      return res.status(200).json({ success: true, message: "User promoted to admin", data: updated });
+      return res
+        .status(200)
+        .json({ success: true, message: "User promoted to admin", data: updated });
     } catch (error) {
       console.error("Promote to admin error:", error);
       return res.status(500).json({
@@ -155,7 +157,9 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountType: true },
       });
 
-      return res.status(200).json({ success: true, message: "Admin demoted to user", data: updated });
+      return res
+        .status(200)
+        .json({ success: true, message: "Admin demoted to user", data: updated });
     } catch (error) {
       console.error("Demote to user error:", error);
       return res.status(500).json({
@@ -192,7 +196,9 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountStatus: true },
       });
 
-      return res.status(200).json({ success: true, message: "User suspended successfully", data: updated });
+      return res
+        .status(200)
+        .json({ success: true, message: "User suspended successfully", data: updated });
     } catch (error) {
       console.error("Suspend user error:", error);
       return res.status(500).json({
@@ -228,7 +234,9 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountStatus: true },
       });
 
-      return res.status(200).json({ success: true, message: "User reactivated successfully", data: updated });
+      return res
+        .status(200)
+        .json({ success: true, message: "User reactivated successfully", data: updated });
     } catch (error) {
       console.error("Reactivate user error:", error);
       return res.status(500).json({

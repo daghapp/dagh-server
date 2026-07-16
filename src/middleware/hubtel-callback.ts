@@ -9,7 +9,7 @@ import { hubtelStatusClient } from "../config/hubtel.js";
 export default async function verifyHubtelCallback(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     const { ResponseCode, Data } = req.body;
@@ -24,9 +24,7 @@ export default async function verifyHubtelCallback(
 
     // Verify the transaction with Hubtel's Transaction Status API
     try {
-      const statusResponse = await hubtelStatusClient.get(
-        `/${Data.TransactionId}`
-      );
+      const statusResponse = await hubtelStatusClient.get(`/${Data.TransactionId}`);
       const statusData = statusResponse.data;
 
       // If Hubtel reports the transaction as failed, reject the callback

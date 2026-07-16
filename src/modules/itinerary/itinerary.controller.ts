@@ -9,8 +9,6 @@ import { createTourRequestSchema } from "../../validator/itinerary-validator.js"
 
 import { prisma } from "../../config/index.js";
 
-
-
 // ─────────────────────────────────────────
 // GET /api/tours/sites
 // ─────────────────────────────────────────
@@ -52,7 +50,7 @@ export async function postTourRequest(req: Request, res: Response) {
       });
     }
 
-    const result = await createTourRequest({...parsed.data, userId: req.user?.id as string});
+    const result = await createTourRequest({ ...parsed.data, userId: req.user?.id as string });
 
     // Feasibility failure — valid request but unworkable plan
     if (!result.success) {
@@ -129,7 +127,6 @@ export async function getItinerary(req: Request, res: Response) {
             tourSite: true,
           },
         },
-
       },
     });
 

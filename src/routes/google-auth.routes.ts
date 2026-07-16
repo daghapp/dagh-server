@@ -26,7 +26,6 @@ router.get("/google", (req, res, next) => {
   })(req, res, next);
 });
 
-
 /**
  * @swagger
  * /auth/google/callback:
@@ -55,7 +54,7 @@ router.get(
     failureRedirect: "/auth/google/failed",
     session: false,
   }),
-  googleAuthController.googleAuthCallback
+  googleAuthController.googleAuthCallback,
 );
 
 /**

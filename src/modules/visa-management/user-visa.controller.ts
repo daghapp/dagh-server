@@ -2,7 +2,11 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL } from "../../services/payment.service.js";
 import * as paymentService from "../../services/payment.service.js";
-import { PaymentStatus, PaymentTargetType, VisaRequestStatus } from "../../../generated/prisma/client.js";
+import {
+  PaymentStatus,
+  PaymentTargetType,
+  VisaRequestStatus,
+} from "../../../generated/prisma/client.js";
 import { VisaOnArrivalDataSchema } from "../../validator/visaValidation.js";
 import { convertUSDToGHS } from "../../helpers/stringHelper.js";
 import sendEmail from "../../config/resend.config.js";
@@ -114,7 +118,7 @@ export class UserVisaController {
           await prisma.ledgerTransaction.createMany({
             data: [
               {
-              accountId: await getAccountId("Account_DAGh_Revenue"),
+                accountId: await getAccountId("Account_DAGh_Revenue"),
                 paymentId: payment.id,
                 amount: pricing.visa.standardFacilitationFee,
                 currency: "GHS",
@@ -245,7 +249,8 @@ export class UserVisaController {
     try {
       const userId = req.user?.id as string;
       const { requestId: visaRequestId } = req.params;
-      if (!visaRequestId) return res.status(400).json({ success: false, message: "visaRequest id required" });
+      if (!visaRequestId)
+        return res.status(400).json({ success: false, message: "visaRequest id required" });
 
       const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
         where: { userId, id: visaRequestId as string },
@@ -301,4 +306,3 @@ export class UserVisaController {
     }
   }
 }
-

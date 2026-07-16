@@ -4,10 +4,7 @@ import { validate } from "../middleware/validation.js";
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import verifyHubtelCallback from "../middleware/hubtel-callback.js";
-import {
-  initiateVisaPaymentSchema,
-  visaOnArrivalDataSchema,
-} from "../validator/visaValidation.js";
+import { initiateVisaPaymentSchema, visaOnArrivalDataSchema } from "../validator/visaValidation.js";
 
 const router = express.Router();
 const userVisaController = new UserVisaController();
@@ -251,11 +248,7 @@ router.post(
  *                     enum: [STANDARD, EXPEDITED]
  *                     nullable: true
  */
-router.get(
-  "",
-  protectedRoute,
-  userVisaController.getVisaRequest.bind(userVisaController),
-);
+router.get("", protectedRoute, userVisaController.getVisaRequest.bind(userVisaController));
 
 /**
  * @swagger
@@ -327,9 +320,6 @@ router.post(
   userVisaController.handleVisaPaymentCallback.bind(userVisaController),
 );
 
-router.get(
-  "/pricing/:visaType",
-  userVisaController.getVisaPricing.bind(userVisaController),
-);
+router.get("/pricing/:visaType", userVisaController.getVisaPricing.bind(userVisaController));
 
 export { router };

@@ -41,7 +41,6 @@ export async function initProfile(req: Request, res: Response) {
             document_verificaiton: false,
             bio_profile_verification: false,
             ip_address_verification: false,
-
           },
         },
       },
@@ -49,7 +48,6 @@ export async function initProfile(req: Request, res: Response) {
         profileVerification: true,
       },
     });
-
 
     return res.status(200).json({
       success: true,
@@ -65,4 +63,3 @@ export async function initProfile(req: Request, res: Response) {
     });
   }
 }
-

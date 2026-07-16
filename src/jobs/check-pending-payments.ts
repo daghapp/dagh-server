@@ -87,9 +87,7 @@ export const checkPendingPaymentsJob = () => {
             });
 
             if (!visaRequest)
-              throw new Error(
-                "No visa request found with payment id " + payment.id,
-              );
+              throw new Error("No visa request found with payment id " + payment.id);
 
             if (newStatus === "SUCCESS") {
               if (target == PaymentTargetType.VISA_ON_ARRIVAL) {
@@ -98,9 +96,7 @@ export const checkPendingPaymentsJob = () => {
                   await prisma.ledgerTransaction.createMany({
                     data: [
                       {
-                        accountId: await getAccountId(
-                          "Account_DAGh_Revenue",
-                        ),
+                        accountId: await getAccountId("Account_DAGh_Revenue"),
                         paymentId: payment.id,
                         amount: pricing.visa.standardFacilitationFee,
                         currency: "GHS",
@@ -108,9 +104,7 @@ export const checkPendingPaymentsJob = () => {
                         description: "Visa Facilitation Fee",
                       },
                       {
-                        accountId: await getAccountId(
-                          "Account_GIS_Statutory_Reserve",
-                        ),
+                        accountId: await getAccountId("Account_GIS_Statutory_Reserve"),
                         paymentId: payment.id,
                         amount: await convertUSDToGHS(200),
                         currency: "GHS",
@@ -129,9 +123,7 @@ export const checkPendingPaymentsJob = () => {
                 if (visaRequest.packageType === "EXPEDITED") {
                   await prisma.ledgerTransaction.create({
                     data: {
-                      accountId: await getAccountId(
-                        "Account_DAGh_Revenue",
-                      ),
+                      accountId: await getAccountId("Account_DAGh_Revenue"),
                       paymentId: payment.id,
                       amount: pricing.visa.expeditedFacilitationFee,
                       currency: "GHS",
@@ -202,20 +194,14 @@ export const checkPendingPaymentsJob = () => {
               }
             }
           } catch (error) {
-            console.error(
-              "[Cron Job Error] Failed to check pending payments:",
-              error,
-            );
+            console.error("[Cron Job Error] Failed to check pending payments:", error);
           }
         }),
       );
 
       console.log("✓ Pending payments status check cron job initialized");
     } catch (e) {
-      console.error(
-        "[Cron Job Error] Failed to check pending payments:",
-        e,
-      );
+      console.error("[Cron Job Error] Failed to check pending payments:", e);
     }
   });
 };

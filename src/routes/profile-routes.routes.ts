@@ -6,8 +6,6 @@ import protectedRoute from "../middleware/protected.js";
 
 import { initProfile } from "../modules/profile-management/profile.init.controller.js";
 
-
-
 // ─────────────────────────────────────────
 // POST /profile/init
 // ─────────────────────────────────────────
@@ -26,12 +24,6 @@ import { initProfile } from "../modules/profile-management/profile.init.controll
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/init",
-  protectedRoute,
-  async (req, res) => initProfile(req, res),
-);
+router.post("/init", protectedRoute, async (req, res) => initProfile(req, res));
 
-
-export  {router};
-
+export { router };

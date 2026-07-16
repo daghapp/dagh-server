@@ -12,7 +12,6 @@ import {
 import { verifyOtpSchema, resendOtpSchema } from "../validator/otp-validator.js";
 import { refreshTokenSchema } from "../validator/token-validator.js";
 
-
 const passwordAuthController = new PasswordAuthController();
 
 /**
@@ -310,11 +309,7 @@ router.post(
  *       401:
  *         description: Not authenticated
  */
-router.post(
-  "/logout",
-  protectedRoute,
-  passwordAuthController.logout.bind(passwordAuthController),
-);
+router.post("/logout", protectedRoute, passwordAuthController.logout.bind(passwordAuthController));
 
 /**
  * @swagger
@@ -476,8 +471,5 @@ router.post(
  *       500:
  *         description: Failed to reset password
  */
-router.post(
-  "/reset-password",
-  passwordAuthController.resetPassword.bind(passwordAuthController),
-);
+router.post("/reset-password", passwordAuthController.resetPassword.bind(passwordAuthController));
 export { router };

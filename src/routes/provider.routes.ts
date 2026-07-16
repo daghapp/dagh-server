@@ -46,4 +46,3 @@ const controller = new ProviderNearbyHotelsController();
 router.get("/nearby-hotels", protectedRoute, controller.getNearbyHotels.bind(controller));
 
 export { router };
-

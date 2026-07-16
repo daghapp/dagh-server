@@ -8,7 +8,6 @@ const router = express.Router();
 const authAdminController = new AuthAdminController();
 const adminVisaController = new AdminVisaController();
 
-
 /**
  * @swagger
  * /admin/users:
@@ -531,4 +530,3 @@ router.post(
 );
 
 export { router };
-

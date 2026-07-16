@@ -17,11 +17,7 @@ const facebookAuthController = new FacebookAuthController();
  *       302:
  *         description: Redirects to Facebook OAuth
  */
-router.get(
-  "/facebook",
-  passport.authenticate("facebook", { scope: ["email"] })
-);
-
+router.get("/facebook", passport.authenticate("facebook", { scope: ["email"] }));
 
 /**
  * @swagger
@@ -46,7 +42,7 @@ router.get(
     failureRedirect: "/auth/facebook/failed",
     session: false,
   }),
-  facebookAuthController.facebookAuthCallback
+  facebookAuthController.facebookAuthCallback,
 );
 
 /**

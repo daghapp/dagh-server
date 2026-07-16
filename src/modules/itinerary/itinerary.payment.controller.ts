@@ -1,25 +1,18 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
-import {
-  HUBTEL_CANCELLATION_URL,
-  HUBTEL_RETURN_URL,
-} from "../../services/payment.service.js";
+import { HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL } from "../../services/payment.service.js";
 import * as paymentService from "../../services/payment.service.js";
-import {
-  PaymentStatus,
-  PaymentTargetType,
-} from "../../../generated/prisma/client.js";
+import { PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
 import { getAccountId } from "../../helpers/ledger.js";
 
 export class ItineraryPaymentController {
-
   async initiateItineraryPayment(req: Request, res: Response) {
     try {
       const userId = req.user?.id as string;
       const { tourRequestId } = req.params;
 
       const tourRequest = await prisma.tourRequest.findUnique({
-        where: { id: tourRequestId as string},
+        where: { id: tourRequestId as string },
         select: { id: true, userId: true, durationDays: true },
       });
 
@@ -85,9 +78,7 @@ export class ItineraryPaymentController {
             : undefined;
 
       if (!clientReference) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid callback payload" });
+        return res.status(400).json({ success: false, message: "Invalid callback payload" });
       }
 
       const payment = await prisma.payment.findUnique({
@@ -125,9 +116,7 @@ export class ItineraryPaymentController {
         // (mirrors visa callback behavior; uses DAGh revenue account)
         await prisma.ledgerTransaction.create({
           data: {
-            accountId: await getAccountId(
-              "Account_DAGh_Revenue",
-            ),
+            accountId: await getAccountId("Account_DAGh_Revenue"),
             paymentId: payment.id,
             amount: typeof Data?.Amount === "number" ? Data.Amount : payment.amount,
             currency: "GHS",

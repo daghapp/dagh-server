@@ -1,12 +1,11 @@
 import { Request, Response } from "express";
 import { prisma, hubtelClient, hubtelStatusClient } from "../../config/index.js";
-import { initializePaymentSchema_momo, SubscribtionPaymentSchema } from "../../validator/index.js";
+import { initializePaymentSchema_momo, SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
 import { PaymentStatus } from "../../../generated/prisma/client.js";
 import * as paymentService from "../../services/payment.service.js";
 
 export class PaymentController {
-
   async initializePayment(req: Request, res: Response) {
     try {
       const user = req.user as any;
@@ -68,16 +67,14 @@ export class PaymentController {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const payload = req.body as SubscribtionPaymentSchema;
-      const reference = generateClientReference()
+      const payload = req.body as SubscriptionPaymentSchema;
+      const reference = generateClientReference();
 
-      const hubtelResponse = await hubtelClient.post(
-        "/invoice/create",
-        {...payload,
-          merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
-          clientReference: reference,
-        }
-      );
+      const hubtelResponse = await hubtelClient.post("/invoice/create", {
+        ...payload,
+        merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
+        clientReference: reference,
+      });
 
       const data = hubtelResponse.data;
 
@@ -91,7 +88,7 @@ export class PaymentController {
 
       const totalAmount = payload.items.reduce(
         (sum, item) => sum + item.quantity * item.unitPrice,
-        0
+        0,
       );
 
       await prisma.$transaction(async (tx) => {
@@ -162,7 +159,9 @@ export class PaymentController {
       const data = hubtelResponse.data;
 
       if (!data) {
-        return res.status(400).json({ success: false, message: "Unable to check transaction status" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Unable to check transaction status" });
       }
 
       let status: "SUCCESS" | "FAILED" | "PENDING" = "PENDING";
@@ -183,7 +182,11 @@ export class PaymentController {
       return res.status(200).json({
         success: true,
         message: "Transaction status retrieved",
-        data: { ...data, internalStatus: status, paymentRecord: payment ? { id: payment.id, status } : null },
+        data: {
+          ...data,
+          internalStatus: status,
+          paymentRecord: payment ? { id: payment.id, status } : null,
+        },
       });
     } catch (error: any) {
       console.error("Transaction status check error:", error?.response?.data || error);

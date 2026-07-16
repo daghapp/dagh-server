@@ -33,6 +33,4 @@ const router = express.Router();
  */
 router.post("/bio_profile_url", protectedRoute, postBioProfileUrl);
 
-
 export { router };
-

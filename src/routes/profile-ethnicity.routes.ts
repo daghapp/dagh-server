@@ -44,4 +44,3 @@ const router = express.Router();
 router.patch("/ethnicity", protectedRoute, setUserEthnicity);
 
 export { router };
-

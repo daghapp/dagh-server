@@ -18,16 +18,16 @@ function getStatusForStep(args: {
   const { step, userProfile, userVerification } = args;
 
   if (step === STEP_PHONE_NUMBER_VERIFICATION) {
-    return !!userVerification?.phone_number_verified ? "VERIFIED" : "PENDING";
+    return userVerification?.phone_number_verified ? "VERIFIED" : "PENDING";
   }
 
   if (step === STEP_DOCUMENT_VERIFICATION) {
     // Note: field name in schema is `document_verificaiton` (typo kept)
-    return !!userVerification?.document_verificaiton ? "VERIFIED" : "PENDING";
+    return userVerification?.document_verificaiton ? "VERIFIED" : "PENDING";
   }
 
   if (step === STEP_PROFILE_IMAGE_VERIFICATION) {
-    return !!userVerification?.bio_profile_verification ? "VERIFIED" : "PENDING";
+    return userVerification?.bio_profile_verification ? "VERIFIED" : "PENDING";
   }
 
   // Fallback: if step is unknown, report not started.
@@ -40,9 +40,7 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     const stepQuery = typeof req.query.step === "string" ? req.query.step : null;
     const requestedStep = stepQuery ?? null;
 
-
     if (!userId) {
-
       return res.status(401).json({ success: false, message: "Unauthorized", data: null });
     }
 
@@ -66,7 +64,6 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     // If the caller provided ?step=..., respect it; otherwise use stored/inferred current step.
     const inferredCurrentStep =
       (userVerification as any)?.validationStep ??
-
       (!userVerification?.phone_number_verified
         ? STEP_PHONE_NUMBER_VERIFICATION
         : !userVerification?.bio_profile_verification
@@ -76,8 +73,6 @@ export async function getValidationStepStatus(req: Request, res: Response) {
             : STEP_DOCUMENT_VERIFICATION);
 
     const validationStep = requestedStep ?? inferredCurrentStep;
-
-
 
     const status = getStatusForStep({
       step: validationStep,
@@ -104,4 +99,3 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     });
   }
 }
-

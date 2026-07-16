@@ -13,11 +13,7 @@ interface AuthPayload extends JwtPayload {
   email: string;
 }
 
-export default async function protectedRoute(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
+export default async function protectedRoute(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
 
@@ -36,7 +32,6 @@ export default async function protectedRoute(
         email: true,
         accountType: true,
         fullName: true,
-        
       },
     });
 

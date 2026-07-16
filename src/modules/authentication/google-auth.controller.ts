@@ -28,9 +28,7 @@ export class GoogleAuthController {
       });
 
       const rawState = req.query.state as string | undefined;
-      const appRedirect = rawState
-        ? Buffer.from(rawState, "base64").toString("utf8")
-        : null;
+      const appRedirect = rawState ? Buffer.from(rawState, "base64").toString("utf8") : null;
 
       if (appRedirect && isAllowedRedirect(appRedirect)) {
         const separator = appRedirect.includes("?") ? "&" : "?";

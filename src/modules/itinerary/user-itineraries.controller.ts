@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { getItineraryByRequestId } from "./itinerary.service.js";
 
-
 export async function getUserItineraries(req: Request, res: Response) {
   try {
     const userId = req.user?.id as string;
@@ -47,5 +46,3 @@ export async function getUserItineraries(req: Request, res: Response) {
     });
   }
 }
-
-

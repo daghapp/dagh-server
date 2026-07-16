@@ -25,7 +25,8 @@ export class ProfileVerificationController {
       }
 
       const phoneNumberFromRequest = (body as any).phoneNumber as string | undefined;
-      const phoneNumberFromProfile = (profile as any).phoneNumber ?? (profile as any).user?.phoneNumber ?? null;
+      const phoneNumberFromProfile =
+        (profile as any).phoneNumber ?? (profile as any).user?.phoneNumber ?? null;
       const phoneNumber = phoneNumberFromRequest ?? phoneNumberFromProfile;
 
       if (!phoneNumber) {

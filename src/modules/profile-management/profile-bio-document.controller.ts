@@ -39,4 +39,3 @@ export async function postBioDocument(req: Request, res: Response) {
     });
   }
 }
-

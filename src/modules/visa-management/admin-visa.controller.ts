@@ -66,7 +66,10 @@ export class AdminVisaController {
       }
 
       // Idempotent-ish approval: if already approved, just return current state.
-      if (existing.status === VisaRequestStatus.APPROVED || existing.approval?.status === VisaApprovalStatus.APPROVED) {
+      if (
+        existing.status === VisaRequestStatus.APPROVED ||
+        existing.approval?.status === VisaApprovalStatus.APPROVED
+      ) {
         return res.status(200).json({
           success: true,
           message: "Visa request already approved",
@@ -116,4 +119,3 @@ export class AdminVisaController {
     }
   }
 }
-

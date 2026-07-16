@@ -1,13 +1,22 @@
 import { Response, Request } from "express";
-import { RegistrationSchema, LoginSchema, VerifyOtpSchema, ResendOtpSchema, RefreshTokenSchema , RequestResetPasswordSchema,ResetPasswordSchema} from "../../validator/index.js";
+import {
+  RegistrationSchema,
+  LoginSchema,
+  VerifyOtpSchema,
+  ResendOtpSchema,
+  RefreshTokenSchema,
+  RequestResetPasswordSchema,
+  ResetPasswordSchema,
+} from "../../validator/index.js";
 import { prisma } from "../../config/index.js";
 import * as bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { sendOtp , verifyOtp, generateAccessToken, generateRefreshToken} from "../../helpers/index.js";
-
-
-
-
+import {
+  sendOtp,
+  verifyOtp,
+  generateAccessToken,
+  generateRefreshToken,
+} from "../../helpers/index.js";
 
 export class PasswordAuthController {
   async register(req: Request, res: Response) {
@@ -19,9 +28,7 @@ export class PasswordAuthController {
       });
 
       if (userExists) {
-        return res
-          .status(400)
-          .json({ success: false, message: "User already exists" });
+        return res.status(400).json({ success: false, message: "User already exists" });
       }
 
       // phoneNumber is unique too
@@ -30,12 +37,9 @@ export class PasswordAuthController {
           where: { phoneNumber: userData.phoneNumber },
         });
         if (phoneExists) {
-          return res
-            .status(400)
-            .json({ success: false, message: "Phone number already in use" });
+          return res.status(400).json({ success: false, message: "Phone number already in use" });
         }
       }
-
 
       const hashedPassword = bcrypt.hashSync(userData.password, 10);
       const newUser = await prisma.user.create({
@@ -44,9 +48,7 @@ export class PasswordAuthController {
           fullName: userData.fullName,
           email: userData.email,
           phoneNumber: userData.phoneNumber,
-          dateOfBirth: userData.dateOfBirth
-            ? new Date(userData.dateOfBirth)
-            : undefined,
+          dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : undefined,
           gender: userData.gender,
           ethnicity: (userData.ethnicity ?? undefined) as any,
 
@@ -54,10 +56,13 @@ export class PasswordAuthController {
         },
       });
 
-      
-      await  sendOtp({ email: newUser.email, subject: "Verify Your Email", purpose: "EMAIL_VERIFICATION" });
+      await sendOtp({
+        email: newUser.email,
+        subject: "Verify Your Email",
+        purpose: "EMAIL_VERIFICATION",
+      });
 
-      const { passwordHash, ...safeUser } = newUser;
+      const { passwordHash: _, ...safeUser } = newUser;
       return res.status(201).json({ success: true, data: safeUser });
     } catch (error) {
       console.error("Registration error:", error);
@@ -75,15 +80,13 @@ export class PasswordAuthController {
       const loginData = req.body as LoginSchema;
 
       const user = await prisma.user.findUnique({
-        where: { 
+        where: {
           email: loginData.email,
-         },
+        },
       });
 
       if (!user || !user.passwordHash) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid email or password" });
+        return res.status(400).json({ success: false, message: "Invalid email or password" });
       }
 
       if (user.accountStatus !== "ACTIVE") {
@@ -92,27 +95,21 @@ export class PasswordAuthController {
           .json({ success: false, message: "Please verify your email before logging in" });
       }
 
-      const passwordMatch = bcrypt.compareSync(
-        loginData.password,
-        user.passwordHash,
-      );
+      const passwordMatch = bcrypt.compareSync(loginData.password, user.passwordHash);
       if (!passwordMatch) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid email or password" });
+        return res.status(400).json({ success: false, message: "Invalid email or password" });
       }
 
       const accessToken = generateAccessToken({
         id: user.id,
         email: user.email,
         accountType: user.accountType,
-    
-      })
+      });
       const refreshToken = await generateRefreshToken({
         id: user.id,
         email: user.email,
         accountType: user.accountType,
-      })
+      });
       return res.status(200).json({
         success: true,
         data: {
@@ -125,7 +122,6 @@ export class PasswordAuthController {
           refreshToken,
         },
       });
-
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({
@@ -143,9 +139,7 @@ export class PasswordAuthController {
       const userId = user?.id;
 
       if (!userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Not authenticated" });
+        return res.status(401).json({ success: false, message: "Not authenticated" });
       }
 
       // Delete all refresh tokens for this user (logout from all devices)
@@ -173,9 +167,7 @@ export class PasswordAuthController {
       const { refreshToken } = req.body as RefreshTokenSchema;
 
       if (!refreshToken) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Refresh token is required" });
+        return res.status(400).json({ success: false, message: "Refresh token is required" });
       }
 
       // Verify refresh token signature
@@ -200,9 +192,7 @@ export class PasswordAuthController {
       });
 
       if (!tokenRecord) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Refresh token not found" });
+        return res.status(401).json({ success: false, message: "Refresh token not found" });
       }
 
       // Check if token is expired
@@ -211,9 +201,7 @@ export class PasswordAuthController {
         await prisma.deviceToken.delete({
           where: { id: tokenRecord.id },
         });
-        return res
-          .status(401)
-          .json({ success: false, message: "Refresh token has expired" });
+        return res.status(401).json({ success: false, message: "Refresh token has expired" });
       }
 
       // Verify user still exists and is active
@@ -222,15 +210,11 @@ export class PasswordAuthController {
       });
 
       if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
+        return res.status(404).json({ success: false, message: "User not found" });
       }
 
       if (user.accountStatus !== "ACTIVE") {
-        return res
-          .status(403)
-          .json({ success: false, message: "Account is not active" });
+        return res.status(403).json({ success: false, message: "Account is not active" });
       }
 
       // Generate new access token
@@ -266,21 +250,17 @@ export class PasswordAuthController {
       });
 
       if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
+        return res.status(404).json({ success: false, message: "User not found" });
       }
 
       if (user.accountStatus === "ACTIVE") {
-        return res
-          .status(400)
-          .json({ success: false, message: "Email already verified" });
+        return res.status(400).json({ success: false, message: "Email already verified" });
       }
 
       const otpRecord = await prisma.otp.findFirst({
         where: {
           email: otpData.email,
-          purpose:otpData.purpose,
+          purpose: otpData.purpose,
         },
         orderBy: {
           createdAt: "desc",
@@ -288,22 +268,16 @@ export class PasswordAuthController {
       });
 
       if (!otpRecord) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid OTP code" });
+        return res.status(400).json({ success: false, message: "Invalid OTP code" });
       }
 
       if (new Date() > otpRecord.expiresAt) {
-        return res
-          .status(400)
-          .json({ success: false, message: "OTP has expired" });
+        return res.status(400).json({ success: false, message: "OTP has expired" });
       }
 
       const isOtpValid = await verifyOtp(otpRecord.code, otpData.code);
       if (!isOtpValid) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid OTP code" });
+        return res.status(400).json({ success: false, message: "Invalid OTP code" });
       }
 
       // Update user status to ACTIVE only for email verification
@@ -338,22 +312,16 @@ export class PasswordAuthController {
     try {
       const { email } = req.body as ResendOtpSchema;
 
-      
-
       const user = await prisma.user.findUnique({
         where: { email },
       });
 
       if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
+        return res.status(404).json({ success: false, message: "User not found" });
       }
 
       if (user.accountStatus === "ACTIVE") {
-        return res
-          .status(400)
-          .json({ success: false, message: "Email already verified" });
+        return res.status(400).json({ success: false, message: "Email already verified" });
       }
 
       // Check for recent OTP (rate limiting)
@@ -398,23 +366,24 @@ export class PasswordAuthController {
     }
   }
 
-
   //password request reset
   async requestResetPassword(req: Request, res: Response) {
     const { email } = req.body as { email: string };
 
-    try{
+    try {
       const existingUser = await prisma.user.findUnique({
         where: { email },
       });
 
       if (!existingUser) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
+        return res.status(404).json({ success: false, message: "User not found" });
       }
 
-      await sendOtp({ email: existingUser.email, subject: "Password Reset OTP", purpose: "PASSWORD_RESET" });
+      await sendOtp({
+        email: existingUser.email,
+        subject: "Password Reset OTP",
+        purpose: "PASSWORD_RESET",
+      });
       return res.status(200).json({
         success: true,
         message: "Password reset OTP sent successfully",
@@ -431,7 +400,7 @@ export class PasswordAuthController {
 
   //reset password
   async resetPassword(req: Request, res: Response) {
-    try{
+    try {
       const resetData = req.body as ResetPasswordSchema;
 
       const user = await prisma.user.findUnique({
@@ -439,9 +408,7 @@ export class PasswordAuthController {
       });
 
       if (!user || !user.passwordHash) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
+        return res.status(404).json({ success: false, message: "User not found" });
       }
 
       const otpRecord = await prisma.otp.findFirst({
@@ -453,22 +420,16 @@ export class PasswordAuthController {
       });
 
       if (!otpRecord) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid or expired OTP" });
+        return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
       }
 
       if (new Date() > otpRecord.expiresAt) {
-        return res
-          .status(400)
-          .json({ success: false, message: "OTP has expired" });
+        return res.status(400).json({ success: false, message: "OTP has expired" });
       }
 
       const isOtpValid = await verifyOtp(otpRecord.code, resetData.otp);
       if (!isOtpValid) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid OTP code" });
+        return res.status(400).json({ success: false, message: "Invalid OTP code" });
       }
 
       const hashedNewPassword = bcrypt.hashSync(resetData.newPassword, 10);
@@ -483,8 +444,7 @@ export class PasswordAuthController {
         success: true,
         message: "Password reset successfully",
       });
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Reset password error:", error);
       return res.status(500).json({
         success: false,
@@ -493,5 +453,4 @@ export class PasswordAuthController {
       });
     }
   }
-  
 }

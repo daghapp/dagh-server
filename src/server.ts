@@ -1,36 +1,36 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import dotenv from 'dotenv';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import cors from 'cors';
-import rateLimit from 'express-rate-limit';
-import { router as PasswordRoutes } from './routes/password.routes.js';
-import passport from './config/passport.js';
-import { router as OauthRoutes } from './routes/google-auth.routes.js';
-import { sessionConfig } from './config/index.js';
-import { setupSwagger } from './config/swagger.js';
-import { router as FacebookRoutes } from './routes/facebook-auth.routes.js';
-import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
-import { router as PaymentRoutes } from './routes/payment.routes.js';
-import { router as TourRoutes } from './routes/tour.routes.js';
-import { router as ProfileRoutes } from './routes/profile-routes.routes.js'
-import { router as VerificationRoutes } from './routes/verification.routes.js'
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import dotenv from "dotenv";
+import helmet from "helmet";
+import morgan from "morgan";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { router as PasswordRoutes } from "./routes/password.routes.js";
+import passport from "./config/passport.js";
+import { router as OauthRoutes } from "./routes/google-auth.routes.js";
+import { sessionConfig } from "./config/index.js";
+import { setupSwagger } from "./config/swagger.js";
+import { router as FacebookRoutes } from "./routes/facebook-auth.routes.js";
+import { router as ImageUploadRoutes } from "./routes/image-upload.route.js";
+import { router as PaymentRoutes } from "./routes/payment.routes.js";
+import { router as TourRoutes } from "./routes/tour.routes.js";
+import { router as ProfileRoutes } from "./routes/profile-routes.routes.js";
+import { router as VerificationRoutes } from "./routes/verification.routes.js";
 
-import { router as AdminRoutes } from './routes/admin.routes.js';
-import { router as AdminProfileRoutes } from './routes/admin-profile-routes.js';
-import { router as VisaRoutes } from './routes/visa.routes.js';
-import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
-import { router as ProviderRoutes } from './routes/provider.routes.js'
-import { router as ProfileValidationStepRoutes } from './routes/profile-validation-step.routes.js'
-import { router as ProfileEthnicityRoutes } from './routes/profile-ethnicity.routes.js'
-import { router as MessageRoutes } from './routes/message.routes.js'
+import { router as AdminRoutes } from "./routes/admin.routes.js";
+import { router as AdminProfileRoutes } from "./routes/admin-profile-routes.js";
+import { router as VisaRoutes } from "./routes/visa.routes.js";
+import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
+import { router as ProviderRoutes } from "./routes/provider.routes.js";
+import { router as ProfileValidationStepRoutes } from "./routes/profile-validation-step.routes.js";
+import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
+import { router as MessageRoutes } from "./routes/message.routes.js";
 
-import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
-import { setupSocketHandlers } from './sockets/socketHandlers.js';
-import { checkPendingPaymentsJob } from './jobs/check-pending-payments.js';
-import { setIoInstance } from './modules/messages/messages.controller.js';
+import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
+import { setupSocketHandlers } from "./sockets/socketHandlers.js";
+import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
+import { setIoInstance } from "./modules/messages/messages.controller.js";
 
 dotenv.config();
 
@@ -38,7 +38,7 @@ const app = express();
 const server = http.createServer(app);
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
   : [];
 
 const io = new Server(server, {
@@ -47,18 +47,18 @@ const io = new Server(server, {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
-    methods: ['GET', 'POST']
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  message: { success: false, message: 'Too many requests, please try again later' },
+  message: { success: false, message: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -71,13 +71,13 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
-  })
+  }),
 );
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(sessionConfig);
 app.use(passport.initialize());
 app.use(passport.session());
@@ -113,43 +113,43 @@ setupSwagger(app);
  *                   format: date-time
  *                   example: 2026-05-04T10:00:00Z
  */
-app.get('/health', (_req, res) => {
+app.get("/health", (_req, res) => {
   res.status(200).json({
-    status: 'OK',
+    status: "OK",
     uptime: process.uptime(),
-    timestamp: new Date()
+    timestamp: new Date(),
   });
 });
 
-app.use('/auth', authLimiter, PasswordRoutes);
-app.use('/auth', OauthRoutes);
-app.use('/auth', FacebookRoutes);
-app.use('/upload', ImageUploadRoutes);
+app.use("/auth", authLimiter, PasswordRoutes);
+app.use("/auth", OauthRoutes);
+app.use("/auth", FacebookRoutes);
+app.use("/upload", ImageUploadRoutes);
 const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50,
-  message: { success: false, message: 'Too many payment requests, please try again later' },
+  message: { success: false, message: "Too many payment requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-app.use('/payment', paymentLimiter, PaymentRoutes);
-app.use('/tours', TourRoutes);
-app.use('/profile', ProfileRoutes);
-app.use('/verification', VerificationRoutes);
-app.use('/verification', ProfileValidationStepRoutes);
-app.use('/profile', ProfileEthnicityRoutes);
+app.use("/payment", paymentLimiter, PaymentRoutes);
+app.use("/tours", TourRoutes);
+app.use("/profile", ProfileRoutes);
+app.use("/verification", VerificationRoutes);
+app.use("/verification", ProfileValidationStepRoutes);
+app.use("/profile", ProfileEthnicityRoutes);
 
-app.use('/admin', AdminRoutes);
-app.use('/admin', AdminProfileRoutes);
+app.use("/admin", AdminRoutes);
+app.use("/admin", AdminProfileRoutes);
 
-app.use("/visa-requests", VisaRoutes)
+app.use("/visa-requests", VisaRoutes);
 
 app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
 app.use("/messages", MessageRoutes);
 
-app.use('/*path', (req: express.Request, res: express.Response) => {
+app.use("/*path", (req: express.Request, res: express.Response) => {
   res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });
 });
 
@@ -157,7 +157,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   console.error(err.stack);
   res.status(500).json({
     success: false,
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    error: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
   });
 });
 

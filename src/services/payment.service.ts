@@ -1,8 +1,15 @@
 import { prisma, hubtelClient, hubtelDirectMoneyReceive } from "../config/index.js";
-import { generateClientReference, generateClientReference_targetType } from "../helpers/client-ref.js";
+import {
+  generateClientReference,
+  generateClientReference_targetType,
+} from "../helpers/client-ref.js";
 import { mapMomoProvider } from "../helpers/stringHelper.js";
 import { paymentStatusFromHubtel } from "../helpers/payment.js";
-import { PaymentProvider, PaymentStatus, PaymentTargetType } from "../../generated/prisma/client.js";
+import {
+  PaymentProvider,
+  PaymentStatus,
+  PaymentTargetType,
+} from "../../generated/prisma/client.js";
 import { InitializePaymentSchema, InitializePaymentSchema_MOMO } from "../validator/index.js";
 import { AxiosResponse } from "axios";
 import { HubtelDirectReceiveResponseSchema } from "../validator/index.js";
@@ -91,7 +98,9 @@ export async function initializePayment(input: InitPaymentInput): Promise<InitPa
 
 type InitPaymentMOMOInput = InitializePaymentSchema_MOMO;
 
-export async function initializePaymentMOMO(input: InitPaymentMOMOInput): Promise<InitPaymentResult> {
+export async function initializePaymentMOMO(
+  input: InitPaymentMOMOInput,
+): Promise<InitPaymentResult> {
   const reference = generateClientReference();
 
   const result = await prisma.$transaction(async (tx) => {
@@ -109,14 +118,15 @@ export async function initializePaymentMOMO(input: InitPaymentMOMOInput): Promis
       },
     });
 
-    const response: AxiosResponse<HubtelDirectReceiveResponseSchema> = await hubtelDirectMoneyReceive.post("", {
-      amount: input.amount,
-      customerMsisdn: input.customerPhone,
-      primaryCallbackUrl: HUBTEL_CALLBACK_URL,
-      clientReference: payment.reference,
-      description: `Payment for ${input.targetType} ${input.targetId}`,
-      Channel: mapMomoProvider(input.method),
-    });
+    const response: AxiosResponse<HubtelDirectReceiveResponseSchema> =
+      await hubtelDirectMoneyReceive.post("", {
+        amount: input.amount,
+        customerMsisdn: input.customerPhone,
+        primaryCallbackUrl: HUBTEL_CALLBACK_URL,
+        clientReference: payment.reference,
+        description: `Payment for ${input.targetType} ${input.targetId}`,
+        Channel: mapMomoProvider(input.method),
+      });
 
     await tx.hubtelDirectReceiveLog.create({
       data: {

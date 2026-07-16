@@ -43,4 +43,3 @@ const router = express.Router();
 router.post("/bio_document_urls", protectedRoute, validate(postBioDocumentSchema), postBioDocument);
 
 export { router };
-
