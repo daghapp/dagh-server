@@ -25,10 +25,12 @@ import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
 import { router as ProviderRoutes } from './routes/provider.routes.js'
 import { router as ProfileValidationStepRoutes } from './routes/profile-validation-step.routes.js'
 import { router as ProfileEthnicityRoutes } from './routes/profile-ethnicity.routes.js'
+import { router as MessageRoutes } from './routes/message.routes.js'
 
 import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
 import { setupSocketHandlers } from './sockets/socketHandlers.js';
 import { checkPendingPaymentsJob } from './jobs/check-pending-payments.js';
+import { setIoInstance } from './modules/messages/messages.controller.js';
 
 dotenv.config();
 
@@ -145,6 +147,7 @@ app.use("/visa-requests", VisaRoutes)
 
 app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
+app.use("/messages", MessageRoutes);
 
 app.use('/*path', (req: express.Request, res: express.Response) => {
   res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });
@@ -159,6 +162,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 setupSocketHandlers(io);
+setIoInstance(io);
 
 export { server };
 export default app;

@@ -3,8 +3,8 @@ import { prisma } from "../../config/index.js";
 import {
   HUBTEL_CANCELLATION_URL,
   HUBTEL_RETURN_URL,
-  PaymentController,
-} from "../payment-management/payment.controller.js";
+} from "../../services/payment.service.js";
+import * as paymentService from "../../services/payment.service.js";
 import {
   PaymentStatus,
   PaymentTargetType,
@@ -32,7 +32,7 @@ export class ItineraryPaymentController {
 
       const amount = tourRequest.durationDays <= 4 ? 350 : 500;
 
-      const payment: any = await PaymentController.initializePayment({
+      const payment = await paymentService.initializePayment({
         userId,
         targetType: PaymentTargetType.TOUR_REQUEST,
         targetId: tourRequest.id,
@@ -48,24 +48,7 @@ export class ItineraryPaymentController {
         return res.status(400).json({ success: false, message: payment.message });
       }
 
-      // PaymentController.initializePayment returns { paymentId } (string) but TS types are unstable in this repo.
-      // Extract a guaranteed string for Prisma.
-      const rawPaymentIdFromPaymentId = (payment as any).paymentId;
-      const rawPaymentIdFromId = (payment as any).id;
-
-      const rawPaymentId: unknown = rawPaymentIdFromPaymentId ?? rawPaymentIdFromId;
-
-      let paymentId: string;
-      if (typeof rawPaymentId === "string") {
-        paymentId = rawPaymentId;
-      } else if (Array.isArray(rawPaymentId) && typeof rawPaymentId[0] === "string") {
-        paymentId = rawPaymentId[0];
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: "Failed to get paymentId from payment initialization response",
-        });
-      }
+      const paymentId = payment.paymentId;
 
       await prisma.tourRequest.update({
         where: { id: tourRequest.id },
@@ -80,7 +63,7 @@ export class ItineraryPaymentController {
         message: "Payment initiated. Proceed to complete payment to view itinerary.",
         tourRequestId: tourRequest.id,
         paymentId,
-        paymentData: (payment as any).data,
+        paymentData: payment.data,
       });
     } catch (e) {
       console.error("[initiateItineraryPayment]", e);

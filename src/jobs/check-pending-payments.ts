@@ -10,6 +10,7 @@ import { convertUSDToGHS } from "../helpers/stringHelper.js";
 import sendEmail from "../config/resend.config.js";
 import { getAccountId } from "../helpers/ledger.js";
 import { paymentStatusFromHubtel } from "../helpers/payment.js";
+import { pricing } from "../config/pricing.js";
 
 export const checkPendingPaymentsJob = () => {
   // Run every 5 minutes
@@ -101,7 +102,7 @@ export const checkPendingPaymentsJob = () => {
                           "Account_DAGh_Revenue",
                         ),
                         paymentId: payment.id,
-                        amount: 464,
+                        amount: pricing.visa.standardFacilitationFee,
                         currency: "GHS",
                         type: "CREDIT",
                         description: "Visa Facilitation Fee",
@@ -132,7 +133,7 @@ export const checkPendingPaymentsJob = () => {
                         "Account_DAGh_Revenue",
                       ),
                       paymentId: payment.id,
-                      amount: 1450,
+                      amount: pricing.visa.expeditedFacilitationFee,
                       currency: "GHS",
                       type: "CREDIT",
                       description: "Expedited Visa Facilitation Fee",

@@ -1,11 +1,13 @@
 import { Request, Response } from "express";
-import { hubtelDirectMoneyReceive, prisma } from "../../config/index.js";
-import { HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL, PaymentController } from "../payment-management/payment.controller.js";
-import { PaymentStatus, PaymentTargetType, VisaApprovalStatus, VisaOnArrivalData, VisaRequestStatus } from "../../../generated/prisma/client.js";
-import { InitiateVisaPaymentSchema, VisaOnArrivalDataSchema } from "../../validator/visaValidation.js";
+import { prisma } from "../../config/index.js";
+import { HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL } from "../../services/payment.service.js";
+import * as paymentService from "../../services/payment.service.js";
+import { PaymentStatus, PaymentTargetType, VisaRequestStatus } from "../../../generated/prisma/client.js";
+import { VisaOnArrivalDataSchema } from "../../validator/visaValidation.js";
 import { convertUSDToGHS } from "../../helpers/stringHelper.js";
 import sendEmail from "../../config/resend.config.js";
 import { getAccountId } from "../../helpers/ledger.js";
+import { pricing } from "../../config/pricing.js";
 
 export class UserVisaController {
   async createVisaRequest(req: Request, res: Response) {
@@ -57,13 +59,13 @@ export class UserVisaController {
 
       let totalAmount = 0;
       if (packageType === "STANDARD") {
-        const statutoryFeeGHS = await convertUSDToGHS(200);
-        totalAmount = 464 + statutoryFeeGHS;
+        const statutoryFeeGHS = await convertUSDToGHS(pricing.visa.statutoryFeeUSD);
+        totalAmount = pricing.visa.standardFacilitationFee + statutoryFeeGHS;
       } else if (packageType === "EXPEDITED") {
-        totalAmount = 1450;
+        totalAmount = pricing.visa.expeditedFacilitationFee;
       }
 
-      const payment = await PaymentController.initializePayment({
+      const payment = await paymentService.initializePayment({
         userId: visaRequest.userId,
         targetType: PaymentTargetType.VISA_ON_ARRIVAL,
         targetId: visaRequest.id,
@@ -114,7 +116,7 @@ export class UserVisaController {
               {
               accountId: await getAccountId("Account_DAGh_Revenue"),
                 paymentId: payment.id,
-                amount: 464,
+                amount: pricing.visa.standardFacilitationFee,
                 currency: "GHS",
                 type: "CREDIT",
                 description: "Visa Facilitation Fee",
@@ -141,7 +143,7 @@ export class UserVisaController {
             data: {
               accountId: await getAccountId("Account_DAGh_Revenue"),
               paymentId: payment.id,
-              amount: 1450,
+              amount: pricing.visa.expeditedFacilitationFee,
               currency: "GHS",
               type: "CREDIT",
               description: "Expedited Visa Facilitation Fee",
@@ -265,20 +267,19 @@ export class UserVisaController {
       const visaTypeRaw = (req.params as any).visaType;
       const visaType = Array.isArray(visaTypeRaw) ? visaTypeRaw[0] : visaTypeRaw;
 
-      const pricingMap: Record<string, Array<{ key: string; value: number }>> = {
-
+      const visaPricingMap: Record<string, Array<{ key: string; value: number }>> = {
         STANDARD: [
-          { key: "Visa Facilitation Fee", value: 464 },
+          { key: "Visa Facilitation Fee", value: pricing.visa.standardFacilitationFee },
           { key: "Statutory GIS Fee (USD 200)", value: 0 },
         ],
         EXPEDITED: [
-          { key: "Expedited Visa Facilitation Fee", value: 1450 },
+          { key: "Expedited Visa Facilitation Fee", value: pricing.visa.expeditedFacilitationFee },
         ],
       };
 
-      const pricing = pricingMap[visaType?.toUpperCase()];
+      const visaPricing = visaPricingMap[visaType?.toUpperCase()];
 
-      if (!pricing) {
+      if (!visaPricing) {
         return res.status(400).json({
           success: false,
           message: `Pricing not available for visa type: ${visaType}`,
@@ -288,7 +289,7 @@ export class UserVisaController {
       return res.status(200).json({
         success: true,
         visaType: visaType?.toUpperCase(),
-        pricing: pricing,
+        pricing: visaPricing,
       });
     } catch (error) {
       console.error("Error fetching visa pricing:", error);

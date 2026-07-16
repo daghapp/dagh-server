@@ -6,15 +6,16 @@
 //get all tours with filtering
 //report scam tour by user
 import { Request, Response } from "express";
-import { hubtelDirectMoneyReceive, prisma } from "../../config/index.js";
+import { prisma } from "../../config/index.js";
 import {
   TourBookingSchema,
   TourBookingSchema_MOMO,
   TourReviewSchema,
 } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
-import { PaymentMethod, PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
-import { HUBTEL_CALLBACK_URL, HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL, PaymentController } from "../payment-management/payment.controller.js";
+import { PaymentProvider, PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
+import { HUBTEL_CALLBACK_URL, HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL } from "../../services/payment.service.js";
+import * as paymentService from "../../services/payment.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 
 export class UserTourController {
@@ -162,7 +163,7 @@ static async copyItineraryToUserTables(userId: string, bookingId: string, tourId
       // Generate unique booking reference
       const bookingReference = `TBK-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
-      const paymentResponse = await PaymentController.initializePayment({
+      const paymentResponse = await paymentService.initializePayment({
         totalAmount:totalPrice, 
         description:"Payment for tour: "+tour.id, 
         returnUrl:HUBTEL_RETURN_URL || "", 
@@ -451,7 +452,7 @@ async updateUserItinerary(req: Request, res: Response) {
     // 3. Validate payload with Zod
 
     // 4. Call universal payment controller
-    const paymentResponse = await PaymentController.initializePayment_MOMO(paymentPayload);
+    const paymentResponse = await paymentService.initializePaymentMOMO(paymentPayload);
 
     // 5. If payment initiation succeeded, create booking with paymentStatus = PENDING
     if (paymentResponse.success) {
