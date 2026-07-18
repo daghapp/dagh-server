@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { Server } from "socket.io";
+import { ok, created, fail } from "../../helpers/response.js";
 
 let io: Server;
 
@@ -47,10 +48,10 @@ export const sendMessage = async (req: Request, res: Response) => {
       io.to(`user:${senderId}`).emit("message_sent", message);
     }
 
-    res.status(201).json({ success: true, data: message });
+    return created(res, message);
   } catch (error) {
     console.error("Send message error:", error);
-    res.status(500).json({ success: false, error: "Failed to send message" });
+    return fail(res, 500, "Failed to send message");
   }
 };
 
@@ -90,10 +91,10 @@ export const getConversations = async (req: Request, res: Response) => {
       };
     });
 
-    res.json({ success: true, data: conversationsWithDetails });
+    return ok(res, conversationsWithDetails);
   } catch (error) {
     console.error("Get conversations error:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch conversations" });
+    return fail(res, 500, "Failed to fetch conversations");
   }
 };
 
@@ -107,7 +108,7 @@ export const getMessages = async (req: Request, res: Response) => {
     });
 
     if (!conversation) {
-      return res.status(404).json({ success: false, error: "Conversation not found" });
+      return fail(res, 404, "Conversation not found");
     }
 
     const messages = await prisma.message.findMany({
@@ -129,10 +130,10 @@ export const getMessages = async (req: Request, res: Response) => {
       data: { isRead: true, readAt: new Date() },
     });
 
-    res.json({ success: true, data: messages });
+    return ok(res, messages);
   } catch (error) {
     console.error("Get messages error:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch messages" });
+    return fail(res, 500, "Failed to fetch messages");
   }
 };
 
@@ -146,8 +147,8 @@ export const markAsRead = async (req: Request, res: Response) => {
       data: { isRead: true, readAt: new Date() },
     });
 
-    res.json({ success: true, data: message });
-  } catch (error) {
-    res.status(500).json({ success: false, error: "Failed to mark message as read" });
+    return ok(res, message);
+  } catch (_error) {
+    return fail(res, 500, "Failed to mark message as read");
   }
 };

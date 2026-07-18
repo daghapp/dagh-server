@@ -7,12 +7,14 @@ export const generateSlug = (text: string) => {
     .trim();
 };
 
+import { randomBytes } from "crypto";
+
 export const generateBookingNumber = () => {
-  return `BK-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  return `BK-${Date.now()}-${randomBytes(4).toString("hex")}`;
 };
 
 export const generateReference = (prefix = "REF") => {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  return `${prefix}-${Date.now()}-${randomBytes(4).toString("hex")}`;
 };
 
 export function mapMomoProvider(method: "MTN_MOMO" | "TELECEL_MOMO" | "AT_MOMO"): string {

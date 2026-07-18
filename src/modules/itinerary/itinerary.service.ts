@@ -9,7 +9,14 @@
 //   MAX_DAILY_DISTANCE_KM,
 // } from "../../utils/haversine";
 
-import { TourType, DayType, SiteCategory } from "../../../generated/prisma/client.js";
+import { DayType, SiteCategory } from "../../../generated/prisma/client.js";
+import type {
+  Itinerary as PrismaItinerary,
+  ItineraryDay as PrismaItineraryDay,
+  ItineraryDaySite as PrismaItineraryDaySite,
+  TourSite as PrismaTourSite,
+  ApartmentType,
+} from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/index.js";
 import {
   haversineDistance,
@@ -194,8 +201,8 @@ export async function getItineraryByRequestId(tourRequestId: string): Promise<It
       apartmentType: tourRequest.apartmentType ?? null,
       transportType: tourRequest.transportType ?? null,
       itinerarySites: tourRequest.selectedSites
-        .map((rs) => (rs as any).tourSite)
-        .map((s: any) => ({
+        .map((rs) => rs.tourSite)
+        .map((s) => ({
           id: s.id,
           latitude: s.latitude,
           longitude: s.longitude,
@@ -283,8 +290,8 @@ export async function getItineraryByRequestId(tourRequestId: string): Promise<It
     apartmentType: tourRequest.apartmentType ?? null,
     transportType: tourRequest.transportType ?? null,
     itinerarySites: tourRequest.selectedSites
-      .map((rs) => (rs as any).tourSite)
-      .map((s: any) => ({
+      .map((rs) => rs.tourSite)
+      .map((s) => ({
         id: s.id,
         latitude: s.latitude,
         longitude: s.longitude,
@@ -428,8 +435,31 @@ function buildDayGroups(sortedSites: SiteWithCoords[]): DayGroup[] {
 // Days 2..N-1 = TOURING    (up to 3 sites per day, closest to furthest)
 // Day N     = DEPARTURE    (no sites)
 // ─────────────────────────────────────────────────────────────────────────────
+type ItineraryWithDays = PrismaItinerary & {
+  days: (PrismaItineraryDay & {
+    sites: (PrismaItineraryDaySite & { tourSite: PrismaTourSite })[];
+  })[];
+};
+
+type ProviderRecommendation = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+};
+
+type AccommodationRecommendation = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  apartmentType: ApartmentType | null;
+  distanceKm: number;
+};
+
 async function mapItineraryToResponseWithRecommendations(
-  itinerary: any,
+  itinerary: ItineraryWithDays,
   params: {
     apartmentType: string | null;
     transportType: string | null;
@@ -437,17 +467,26 @@ async function mapItineraryToResponseWithRecommendations(
     relocationInterest: boolean;
   },
 ): Promise<ItineraryResponse> {
-  const available_hotels = await getAvailableHotels(params.apartmentType, params.itinerarySites);
-  const available_transports = await getAvailableTransports(
-    params.transportType,
-    params.itinerarySites,
-  );
+  const available_hotels = (
+    await getAvailableHotels(params.apartmentType, params.itinerarySites)
+  ).map((h) => ({
+    ...h,
+    region: undefined as string | undefined,
+    imageUrl: undefined as string | null | undefined,
+  }));
+  const available_transports = (
+    await getAvailableTransports(params.transportType, params.itinerarySites)
+  ).map((t) => ({
+    ...t,
+    region: undefined as string | undefined,
+    imageUrl: undefined as string | null | undefined,
+  }));
 
   // If relocationInterest is enabled, attach availableAccomodation per itinerary touring site.
   // We resolve the closest hotel/provider within 30km to each site.
   const shouldAttachRelocation = !!params.relocationInterest;
 
-  const bestRelocationsByDaySite: Record<string, any> = {};
+  const bestRelocationsByDaySite: Record<string, AccommodationRecommendation | null> = {};
   if (shouldAttachRelocation) {
     const locationsToResolve = params.itinerarySites;
     for (const site of locationsToResolve) {
@@ -467,10 +506,10 @@ async function mapItineraryToResponseWithRecommendations(
     feasibilityError: itinerary.feasibilityError,
     totalDays: itinerary.totalDays,
     dateCreated: itinerary.createdAt,
-    days: (itinerary.days ?? []).map((day: any) => ({
+    days: (itinerary.days ?? []).map((day) => ({
       dayNumber: day.dayNumber,
       dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
-      sites: (day.sites ?? []).map((ds: any) => {
+      sites: (day.sites ?? []).map((ds) => {
         const touringSiteId = ds.tourSite?.id ?? ds.tourSiteId;
         const availableAccomodation = shouldAttachRelocation
           ? (bestRelocationsByDaySite[String(touringSiteId)] ?? null)
@@ -538,12 +577,10 @@ async function getAvailableHotels(
         name: p.display_name,
         latitude: p.location_lat,
         longitude: p.location_lng,
-        region: undefined,
         distanceKm,
-        imageUrl: undefined as string | null | undefined,
       };
     })
-    .filter(Boolean) as any[];
+    .filter((item): item is ProviderRecommendation => item !== null);
 
   return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);
 }
@@ -584,7 +621,7 @@ async function getClosestAccommodationWithin30km(
         distanceKm,
       };
     })
-    .filter(Boolean) as any[];
+    .filter((item): item is AccommodationRecommendation => item !== null);
 
   if (!within.length) return null;
   within.sort((a, b) => a.distanceKm - b.distanceKm);
@@ -626,12 +663,10 @@ async function getAvailableTransports(
         name: p.display_name,
         latitude: p.location_lat,
         longitude: p.location_lng,
-        region: undefined,
         distanceKm,
-        imageUrl: undefined as string | null | undefined,
       };
     })
-    .filter(Boolean) as any[];
+    .filter((item): item is ProviderRecommendation => item !== null);
 
   // If transportType is null, return top 3 anyway.
   return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);

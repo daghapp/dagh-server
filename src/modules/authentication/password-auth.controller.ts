@@ -5,7 +5,6 @@ import {
   VerifyOtpSchema,
   ResendOtpSchema,
   RefreshTokenSchema,
-  RequestResetPasswordSchema,
   ResetPasswordSchema,
 } from "../../validator/index.js";
 import { prisma } from "../../config/index.js";
@@ -17,6 +16,7 @@ import {
   generateAccessToken,
   generateRefreshToken,
 } from "../../helpers/index.js";
+import { ok, created, fail } from "../../helpers/response.js";
 
 export class PasswordAuthController {
   async register(req: Request, res: Response) {
@@ -28,7 +28,7 @@ export class PasswordAuthController {
       });
 
       if (userExists) {
-        return res.status(400).json({ success: false, message: "User already exists" });
+        return fail(res, 400, "User already exists");
       }
 
       // phoneNumber is unique too
@@ -37,11 +37,11 @@ export class PasswordAuthController {
           where: { phoneNumber: userData.phoneNumber },
         });
         if (phoneExists) {
-          return res.status(400).json({ success: false, message: "Phone number already in use" });
+          return fail(res, 400, "Phone number already in use");
         }
       }
 
-      const hashedPassword = bcrypt.hashSync(userData.password, 10);
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
       const newUser = await prisma.user.create({
         data: {
           authProvider: "PASSWORD",
@@ -50,27 +50,42 @@ export class PasswordAuthController {
           phoneNumber: userData.phoneNumber,
           dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : undefined,
           gender: userData.gender,
-          ethnicity: (userData.ethnicity ?? undefined) as any,
+          ethnicity: (userData.ethnicity ?? undefined) as
+            | "African"
+            | "Asian"
+            | "Black_African_American"
+            | "Caribbean"
+            | "Caucassian_White"
+            | "Hispanic_Latino"
+            | "Middle_Eastern"
+            | "Mixed"
+            | "Native_American_Indigenous"
+            | "Pacific_Islander"
+            | "Other"
+            | undefined,
 
           passwordHash: hashedPassword,
         },
       });
 
-      await sendOtp({
-        email: newUser.email,
-        subject: "Verify Your Email",
-        purpose: "EMAIL_VERIFICATION",
-      });
+      // Phase 1.1 — Strip passwordHash from response before sending to client
+      const { passwordHash: _removed, ...safeUser } = newUser;
 
-      const { passwordHash: _, ...safeUser } = newUser;
-      return res.status(201).json({ success: true, data: safeUser });
+      // Send OTP email — non-fatal if it fails (user can retry via resend-otp)
+      try {
+        await sendOtp({
+          email: newUser.email,
+          subject: "Verify Your Email",
+          purpose: "EMAIL_VERIFICATION",
+        });
+      } catch (otpError) {
+        console.error("Failed to send verification email:", otpError);
+      }
+
+      return created(res, safeUser);
     } catch (error) {
       console.error("Registration error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Registration failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Registration failed");
     }
   }
 
@@ -86,18 +101,16 @@ export class PasswordAuthController {
       });
 
       if (!user || !user.passwordHash) {
-        return res.status(400).json({ success: false, message: "Invalid email or password" });
+        return fail(res, 400, "Invalid email or password");
       }
 
       if (user.accountStatus !== "ACTIVE") {
-        return res
-          .status(403)
-          .json({ success: false, message: "Please verify your email before logging in" });
+        return fail(res, 403, "Please verify your email before logging in");
       }
 
-      const passwordMatch = bcrypt.compareSync(loginData.password, user.passwordHash);
+      const passwordMatch = await bcrypt.compare(loginData.password, user.passwordHash);
       if (!passwordMatch) {
-        return res.status(400).json({ success: false, message: "Invalid email or password" });
+        return fail(res, 400, "Invalid email or password");
       }
 
       const accessToken = generateAccessToken({
@@ -110,25 +123,18 @@ export class PasswordAuthController {
         email: user.email,
         accountType: user.accountType,
       });
-      return res.status(200).json({
-        success: true,
-        data: {
-          id: user.id,
-          email: user.email,
-          fullName: user.fullName,
-          accountType: user.accountType,
-          ethnicity: user.ethnicity ?? null,
-          accessToken,
-          refreshToken,
-        },
+      return ok(res, {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        accountType: user.accountType,
+        ethnicity: user.ethnicity ?? null,
+        accessToken,
+        refreshToken,
       });
     } catch (error) {
       console.error("Login error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Login failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Login failed");
     }
   }
 
@@ -139,7 +145,7 @@ export class PasswordAuthController {
       const userId = user?.id;
 
       if (!userId) {
-        return res.status(401).json({ success: false, message: "Not authenticated" });
+        return fail(res, 401, "Not authenticated");
       }
 
       // Delete all refresh tokens for this user (logout from all devices)
@@ -147,17 +153,10 @@ export class PasswordAuthController {
         where: { userId },
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Logged out successfully",
-      });
+      return ok(res, null as never, "Logged out successfully");
     } catch (error) {
       console.error("Logout error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Logout failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Logout failed");
     }
   }
 
@@ -167,7 +166,7 @@ export class PasswordAuthController {
       const { refreshToken } = req.body as RefreshTokenSchema;
 
       if (!refreshToken) {
-        return res.status(400).json({ success: false, message: "Refresh token is required" });
+        return fail(res, 400, "Refresh token is required");
       }
 
       // Verify refresh token signature
@@ -177,10 +176,8 @@ export class PasswordAuthController {
           refreshToken,
           process.env.JWT_REFRESH_SECRET as string,
         ) as jwt.JwtPayload & { id: string; email: string; accountType: string };
-      } catch (error) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Invalid or expired refresh token" });
+      } catch {
+        return fail(res, 401, "Invalid or expired refresh token");
       }
 
       // Check if refresh token exists in database
@@ -192,7 +189,7 @@ export class PasswordAuthController {
       });
 
       if (!tokenRecord) {
-        return res.status(401).json({ success: false, message: "Refresh token not found" });
+        return fail(res, 401, "Refresh token not found");
       }
 
       // Check if token is expired
@@ -201,7 +198,7 @@ export class PasswordAuthController {
         await prisma.deviceToken.delete({
           where: { id: tokenRecord.id },
         });
-        return res.status(401).json({ success: false, message: "Refresh token has expired" });
+        return fail(res, 401, "Refresh token has expired");
       }
 
       // Verify user still exists and is active
@@ -210,11 +207,11 @@ export class PasswordAuthController {
       });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountStatus !== "ACTIVE") {
-        return res.status(403).json({ success: false, message: "Account is not active" });
+        return fail(res, 403, "Account is not active");
       }
 
       // Generate new access token
@@ -224,19 +221,10 @@ export class PasswordAuthController {
         accountType: user.accountType,
       });
 
-      return res.status(200).json({
-        success: true,
-        data: {
-          accessToken: newAccessToken,
-        },
-      });
+      return ok(res, { accessToken: newAccessToken });
     } catch (error) {
       console.error("Token refresh error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to refresh token",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to refresh token");
     }
   }
 
@@ -250,11 +238,11 @@ export class PasswordAuthController {
       });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountStatus === "ACTIVE") {
-        return res.status(400).json({ success: false, message: "Email already verified" });
+        return fail(res, 400, "Email already verified");
       }
 
       const otpRecord = await prisma.otp.findFirst({
@@ -268,16 +256,16 @@ export class PasswordAuthController {
       });
 
       if (!otpRecord) {
-        return res.status(400).json({ success: false, message: "Invalid OTP code" });
+        return fail(res, 400, "Invalid OTP code");
       }
 
       if (new Date() > otpRecord.expiresAt) {
-        return res.status(400).json({ success: false, message: "OTP has expired" });
+        return fail(res, 400, "OTP has expired");
       }
 
       const isOtpValid = await verifyOtp(otpRecord.code, otpData.code);
       if (!isOtpValid) {
-        return res.status(400).json({ success: false, message: "Invalid OTP code" });
+        return fail(res, 400, "Invalid OTP code");
       }
 
       // Update user status to ACTIVE only for email verification
@@ -293,17 +281,10 @@ export class PasswordAuthController {
         where: { id: otpRecord.id },
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Email verified successfully",
-      });
+      return ok(res, null as never, "Email verified successfully");
     } catch (error) {
       console.error("OTP verification error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "OTP verification failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "OTP verification failed");
     }
   }
 
@@ -317,11 +298,11 @@ export class PasswordAuthController {
       });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountStatus === "ACTIVE") {
-        return res.status(400).json({ success: false, message: "Email already verified" });
+        return fail(res, 400, "Email already verified");
       }
 
       // Check for recent OTP (rate limiting)
@@ -336,10 +317,7 @@ export class PasswordAuthController {
       });
 
       if (recentOtp) {
-        return res.status(429).json({
-          success: false,
-          message: "Please wait 1 minute before requesting a new OTP",
-        });
+        return fail(res, 429, "Please wait 1 minute before requesting a new OTP");
       }
 
       // Delete old OTPs for this email
@@ -350,19 +328,17 @@ export class PasswordAuthController {
         },
       });
 
-      await sendOtp({ email, subject: "Verify Your Email" });
+      // Generate new OTP — non-fatal if email fails (record is still created)
+      try {
+        await sendOtp({ email, subject: "Verify Your Email" });
+      } catch (otpError) {
+        console.error("Failed to resend verification email:", otpError);
+      }
 
-      return res.status(200).json({
-        success: true,
-        message: "OTP sent successfully",
-      });
+      return ok(res, null as never, "OTP sent successfully");
     } catch (error) {
       console.error("Resend OTP error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to resend OTP",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to resend OTP");
     }
   }
 
@@ -376,25 +352,23 @@ export class PasswordAuthController {
       });
 
       if (!existingUser) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
-      await sendOtp({
-        email: existingUser.email,
-        subject: "Password Reset OTP",
-        purpose: "PASSWORD_RESET",
-      });
-      return res.status(200).json({
-        success: true,
-        message: "Password reset OTP sent successfully",
-      });
+      // Generate OTP — non-fatal if email fails (record is still created)
+      try {
+        await sendOtp({
+          email: existingUser.email,
+          subject: "Password Reset OTP",
+          purpose: "PASSWORD_RESET",
+        });
+      } catch (otpError) {
+        console.error("Failed to send password reset email:", otpError);
+      }
+      return ok(res, null as never, "Password reset OTP sent successfully");
     } catch (error) {
       console.error("Request reset password error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send password reset OTP",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to send password reset OTP");
     }
   }
 
@@ -408,7 +382,7 @@ export class PasswordAuthController {
       });
 
       if (!user || !user.passwordHash) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       const otpRecord = await prisma.otp.findFirst({
@@ -420,19 +394,19 @@ export class PasswordAuthController {
       });
 
       if (!otpRecord) {
-        return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        return fail(res, 400, "Invalid or expired OTP");
       }
 
       if (new Date() > otpRecord.expiresAt) {
-        return res.status(400).json({ success: false, message: "OTP has expired" });
+        return fail(res, 400, "OTP has expired");
       }
 
       const isOtpValid = await verifyOtp(otpRecord.code, resetData.otp);
       if (!isOtpValid) {
-        return res.status(400).json({ success: false, message: "Invalid OTP code" });
+        return fail(res, 400, "Invalid OTP code");
       }
 
-      const hashedNewPassword = bcrypt.hashSync(resetData.newPassword, 10);
+      const hashedNewPassword = await bcrypt.hash(resetData.newPassword, 10);
       await prisma.user.update({
         where: { email: resetData.email },
         data: { passwordHash: hashedNewPassword },
@@ -440,17 +414,10 @@ export class PasswordAuthController {
 
       await prisma.otp.delete({ where: { id: otpRecord.id } });
 
-      return res.status(200).json({
-        success: true,
-        message: "Password reset successfully",
-      });
+      return ok(res, null as never, "Password reset successfully");
     } catch (error) {
       console.error("Reset password error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to reset password",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to reset password");
     }
   }
 }

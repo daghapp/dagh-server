@@ -1,70 +1,62 @@
 import { Request, Response } from "express";
 import { prisma, hubtelClient, hubtelStatusClient } from "../../config/index.js";
-import { initializePaymentSchema_momo, SubscriptionPaymentSchema } from "../../validator/index.js";
+import { initializePaymentSchema, initializePaymentSchema_momo } from "../../validator/index.js";
+import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
-import { PaymentStatus } from "../../../generated/prisma/client.js";
 import * as paymentService from "../../services/payment.service.js";
+import { ok, fail } from "../../helpers/response.js";
+import { PaymentTargetType } from "../../../generated/prisma/client.js";
 
 export class PaymentController {
   async initializePayment(req: Request, res: Response) {
     try {
-      const user = req.user as any;
+      const user = req.user as { id: string; email: string } | undefined;
       if (!user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return fail(res, 401, "Unauthorized");
       }
 
-      const payload = req.body as any;
+      const body = req.body;
+      const payload = initializePaymentSchema.parse(body);
       const result = await paymentService.initializePayment({
-        ...payload,
-        targetType: payload.targetType ?? ("TOUR_BOOKING" as any),
-        targetId: payload.targetId ?? "",
+        totalAmount: payload.totalAmount,
+        description: payload.description,
+        returnUrl: payload.returnUrl,
+        callbackUrl: payload.callbackUrl,
+        cancellationUrl: payload.cancellationUrl,
+        targetType: (body.targetType as PaymentTargetType) ?? PaymentTargetType.TOUR_BOOKING,
+        targetId: body.targetId ?? "",
         userId: user.id,
-        currency: payload.currency ?? "GHS",
+        currency: body.currency ?? "GHS",
       });
 
-      return res.status(200).json({
-        success: result.success,
-        message: result.message,
-      });
-    } catch (error: any) {
-      console.error("Payment initialization error:", error?.response?.data || error);
-      return res.status(500).json({
-        success: false,
-        message: "Payment initialization failed",
-        error: error?.response?.data || error.message,
-      });
+      return ok(res, null as never, result.message);
+    } catch (error) {
+      console.error("Payment initialization error:", error);
+      return fail(res, 500, "Payment initialization failed");
     }
   }
 
   async initializePayment_MOMO(req: Request, res: Response) {
     try {
-      const user = req.user as any;
+      const user = req.user as { id: string; email: string } | undefined;
       if (!user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return fail(res, 401, "Unauthorized");
       }
       const payload = initializePaymentSchema_momo.parse(req.body);
       const result = await paymentService.initializePaymentMOMO(payload);
 
-      return res.status(200).json({
-        success: result.success,
-        message: result.message,
-        data: result.data,
-      });
-    } catch (error: any) {
-      console.error("Payment initialization error:", error?.response?.data || error);
-      return res.status(500).json({
-        success: false,
-        message: "Payment initialization failed",
-        error: error?.response?.data || error.message,
-      });
+      return ok(res, result.data, result.message);
+    } catch (error) {
+      console.error("Payment initialization error:", error);
+      return fail(res, 500, "Payment initialization failed");
     }
   }
 
   async subscriptionPayment(req: Request, res: Response) {
     try {
-      const user = req.user as any;
+      const user = req.user as { id: string; email: string } | undefined;
       if (!user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return fail(res, 401, "Unauthorized");
       }
 
       const payload = req.body as SubscriptionPaymentSchema;
@@ -79,15 +71,12 @@ export class PaymentController {
       const data = hubtelResponse.data;
 
       if (!data || !data.invoiceId) {
-        return res.status(400).json({
-          success: false,
-          message: "Failed to create subscription invoice",
-          data,
-        });
+        return fail(res, 400, "Failed to create subscription invoice", data);
       }
 
-      const totalAmount = payload.items.reduce(
-        (sum, item) => sum + item.quantity * item.unitPrice,
+      const totalAmount = (payload as SubscriptionPaymentSchema).items.reduce(
+        (sum: number, item: { quantity: number; unitPrice: number }) =>
+          sum + item.quantity * item.unitPrice,
         0,
       );
 
@@ -108,18 +97,10 @@ export class PaymentController {
         });
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Subscription invoice created successfully",
-        data,
-      });
-    } catch (error: any) {
-      console.error("Subscription payment error:", error?.response?.data || error);
-      return res.status(500).json({
-        success: false,
-        message: "Subscription payment failed",
-        error: error?.response?.data || error.message,
-      });
+      return ok(res, data, "Subscription invoice created successfully");
+    } catch (error) {
+      console.error("Subscription payment error:", error);
+      return fail(res, 500, "Subscription payment failed");
     }
   }
 
@@ -131,7 +112,7 @@ export class PaymentController {
       const data = hubtelResponse.data;
 
       if (!data) {
-        return res.status(400).json({ success: false, message: "Unable to verify payment" });
+        return fail(res, 400, "Unable to verify payment");
       }
 
       let status: "SUCCESS" | "FAILED" | "PENDING" = "PENDING";
@@ -140,14 +121,10 @@ export class PaymentController {
 
       await prisma.payment.update({ where: { reference }, data: { status } });
 
-      return res.status(200).json({ success: true, message: "Payment verified", data });
-    } catch (error: any) {
-      console.error("Verify payment error:", error?.response?.data || error);
-      return res.status(500).json({
-        success: false,
-        message: "Payment verification failed",
-        error: error?.response?.data || error.message,
-      });
+      return ok(res, data, "Payment verified");
+    } catch (error) {
+      console.error("Verify payment error:", error);
+      return fail(res, 500, "Payment verification failed");
     }
   }
 
@@ -159,9 +136,7 @@ export class PaymentController {
       const data = hubtelResponse.data;
 
       if (!data) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Unable to check transaction status" });
+        return fail(res, 400, "Unable to check transaction status");
       }
 
       let status: "SUCCESS" | "FAILED" | "PENDING" = "PENDING";
@@ -179,22 +154,18 @@ export class PaymentController {
         await prisma.payment.update({ where: { id: payment.id }, data: { status } });
       }
 
-      return res.status(200).json({
-        success: true,
-        message: "Transaction status retrieved",
-        data: {
+      return ok(
+        res,
+        {
           ...data,
           internalStatus: status,
           paymentRecord: payment ? { id: payment.id, status } : null,
         },
-      });
-    } catch (error: any) {
-      console.error("Transaction status check error:", error?.response?.data || error);
-      return res.status(500).json({
-        success: false,
-        message: "Transaction status check failed",
-        error: error?.response?.data || error.message,
-      });
+        "Transaction status retrieved",
+      );
+    } catch (error) {
+      console.error("Transaction status check error:", error);
+      return fail(res, 500, "Transaction status check failed");
     }
   }
 }

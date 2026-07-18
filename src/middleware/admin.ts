@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { fail } from "../helpers/response.js";
 
 /**
  * Middleware to check if the authenticated user is an admin
@@ -8,7 +9,7 @@ export default function requireAdmin(req: Request, res: Response, next: NextFunc
   const user = req.user;
 
   if (!user || user.accountType !== "ADMIN") {
-    return res.status(403).json({ message: "Unauthorized access" });
+    return fail(res, 403, "Unauthorized access");
   }
 
   next();

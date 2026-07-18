@@ -507,6 +507,8 @@ router.get(
  *   post:
  *     summary: Approve a visa request
  *     tags: [Admin - Visa]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:

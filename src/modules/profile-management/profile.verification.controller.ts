@@ -5,13 +5,14 @@ import type {
   VerifyPhoneOtpSchema,
 } from "../../validator/profile-phone-verification-validator.js";
 import { sendOtp, verifyOtp } from "../../helpers/otp.js";
+import { ok, fail } from "../../helpers/response.js";
 
 export class ProfileVerificationController {
   async sendPhoneOtpForVerification(req: Request, res: Response) {
     try {
       const user = req.user as { id: string } | undefined;
       if (!user?.id) {
-        return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+        return fail(res, 401, "Unauthorized");
       }
 
       const body = req.body as SendPhoneOtpSchema;
@@ -21,28 +22,21 @@ export class ProfileVerificationController {
       });
 
       if (!profile) {
-        return res.status(404).json({ success: false, message: "Profile not found", data: null });
+        return fail(res, 404, "Profile not found");
       }
 
-      const phoneNumberFromRequest = (body as any).phoneNumber as string | undefined;
-      const phoneNumberFromProfile =
-        (profile as any).phoneNumber ?? (profile as any).user?.phoneNumber ?? null;
+      const phoneNumberFromRequest = body.phoneNumber as string | undefined;
+      const phoneNumberFromProfile = profile.phoneNumber ?? null;
       const phoneNumber = phoneNumberFromRequest ?? phoneNumberFromProfile;
 
       if (!phoneNumber) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Phone number is required", data: null });
+        return fail(res, 400, "Phone number is required");
       }
 
       const phoneNormalized = String(phoneNumber).trim();
       const phoneDigits = phoneNormalized.replace(/\s+/g, "");
       if (!/^\d{10,15}$/.test(phoneDigits)) {
-        return res.status(400).json({
-          success: false,
-          message: "Phone number must be a valid phone number",
-          data: null,
-        });
+        return fail(res, 400, "Phone number must be a valid phone number");
       }
 
       await prisma.userProfile.update({
@@ -58,11 +52,7 @@ export class ProfileVerificationController {
       });
 
       if (!updatedProfile?.user?.email) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to resolve user email",
-          data: null,
-        });
+        return fail(res, 500, "Failed to resolve user email");
       }
 
       await prisma.otp.deleteMany({
@@ -78,17 +68,9 @@ export class ProfileVerificationController {
         purpose: "PHONE_VERIFICATION",
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "OTP sent successfully",
-        data: { phoneNumber: phoneDigits },
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send OTP",
-        data: null,
-      });
+      return ok(res, { phoneNumber: phoneDigits }, "OTP sent successfully");
+    } catch (_error) {
+      return fail(res, 500, "Failed to send OTP");
     }
   }
 
@@ -96,7 +78,7 @@ export class ProfileVerificationController {
     try {
       const user = req.user as { id: string } | undefined;
       if (!user?.id) {
-        return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+        return fail(res, 401, "Unauthorized");
       }
 
       const body = req.body as VerifyPhoneOtpSchema;
@@ -106,18 +88,13 @@ export class ProfileVerificationController {
       });
 
       if (!profile) {
-        return res.status(404).json({ success: false, message: "Profile not found", data: null });
+        return fail(res, 404, "Profile not found");
       }
 
-      const phoneNumber =
-        (profile as any).phoneNumber ?? (profile as any).user?.phoneNumber ?? null;
+      const phoneNumber = profile.phoneNumber ?? null;
 
       if (!phoneNumber) {
-        return res.status(400).json({
-          success: false,
-          message: "Phone number is required",
-          data: null,
-        });
+        return fail(res, 400, "Phone number is required");
       }
 
       const updatedProfile = await prisma.userProfile.findUnique({
@@ -134,29 +111,17 @@ export class ProfileVerificationController {
       });
 
       if (!otpRecord) {
-        return res.status(400).json({
-          success: false,
-          message: "OTP expired or not found. Please request a new one.",
-          data: null,
-        });
+        return fail(res, 400, "OTP expired or not found. Please request a new one.");
       }
 
       if (new Date() > otpRecord.expiresAt) {
         await prisma.otp.delete({ where: { id: otpRecord.id } });
-        return res.status(400).json({
-          success: false,
-          message: "OTP expired. Please request a new one.",
-          data: null,
-        });
+        return fail(res, 400, "OTP expired. Please request a new one.");
       }
 
       const isValid = await verifyOtp(otpRecord.code, body.code);
       if (!isValid) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid OTP code",
-          data: null,
-        });
+        return fail(res, 400, "Invalid OTP code");
       }
 
       await prisma.otp.delete({ where: { id: otpRecord.id } });
@@ -165,26 +130,18 @@ export class ProfileVerificationController {
         where: { userProfileId: profile.id },
         update: {
           phone_number_verified: true,
-          isVerifided: true,
+          isVerified: true,
         },
         create: {
           userProfileId: profile.id,
           phone_number_verified: true,
-          isVerifided: true,
+          isVerified: true,
         },
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Phone number verified successfully",
-        data: verification,
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to verify OTP",
-        data: null,
-      });
+      return ok(res, verification, "Phone number verified successfully");
+    } catch (_error) {
+      return fail(res, 500, "Failed to verify OTP");
     }
   }
 }

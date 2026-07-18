@@ -308,6 +308,75 @@ router.post(
   userTourController.hubtelCallbackController.bind(userTourController),
 );
 
+/**
+ * @swagger
+ * /tours/bookings:
+ *   post:
+ *     summary: Book a tour
+ *     description: Initiate a tour booking with Hubtel payment checkout
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tourId
+ *               - numberOfPeople
+ *               - bookingDate
+ *               - tourStartDate
+ *             properties:
+ *               tourId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the tour to book
+ *               numberOfPeople:
+ *                 type: number
+ *                 minimum: 1
+ *                 description: Number of people booking
+ *               bookingDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Date of booking (ISO 8601)
+ *               tourStartDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Tour start date (ISO 8601)
+ *               specialRequests:
+ *                 type: string
+ *                 description: Any special requests
+ *     responses:
+ *       201:
+ *         description: Tour booked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     paymentData:
+ *                       type: object
+ *                       description: Hubtel checkout data
+ *                     booking:
+ *                       type: object
+ *                       description: Created booking record
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Tour not found or price not available
+ *       500:
+ *         description: Failed to book tour
+ */
 router.post(
   "/bookings",
   protectedRoute,
@@ -1329,7 +1398,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/tours/{tourId}/details:
+ * /tours/{tourId}:
  *   get:
  *     summary: Get full tour details
  *     description: Retrieve a complete tour package with all related data including itineraries, activities, locations, media, pricing, and bookings.

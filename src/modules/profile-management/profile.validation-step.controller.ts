@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import { ok, fail } from "../../helpers/response.js";
 
 const STEP_PHONE_NUMBER_VERIFICATION = "phonenumber_verification";
 const STEP_PROFILE_IMAGE_VERIFICATION = "profile_image_validation";
@@ -12,18 +13,17 @@ type CurrentStepResponse = {
 
 function getStatusForStep(args: {
   step: string;
-  userProfile: any;
-  userVerification: any | null;
+  userProfile: Record<string, unknown> | null;
+  userVerification: Record<string, unknown> | null;
 }): string {
-  const { step, userProfile, userVerification } = args;
+  const { step, userProfile: _userProfile, userVerification } = args;
 
   if (step === STEP_PHONE_NUMBER_VERIFICATION) {
     return userVerification?.phone_number_verified ? "VERIFIED" : "PENDING";
   }
 
   if (step === STEP_DOCUMENT_VERIFICATION) {
-    // Note: field name in schema is `document_verificaiton` (typo kept)
-    return userVerification?.document_verificaiton ? "VERIFIED" : "PENDING";
+    return userVerification?.document_verification ? "VERIFIED" : "PENDING";
   }
 
   if (step === STEP_PROFILE_IMAGE_VERIFICATION) {
@@ -41,7 +41,7 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     const requestedStep = stepQuery ?? null;
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+      return fail(res, 401, "Unauthorized");
     }
 
     const userProfile = await prisma.userProfile.findUnique({
@@ -50,7 +50,7 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     });
 
     if (!userProfile) {
-      return res.status(404).json({ success: false, message: "Profile not found", data: null });
+      return fail(res, 404, "Profile not found");
     }
 
     const userVerification = await prisma.profileVerification.findUnique({
@@ -63,12 +63,12 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     // until `prisma generate` is re-run. Access it safely.
     // If the caller provided ?step=..., respect it; otherwise use stored/inferred current step.
     const inferredCurrentStep =
-      (userVerification as any)?.validationStep ??
+      (userVerification as { validationStep?: string })?.validationStep ??
       (!userVerification?.phone_number_verified
         ? STEP_PHONE_NUMBER_VERIFICATION
         : !userVerification?.bio_profile_verification
           ? STEP_PROFILE_IMAGE_VERIFICATION
-          : !userVerification?.document_verificaiton
+          : !userVerification?.document_verification
             ? STEP_DOCUMENT_VERIFICATION
             : STEP_DOCUMENT_VERIFICATION);
 
@@ -85,17 +85,9 @@ export async function getValidationStepStatus(req: Request, res: Response) {
       status,
     };
 
-    return res.status(200).json({
-      success: true,
-      message: "Current validation step retrieved successfully.",
-      data: payload,
-    });
+    return ok(res, payload, "Current validation step retrieved successfully.");
   } catch (error) {
     console.error("[getCurrentValidationStep]", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to retrieve current validation step.",
-      data: null,
-    });
+    return fail(res, 500, "Failed to retrieve current validation step.");
   }
 }

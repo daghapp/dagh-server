@@ -5,7 +5,7 @@ import cloudinary from "../config/cloudinary.js";
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => ({
-    folder: "churchify/uploads",
+    folder: "dagh/uploads",
     resource_type: "auto",
     allowed_formats: ["jpg", "jpeg", "png", "pdf"],
     public_id: `${Date.now()}-${file.originalname.split(".")[0]}`,

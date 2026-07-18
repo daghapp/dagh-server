@@ -1,4 +1,12 @@
+/**
+ * Hubtel API client configuration (Phase 1.5).
+ *
+ * Fails fast on startup if required env vars are missing, instead of
+ * crashing mid-request with a cryptic undefined error.
+ */
 import axios from "axios";
+
+// Phase 1.5 — validate required env vars at boot time
 
 const requiredEnvVars = [
   "HUBTEL_CLIENT_ID",

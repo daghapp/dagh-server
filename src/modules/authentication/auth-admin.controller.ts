@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import { ok, fail, paginated } from "../../helpers/response.js";
 
 const ensureAdmin = (req: Request, res: Response) => {
   const accountType = req.user?.accountType;
 
   if (!accountType || accountType.toUpperCase() !== "ADMIN") {
-    return res.status(403).json({ success: false, message: "Access denied" });
+    return fail(res, 403, "Access denied");
   }
 
   return null;
@@ -44,22 +45,14 @@ export class AuthAdminController {
         prisma.user.count(),
       ]);
 
-      return res.status(200).json({
-        success: true,
-        data: users,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+      return paginated(res, users, total, page, limit);
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch users",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to fetch users",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -76,11 +69,11 @@ export class AuthAdminController {
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountType === "ADMIN") {
-        return res.status(400).json({ success: false, message: "User is already an admin" });
+        return fail(res, 400, "User is already an admin");
       }
 
       const updated = await prisma.user.update({
@@ -89,16 +82,15 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountType: true },
       });
 
-      return res
-        .status(200)
-        .json({ success: true, message: "User promoted to admin", data: updated });
+      return ok(res, updated, "User promoted to admin");
     } catch (error) {
       console.error("Promote to admin error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to promote user",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to promote user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -115,19 +107,20 @@ export class AuthAdminController {
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       await prisma.user.delete({ where: { id: userId } });
 
-      return res.status(200).json({ success: true, message: "User deleted successfully" });
+      return ok(res, null as never, "User deleted successfully");
     } catch (error) {
       console.error("Delete user error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete user",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to delete user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -144,11 +137,11 @@ export class AuthAdminController {
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountType === "USER") {
-        return res.status(400).json({ success: false, message: "User is already a regular user" });
+        return fail(res, 400, "User is already a regular user");
       }
 
       const updated = await prisma.user.update({
@@ -157,16 +150,15 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountType: true },
       });
 
-      return res
-        .status(200)
-        .json({ success: true, message: "Admin demoted to user", data: updated });
+      return ok(res, updated, "Admin demoted to user");
     } catch (error) {
       console.error("Demote to user error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to demote admin",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to demote admin",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -183,11 +175,11 @@ export class AuthAdminController {
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountStatus === "SUSPENDED") {
-        return res.status(400).json({ success: false, message: "User is already suspended" });
+        return fail(res, 400, "User is already suspended");
       }
 
       const updated = await prisma.user.update({
@@ -196,16 +188,15 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountStatus: true },
       });
 
-      return res
-        .status(200)
-        .json({ success: true, message: "User suspended successfully", data: updated });
+      return ok(res, updated, "User suspended successfully");
     } catch (error) {
       console.error("Suspend user error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to suspend user",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to suspend user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -221,11 +212,11 @@ export class AuthAdminController {
       const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       if (user.accountStatus === "ACTIVE") {
-        return res.status(400).json({ success: false, message: "User is already active" });
+        return fail(res, 400, "User is already active");
       }
 
       const updated = await prisma.user.update({
@@ -234,16 +225,15 @@ export class AuthAdminController {
         select: { id: true, fullName: true, email: true, accountStatus: true },
       });
 
-      return res
-        .status(200)
-        .json({ success: true, message: "User reactivated successfully", data: updated });
+      return ok(res, updated, "User reactivated successfully");
     } catch (error) {
       console.error("Reactivate user error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to reactivate user",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to reactivate user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 }

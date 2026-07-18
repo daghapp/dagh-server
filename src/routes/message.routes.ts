@@ -15,7 +15,7 @@ router.use(protectedRoute);
 
 /**
  * @swagger
- * /api/messages:
+ * /messages:
  *   post:
  *     summary: Send a message to another user
  *     tags: [Messages]
@@ -49,7 +49,7 @@ router.post("/", validate(sendMessageSchema), sendMessage);
 
 /**
  * @swagger
- * /api/messages/conversations:
+ * /messages/conversations:
  *   get:
  *     summary: Get all conversations for the authenticated user
  *     tags: [Messages]
@@ -65,7 +65,7 @@ router.get("/conversations", getConversations);
 
 /**
  * @swagger
- * /api/messages/conversations/{conversationId}:
+ * /messages/conversations/{conversationId}:
  *   get:
  *     summary: Get all messages in a conversation
  *     tags: [Messages]
@@ -90,7 +90,7 @@ router.get("/conversations/:conversationId", getMessages);
 
 /**
  * @swagger
- * /api/messages/{messageId}/read:
+ * /messages/{messageId}/read:
  *   patch:
  *     summary: Mark a message as read
  *     tags: [Messages]

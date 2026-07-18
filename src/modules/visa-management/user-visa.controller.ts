@@ -12,6 +12,7 @@ import { convertUSDToGHS } from "../../helpers/stringHelper.js";
 import sendEmail from "../../config/resend.config.js";
 import { getAccountId } from "../../helpers/ledger.js";
 import { pricing } from "../../config/pricing.js";
+import { ok, created, fail } from "../../helpers/response.js";
 
 export class UserVisaController {
   async createVisaRequest(req: Request, res: Response) {
@@ -21,7 +22,7 @@ export class UserVisaController {
         where: { id: userId },
       });
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return fail(res, 404, "User not found");
       }
 
       const applicantData = req.body as VisaOnArrivalDataSchema;
@@ -40,10 +41,10 @@ export class UserVisaController {
         },
       });
 
-      res.status(201).json({ visaRequest });
+      return created(res, visaRequest);
     } catch (err) {
       console.error("failed to create visa request ", err);
-      res.status(400).json({ error: "failed to create visa request" });
+      return fail(res, 400, "Failed to create visa request");
     }
   }
 
@@ -58,7 +59,7 @@ export class UserVisaController {
       });
 
       if (!visaRequest) {
-        return res.status(404).json({ error: "Visa request not found" });
+        return fail(res, 404, "Visa request not found");
       }
 
       let totalAmount = 0;
@@ -86,10 +87,10 @@ export class UserVisaController {
         data: { paymentId: payment.paymentId, packageType },
       });
 
-      res.json({ visaRequest, payment });
+      return ok(res, { visaRequest, payment });
     } catch (err) {
       console.error("failed to initiate visa payment ", err);
-      res.status(400).json({ error: "failed to initiate visa payment " });
+      return fail(res, 400, "Failed to initiate visa payment");
     }
   }
 
@@ -97,12 +98,12 @@ export class UserVisaController {
     try {
       const payload = req.body;
 
-      const { ResponseCode, Status, Data } = payload;
+      const { Status, Data } = payload;
 
       const payment = await prisma.payment.findUnique({
         where: { reference: Data.ClientReference },
       });
-      if (!payment) return res.status(404).json({ error: "Payment not found" });
+      if (!payment) return fail(res, 404, "Payment not found");
 
       const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
         where: { paymentId: payment.id },
@@ -110,7 +111,7 @@ export class UserVisaController {
       });
 
       if (!visaRequest) {
-        return res.status(404).json({ error: "Visa request not found" });
+        return fail(res, 404, "Visa request not found");
       }
 
       if (Status === "SUCCESS") {
@@ -214,11 +215,7 @@ export class UserVisaController {
       res.json({ success: true });
     } catch (e) {
       console.error("visa callback failed ", e);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to handle callback",
-        error: e instanceof Error ? e.message : "Unknown error occured",
-      });
+      return fail(res, 500, "Failed to handle callback");
     }
   }
 
@@ -231,17 +228,10 @@ export class UserVisaController {
           visaData: true,
         },
       });
-      return res.status(200).json({
-        success: true,
-        data: visaRequest,
-      });
+      return ok(res, visaRequest);
     } catch (error) {
       console.error("Failed to get visa requests ", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get visa request",
-        error: error instanceof Error ? error.message : "Unkown error occured",
-      });
+      return fail(res, 500, "Failed to get visa request");
     }
   }
 
@@ -249,27 +239,22 @@ export class UserVisaController {
     try {
       const userId = req.user?.id as string;
       const { requestId: visaRequestId } = req.params;
-      if (!visaRequestId)
-        return res.status(400).json({ success: false, message: "visaRequest id required" });
+      if (!visaRequestId) return fail(res, 400, "visaRequest id required");
 
-      const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
+      const visaRequest = await prisma.visaOnArrivalRequest.findFirst({
         where: { userId, id: visaRequestId as string },
         select: { status: true },
       });
-      return res.status(200).json({ success: true, message: "success", data: visaRequest });
+      return ok(res, visaRequest);
     } catch (e) {
       console.error("Failed to get visa status ", e);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get visa status ",
-        error: e instanceof Error ? e.message : "Unkown error occured",
-      });
+      return fail(res, 500, "Failed to get visa status");
     }
   }
 
   async getVisaPricing(req: Request, res: Response) {
     try {
-      const visaTypeRaw = (req.params as any).visaType;
+      const visaTypeRaw = req.params.visaType;
       const visaType = Array.isArray(visaTypeRaw) ? visaTypeRaw[0] : visaTypeRaw;
 
       const visaPricingMap: Record<string, Array<{ key: string; value: number }>> = {
@@ -285,24 +270,18 @@ export class UserVisaController {
       const visaPricing = visaPricingMap[visaType?.toUpperCase()];
 
       if (!visaPricing) {
-        return res.status(400).json({
-          success: false,
-          message: `Pricing not available for visa type: ${visaType}`,
-        });
+        return fail(res, 400, `Pricing not available for visa type: ${visaType}`);
       }
 
-      return res.status(200).json({
-        success: true,
-        visaType: visaType?.toUpperCase(),
-        pricing: visaPricing,
-      });
+      return ok(res, { visaType: visaType?.toUpperCase(), pricing: visaPricing });
     } catch (error) {
       console.error("Error fetching visa pricing:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch visa pricing",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to fetch visa pricing",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 }

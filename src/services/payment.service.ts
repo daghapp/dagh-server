@@ -1,3 +1,13 @@
+/**
+ * Payment service — extracted from PaymentController (Phase 2.2).
+ *
+ * Centralizes all Hubtel payment initialization logic in one place.
+ * Uses `prisma.$transaction()` to ensure Payment records and Hubtel API calls
+ * are atomic — if the DB write fails, the Hubtel request is never made, and vice versa.
+ *
+ * Previously this logic was duplicated across payment.controller.ts (static vs instance methods),
+ * user-tour.controller.ts, user-visa.controller.ts, and itinerary.payment.controller.ts.
+ */
 import { prisma, hubtelClient, hubtelDirectMoneyReceive } from "../config/index.js";
 import {
   generateClientReference,
@@ -30,8 +40,8 @@ type InitPaymentResult = {
   message: string;
   paymentId: string;
   paymentStatus: string;
-  data?: any;
-  error?: any;
+  data?: Record<string, unknown>;
+  error?: string;
 };
 
 export async function initializePayment(input: InitPaymentInput): Promise<InitPaymentResult> {

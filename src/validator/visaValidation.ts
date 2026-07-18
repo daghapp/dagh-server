@@ -81,7 +81,7 @@ export const getAllApplicationsSchema = z.object({
 export const visaOnArrivalDataSchema = z.object({
   passport_image_url: z.string().url("Invalid passport image URL"),
   bio_page_image_url: z.string().url("Invalid bio page image URL"),
-  flight_itenary_image_url: z.string().url("Invalid flight itinerary image URL"),
+  flight_itinerary_image_url: z.string().url("Invalid flight itinerary image URL"),
   passport_number: z.string().regex(/^[A-Z0-9]{6,12}$/, "Invalid passport number"),
   purpose_of_trip: z.string().min(3, "Purpose of trip required"),
   // date_of_departure: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, "Invalid date format (YYYY-MM-DDTHH:MM:SS)"),

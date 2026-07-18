@@ -1,5 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import { ok, fail } from "../../helpers/response.js";
+import { VerificationStatus } from "../../../generated/prisma/client.js";
+import type { Prisma } from "../../../generated/prisma/client.js";
 
 const ADMIN_ACTIONS = ["APPROVED", "REJECTED"] as const;
 
@@ -29,13 +32,13 @@ export class AdminProfileController {
 
       const data = verifications.map((v) => ({
         id: v.id,
-        isVerified: v.isVerifided,
+        isVerified: v.isVerified,
         validationStep: v.validationStep,
         verificationMessage: v.verification_message,
         phoneVerified: v.phone_number_verified,
         ipAddressVerified: v.ip_address_verification,
         bioProfileVerified: v.bio_profile_verification,
-        documentVerified: v.document_verificaiton,
+        documentVerified: v.document_verification,
         createdAt: v.createdAt,
         faceScanUrl: v.userProfile?.bio_profile_image_url ?? null,
         documentUrls: v.userProfile?.bio_document_urls ?? [],
@@ -71,14 +74,15 @@ export class AdminProfileController {
         lastUpdatedAt: v.lastUpdatedAt,
       }));
 
-      return res.status(200).json({ success: true, data });
+      return ok(res, data);
     } catch (error) {
       console.error("getAllVerifications error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch profile verifications",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to fetch profile verifications",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -86,15 +90,12 @@ export class AdminProfileController {
     try {
       const id = String(req.params.id);
       const { action, reason } = req.body as {
-        action: string;
+        action: "APPROVED" | "REJECTED";
         reason?: string;
       };
 
-      if (!ADMIN_ACTIONS.includes(action as any)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid action. Must be APPROVED or REJECTED",
-        });
+      if (!ADMIN_ACTIONS.includes(action)) {
+        return fail(res, 400, "Invalid action. Must be APPROVED or REJECTED");
       }
 
       const verification = await prisma.profileVerification.findUnique({
@@ -102,16 +103,14 @@ export class AdminProfileController {
       });
 
       if (!verification) {
-        return res.status(404).json({
-          success: false,
-          message: "Profile verification not found",
-        });
+        return fail(res, 404, "Profile verification not found");
       }
 
       const adminId = req.user?.id ? String(req.user.id) : null;
 
-      const updateData: any = {
-        bioDataStatus: action,
+      const updateData: Record<string, unknown> = {
+        bioDataStatus:
+          action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
       };
 
       if (action === "APPROVED") {
@@ -132,21 +131,13 @@ export class AdminProfileController {
 
       const updated = await prisma.profileVerification.update({
         where: { id },
-        data: updateData,
+        data: updateData as Prisma.ProfileVerificationUpdateInput,
       });
 
-      return res.status(200).json({
-        success: true,
-        message: `Bio data ${action.toLowerCase()} successfully`,
-        data: updated,
-      });
+      return ok(res, updated, `Bio data ${action.toLowerCase()} successfully`);
     } catch (error) {
       console.error("updateBioDataStatus error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update bio data status",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to update bio data status");
     }
   }
 
@@ -154,15 +145,12 @@ export class AdminProfileController {
     try {
       const id = String(req.params.id);
       const { action, reason } = req.body as {
-        action: string;
+        action: "APPROVED" | "REJECTED";
         reason?: string;
       };
 
-      if (!ADMIN_ACTIONS.includes(action as any)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid action. Must be APPROVED or REJECTED",
-        });
+      if (!ADMIN_ACTIONS.includes(action)) {
+        return fail(res, 400, "Invalid action. Must be APPROVED or REJECTED");
       }
 
       const verification = await prisma.profileVerification.findUnique({
@@ -170,16 +158,14 @@ export class AdminProfileController {
       });
 
       if (!verification) {
-        return res.status(404).json({
-          success: false,
-          message: "Profile verification not found",
-        });
+        return fail(res, 404, "Profile verification not found");
       }
 
       const adminId = req.user?.id ? String(req.user.id) : null;
 
-      const updateData: any = {
-        faceStatus: action,
+      const updateData: Record<string, unknown> = {
+        faceStatus:
+          action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
       };
 
       if (action === "APPROVED") {
@@ -200,21 +186,13 @@ export class AdminProfileController {
 
       const updated = await prisma.profileVerification.update({
         where: { id },
-        data: updateData,
+        data: updateData as Prisma.ProfileVerificationUpdateInput,
       });
 
-      return res.status(200).json({
-        success: true,
-        message: `Face verification ${action.toLowerCase()} successfully`,
-        data: updated,
-      });
+      return ok(res, updated, `Face verification ${action.toLowerCase()} successfully`);
     } catch (error) {
       console.error("updateFaceStatus error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update face verification status",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to update face verification status");
     }
   }
 
@@ -222,15 +200,12 @@ export class AdminProfileController {
     try {
       const id = String(req.params.id);
       const { action, reason } = req.body as {
-        action: string;
+        action: "APPROVED" | "REJECTED";
         reason?: string;
       };
 
-      if (!ADMIN_ACTIONS.includes(action as any)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid action. Must be APPROVED or REJECTED",
-        });
+      if (!ADMIN_ACTIONS.includes(action)) {
+        return fail(res, 400, "Invalid action. Must be APPROVED or REJECTED");
       }
 
       const verification = await prisma.profileVerification.findUnique({
@@ -238,16 +213,14 @@ export class AdminProfileController {
       });
 
       if (!verification) {
-        return res.status(404).json({
-          success: false,
-          message: "Profile verification not found",
-        });
+        return fail(res, 404, "Profile verification not found");
       }
 
       const adminId = req.user?.id ? String(req.user.id) : null;
 
-      const updateData: any = {
-        documentStatus: action,
+      const updateData: Record<string, unknown> = {
+        documentStatus:
+          action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
       };
 
       if (action === "APPROVED") {
@@ -268,21 +241,13 @@ export class AdminProfileController {
 
       const updated = await prisma.profileVerification.update({
         where: { id },
-        data: updateData,
+        data: updateData as Prisma.ProfileVerificationUpdateInput,
       });
 
-      return res.status(200).json({
-        success: true,
-        message: `Documents ${action.toLowerCase()} successfully`,
-        data: updated,
-      });
+      return ok(res, updated, `Documents ${action.toLowerCase()} successfully`);
     } catch (error) {
       console.error("updateDocumentStatus error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update document status",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to update document status");
     }
   }
 
@@ -295,10 +260,7 @@ export class AdminProfileController {
       });
 
       if (!verification) {
-        return res.status(404).json({
-          success: false,
-          message: "Profile verification not found",
-        });
+        return fail(res, 404, "Profile verification not found");
       }
 
       const adminId = req.user?.id ? String(req.user.id) : null;
@@ -306,7 +268,7 @@ export class AdminProfileController {
       const updated = await prisma.profileVerification.update({
         where: { id },
         data: {
-          isVerifided: true,
+          isVerified: true,
           bioDataStatus: "APPROVED",
           bioDataApprovedBy: adminId,
           bioDataApprovedAt: new Date(),
@@ -320,18 +282,10 @@ export class AdminProfileController {
         },
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "User fully verified successfully",
-        data: updated,
-      });
+      return ok(res, updated, "User fully verified successfully");
     } catch (error) {
       console.error("verifyUserFully error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to verify user",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to verify user");
     }
   }
 }

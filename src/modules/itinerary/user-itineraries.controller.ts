@@ -1,13 +1,14 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { getItineraryByRequestId } from "./itinerary.service.js";
+import { ok, fail } from "../../helpers/response.js";
 
 export async function getUserItineraries(req: Request, res: Response) {
   try {
     const userId = req.user?.id as string;
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+      return fail(res, 401, "Unauthorized");
     }
 
     // Load all tour requests for the user that are paid.
@@ -32,17 +33,9 @@ export async function getUserItineraries(req: Request, res: Response) {
       }),
     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Itineraries retrieved successfully.",
-      data: itineraries,
-    });
+    return ok(res, itineraries, "Itineraries retrieved successfully.");
   } catch (error) {
     console.error("[getUserItineraries]", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to retrieve itineraries.",
-      data: null,
-    });
+    return fail(res, 500, "Failed to retrieve itineraries.");
   }
 }

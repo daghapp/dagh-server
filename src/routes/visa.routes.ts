@@ -163,7 +163,7 @@ router.post(
   *               bio_page_image_url:
   *                 type: string
   *                 format: uri
-  *               flight_itenary_image_url:
+   *               flight_itinerary_image_url:
   *                 type: string
   *                 format: uri
   *               passport_number:
@@ -181,7 +181,7 @@ router.post(
   *               - requestId
   *               - passport_image_url
   *               - bio_page_image_url
-  *               - flight_itenary_image_url
+   *               - flight_itinerary_image_url
   *               - passport_number
   *               - purpose_of_trip
   *               - date_of_departure

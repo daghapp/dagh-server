@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import { ok, fail } from "../../helpers/response.js";
 
 const toNumber = (value: unknown): number | null => {
   if (value === undefined || value === null) return null;
@@ -19,14 +20,10 @@ export class ProviderNearbyHotelsController {
       const radiusKm = toNumber(radiusKmRaw);
 
       const limitRaw = req.query.limit;
-      const limit = toNumber(limitRaw) ?? 10;
+      const limit = Math.min(100, Math.max(1, toNumber(limitRaw) ?? 10));
 
       if (!tourSiteId) {
-        return res.status(400).json({
-          success: false,
-          message: "tourSiteId is required",
-          data: null,
-        });
+        return fail(res, 400, "tourSiteId is required");
       }
 
       const tourSite = await prisma.tourSite.findUnique({
@@ -35,11 +32,7 @@ export class ProviderNearbyHotelsController {
       });
 
       if (!tourSite) {
-        return res.status(404).json({
-          success: false,
-          message: "Tour site not found",
-          data: null,
-        });
+        return fail(res, 404, "Tour site not found");
       }
 
       // If radiusKm is not provided, we still sort by distance and return top `limit`.
@@ -84,18 +77,10 @@ export class ProviderNearbyHotelsController {
       const filtered =
         radiusKm !== null ? withDistance.filter((h) => h.distanceKm <= radiusKm) : withDistance;
 
-      return res.status(200).json({
-        success: true,
-        message: "Nearby hotels retrieved successfully",
-        data: filtered.slice(0, limit),
-      });
+      return ok(res, filtered.slice(0, limit), "Nearby hotels retrieved successfully");
     } catch (e) {
       console.error("getNearbyHotels failed", e);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get nearby hotels",
-        data: null,
-      });
+      return fail(res, 500, "Failed to get nearby hotels");
     }
   }
 }

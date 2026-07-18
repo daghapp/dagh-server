@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { VisaApprovalStatus, VisaRequestStatus } from "../../../generated/prisma/client.js";
+import { ok, fail } from "../../helpers/response.js";
 
 export class AdminVisaController {
   /**
@@ -30,14 +31,10 @@ export class AdminVisaController {
         orderBy: { createdAt: "desc" },
       });
 
-      return res.status(200).json({ success: true, data: requests });
+      return ok(res, requests);
     } catch (e) {
       console.error("Failed to get paid visa requests:", e);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get paid visa requests",
-        error: e instanceof Error ? e.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to get paid visa requests");
     }
   }
 
@@ -50,10 +47,7 @@ export class AdminVisaController {
       const { requestId } = req.body as { requestId?: string };
 
       if (!requestId) {
-        return res.status(400).json({
-          success: false,
-          message: "requestId is required",
-        });
+        return fail(res, 400, "requestId is required");
       }
 
       const existing = await prisma.visaOnArrivalRequest.findUnique({
@@ -62,7 +56,7 @@ export class AdminVisaController {
       });
 
       if (!existing) {
-        return res.status(404).json({ success: false, message: "Visa request not found" });
+        return fail(res, 404, "Visa request not found");
       }
 
       // Idempotent-ish approval: if already approved, just return current state.
@@ -70,11 +64,7 @@ export class AdminVisaController {
         existing.status === VisaRequestStatus.APPROVED ||
         existing.approval?.status === VisaApprovalStatus.APPROVED
       ) {
-        return res.status(200).json({
-          success: true,
-          message: "Visa request already approved",
-          data: existing,
-        });
+        return ok(res, existing, "Visa request already approved");
       }
 
       // Create approval record if none exists, otherwise update.
@@ -98,24 +88,13 @@ export class AdminVisaController {
         where: { id: requestId },
         data: {
           status: VisaRequestStatus.APPROVED,
-          approval: {
-            // Relation already handled by upsert; this is a no-op if approval exists.
-          },
-        } as any,
+        },
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Visa request approved",
-        data: { visaRequest: updated, approval },
-      });
+      return ok(res, { visaRequest: updated, approval }, "Visa request approved");
     } catch (e) {
       console.error("Failed to approve visa request:", e);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to approve visa request",
-        error: e instanceof Error ? e.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to approve visa request");
     }
   }
 }

@@ -77,9 +77,6 @@ model UserVerification {
   userId            String             @unique
   isVerified        Boolean            @default(false)
   verificationLevel VerificationLevel?
-  //backgroundCheck    BackgroundCheck?
-  // governmentId       GovernmentId?
-  //selfieVerification SelfieVerification?
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_verifications")
@@ -105,6 +102,7 @@ model DeviceToken {
   expiredAt DateTime?
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("device_tokens")
 }
 
@@ -354,6 +352,8 @@ model VisaOnArrivalRequest {
   packageType VisaPackageType?
   user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([status])
   @@map("visa_on_arrival_requests")
 }
 
@@ -362,7 +362,7 @@ model VisaOnArrivalData {
   requestId                String               @unique
   passport_image_url       String
   bio_page_image_url       String
-  flight_itenary_image_url String
+  flight_itinerary_image_url String
   passport_number          String
   purpose_of_trip          String
   date_of_departure        DateTime
@@ -523,6 +523,8 @@ model TourRequest {
   itinerary     Itinerary?
   user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([paymentStatus])
   @@map("tour_requests")
 }
 
@@ -675,14 +677,14 @@ model ProfileVerification {
   userProfileId String      @unique
   userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
 
-  isVerifided   Boolean  @default(false)
+  isVerified   Boolean  @default(false)
   createdAt     DateTime @default(now())
   lastUpdatedAt DateTime @updatedAt
 
   phone_number_verified    Boolean @default(false)
   ip_address_verification  Boolean @default(false)
   bio_profile_verification Boolean @default(false)
-  document_verificaiton    Boolean @default(false)
+  document_verification    Boolean @default(false)
 
   // Which verification step should be shown/considered "current" for the user.
   // Example values: PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION

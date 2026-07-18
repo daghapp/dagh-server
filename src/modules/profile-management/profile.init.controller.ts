@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import { ok, fail } from "../../helpers/response.js";
 
 export async function initProfile(req: Request, res: Response) {
   try {
     const userId = req.user?.id as string;
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+      return fail(res, 401, "Unauthorized");
     }
 
     const existing = await prisma.userProfile.findUnique({
@@ -13,11 +14,7 @@ export async function initProfile(req: Request, res: Response) {
     });
 
     if (existing) {
-      return res.status(200).json({
-        success: true,
-        message: "Profile initialized successfully.",
-        data: existing,
-      });
+      return ok(res, existing, "Profile initialized successfully.");
     }
 
     const created = await prisma.userProfile.create({
@@ -35,10 +32,10 @@ export async function initProfile(req: Request, res: Response) {
         profileVerification: {
           create: {
             phone_number_verified: false,
-            isVerifided: false,
+            isVerified: false,
             verification_message: null,
             lastUpdatedAt: new Date(),
-            document_verificaiton: false,
+            document_verification: false,
             bio_profile_verification: false,
             ip_address_verification: false,
           },
@@ -49,17 +46,9 @@ export async function initProfile(req: Request, res: Response) {
       },
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Profile initialized successfully.",
-      data: created,
-    });
+    return ok(res, created, "Profile initialized successfully.");
   } catch (error) {
     console.error("[initProfile]", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to initialize profile.",
-      data: null,
-    });
+    return fail(res, 500, "Failed to initialize profile.");
   }
 }

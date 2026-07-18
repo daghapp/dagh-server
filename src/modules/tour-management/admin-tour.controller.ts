@@ -23,6 +23,7 @@ import { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { prisma } from "../../config/index.js";
 import { TourSchema, UpdateTourSchema, TourItinerarySchema } from "../../validator/index.js";
+import { ok, created, fail } from "../../helpers/response.js";
 
 const isPrismaNotFoundError = (error: unknown): error is { code: string } => {
   return (
@@ -37,7 +38,7 @@ const ensureAdmin = (req: Request, res: Response) => {
   const accountType = req.user?.accountType;
 
   if (!accountType || accountType.toUpperCase() !== "ADMIN") {
-    return res.status(403).json({ message: "Forbidden: Admins only" });
+    return fail(res, 403, "Forbidden: Admins only");
   }
 
   return null;
@@ -56,14 +57,10 @@ export class AdminTourController {
       const newTour = await prisma.tour_packages.create({
         data: tourData,
       });
-      return res.status(201).json({ message: "Tour created successfully", tour: newTour });
+      return created(res, newTour, "Tour created successfully");
     } catch (error) {
       console.error("Error creating tour:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to create tour",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to create tour");
     }
   }
 
@@ -81,17 +78,13 @@ export class AdminTourController {
         where: { id: tourId },
         data: tourData,
       });
-      return res.json({ message: "Tour updated successfully", tour: updatedTour });
+      return ok(res, updatedTour, "Tour updated successfully");
     } catch (error) {
       if (isPrismaNotFoundError(error)) {
-        return res.status(404).json({ message: "Tour not found" });
+        return fail(res, 404, "Tour not found");
       }
       console.error("Error updating tour:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update tour",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to update tour");
     }
   }
 
@@ -107,17 +100,13 @@ export class AdminTourController {
       await prisma.tour_packages.delete({
         where: { id: tourId },
       });
-      return res.json({ message: "Tour deleted successfully" });
+      return ok(res, null as never, "Tour deleted successfully");
     } catch (error) {
       if (isPrismaNotFoundError(error)) {
-        return res.status(404).json({ message: "Tour not found" });
+        return fail(res, 404, "Tour not found");
       }
       console.error("Error deleting tour:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete tour",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to delete tour");
     }
   }
 
@@ -138,7 +127,7 @@ export class AdminTourController {
         where: { id: tourId },
       });
       if (!tour) {
-        return res.status(404).json({ message: "Tour not found" });
+        return fail(res, 404, "Tour not found");
       }
       const newItinerary = await prisma.tour_itineraries.create({
         data: {
@@ -161,16 +150,10 @@ export class AdminTourController {
         },
         include: { itinerary_activities: true },
       });
-      return res
-        .status(201)
-        .json({ message: "Tour itinerary added successfully", itinerary: newItinerary });
+      return created(res, newItinerary, "Tour itinerary added successfully");
     } catch (error) {
       console.error("Error adding tour itinerary:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to add tour itinerary",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to add tour itinerary");
     }
   }
 
@@ -222,20 +205,13 @@ export class AdminTourController {
         return itineraryWithActivities ?? updated;
       });
 
-      return res.json({
-        message: "Tour itinerary updated successfully",
-        itinerary: updatedItinerary,
-      });
+      return ok(res, updatedItinerary, "Tour itinerary updated successfully");
     } catch (error) {
       if (isPrismaNotFoundError(error)) {
-        return res.status(404).json({ message: "Itinerary not found" });
+        return fail(res, 404, "Itinerary not found");
       }
       console.error("Error updating tour itinerary:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update tour itinerary",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to update tour itinerary");
     }
   }
 
@@ -251,17 +227,13 @@ export class AdminTourController {
       await prisma.tour_itineraries.delete({
         where: { id: itineraryId },
       });
-      return res.json({ message: "Tour itinerary deleted successfully" });
+      return ok(res, null as never, "Tour itinerary deleted successfully");
     } catch (error) {
       if (isPrismaNotFoundError(error)) {
-        return res.status(404).json({ message: "Itinerary not found" });
+        return fail(res, 404, "Itinerary not found");
       }
       console.error("Error deleting tour itinerary:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete tour itinerary",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to delete tour itinerary");
     }
   }
 }

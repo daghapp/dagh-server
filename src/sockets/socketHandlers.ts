@@ -26,7 +26,7 @@ export const setupSocketHandlers = (io: Server) => {
 
       socket.userId = user.id;
       next();
-    } catch (error) {
+    } catch (_error) {
       next(new Error("Invalid token"));
     }
   });
@@ -38,6 +38,7 @@ export const setupSocketHandlers = (io: Server) => {
 
     // Handle typing events
     socket.on("typing", ({ receiverId, isTyping }) => {
+      if (typeof receiverId !== "string" || !receiverId) return;
       socket.to(`user:${receiverId}`).emit("user_typing", {
         userId: socket.userId,
         isTyping,
@@ -46,25 +47,34 @@ export const setupSocketHandlers = (io: Server) => {
 
     // Handle message read receipts
     socket.on("mark_read", async ({ messageId }) => {
-      if (!socket.userId) return;
+      try {
+        if (!socket.userId || typeof messageId !== "string" || !messageId) return;
 
-      const message = await prisma.message.findUnique({
-        where: { id: messageId },
-        select: { receiverId: true },
-      });
+        const message = await prisma.message.findUnique({
+          where: { id: messageId },
+          select: { receiverId: true },
+        });
 
-      if (!message || message.receiverId !== socket.userId) return;
+        if (!message || message.receiverId !== socket.userId) return;
 
-      await prisma.message.update({
-        where: { id: messageId },
-        data: { isRead: true, readAt: new Date() },
-      });
+        await prisma.message.update({
+          where: { id: messageId },
+          data: { isRead: true, readAt: new Date() },
+        });
 
-      socket.to(`user:${message.receiverId}`).emit("message_read", { messageId });
+        socket.to(`user:${message.receiverId}`).emit("message_read", { messageId });
+      } catch (error) {
+        console.error("[Socket] mark_read error:", error);
+        socket.emit("error", { event: "mark_read", message: "Failed to mark message as read" });
+      }
     });
 
     // Handle disconnection
-    socket.on("disconnect", () => {});
+    socket.on("disconnect", () => {
+      if (socket.userId) {
+        socket.leave(`user:${socket.userId}`);
+      }
+    });
   });
 
   return io;

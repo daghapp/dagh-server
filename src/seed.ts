@@ -1,12 +1,12 @@
-// @ts-ignore — generated after `prisma generate`
 // import { PrismaClient } from "@prisma/client";
 // impor
 
 import { prisma } from "./config";
+import type { Prisma } from "../generated/prisma/client.js";
 
 // const prisma = new PrismaClient();
 
-const tourSites = [
+const tourSites: Prisma.TourSiteCreateInput[] = [
   // ── Greater Accra ──────────────────────────────────────────────────
   {
     name: "Kwame Nkrumah Mausoleum",
@@ -273,7 +273,7 @@ async function main() {
   const siteCount = await prisma.tourSite.count();
   if (siteCount == 0) {
     for (const site of tourSites) {
-      await prisma.tourSite.create({ data: site as any });
+      await prisma.tourSite.create({ data: site });
     }
 
     console.log(`✅ Seeded ${tourSites.length} tour sites successfully.`);

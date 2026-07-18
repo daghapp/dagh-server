@@ -6,12 +6,9 @@
 //get all tours with filtering
 //report scam tour by user
 import { Request, Response } from "express";
+import { randomBytes } from "crypto";
 import { prisma } from "../../config/index.js";
-import {
-  TourBookingSchema,
-  TourBookingSchema_MOMO,
-  TourReviewSchema,
-} from "../../validator/index.js";
+import { TourBookingSchema, TourBookingSchema_MOMO } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
 import {
   PaymentProvider,
@@ -25,6 +22,7 @@ import {
 } from "../../services/payment.service.js";
 import * as paymentService from "../../services/payment.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
+import { ok, created, fail, paginated } from "../../helpers/response.js";
 
 export class UserTourController {
   //get all tours
@@ -44,7 +42,7 @@ export class UserTourController {
         limit = "10",
       } = req.query;
 
-      const where: any = {};
+      const where: Record<string, unknown> = {};
 
       if (category) where.category = category as string;
       if (subcategory) where.subcategory = subcategory as string;
@@ -54,9 +52,10 @@ export class UserTourController {
       if (durationDays) where.durationDays = Number(durationDays);
 
       if (minPrice || maxPrice) {
-        where.basePrice = {};
-        if (minPrice) where.basePrice.gte = Number(minPrice);
-        if (maxPrice) where.basePrice.lte = Number(maxPrice);
+        const priceFilter: Record<string, number> = {};
+        if (minPrice) priceFilter.gte = Number(minPrice);
+        if (maxPrice) priceFilter.lte = Number(maxPrice);
+        where.basePrice = priceFilter;
       }
 
       if (search) {
@@ -81,23 +80,10 @@ export class UserTourController {
         prisma.tour_packages.count({ where }),
       ]);
 
-      return res.status(200).json({
-        success: true,
-        data: tours,
-        pagination: {
-          total,
-          page: pageNum,
-          limit: limitNum,
-          totalPages: Math.ceil(total / limitNum),
-        },
-      });
+      return paginated(res, tours, total, pageNum, limitNum);
     } catch (error) {
       console.error("Error fetching tours:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch tours",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to fetch tours");
     }
   }
 
@@ -158,17 +144,14 @@ export class UserTourController {
       });
 
       if (!tour || !tour.basePrice) {
-        return res.status(404).json({
-          success: false,
-          message: "Tour not found or price not available",
-        });
+        return fail(res, 404, "Tour not found or price not available");
       }
 
       // Calculate total price
       const totalPrice = Number(tour.basePrice) * bookingData.numberOfPeople;
 
       // Generate unique booking reference
-      const bookingReference = `TBK-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      const bookingReference = `TBK-${Date.now()}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
       const paymentResponse = await paymentService.initializePayment({
         totalAmount: totalPrice,
@@ -183,11 +166,12 @@ export class UserTourController {
       });
 
       if (!paymentResponse.success)
-        return res.status(500).json({
-          success: false,
-          message: "Failed to book tour",
-          error: paymentResponse.error || paymentResponse.message,
-        });
+        return fail(
+          res,
+          500,
+          "Failed to book tour",
+          paymentResponse.error || paymentResponse.message,
+        );
 
       const newBooking = await prisma.tour_bookings.create({
         data: {
@@ -205,8 +189,16 @@ export class UserTourController {
         },
       });
 
-      // Copy default itinerary into user-specific tables
-      await UserTourController.copyItineraryToUserTables(userId, newBooking.id, bookingData.tourId);
+      // Copy default itinerary into user-specific tables (non-critical, log on failure)
+      try {
+        await UserTourController.copyItineraryToUserTables(
+          userId,
+          newBooking.id,
+          bookingData.tourId,
+        );
+      } catch (itineraryError) {
+        console.error("Failed to copy itinerary for booking:", newBooking.id, itineraryError);
+      }
 
       //send email after successful booking
       await sendEmail({
@@ -217,14 +209,10 @@ export class UserTourController {
             <p>Thank you for choosing our tour!</p>`,
       });
 
-      return res.status(201).json({ paymentData: paymentResponse.data, booking: newBooking });
+      return created(res, { paymentData: paymentResponse.data, booking: newBooking });
     } catch (error) {
       console.error("Error booking tour:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to book tour",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to book tour");
     }
   }
   //get all tours booked by user
@@ -236,21 +224,22 @@ export class UserTourController {
         where: { id: userId },
       });
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return fail(res, 404, "User not found");
       }
       const bookings = await prisma.tour_bookings.findMany({
         where: { userId },
         include: { tour: true },
         orderBy: { createdAt: "desc" },
       });
-      return res.status(200).json({ success: true, bookings });
+      return ok(res, bookings);
     } catch (error) {
       console.error("Error fetching user bookings:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch user bookings",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(
+        res,
+        500,
+        "Failed to fetch user bookings",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -266,24 +255,15 @@ export class UserTourController {
       });
 
       if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: "Booking not found",
-        });
+        return fail(res, 404, "Booking not found");
       }
 
       if (booking.userId !== userId) {
-        return res.status(403).json({
-          success: false,
-          message: "You don't have permission to cancel this booking",
-        });
+        return fail(res, 403, "You don't have permission to cancel this booking");
       }
 
       if (booking.status === "CANCELLED") {
-        return res.status(400).json({
-          success: false,
-          message: "Booking is already cancelled",
-        });
+        return fail(res, 400, "Booking is already cancelled");
       }
 
       const updatedBooking = await prisma.tour_bookings.update({
@@ -300,23 +280,15 @@ export class UserTourController {
             <p>Thank you for your understanding.</p>`,
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Booking cancelled successfully",
-        booking: updatedBooking,
-      });
+      return ok(res, updatedBooking, "Booking cancelled successfully");
     } catch (error) {
       console.error("Error cancelling tour booking:", error);
 
-      return res.status(500).json({
-        success: false,
-        message: "Failed to cancel tour booking",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to cancel tour booking");
     }
   }
 
-  // PATCH: Update a user’s custom itinerary
+  // PATCH: Update a user's custom itinerary
   async updateUserItinerary(req: Request, res: Response) {
     try {
       const userId = req.user?.id as string;
@@ -330,12 +302,10 @@ export class UserTourController {
       });
 
       if (!itinerary) {
-        return res.status(404).json({ success: false, message: "Itinerary not found" });
+        return fail(res, 404, "Itinerary not found");
       }
       if (itinerary.userId !== userId) {
-        return res
-          .status(403)
-          .json({ success: false, message: "Not authorized to edit this itinerary" });
+        return fail(res, 403, "Not authorized to edit this itinerary");
       }
 
       // Update itinerary details
@@ -390,18 +360,10 @@ export class UserTourController {
         }
       }
 
-      return res.status(200).json({
-        success: true,
-        message: "Itinerary updated successfully",
-        itinerary: updatedItinerary,
-      });
+      return ok(res, updatedItinerary, "Itinerary updated successfully");
     } catch (error) {
       console.error("Error updating itinerary:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update itinerary",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to update itinerary");
     }
   }
 
@@ -418,17 +380,14 @@ export class UserTourController {
       });
 
       if (!tour || !tour.basePrice) {
-        return res.status(404).json({
-          success: false,
-          message: "Tour not found or price not available",
-        });
+        return fail(res, 404, "Tour not found or price not available");
       }
 
       // Calculate total price
       const totalPrice = Number(tour.basePrice) * bookingData.numberOfPeople;
 
       // Generate unique booking reference
-      const bookingReference = `TBK-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      const bookingReference = `TBK-${Date.now()}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
       // 2. Build universal payment request body
       const paymentPayload = {
@@ -475,21 +434,17 @@ export class UserTourController {
             <p>Your booking has been successfully confirmed.</p>
             <p>Thank you for choosing our tour!</p>`,
         });
-        return res.status(200).json({
-          success: true,
-          message: "Tour booking initiated. Awaiting payment confirmation.",
-          bookingId: booking.id,
-          paymentId: paymentResponse.paymentId,
-        });
+        return ok(
+          res,
+          { bookingId: booking.id, paymentId: paymentResponse.paymentId },
+          "Tour booking initiated. Awaiting payment confirmation.",
+        );
       }
 
-      return res.status(400).json({
-        success: false,
-        message: "Payment initiation failed",
-      });
+      return fail(res, 400, "Payment initiation failed");
     } catch (error) {
       console.error("Error initiating tour booking:", error);
-      return res.status(500).json({ success: false, message: "Internal server error" });
+      return fail(res, 500, "Internal server error");
     }
   }
 
@@ -533,68 +488,24 @@ export class UserTourController {
         data: { paymentStatus: newStatus },
       });
 
-      if (newStatus === "SUCCESS")
-        await UserTourController.copyItineraryToUserTables(
-          payment.userId,
-          booking.id,
-          payment.targetId,
-        );
+      if (newStatus === "SUCCESS") {
+        try {
+          await UserTourController.copyItineraryToUserTables(
+            payment.userId,
+            booking.id,
+            payment.targetId,
+          );
+        } catch (itineraryError) {
+          console.error("Failed to copy itinerary in callback:", itineraryError);
+        }
+      }
 
-      return res.status(200).json({
-        success: true,
-        message: "Callback processed successfully",
-        paymentStatus: newStatus,
-      });
+      return ok(res, { paymentStatus: newStatus }, "Callback processed successfully");
     } catch (error) {
       console.error("Hubtel callback error:", error);
-      return res.status(500).json({ success: false, message: "Internal server error" });
+      return fail(res, 500, "Internal server error");
     }
   }
-
-  // // Get visa pricing breakdown by visa type
-  // async getVisaPricing(req: Request, res: Response) {
-  //   try {
-  //     const { visaType } = req.params;
-
-  //     const pricingMap: Record<string, Array<{ key: string; value: number }>> = {
-  //       STANDARD: [
-  //         { key: "Visa Facilitation Fee", value: 464 },
-  //         { key: "Statutory GIS Fee (USD 200)", value: 0 },
-  //       ],
-  //       EXPEDITED: [
-  //         { key: "Expedited Visa Facilitation Fee", value: 1450 },
-  //       ],
-  //     };
-
-  //     const pricing = pricingMap[visaType?.toUpperCase()];
-
-  //     if (!pricing) {
-  //       return res.status(400).json({
-  //         success: false,
-  //         message: `Pricing not available for visa type: ${visaType}`,
-  //       });
-  //     }
-
-  //     return res.status(200).json({
-  //       success: true,
-  //       visaType: visaType?.toUpperCase(),
-  //       pricing: pricing,
-  //     });
-  //   } catch (error) {
-  //     console.error("Error fetching visa pricing:", error);
-  //     return res.status(500).json({
-  //       success: false,
-  //       message: "Failed to fetch visa pricing",
-  //       error: error instanceof Error ? error.message : "Unknown error",
-  //     });
-  //   }
-  // }
-
-  //review a tour by user
-  //get all tours booked by user
-
-  //get all tours
-  // controllers/tourController.ts
 
   async getTourDetails(req: Request, res: Response) {
     try {
@@ -633,24 +544,13 @@ export class UserTourController {
       });
 
       if (!tour) {
-        return res.status(404).json({
-          success: false,
-          message: "Tour not found",
-        });
+        return fail(res, 404, "Tour not found");
       }
 
-      return res.status(200).json({
-        success: true,
-        message: "Tour details retrieved successfully",
-        data: tour,
-      });
+      return ok(res, tour, "Tour details retrieved successfully");
     } catch (error) {
       console.error("Error fetching tour details:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch tour details",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return fail(res, 500, "Failed to fetch tour details");
     }
   }
 }

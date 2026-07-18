@@ -4,6 +4,8 @@ import { HUBTEL_CANCELLATION_URL, HUBTEL_RETURN_URL } from "../../services/payme
 import * as paymentService from "../../services/payment.service.js";
 import { PaymentStatus, PaymentTargetType } from "../../../generated/prisma/client.js";
 import { getAccountId } from "../../helpers/ledger.js";
+import { ok, fail } from "../../helpers/response.js";
+import { pricing } from "../../config/pricing.js";
 
 export class ItineraryPaymentController {
   async initiateItineraryPayment(req: Request, res: Response) {
@@ -17,13 +19,16 @@ export class ItineraryPaymentController {
       });
 
       if (!tourRequest) {
-        return res.status(404).json({ success: false, message: "Tour request not found" });
+        return fail(res, 404, "Tour request not found");
       }
       if (tourRequest.userId !== userId) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
+        return fail(res, 403, "Forbidden");
       }
 
-      const amount = tourRequest.durationDays <= 4 ? 350 : 500;
+      const amount =
+        tourRequest.durationDays <= 4
+          ? pricing.itinerary.shortItineraryFee
+          : pricing.itinerary.longItineraryFee;
 
       const payment = await paymentService.initializePayment({
         userId,
@@ -38,7 +43,7 @@ export class ItineraryPaymentController {
       });
 
       if (!payment.success) {
-        return res.status(400).json({ success: false, message: payment.message });
+        return fail(res, 400, payment.message);
       }
 
       const paymentId = payment.paymentId;
@@ -51,23 +56,25 @@ export class ItineraryPaymentController {
         },
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Payment initiated. Proceed to complete payment to view itinerary.",
-        tourRequestId: tourRequest.id,
-        paymentId,
-        paymentData: payment.data,
-      });
+      return ok(
+        res,
+        {
+          tourRequestId: tourRequest.id,
+          paymentId,
+          paymentData: payment.data,
+        },
+        "Payment initiated. Proceed to complete payment to view itinerary.",
+      );
     } catch (e) {
       console.error("[initiateItineraryPayment]", e);
-      return res.status(500).json({ success: false, message: "Failed to initiate payment" });
+      return fail(res, 500, "Failed to initiate payment");
     }
   }
 
   async handleHubtelPaymentCallback(req: Request, res: Response) {
     try {
       const payload = req.body;
-      const { ResponseCode, Status, Data } = payload as any;
+      const { ResponseCode, Status, Data } = payload;
 
       const rawClientReference = Data?.ClientReference;
       const clientReference: string | undefined =
@@ -78,7 +85,7 @@ export class ItineraryPaymentController {
             : undefined;
 
       if (!clientReference) {
-        return res.status(400).json({ success: false, message: "Invalid callback payload" });
+        return fail(res, 400, "Invalid callback payload");
       }
 
       const payment = await prisma.payment.findUnique({
@@ -86,7 +93,7 @@ export class ItineraryPaymentController {
       });
 
       if (!payment) {
-        return res.status(404).json({ success: false, message: "Payment not found" });
+        return fail(res, 404, "Payment not found");
       }
 
       const tourRequest = await prisma.tourRequest.findUnique({
@@ -95,7 +102,7 @@ export class ItineraryPaymentController {
       });
 
       if (!tourRequest) {
-        return res.status(404).json({ success: false, message: "Tour request not found" });
+        return fail(res, 404, "Tour request not found");
       }
 
       const isSuccess = Status === "SUCCESS" || ResponseCode === "0000";
@@ -144,7 +151,7 @@ export class ItineraryPaymentController {
 
         // itinerary generation happens in itinerary.service during getItinerary
         // (to keep callback lightweight and consistent)
-        return res.json({ success: true });
+        return ok(res, null, "Callback processed successfully");
       }
 
       await prisma.tourRequest.update({
@@ -174,10 +181,10 @@ export class ItineraryPaymentController {
         },
       });
 
-      return res.json({ success: true });
+      return ok(res, null, "Callback processed successfully");
     } catch (e) {
       console.error("[itinerary payment callback]", e);
-      return res.status(500).json({ success: false, message: "Failed to handle callback" });
+      return fail(res, 500, "Failed to handle callback");
     }
   }
 }

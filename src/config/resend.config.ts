@@ -13,7 +13,7 @@ interface EmailParams {
 }
 
 async function sendEmail({ email, subject, html }: EmailParams) {
-  const { data, error } = await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: "Dagh <support@frankmawuli.dev>",
     to: [email],
     subject: subject,

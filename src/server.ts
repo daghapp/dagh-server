@@ -12,6 +12,7 @@ import { router as OauthRoutes } from "./routes/google-auth.routes.js";
 import { sessionConfig } from "./config/index.js";
 import { setupSwagger } from "./config/swagger.js";
 import { router as FacebookRoutes } from "./routes/facebook-auth.routes.js";
+import { router as AppleRoutes } from "./routes/apple-auth.routes.js";
 import { router as ImageUploadRoutes } from "./routes/image-upload.route.js";
 import { router as PaymentRoutes } from "./routes/payment.routes.js";
 import { router as TourRoutes } from "./routes/tour.routes.js";
@@ -31,12 +32,15 @@ import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
 import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
+import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
+// Phase 1.2 — CORS tightened: require ALLOWED_ORIGINS env var (no wildcard fallback).
+// Previously used `process.env.API_URL || '*'` which opened the API to any origin.
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
   : [];
@@ -58,7 +62,7 @@ const io = new Server(server, {
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  message: { success: false, message: "Too many requests, please try again later" },
+  message: { success: false, error: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -122,13 +126,14 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/auth", authLimiter, PasswordRoutes);
-app.use("/auth", OauthRoutes);
-app.use("/auth", FacebookRoutes);
+app.use("/auth", authLimiter, OauthRoutes);
+app.use("/auth", authLimiter, FacebookRoutes);
+app.use("/auth", authLimiter, AppleRoutes);
 app.use("/upload", ImageUploadRoutes);
 const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50,
-  message: { success: false, message: "Too many payment requests, please try again later" },
+  message: { success: false, error: "Too many payment requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -147,21 +152,21 @@ app.use("/visa-requests", VisaRoutes);
 
 app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
+// Phase 2.1 — Message routes wired up (previously registered but never connected to Socket.IO)
 app.use("/messages", MessageRoutes);
 
 app.use("/*path", (req: express.Request, res: express.Response) => {
-  res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });
+  const path = Array.isArray(req.params.path) ? req.params.path.join("/") : req.params.path;
+  fail(res, 404, `Endpoint '/${path}' not found`);
 });
 
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    error: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
-  });
+  fail(res, 500, "Internal server error");
 });
 
 setupSocketHandlers(io);
+// Phase 2.1 — Inject Socket.IO instance into messages controller so it can emit real-time events
 setIoInstance(io);
 
 export { server };

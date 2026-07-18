@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-export const generateClientReference = (length: number = 3, target: string = ""): string => {
+export const generateClientReference = (length: number = 3, _target: string = ""): string => {
   const year = new Date().getFullYear();
   const randomPart = crypto
     .randomBytes(Math.ceil(length / 2))
@@ -13,7 +13,6 @@ export const generateClientReference_targetType = (
   targetType: string,
   length: number = 6,
 ): string => {
-  const now = new Date();
   const randomPart = crypto
     .randomBytes(Math.ceil(length / 2))
     .toString("hex")

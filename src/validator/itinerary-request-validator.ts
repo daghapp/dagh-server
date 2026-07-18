@@ -1,17 +1,6 @@
 import { z } from "zod";
 import { TourType } from "../../generated/prisma/client.js";
 
-const EthnicityEnum = z.enum([
-  "AFRICAN",
-  "ASIAN",
-  "EUROPEAN",
-  "NORTH_AMERICAN",
-  "SOUTH_AMERICAN",
-  "OCEANIAN",
-  "MIDDLE_EASTERN",
-  "OTHER",
-]);
-
 export const itineraryRequestSchema = z.object({
   tourSiteIds: z
     .array(z.string().uuid({ message: "Each tour site ID must be a valid UUID" }))

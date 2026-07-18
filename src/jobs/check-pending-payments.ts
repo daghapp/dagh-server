@@ -9,10 +9,11 @@ import { hubtelStatusClient } from "../config/index.js";
 import { convertUSDToGHS } from "../helpers/stringHelper.js";
 import sendEmail from "../config/resend.config.js";
 import { getAccountId } from "../helpers/ledger.js";
-import { paymentStatusFromHubtel } from "../helpers/payment.js";
+// Phase 2.4 — Replace hardcoded amounts (464, 1450, 200) with env-driven pricing config
 import { pricing } from "../config/pricing.js";
 
 export const checkPendingPaymentsJob = () => {
+  console.log("✓ Pending payments status check cron job initialized (every 5 min)");
   // Run every 5 minutes
   cron.schedule("*/5 * * * *", async () => {
     try {
@@ -27,8 +28,6 @@ export const checkPendingPaymentsJob = () => {
       });
 
       if (pendingPayments.length === 0) return;
-
-      // Run status checks in parallel
       await Promise.all(
         pendingPayments.map(async (payment) => {
           try {
@@ -36,7 +35,7 @@ export const checkPendingPaymentsJob = () => {
               `?clientReference=${payment.reference}`,
             );
 
-            const log = await prisma.hubtelDirectReceiveLog.create({
+            await prisma.hubtelDirectReceiveLog.create({
               data: {
                 message: responseData.message,
                 responseCode: responseData.responseCode,
@@ -73,24 +72,28 @@ export const checkPendingPaymentsJob = () => {
               data: { status: newStatus },
             });
 
-            const booking = await prisma.tour_bookings.update({
-              where: { paymentId: payment.id },
-              data: { paymentStatus: newStatus },
-            });
+            // Update tour booking if this payment is linked to one (may not exist for visa payments)
+            try {
+              await prisma.tour_bookings.update({
+                where: { paymentId: payment.id },
+                data: { paymentStatus: newStatus },
+              });
+            } catch {
+              // Not a tour booking — continue to check other target types
+            }
 
-            const { data } = responseData;
-            const target = data.clientReference.split("-")[1];
-
-            const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
-              where: { paymentId: payment.id },
-              select: { packageType: true },
-            });
-
-            if (!visaRequest)
-              throw new Error("No visa request found with payment id " + payment.id);
+            const target = payment.targetType;
 
             if (newStatus === "SUCCESS") {
-              if (target == PaymentTargetType.VISA_ON_ARRIVAL) {
+              if (target === PaymentTargetType.VISA_ON_ARRIVAL) {
+                const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
+                  where: { paymentId: payment.id },
+                  select: { packageType: true },
+                });
+
+                if (!visaRequest)
+                  throw new Error("No visa request found with payment id " + payment.id);
+
                 if (visaRequest.packageType === "STANDARD") {
                   // Ledger Split
                   await prisma.ledgerTransaction.createMany({
@@ -149,48 +152,14 @@ export const checkPendingPaymentsJob = () => {
               <p>Thank you for choosing our tour!</p>`,
                   });
                 }
-
-                const log = await prisma.hubtelDirectReceiveLog.create({
-                  data: {
-                    message: data.data.status,
-                    responseCode: responseData.responseCode,
-                    amount: data.Amount,
-                    charges: 0,
-                    amountAfterCharges: data.charges,
-                    amountCharged: data.amount,
-                    description: data.paymentMethod,
-                    clientReference: data.ClientReference,
-                    transactionId: data.transactionId,
-                    deliveryFee: 0,
-                  },
+              }
+            } else {
+              // Payment failed or refunded
+              if (target === PaymentTargetType.VISA_ON_ARRIVAL) {
+                await prisma.visaOnArrivalRequest.update({
+                  where: { paymentId: payment.id },
+                  data: { status: VisaRequestStatus.PAYMENT_FAILED },
                 });
-              } else {
-                if (target == PaymentTargetType.VISA_ON_ARRIVAL) {
-                  await prisma.visaOnArrivalRequest.update({
-                    where: { paymentId: payment.id },
-                    data: { status: VisaRequestStatus.PAYMENT_FAILED },
-                  });
-
-                  await prisma.payment.update({
-                    where: { id: payment.id },
-                    data: { status: PaymentStatus.FAILED },
-                  });
-
-                  const log = await prisma.hubtelDirectReceiveLog.create({
-                    data: {
-                      message: data.data.status,
-                      responseCode: responseData.responseCode,
-                      amount: data.Amount,
-                      charges: 0,
-                      amountAfterCharges: data.charges,
-                      amountCharged: data.amount,
-                      description: data.paymentMethod,
-                      clientReference: data.ClientReference,
-                      transactionId: data.transactionId,
-                      deliveryFee: 0,
-                    },
-                  });
-                }
               }
             }
           } catch (error) {
@@ -198,8 +167,6 @@ export const checkPendingPaymentsJob = () => {
           }
         }),
       );
-
-      console.log("✓ Pending payments status check cron job initialized");
     } catch (e) {
       console.error("[Cron Job Error] Failed to check pending payments:", e);
     }

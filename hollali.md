@@ -348,3 +348,210 @@ Extracted `paymentStatusFromHubtel(responseCode)` helper — maps Hubtel respons
 | `src/validator/password-auth-validator.ts` | Modified |
 | `src/Modules/profile-management/admin-profile.controller.ts` | Created |
 | `src/routes/admin-profile-routes.ts` | Created |
+
+---
+
+## 16. Phase 1 — Critical Security Fixes (Commits: 0822ef9)
+
+### 1.1 Stop leaking `passwordHash` in API responses
+**File:** `src/modules/authentication/password-auth.controller.ts`
+- Registration response now strips `passwordHash` using destructuring: `const { passwordHash: _, ...safeUser } = newUser`
+- Only safe fields returned to client
+
+### 1.2 Tighten CORS configuration
+**File:** `src/server.ts`
+- Removed `|| '*'` fallback from CORS origin
+- Now requires `ALLOWED_ORIGINS` env var (comma-separated list)
+- If unset, no cross-origin requests are allowed (empty array fallback)
+- Applied to both Express CORS middleware and Socket.IO CORS config
+
+### 1.3 Protect file upload endpoint
+**File:** `src/routes/image-upload.route.ts`
+- Added `protectedRoute` middleware to `POST /upload`
+- Previously anyone could upload to Cloudinary without authentication
+
+### 1.4 Stop passing tokens in redirect URLs
+**Files:** `src/modules/authentication/google-auth.controller.ts`, `src/modules/authentication/facebook-auth.controller.ts`
+- Web OAuth callbacks now store `accessToken` and `refreshToken` in HTTP-only cookies
+- Mobile deep links (`daghapp://`, `daghguard://`) still pass tokens in URLs (expected for app-to-app redirect)
+- Cookies use `httpOnly: true`, `secure: true` (production), `sameSite: lax`
+
+### 1.5 Fix Hubtel config failure mode
+**File:** `src/config/hubtel.ts`
+- Now validates all required env vars at boot time
+- Throws clear error: `Missing required Hubtel env vars: HUBTEL_CLIENT_ID, ...`
+- Previously crashed mid-request with cryptic undefined errors
+
+---
+
+## 17. Phase 2 — Architecture & Wiring Fixes (Commits: f5bbbf0)
+
+### 2.1 Wire up messages module
+**File:** `src/server.ts`, `src/modules/messages/messages.controller.ts`
+- Registered `MessageRoutes` at `/messages` in server.ts
+- Called `setIoInstance(io)` after Socket.IO initialization
+- Real-time messaging now functional (previously dead code)
+
+### 2.2 Extract fat controllers into services
+**New file:** `src/services/payment.service.ts`
+- Extracted `initializePayment()` and `initializePaymentMOMO()` from `PaymentController`
+- Both functions use `prisma.$transaction()` for atomic DB writes + Hubtel API calls
+- Removed duplicate static/instance method patterns from `payment.controller.ts`
+- All controllers (tour, visa, itinerary) now import from payment service
+
+### 2.3 Wrap multi-step payment flows in transactions
+**File:** `src/services/payment.service.ts`
+- `initializePayment()`: Hubtel API call + Payment record + HubtelDirectReceiveLog all wrapped in `$transaction`
+- `initializePaymentMOMO()`: Payment record + Hubtel API call + status update all wrapped in `$transaction`
+- If any step fails, entire transaction rolls back
+
+### 2.4 Drive pricing from config
+**New file:** `src/config/pricing.ts`
+- Replaces hardcoded amounts (464, 1450 GHS, 200 USD) with env-driven config
+- Defaults: `VISA_STANDARD_FEE_GHS=464`, `VISA_EXPEDITED_FEE_GHS=1450`, `VISA_STATUTORY_FEE_USD=200`
+- Updated in: `check-pending-payments.ts`, `user-visa.controller.ts`, `itinerary.payment.controller.ts`
+
+### 2.5 Fix naming inconsistencies
+**Files:** `src/validator/payment-validator.ts`, `src/routes/payment.routes.ts`
+- Renamed `SubscribtionPaymentSchema` → `subscriptionPaymentSchema` (typo fix)
+- Updated all imports across codebase
+
+---
+
+## 18. Phase 3 — Quality & Developer Experience (Commits: 61ce0fe + unpushed)
+
+### 3.1 Linting and formatting
+**New files:** `eslint.config.js`, `.prettierrc`, `.prettierignore`
+- ESLint with typescript-eslint + prettier integration
+- Prettier config matching existing code style (semi, double quotes, trailing commas, 100 width)
+- Scripts added to package.json: `lint`, `lint:fix`, `format`, `format:check`
+- `src/views/` excluded from linting (browser scripts, not TypeScript)
+
+### 3.2 Environment template
+**New file:** `.env.example`
+- Documents all required environment variables with descriptions
+- `.gitignore` updated to un-ignore `.env.example` (tracked in git)
+
+### 3.3 Standardized API response format
+**New file:** `src/helpers/response.ts`
+- Created `ok()`, `created()`, `fail()`, `paginated()` response helpers
+- Standardized 22 controllers + 3 middleware files (previously 11 distinct response shapes)
+- Success: `{ success: true, data: T, message?: string }`
+- Error: `{ success: false, error: string, details?: unknown }`
+- Paginated: `{ success: true, data: T[], pagination: { total, page, limit, totalPages } }`
+
+**Updated controllers:**
+- `password-auth.controller.ts` — All responses use helpers
+- `auth-admin.controller.ts` — Paginated user list uses `paginated()`
+- `admin-profile.controller.ts` — All responses standardized
+- `profile.verification.controller.ts` — Removed `data: null` from errors
+- `profile.init.controller.ts` — Responses standardized
+- `profile.bio-url.controller.ts` — Responses standardized
+- `profile-ethnicity.controller.ts` — Responses standardized
+- `profile-bio-document.controller.ts` — Responses standardized
+- `profile.validation-step.controller.ts` — Responses standardized
+- `payment.controller.ts` — All responses use helpers
+- `user-visa.controller.ts` — Fixed bare `{ error }` shapes, now uses `fail()`
+- `admin-visa.controller.ts` — Responses standardized
+- `admin-tour.controller.ts` — Fixed bare `{ message }` shapes, now uses `ok()`/`fail()`
+- `user-tour.controller.ts` — Fixed bare `{ bookings }` shapes, now uses `ok()`
+- `itinerary.controller.ts` — Responses standardized
+- `itinerary.payment.controller.ts` — Responses standardized
+- `messages.controller.ts` — Fixed bare `{ error }` shapes, now uses `fail()`
+- `image-upload.controller.ts` — Fixed bare `{ message }` shapes
+- `provider-nearby-hotels.controller.ts` — Responses standardized
+
+**Updated middleware:**
+- `protected.ts` — Uses `fail()` for auth errors
+- `admin.ts` — Uses `fail()` for role errors
+- `hubtel-callback.ts` — Uses `fail()`/`ok()` for callback responses
+
+**Updated server.ts:**
+- 404 catch-all and global error handler now use `fail()`
+- Rate limiter messages use `{ success: false, error: ... }` (was `{ success, message }`)
+
+### 3.4 README rewrite
+**File:** `README.md`
+- Fully rewritten to reflect actual schema, endpoints, and tech stack
+- Removed references to unimplemented features (dating, reviews, Paystack, Stripe, PostGIS, iCloud auth)
+- Added accurate endpoint tables for all modules
+
+### 3.5 Build config
+**File:** `.gitignore`
+- Added `dist/` to ignore compiled output
+
+**File:** `src/seed.ts`
+- Removed unused `@ts-ignore` directive
+
+### 3.6 Swagger documentation
+**File:** `src/routes/tour.routes.ts`
+- Added missing Swagger JSDoc for `POST /tours/bookings` endpoint
+
+### 3.7 Code formatting
+- Entire codebase formatted with Prettier
+- All TypeScript files now consistent (semicolons, double quotes, trailing commas, 100-char width)
+
+### 3.8 Dead route cleanup
+**Deleted files:**
+- `src/routes/bio_profile_url.routes.ts` — Duplicate of `/verification/bio_profile_url` in `verification.routes.ts`, never imported or mounted in `server.ts`
+- `src/routes/bio_profile_document_url.routes.ts` — Duplicate of `/verification/bio_document_urls` in `verification.routes.ts`, never imported or mounted in `server.ts`
+
+Both files were dead code: same handlers, same validation, same controllers already wired through `verification.routes.ts` at `/verification/`.
+
+### 3.9 Swagger path corrections
+**File:** `src/routes/message.routes.ts`
+- Fixed 4 Swagger annotations: `/api/messages` → `/messages`
+- Routes are mounted at `/messages` in server.ts, but Swagger docs referenced `/api/messages`
+- Corrected: `/messages`, `/messages/conversations`, `/messages/conversations/{conversationId}`, `/messages/{messageId}/read`
+
+---
+
+## 19. Complete File Inventory (Phases 1-3)
+
+| File | Phase | Status |
+|------|-------|--------|
+| `src/helpers/response.ts` | 3.3 | Created |
+| `src/services/payment.service.ts` | 2.2 | Created |
+| `src/config/pricing.ts` | 2.4 | Created |
+| `eslint.config.js` | 3.1 | Created |
+| `.prettierrc` | 3.1 | Created |
+| `.prettierignore` | 3.1 | Created |
+| `.env.example` | 3.2 | Created |
+| `src/routes/bio_profile_url.routes.ts` | 3.8 | Deleted |
+| `src/routes/bio_profile_document_url.routes.ts` | 3.8 | Deleted |
+| `src/modules/authentication/password-auth.controller.ts` | 1.1, 3.3 | Modified |
+| `src/modules/authentication/google-auth.controller.ts` | 1.4 | Modified |
+| `src/modules/authentication/facebook-auth.controller.ts` | 1.4 | Modified |
+| `src/modules/authentication/auth-admin.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/admin-profile.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/profile.verification.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/profile.init.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/profile.bio-url.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/profile-ethnicity.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/profile-bio-document.controller.ts` | 3.3 | Modified |
+| `src/modules/profile-management/profile.validation-step.controller.ts` | 3.3 | Modified |
+| `src/modules/payment-management/payment.controller.ts` | 2.2, 3.3 | Modified |
+| `src/modules/visa-management/user-visa.controller.ts` | 2.4, 3.3 | Modified |
+| `src/modules/visa-management/admin-visa.controller.ts` | 3.3 | Modified |
+| `src/modules/tour-management/admin-tour.controller.ts` | 3.3 | Modified |
+| `src/modules/tour-management/user-tour.controller.ts` | 2.2, 3.3 | Modified |
+| `src/modules/itinerary/itinerary.controller.ts` | 3.3 | Modified |
+| `src/modules/itinerary/itinerary.payment.controller.ts` | 2.2, 3.3 | Modified |
+| `src/modules/messages/messages.controller.ts` | 2.1, 3.3 | Modified |
+| `src/modules/common/image-upload.controller.ts` | 3.3 | Modified |
+| `src/modules/provider-management/provider-nearby-hotels.controller.ts` | 3.3 | Modified |
+| `src/middleware/protected.ts` | 3.3 | Modified |
+| `src/middleware/admin.ts` | 3.3 | Modified |
+| `src/middleware/hubtel-callback.ts` | 3.3 | Modified |
+| `src/routes/image-upload.route.ts` | 1.3 | Modified |
+| `src/routes/payment.routes.ts` | 2.5, 3.3 | Modified |
+| `src/routes/tour.routes.ts` | 3.6, 3.9 | Modified |
+| `src/routes/message.routes.ts` | 3.9 | Modified |
+| `src/server.ts` | 1.2, 2.1, 3.3 | Modified |
+| `src/config/hubtel.ts` | 1.5 | Modified |
+| `src/jobs/check-pending-payments.ts` | 2.4 | Modified |
+| `src/validator/payment-validator.ts` | 2.5 | Modified |
+| `src/seed.ts` | 3.5 | Modified |
+| `.gitignore` | 3.5 | Modified |
+| `package.json` | 3.1 | Modified |
+| `README.md` | 3.4 | Modified |

@@ -4,7 +4,7 @@ import { generateAccessToken, generateRefreshToken } from "../../helpers/index.j
 export class FacebookAuthController {
   async facebookAuthCallback(req: Request, res: Response) {
     try {
-      const user = req.user as any;
+      const user = req.user;
       if (!user) {
         return res.redirect("/auth/facebook/failed");
       }
@@ -21,6 +21,7 @@ export class FacebookAuthController {
         accountType: user.accountType,
       });
 
+      // Phase 1.4 — Store tokens in HTTP-only cookies (not URL query params)
       res.cookie("accessToken", accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

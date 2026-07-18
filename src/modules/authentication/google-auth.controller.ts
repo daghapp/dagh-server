@@ -10,7 +10,7 @@ function isAllowedRedirect(uri: string): boolean {
 export class GoogleAuthController {
   async googleAuthCallback(req: Request, res: Response) {
     try {
-      const user = req.user as any;
+      const user = req.user;
       if (!user) {
         return res.redirect("/auth/google/failed");
       }
@@ -30,6 +30,7 @@ export class GoogleAuthController {
       const rawState = req.query.state as string | undefined;
       const appRedirect = rawState ? Buffer.from(rawState, "base64").toString("utf8") : null;
 
+      // Phase 1.4 — Mobile deep links still pass tokens in URLs (expected for app-to-app redirect)
       if (appRedirect && isAllowedRedirect(appRedirect)) {
         const separator = appRedirect.includes("?") ? "&" : "?";
         return res.redirect(
@@ -37,6 +38,8 @@ export class GoogleAuthController {
         );
       }
 
+      // Phase 1.4 — Web redirects use HTTP-only cookies to prevent token leakage
+      // in browser history, server logs, and referrer headers
       res.cookie("accessToken", accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

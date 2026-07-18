@@ -56,6 +56,7 @@ const imageUploadController = new ImageUploadController();
  *       500:
  *         description: Internal server error - Upload failed
  */
+// Phase 1.3 — Added protectedRoute middleware to prevent unauthenticated uploads to Cloudinary
 router.post(
   "/",
   protectedRoute,

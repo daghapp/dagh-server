@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { hubtelStatusClient } from "../config/hubtel.js";
+import { fail, ok } from "../helpers/response.js";
 
 /**
  * Middleware to verify Hubtel payment callbacks.
@@ -15,11 +16,11 @@ export default async function verifyHubtelCallback(
     const { ResponseCode, Data } = req.body;
 
     if (!ResponseCode || !Data) {
-      return res.status(400).json({ success: false, message: "Invalid callback payload" });
+      return fail(res, 400, "Invalid callback payload");
     }
 
     if (!Data.ClientReference || !Data.TransactionId) {
-      return res.status(400).json({ success: false, message: "Missing transaction identifiers" });
+      return fail(res, 400, "Missing transaction identifiers");
     }
 
     // Verify the transaction with Hubtel's Transaction Status API
@@ -29,20 +30,17 @@ export default async function verifyHubtelCallback(
 
       // If Hubtel reports the transaction as failed, reject the callback
       if (statusData.Status === "FAILED") {
-        return res.status(200).json({
-          success: true,
-          message: "Transaction confirmed as failed by Hubtel",
-        });
+        return ok(res, null, "Transaction confirmed as failed by Hubtel");
       }
     } catch {
-      // If the status check fails, log but don't block the callback
-      // Hubtel may have network issues; the callback itself is still valid
-      console.error("Failed to verify transaction status with Hubtel API");
+      // If the status check fails, reject the callback — Hubtel will retry
+      console.error("Failed to verify transaction status with Hubtel API, rejecting callback");
+      return fail(res, 502, "Unable to verify transaction with Hubtel");
     }
 
     next();
   } catch (error) {
     console.error("Hubtel callback verification error:", error);
-    return res.status(500).json({ success: false, message: "Callback verification failed" });
+    return fail(res, 500, "Callback verification failed");
   }
 }

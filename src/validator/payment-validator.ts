@@ -47,6 +47,7 @@ export const hubtelDirectReceiveResponseSchema = z.object({
   }),
 });
 
+// Phase 3.5 — Fixed typo: SubscribtionPaymentSchema → subscriptionPaymentSchema
 export const subscriptionPaymentSchema = z.object({
   invoiceNumber: z.string().min(1, { message: "Invoice number is required" }),
   customerName: z.string().min(1, { message: "Customer name is required" }),

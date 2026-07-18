@@ -1,25 +1,26 @@
 import { Request, Response } from "express";
+import { created, fail } from "../../helpers/response.js";
 
 export class ImageUploadController {
   async uploadImage(req: Request, res: Response) {
     try {
-      const file = req.file as any;
+      const file = req.file as Express.Multer.File | undefined;
 
       if (!file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return fail(res, 400, "No file uploaded");
       }
 
-      return res.status(201).json({
-        message: "Upload successful",
-        url: file.path, // Cloudinary secure URL
-        publicId: file.filename, // Cloudinary public_id
-      });
-    } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Upload failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      return created(
+        res,
+        {
+          url: file.path,
+          publicId: file.filename,
+        },
+        "Upload successful",
+      );
+    } catch (error) {
+      console.error("Upload error:", error);
+      return fail(res, 500, "Upload failed");
     }
   }
 }
