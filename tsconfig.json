@@ -6,12 +6,8 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "moduleResolution": "node",
-    "baseUrl": ".",
-    "paths": {
-      "@prisma/client": ["./generated/prisma/client.js"]
-    }
+    "moduleResolution": "bundler"
   },
-  "include": ["src/**/*.ts", "generated/prisma/**/*.ts", "src/routes/payment.routes.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }

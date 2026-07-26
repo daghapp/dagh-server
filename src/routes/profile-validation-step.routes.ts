@@ -1,6 +1,6 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import { getValidationStepStatus } from "../Modules/profile-managemnt/profile.validation-step.controller.js";
+import { getValidationStepStatus } from "../modules/profile-management/profile.validation-step.controller.js";
 
 const router = express.Router();
 
@@ -30,12 +30,6 @@ const router = express.Router();
  *       404:
  *         description: Profile not found
  */
-router.get(
-  "/validation-step/status",
-  protectedRoute,
-  getValidationStepStatus,
-);
-
+router.get("/validation-step/status", protectedRoute, getValidationStepStatus);
 
 export { router };
-

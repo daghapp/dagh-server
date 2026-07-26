@@ -1,18 +1,17 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import { validate } from "../middleware/validation.js";
-import { ProfileVerificationController } from "../Modules/profile-managemnt/profile.verification.controller.js";
+import { ProfileVerificationController } from "../modules/profile-management/profile.verification.controller.js";
 import {
   sendPhoneOtpSchema,
   verifyPhoneOtpSchema,
 } from "../validator/profile-phone-verification-validator.js";
 import { postBioDocumentSchema } from "../validator/profile-bio-document-validator.js";
-import { postBioProfileUrl } from "../Modules/profile-managemnt/profile.bio-url.controller.js";
-import { postBioDocument } from "../Modules/profile-managemnt/profile-bio-document.controller.js";
-import { initProfile } from "../Modules/profile-managemnt/profile.init.controller.js";
+import { postBioProfileUrl } from "../modules/profile-management/profile.bio-url.controller.js";
+import { postBioDocument } from "../modules/profile-management/profile-bio-document.controller.js";
+import { initProfile } from "../modules/profile-management/profile.init.controller.js";
 
 const router = express.Router();
-
 
 const profileVerificationController = new ProfileVerificationController();
 
@@ -53,9 +52,7 @@ router.post(
   "/phone/send-otp",
   protectedRoute,
   validate(sendPhoneOtpSchema),
-  profileVerificationController.sendPhoneOtpForVerification.bind(
-    profileVerificationController,
-  ),
+  profileVerificationController.sendPhoneOtpForVerification.bind(profileVerificationController),
 );
 
 /**
@@ -93,9 +90,7 @@ router.post(
   "/phone/verify-otp",
   protectedRoute,
   validate(verifyPhoneOtpSchema),
-  profileVerificationController.verifyPhoneOtpForVerification.bind(
-    profileVerificationController,
-  ),
+  profileVerificationController.verifyPhoneOtpForVerification.bind(profileVerificationController),
 );
 
 /**
@@ -125,11 +120,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/bio_profile_url",
-  protectedRoute,
-  postBioProfileUrl,
-);
+router.post("/bio_profile_url", protectedRoute, postBioProfileUrl);
 
 /**
  * @swagger
@@ -165,12 +156,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/bio_document_urls",
-  protectedRoute,
-  validate(postBioDocumentSchema),
-  postBioDocument,
-);
+router.post("/bio_document_urls", protectedRoute, validate(postBioDocumentSchema), postBioDocument);
 
 /**
  * @swagger
@@ -187,12 +173,6 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  "/init",
-  protectedRoute,
-  async (req, res) => initProfile(req, res),
-);
-
+router.post("/init", protectedRoute, async (req, res) => initProfile(req, res));
 
 export { router };
-

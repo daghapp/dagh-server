@@ -1,69 +1,88 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import dotenv from 'dotenv';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import cors from 'cors';
-import { router as PasswordRoutes } from './routes/password.routes.js';
-import passport from './config/passport.js';
-import { router as OauthRoutes } from './routes/google-auth.routes.js';
-import { sessionConfig } from './config/index.js';
-import { setupSwagger } from './config/swagger.js';
-import { router as FacebookRoutes } from './routes/facebook-auth.routes.js';
-import { router as ImageUploadRoutes } from './routes/image-upload.route.js';
-import { router as PaymentRoutes } from './routes/payment.routes.js';
-import { router as TourRoutes } from './routes/tour.routes.js';
-import { router as ProfileRoutes } from './routes/profile-routes.routes.js'
-import { router as VerificationRoutes } from './routes/verification.routes.js'
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import dotenv from "dotenv";
+import helmet from "helmet";
+import morgan from "morgan";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { router as PasswordRoutes } from "./routes/password.routes.js";
+import passport from "./config/passport.js";
+import { router as OauthRoutes } from "./routes/google-auth.routes.js";
+import { sessionConfig } from "./config/index.js";
+import { setupSwagger } from "./config/swagger.js";
+import { router as FacebookRoutes } from "./routes/facebook-auth.routes.js";
+import { router as AppleRoutes } from "./routes/apple-auth.routes.js";
+import { router as ImageUploadRoutes } from "./routes/image-upload.route.js";
+import { router as PaymentRoutes } from "./routes/payment.routes.js";
+import { router as TourRoutes } from "./routes/tour.routes.js";
+import { router as ProfileRoutes } from "./routes/profile-routes.routes.js";
+import { router as VerificationRoutes } from "./routes/verification.routes.js";
 
-import { router as AdminRoutes } from './routes/admin.routes.js';
-// import { router as MessageRoutes } from './routes/message.routes.js';
-import { router as VisaRoutes } from './routes/visa.routes.js';
-import { router as ItineraryGenRoutes } from './routes/itinerary.routes.js'
-import { router as ProviderRoutes } from './routes/provider.routes.js'
-import { router as ProfileValidationStepRoutes } from './routes/profile-validation-step.routes.js'
-import { router as BioProfileUrlRoutes } from './routes/bio_profile_url.routes.js'
-import { router as BioProfileDocumentRoutes } from './routes/bio_profile_document_url.routes.js'
-import { router as ProfileEthnicityRoutes } from './routes/profile-ethnicity.routes.js'
+import { router as AdminRoutes } from "./routes/admin.routes.js";
+import { router as AdminProfileRoutes } from "./routes/admin-profile-routes.js";
+import { router as VisaRoutes } from "./routes/visa.routes.js";
+import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
+import { router as ProviderRoutes } from "./routes/provider.routes.js";
+import { router as ProfileValidationStepRoutes } from "./routes/profile-validation-step.routes.js";
+import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
+import { router as MessageRoutes } from "./routes/message.routes.js";
+import { router as CallsRoutes } from "./routes/calls.routes.js";
 
-
-
-
-
-
-
-
-
-
-
-
-import { deleteInactiveUsersJob } from './jobs/user-cleanup.js';
-import { setupSocketHandlers } from './sockets/socketHandlers.js';
-import { checkPendingPaymentsJob } from './jobs/check-pending-payments.js';
+import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
+import { setupSocketHandlers } from "./sockets/socketHandlers.js";
+import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
+import { setIoInstance } from "./modules/messages/messages.controller.js";
+import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
+// Phase 1.2 — CORS tightened: require ALLOWED_ORIGINS env var (no wildcard fallback).
+// Previously used `process.env.API_URL || '*'` which opened the API to any origin.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : [];
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.API_URL || '*',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ['GET', 'POST']
-  }
+    methods: ["GET", "POST"],
+  },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { success: false, error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 app.use(helmet());
 app.use(express.json());
 app.use(
   cors({
-    origin: process.env.API_URL || '*',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-  })
+  }),
 );
-app.use(morgan('dev'));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(sessionConfig);
 app.use(passport.initialize());
 app.use(passport.session());
@@ -72,58 +91,85 @@ deleteInactiveUsersJob();
 checkPendingPaymentsJob();
 setupSwagger(app);
 
-app.get('/health', (_req, res) => {
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     description: Returns the current status, uptime, and timestamp of the server
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: OK
+ *                 uptime:
+ *                   type: number
+ *                   description: Server uptime in seconds
+ *                   example: 12345.678
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: 2026-05-04T10:00:00Z
+ */
+app.get("/health", (_req, res) => {
   res.status(200).json({
-    status: 'OK',
+    status: "OK",
     uptime: process.uptime(),
-    timestamp: new Date()
+    timestamp: new Date(),
   });
 });
 
-app.use('/auth', PasswordRoutes);
-app.use('/auth', OauthRoutes);
-app.use('/auth', FacebookRoutes);
-app.use('/upload', ImageUploadRoutes);
-app.use('/payment', PaymentRoutes);
-app.use('/tours', TourRoutes);
-app.use('/profile', ProfileRoutes);
-// app.use('/profile', ProfileValidationStepRoutes);
-app.use('/verification', VerificationRoutes);
-app.use('/verification', ProfileValidationStepRoutes);
-app.use('/profile', ProfileEthnicityRoutes);
-
-app.use('/admin', AdminRoutes);
-
-
-
-
-
-
-// app.use('/api/messages', MessageRoutes);
-app.use("/visa-requests", VisaRoutes)
-// ── Health check ────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+app.use("/auth", authLimiter, PasswordRoutes);
+app.use("/auth", authLimiter, OauthRoutes);
+app.use("/auth", authLimiter, FacebookRoutes);
+app.use("/auth", authLimiter, AppleRoutes);
+app.use("/upload", ImageUploadRoutes);
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: { success: false, error: "Too many payment requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-// ── Routes ──────────────────────────────────────────────────────────────────
+app.use("/payment", paymentLimiter, PaymentRoutes);
+app.use("/tours", TourRoutes);
+app.use("/profile", ProfileRoutes);
+app.use("/verification", VerificationRoutes);
+app.use("/verification", ProfileValidationStepRoutes);
+app.use("/profile", ProfileEthnicityRoutes);
+
+app.use("/admin", AdminRoutes);
+app.use("/admin", AdminProfileRoutes);
+
+app.use("/visa-requests", VisaRoutes);
+
 app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
+// Phase 2.1 — Message routes wired up (previously registered but never connected to Socket.IO)
+app.use("/messages", MessageRoutes);
+app.use("/calls", CallsRoutes);
 
-
-app.use('/*path', (req: express.Request, res: express.Response) => {
-  res.status(404).json({ success: false, error: `Endpoint '${req.params.path}' not found` });
+app.use("/*path", (req: express.Request, res: express.Response) => {
+  const path = Array.isArray(req.params.path) ? req.params.path.join("/") : req.params.path;
+  fail(res, 404, `Endpoint '/${path}' not found`);
 });
 
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
+  fail(res, 500, "Internal server error");
 });
 
 setupSocketHandlers(io);
+// Phase 2.1 — Inject Socket.IO instance into messages controller so it can emit real-time events
+setIoInstance(io);
 
 export { server };
 export default app;

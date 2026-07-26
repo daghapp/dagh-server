@@ -1,17 +1,6 @@
 import { z } from "zod";
 import { TourType } from "../../generated/prisma/client.js";
 
-const EthnicityEnum = z.enum([
-  "AFRICAN",
-  "ASIAN",
-  "EUROPEAN",
-  "NORTH_AMERICAN",
-  "SOUTH_AMERICAN",
-  "OCEANIAN",
-  "MIDDLE_EASTERN",
-  "OTHER",
-]);
-
 export const itineraryRequestSchema = z.object({
   tourSiteIds: z
     .array(z.string().uuid({ message: "Each tour site ID must be a valid UUID" }))
@@ -28,16 +17,11 @@ export const itineraryRequestSchema = z.object({
 
   relocationInterest: z.boolean().optional().default(false),
 
-  apartmentType: z
-    .enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"])
-    .optional(),
+  apartmentType: z.enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"]).optional(),
 
   transportType: z.enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"]).optional(),
 
   companionInterest: z.boolean().optional().default(false),
-
 });
 
-
 export type ItineraryRequestInput = z.infer<typeof itineraryRequestSchema>;
-

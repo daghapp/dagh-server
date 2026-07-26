@@ -1,16 +1,13 @@
-import { UserVisaController } from "../Modules/visa-management/user-visa.controller.js";
+import { UserVisaController } from "../modules/visa-management/user-visa.controller.js";
 
 import { validate } from "../middleware/validation.js";
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import {
-  initiateVisaPaymentSchema,
-  visaOnArrivalDataSchema,
-} from "../validator/visaValidation.js";
+import verifyHubtelCallback from "../middleware/hubtel-callback.js";
+import { initiateVisaPaymentSchema, visaOnArrivalDataSchema } from "../validator/visaValidation.js";
 
 const router = express.Router();
 const userVisaController = new UserVisaController();
-// const userTourController = new UserTourController();
 
 /**
  * @swagger
@@ -166,7 +163,7 @@ router.post(
   *               bio_page_image_url:
   *                 type: string
   *                 format: uri
-  *               flight_itenary_image_url:
+   *               flight_itinerary_image_url:
   *                 type: string
   *                 format: uri
   *               passport_number:
@@ -184,7 +181,7 @@ router.post(
   *               - requestId
   *               - passport_image_url
   *               - bio_page_image_url
-  *               - flight_itenary_image_url
+   *               - flight_itinerary_image_url
   *               - passport_number
   *               - purpose_of_trip
   *               - date_of_departure
@@ -251,11 +248,7 @@ router.post(
  *                     enum: [STANDARD, EXPEDITED]
  *                     nullable: true
  */
-router.get(
-  "",
-  protectedRoute,
-  userVisaController.getVisaRequest.bind(userVisaController),
-);
+router.get("", protectedRoute, userVisaController.getVisaRequest.bind(userVisaController));
 
 /**
  * @swagger
@@ -299,14 +292,34 @@ router.get(
   userVisaController.getVisaStatus.bind(userVisaController),
 );
 
+/**
+ * @swagger
+ * /visa-requests/payment-callback:
+ *   post:
+ *     summary: Handle Hubtel payment callback for visa requests
+ *     description: Receives payment confirmation callback from Hubtel after a visa request payment
+ *     tags: [VisaOnArrival]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Hubtel callback payload containing payment status and transaction details
+ *     responses:
+ *       200:
+ *         description: Callback processed successfully
+ *       400:
+ *         description: Invalid callback payload
+ *       500:
+ *         description: Failed to process callback
+ */
 router.post(
   "/payment-callback",
+  verifyHubtelCallback,
   userVisaController.handleVisaPaymentCallback.bind(userVisaController),
 );
 
-router.get(
-  "/pricing/:visaType",
-  userVisaController.getVisaPricing.bind(userVisaController),
-);
+router.get("/pricing/:visaType", userVisaController.getVisaPricing.bind(userVisaController));
 
 export { router };

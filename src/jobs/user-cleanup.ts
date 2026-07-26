@@ -1,35 +1,31 @@
-import cron from 'node-cron';
-import { prisma } from '../config/prisma.js';
+import cron from "node-cron";
+import { prisma } from "../config/prisma.js";
 
 /**
- * Cron job to delete users whose account status is not ACTIVE after 10 minutes
- * Runs every minute to check for eligible users
+ * Cron job to delete users who never verified their email.
+ * Runs every hour. Only deletes PENDING_VERIFICATION users older than 24 hours.
  */
 export const deleteInactiveUsersJob = () => {
-  // Run every minute
-  cron.schedule('* * * * *', async () => {
+  cron.schedule("0 * * * *", async () => {
     try {
-      const tenMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      // Find and delete users whose status is not ACTIVE and created more than 10 minutes ago
       const result = await prisma.user.deleteMany({
         where: {
-          accountStatus: {
-            not: 'ACTIVE'
-          },
+          accountStatus: "PENDING_VERIFICATION",
           createdAt: {
-            lte: tenMinutesAgo
-          }
-        }
+            lte: twentyFourHoursAgo,
+          },
+        },
       });
 
       if (result.count > 0) {
-        console.log(`[${new Date().toISOString()}] Deleted ${result.count} inactive user(s)`);
+        console.log(`[${new Date().toISOString()}] Deleted ${result.count} unverified user(s)`);
       }
     } catch (error) {
-      console.error('[Cron Job Error] Failed to delete inactive users:', error);
+      console.error("[Cron Job Error] Failed to delete inactive users:", error);
     }
   });
 
-  console.log('✓ Inactive users cleanup cron job initialized');
+  console.log("✓ Unverified users cleanup cron job initialized (hourly, 24h threshold)");
 };

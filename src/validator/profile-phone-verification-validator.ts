@@ -16,4 +16,3 @@ export const verifyPhoneOtpSchema = z.object({
 
 export type SendPhoneOtpSchema = z.infer<typeof sendPhoneOtpSchema>;
 export type VerifyPhoneOtpSchema = z.infer<typeof verifyPhoneOtpSchema>;
-

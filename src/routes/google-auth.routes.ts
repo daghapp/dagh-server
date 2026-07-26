@@ -1,6 +1,6 @@
 import { Router } from "express";
 import passport from "passport";
-import { GoogleAuthController } from "../Modules/authentication/index.js";
+import { GoogleAuthController } from "../modules/authentication/index.js";
 import path from "path";
 
 const router = Router();
@@ -26,22 +26,63 @@ router.get("/google", (req, res, next) => {
   })(req, res, next);
 });
 
-
+/**
+ * @swagger
+ * /auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback endpoint
+ *     description: Handles the callback from Google OAuth after user authentication
+ *     tags: [OAuth]
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         description: Authorization code from Google
+ *       - in: query
+ *         name: state
+ *         schema:
+ *           type: string
+ *         description: Base64-encoded redirect URI
+ *     responses:
+ *       302:
+ *         description: Redirects to success or failure page
+ */
 router.get(
   "/google/callback",
   passport.authenticate("google", {
     failureRedirect: "/auth/google/failed",
     session: false,
   }),
-  googleAuthController.googleAuthCallback
+  googleAuthController.googleAuthCallback,
 );
 
-
+/**
+ * @swagger
+ * /auth/google/failed:
+ *   get:
+ *     summary: Google OAuth authentication failed page
+ *     description: Displayed when Google OAuth authentication fails
+ *     tags: [OAuth]
+ *     responses:
+ *       401:
+ *         description: Authentication failed - renders failure page
+ */
 router.get("/google/failed", (_req, res) => {
   res.status(401).sendFile(path.join(process.cwd(), "src/views/auth-failed.html"));
 });
 
-
+/**
+ * @swagger
+ * /auth/google/success:
+ *   get:
+ *     summary: Google OAuth authentication success page
+ *     description: Displayed when Google OAuth authentication succeeds
+ *     tags: [OAuth]
+ *     responses:
+ *       200:
+ *         description: Authentication successful - renders success page
+ */
 router.get("/google/success", (_req, res) => {
   res.sendFile(path.join(process.cwd(), "src/views/auth-success.html"));
 });
