@@ -1,6 +1,6 @@
 # Diaspora Affairs Ghana (DAGH) — Backend API
 
-REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, messaging, and payments via Hubtel.
+REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, messaging, voice/video calling, and payments via Hubtel.
 
 ---
 
@@ -117,22 +117,22 @@ src/
 ├── server.ts                   # Express app setup, middleware, route mounting
 ├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts)
 ├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
-├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response
+├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety
 ├── jobs/                       # Cron jobs (pending payments, user cleanup)
-├── middleware/                  # Auth, admin, validation, Cloudinary upload, Hubtel callback
+├── middleware/                  # Auth, admin, validation, Cloudinary upload, audio upload, Hubtel callback
 ├── modules/
 │   ├── authentication/         # Register, login, OAuth, password reset
 │   ├── common/                 # Image upload
 │   ├── itinerary/              # Itinerary generation + payment
-│   ├── messages/               # Direct messaging (REST + Socket.IO)
+│   ├── messages/               # Messaging, voice notes, calls, block/report (REST + Socket.IO)
 │   ├── payment-management/     # Payment processing
 │   ├── profile-management/     # Profile CRUD, verification, ethnicity
 │   ├── provider-management/    # Nearby hotels
 │   ├── tour-management/        # Tour CRUD, booking, admin
 │   └── visa-management/        # Visa-on-arrival requests + approval
-├── routes/                     # Express route definitions (17 files)
+├── routes/                     # Express route definitions (18 files)
 ├── services/                   # Business logic (payment.service.ts)
-├── sockets/                    # Socket.IO handlers (auth, typing, read receipts)
+├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
 ├── types/                      # TypeScript type augmentations (Express.User)
 ├── validator/                  # Zod schemas (15 files)
 └── views/                      # HTML/CSS for OAuth/payment callback pages
@@ -271,16 +271,33 @@ All endpoints return responses in a standardized envelope:
 | GET | `/payment/processing` | Public | Payment processing page |
 | GET | `/payment/p.js` | Public | Payment redirect script |
 
-### Messaging
+### Messaging & Chat
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/messages` | Bearer | Send a message |
-| GET | `/messages/conversations` | Bearer | List conversations |
-| GET | `/messages/conversations/:conversationId` | Bearer | Get messages in conversation |
-| PATCH | `/messages/:messageId/read` | Bearer | Mark message as read |
+| POST | `/messages` | Bearer | Send a text or media message (`receiverId`, `content`, `type`, `mediaUrl`, `mediaDuration`) |
+| POST | `/messages/voice-note` | Bearer | Upload and send a voice note (multipart: `audio` file, `receiverId`, `mediaDuration`). Max 15MB. |
+| GET | `/messages/matches` | Bearer | Get active user matches ("New Matches" carousel) |
+| GET | `/messages/conversations` | Bearer | List conversations with unread counts, partner profiles, and `lastActiveAt` |
+| GET | `/messages/conversations/:conversationId` | Bearer | Get messages in a conversation (marks unread as read) |
+| PATCH | `/messages/:messageId/read` | Bearer | Mark a specific message as read |
 
-Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`.
+### Safety (Block & Report)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/messages/block` | Bearer | Block a user — prevents messages and calls both ways |
+| DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user |
+| POST | `/messages/report` | Bearer | Report a user (`targetId`, `reason`, `details`) |
+
+### Calls
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/calls/history` | Bearer | Get incoming/outgoing call history (last 50) |
+| POST | `/calls/token` | Bearer | Generate WebRTC RTC session token (`roomId`, `callType: VOICE|VIDEO`). Valid 1 hour. |
+
+Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`, `call:initiate`, `call:accept`, `call:decline`, `call:end`, `call:signal`, `presence:status`.
 
 ### Image Upload
 
@@ -360,7 +377,11 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | `Payment` | Polymorphic payment records (tour, visa, itinerary) |
 | `HubtelDirectReceiveLog` | Hubtel API response logs |
 | `LedgerAccount` / `LedgerTransaction` | Double-entry ledger |
-| `Message` / `Conversation` | Direct messaging |
+| `Message` / `Conversation` | Direct messaging (text, voice notes, images, videos, call logs) |
+| `UserMatch` | User matching/swiping |
+| `UserBlock` | User blocking (prevents messaging and calls) |
+| `UserReport` | User safety reports |
+| `CallLog` | Voice/video call history with duration and status |
 | `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
 | `ServiceRequest` / `AuditLog` | Provider service tracking |
 
@@ -392,7 +413,7 @@ npm run db:studio      # Open Prisma Studio GUI
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 80 fully documented endpoints across 17 route files.
+Swagger UI available at `/api-docs` when the server is running. 87 fully documented endpoints across 18 route files.
 
 ---
 
@@ -406,10 +427,14 @@ Swagger UI available at `/api-docs` when the server is running. 80 fully documen
 - CORS restricted to `ALLOWED_ORIGINS` (no wildcard fallback)
 - OAuth tokens delivered via HTTP-only cookies (web) or app deep links (mobile)
 - File uploads require authentication
+- Audio uploads restricted to specific MIME types, 15MB max size
 - `passwordHash` never returned in API responses
 - Hubtel config validated at boot time (fails fast if env vars missing)
 - Payment flows wrapped in Prisma transactions (atomic write + API call)
 - Visa pricing driven by env vars (not hardcoded)
+- User blocking prevents messaging and calling both directions
+- Blocked users filtered from conversation lists
+- Socket.IO authenticated via JWT handshake
 
 ---
 

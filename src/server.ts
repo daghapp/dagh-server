@@ -27,6 +27,7 @@ import { router as ProviderRoutes } from "./routes/provider.routes.js";
 import { router as ProfileValidationStepRoutes } from "./routes/profile-validation-step.routes.js";
 import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
 import { router as MessageRoutes } from "./routes/message.routes.js";
+import { router as CallsRoutes } from "./routes/calls.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
@@ -154,6 +155,7 @@ app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
 // Phase 2.1 — Message routes wired up (previously registered but never connected to Socket.IO)
 app.use("/messages", MessageRoutes);
+app.use("/calls", CallsRoutes);
 
 app.use("/*path", (req: express.Request, res: express.Response) => {
   const path = Array.isArray(req.params.path) ? req.params.path.join("/") : req.params.path;
