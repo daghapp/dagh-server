@@ -251,7 +251,7 @@ export const getConversations = async (req: Request, res: Response) => {
     });
 
     const blockedUserIds = new Set(
-      blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId))
+      blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId)),
     );
 
     const conversations = await prisma.conversation.findMany({
@@ -291,9 +291,7 @@ export const getConversations = async (req: Request, res: Response) => {
       _count: { id: true },
     });
 
-    const unreadMap = new Map(
-      unreadCounts.map((row) => [row.conversationId, row._count.id])
-    );
+    const unreadMap = new Map(unreadCounts.map((row) => [row.conversationId, row._count.id]));
 
     const userMap = new Map(users.map((u) => [u.id, u]));
     const profileMap = new Map(profiles.map((p) => [p.userId, p]));

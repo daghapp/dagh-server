@@ -8,6 +8,7 @@ import {
   VisaRequestStatus,
 } from "../../../generated/prisma/client.js";
 import { VisaOnArrivalDataSchema } from "../../validator/visaValidation.js";
+import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 import { convertUSDToGHS } from "../../helpers/stringHelper.js";
 import sendEmail from "../../config/resend.config.js";
 import { getAccountId } from "../../helpers/ledger.js";
@@ -96,9 +97,7 @@ export class UserVisaController {
 
   async handleVisaPaymentCallback(req: Request, res: Response) {
     try {
-      const payload = req.body;
-
-      const { Status, Data } = payload;
+      const { ResponseCode, Data } = req.body;
 
       const payment = await prisma.payment.findUnique({
         where: { reference: Data.ClientReference },
@@ -114,7 +113,7 @@ export class UserVisaController {
         return fail(res, 404, "Visa request not found");
       }
 
-      if (Status === "SUCCESS") {
+      if (paymentStatusFromHubtel(ResponseCode) === PaymentStatus.SUCCESS) {
         if (visaRequest.packageType === "STANDARD") {
           await prisma.ledgerTransaction.createMany({
             data: [

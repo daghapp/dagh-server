@@ -29,9 +29,11 @@ model User {
   deviceTokens        DeviceToken[]
   payments            Payment[]
   profile             UserProfile?
-  subscription        UserSubscription?
-  verification        UserVerification?
-  tourBookings        tour_bookings[]
+  subscription            UserSubscription?
+  // Phase 3.1 — Support tickets created by paid-tier members
+  prioritySupportRequests PrioritySupportRequest[]
+  verification            UserVerification?
+  tourBookings          tour_bookings[]
   sentMessages        Message[]               @relation("SentMessages")
   receivedMessages    Message[]               @relation("ReceivedMessages")
   userMatches         UserMatch[]             @relation("UserMatches")
@@ -114,17 +116,23 @@ model DeviceToken {
   @@map("device_tokens")
 }
 
+// Phase 3.1 — Enhanced with planId, tierCode, and memberCode for the membership tiers system
 model UserSubscription {
-  id             String             @id @default(uuid())
-  userId         String             @unique
-  autoRenew      Boolean            @default(false)
-  startDate      DateTime
-  endDate        DateTime?
-  status         SubscriptionStatus @default(ACTIVE)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  billingHistory BillingHistory[]
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String                 @id @default(uuid())
+  userId          String                 @unique
+  planId          String?                // FK to the selected MembershipPlan (nullable for legacy records)
+  tierCode        MembershipTierCode     @default(FREE) // Current tier level
+  memberCode      String?                @unique         // Human-readable ID like "89345-SGF"
+  autoRenew       Boolean                @default(false)
+  startDate       DateTime
+  endDate         DateTime?
+  status          SubscriptionStatus     @default(ACTIVE)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  billingHistory  BillingHistory[]
+  supportRequests PrioritySupportRequest[]
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            MembershipPlan?        @relation(fields: [planId], references: [id])
 
   @@map("user_subscriptions")
 }
@@ -702,6 +710,9 @@ model ItineraryDaySite {
 // ─────────────────────────────────────────
 // ENUMS
 // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
 enum TourType {
   GROUP
   SINGLE
@@ -729,10 +740,12 @@ enum SiteCategory {
   SCENIC
 }
 
+// Phase 3.1 — Added MEMBERSHIP_SUBSCRIPTION for membership payment routing
 enum PaymentTargetType {
   VISA_ON_ARRIVAL
   TOUR_BOOKING
   TOUR_REQUEST
+  MEMBERSHIP_SUBSCRIPTION
 }
 
 enum AccountStatus {
@@ -906,6 +919,35 @@ enum TransportType {
   NONE
 }
 
+// Phase 3.1 — All available membership tier codes from Free to Elite Ambassador
+enum MembershipTierCode {
+  FREE
+  BASELINE
+  SENIOR_PIONEER
+  SANKOFA_SETTLED
+  BASIC
+  SILVER
+  GOLD_INVESTOR
+  ELITE_AMBASSADOR
+  FAMILY_PLAN
+}
+
+// Phase 3.1 — Billing intervals for membership plans
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+  BIENNIAL
+  CUSTOM
+}
+
+// Phase 3.1 — Statuses for priority support tickets from paid-tier members
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
 model Provider {
   provider_id         String   @id @default(uuid())
   verification_status Boolean  @default(false)
@@ -993,4 +1035,41 @@ model AuditLog {
   timestamp   DateTime @default(now())
 
   provider Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+// Phase 3.1 — Defines each membership tier: pricing, billing interval, features, and popularity flag
+// Seeded via src/seed.ts with 9 plans (Free through Elite Ambassador)
+model MembershipPlan {
+  id            String             @id @default(uuid())
+  code          MembershipTierCode @unique // Maps to MembershipTierCode enum
+  name          String                    // Display name shown on the plans UI
+  description   String?
+  price         Float                     // Price in the specified currency
+  currency      String             @default("GHS")
+  interval      BillingInterval           // How often the plan is billed
+  features      String[]                  // Array of feature descriptions rendered as a bullet list
+  isMostPopular Boolean            @default(false) // Highlighted as "Most Popular" on the frontend
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  subscriptions UserSubscription[]
+
+  @@map("membership_plans")
+}
+
+// Phase 3.1 — Priority support tickets raised by active paid-tier members
+// Only users with a non-FREE, active subscription may create tickets
+model PrioritySupportRequest {
+  id             String              @id @default(uuid())
+  subscriptionId String                    // FK to the user's subscription at time of creation
+  userId         String
+  subject        String
+  message        String
+  status         SupportTicketStatus @default(OPEN)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  subscription   UserSubscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("priority_support_requests")
 }

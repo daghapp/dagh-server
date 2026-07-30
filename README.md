@@ -38,7 +38,7 @@ npx prisma migrate dev
 # Generate Prisma client
 npx prisma generate
 
-# Seed database (25 tour sites + ledger accounts)
+# Seed database (25 tour sites + ledger accounts + 9 membership plans)
 npm run db:seed
 
 # Build
@@ -127,10 +127,11 @@ src/
 │   ├── messages/               # Messaging, voice notes, calls, block/report (REST + Socket.IO)
 │   ├── payment-management/     # Payment processing
 │   ├── profile-management/     # Profile CRUD, verification, ethnicity
+│   ├── membership/             # Membership plans, subscriptions, priority support
 │   ├── provider-management/    # Nearby hotels
 │   ├── tour-management/        # Tour CRUD, booking, admin
 │   └── visa-management/        # Visa-on-arrival requests + approval
-├── routes/                     # Express route definitions (18 files)
+├── routes/                     # Express route definitions (19 files)
 ├── services/                   # Business logic (payment.service.ts)
 ├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
 ├── types/                      # TypeScript type augmentations (Express.User)
@@ -297,7 +298,22 @@ All endpoints return responses in a standardized envelope:
 | GET | `/calls/history` | Bearer | Get incoming/outgoing call history (last 50) |
 | POST | `/calls/token` | Bearer | Generate WebRTC RTC session token (`roomId`, `callType: VOICE|VIDEO`). Valid 1 hour. |
 
-Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`, `call:initiate`, `call:accept`, `call:decline`, `call:end`, `call:signal`, `presence:status`.
+Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`, `call:initiate`, `call:accept`, `call:decline`, `call:end`, `call:signal`, `call:busy`, `call:timeout`, `call:switch_video_request`, `call:switch_video_respond`, `presence:status`.
+
+**Call behavior:**
+- Busy check: prevents calls if either party is already in an active call (`call:busy`)
+- Ringing timeout: unanswered calls auto-expire after 30 seconds (`call:timeout`)
+- Mid-call video upgrade: voice calls can be switched to video via `call:switch_video_request` / `call:switch_video_respond`
+
+### Membership Plans & Tiers
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/membership/plans` | Public | List all active membership plans with pricing, intervals, and features |
+| POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free activates immediately, paid initializes Hubtel checkout) |
+| GET | `/membership/my-subscription` | Bearer | Get current user's subscription with plan details and member code |
+| POST | `/membership/support` | Bearer | Create a priority support ticket (paid tiers only) |
+| POST | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments |
 
 ### Image Upload
 
@@ -371,6 +387,8 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | `TourRequestSite` | Selected sites per request |
 | `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries |
 | `TourSite` | Ghana tourism sites (seeded: 25 sites) |
+| `MembershipPlan` | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador) |
+| `PrioritySupportRequest` | Priority support tickets from paid-tier members |
 | `VisaOnArrivalRequest` | Visa-on-arrival applications |
 | `VisaOnArrivalData` | Visa applicant data |
 | `VisaApproval` | Admin visa approval |
@@ -413,7 +431,7 @@ npm run db:studio      # Open Prisma Studio GUI
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 87 fully documented endpoints across 18 route files.
+Swagger UI available at `/api-docs` when the server is running. 92 fully documented endpoints across 19 route files.
 
 ---
 

@@ -320,6 +320,25 @@ router.post(
   userVisaController.handleVisaPaymentCallback.bind(userVisaController),
 );
 
+/**
+ * @swagger
+ * /visa-requests/pricing/{visaType}:
+ *   get:
+ *     summary: Get visa pricing breakdown by type
+ *     tags: [Visa]
+ *     parameters:
+ *       - in: path
+ *         name: visaType
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [STANDARD, EXPEDITED]
+ *     responses:
+ *       200:
+ *         description: Pricing breakdown retrieved successfully
+ *       400:
+ *         description: Invalid visa type
+ */
 router.get("/pricing/:visaType", userVisaController.getVisaPricing.bind(userVisaController));
 
 export { router };

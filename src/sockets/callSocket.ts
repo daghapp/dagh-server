@@ -10,10 +10,19 @@ interface AuthenticatedSocket extends Socket {
 // TODO: In-memory active call sessions are lost on server restart.
 // Consider persisting to Redis or using a dedicated call state store
 // for production reliability.
-const activeCalls = new Map<
-  string,
-  { callLogId: string; callerId: string; receiverId: string; startedAt?: Date }
->();
+interface CallSession {
+  callLogId: string;
+  callerId: string;
+  receiverId: string;
+  startedAt?: Date;
+  ringingTimeoutId?: NodeJS.Timeout;
+  callType: CallType;
+}
+
+// TODO: In-memory active call sessions are lost on server restart.
+// Consider persisting to Redis or using a dedicated call state store
+// for production reliability.
+const activeCalls = new Map<string, CallSession>();
 
 export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSocket) => {
   const userId = socket.userId;
@@ -30,6 +39,41 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
 
       if (receiverId === userId) {
         return socket.emit("call:error", { message: "You cannot call yourself" });
+      }
+
+      // Check if caller or receiver is currently busy on an active call
+      const activeSessions = Array.from(activeCalls.values());
+      const isCallerBusy = activeSessions.some(
+        (call) => call.callerId === userId || call.receiverId === userId,
+      );
+
+      if (isCallerBusy) {
+        return socket.emit("call:error", { message: "You are already in an active call" });
+      }
+
+      const type = callType === "VIDEO" ? CallType.VIDEO : CallType.VOICE;
+      const roomId = `call-${userId}-${receiverId}-${Date.now()}`;
+
+      const isReceiverBusy = activeSessions.some(
+        (call) => call.callerId === receiverId || call.receiverId === receiverId,
+      );
+
+      if (isReceiverBusy) {
+        const busyLog = await prisma.callLog.create({
+          data: {
+            callerId: userId,
+            receiverId,
+            callType: type,
+            status: CallStatus.BUSY,
+            roomId,
+            endedAt: new Date(),
+          },
+        });
+        return socket.emit("call:busy", {
+          callLogId: busyLog.id,
+          receiverId,
+          message: "User is currently busy on another call",
+        });
       }
 
       // Check if either user blocked the other
@@ -52,9 +96,6 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
         return socket.emit("call:error", { message: "Caller not found" });
       }
 
-      const roomId = `call-${userId}-${receiverId}-${Date.now()}`;
-      const type = callType === "VIDEO" ? CallType.VIDEO : CallType.VOICE;
-
       // Create initial CallLog record
       const callLog = await prisma.callLog.create({
         data: {
@@ -66,10 +107,33 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
         },
       });
 
+      // 30-Second Ringing Timeout: if not answered, mark as MISSED & notify
+      const ringingTimeoutId = setTimeout(async () => {
+        const session = activeCalls.get(roomId);
+        if (session && !session.startedAt) {
+          try {
+            await prisma.callLog.update({
+              where: { id: callLog.id },
+              data: { status: CallStatus.MISSED, endedAt: new Date() },
+            });
+          } catch (err) {
+            console.error("[CallSocket] Ringing timeout callLog update error:", err);
+          }
+
+          io.to(`user:${userId}`).emit("call:timeout", { callLogId: callLog.id, roomId });
+          io.to(`user:${receiverId}`).emit("call:timeout", { callLogId: callLog.id, roomId });
+
+          activeCalls.delete(roomId);
+          socket.leave(roomId);
+        }
+      }, 30000);
+
       activeCalls.set(roomId, {
         callLogId: callLog.id,
         callerId: userId,
         receiverId,
+        ringingTimeoutId,
+        callType: type,
       });
 
       socket.join(roomId);
@@ -81,8 +145,7 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
         caller: {
           id: caller.id,
           fullName: caller.fullName,
-          profileImage:
-            caller.profile?.bio_profile_image_url || caller.profile?.profileUrl || null,
+          profileImage: caller.profile?.bio_profile_image_url || caller.profile?.profileUrl || null,
         },
       };
 
@@ -104,6 +167,10 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
       const now = new Date();
 
       if (callSession) {
+        if (callSession.ringingTimeoutId) {
+          clearTimeout(callSession.ringingTimeoutId);
+          delete callSession.ringingTimeoutId;
+        }
         callSession.startedAt = now;
       }
 
@@ -134,6 +201,9 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
   socket.on("call:decline", async ({ callLogId, roomId }) => {
     try {
       const callSession = activeCalls.get(roomId);
+      if (callSession?.ringingTimeoutId) {
+        clearTimeout(callSession.ringingTimeoutId);
+      }
 
       if (callLogId) {
         await prisma.callLog.update({
@@ -160,6 +230,10 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
   socket.on("call:end", async ({ callLogId, roomId }) => {
     try {
       const callSession = activeCalls.get(roomId);
+      if (callSession?.ringingTimeoutId) {
+        clearTimeout(callSession.ringingTimeoutId);
+      }
+
       const endedAt = new Date();
 
       let durationSec = 0;
@@ -217,9 +291,7 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
         const secs = durationSec % 60;
         const durationText = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
         const logContent =
-          callStatus === CallStatus.COMPLETED
-            ? `📞 Call ended • ${durationText}`
-            : `📞 Call ended`;
+          callStatus === CallStatus.COMPLETED ? `📞 Call ended • ${durationText}` : `📞 Call ended`;
 
         const conversation = await prisma.conversation.findFirst({
           where: {
@@ -260,6 +332,37 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
         fromUserId: userId,
         signalData,
         roomId,
+      });
+    }
+  });
+
+  /**
+   * Request mid-call upgrade from voice call to video call (Figma UI "Switch to Video" modal)
+   */
+  socket.on("call:switch_video_request", ({ targetUserId, roomId }) => {
+    if (targetUserId && roomId) {
+      io.to(`user:${targetUserId}`).emit("call:switch_video_requested", {
+        fromUserId: userId,
+        roomId,
+      });
+    }
+  });
+
+  /**
+   * Respond to mid-call video switch request (Accept / Decline)
+   */
+  socket.on("call:switch_video_respond", ({ targetUserId, roomId, accepted }) => {
+    if (targetUserId && roomId) {
+      if (accepted) {
+        const callSession = activeCalls.get(roomId);
+        if (callSession) {
+          callSession.callType = CallType.VIDEO;
+        }
+      }
+      io.to(`user:${targetUserId}`).emit("call:switch_video_responded", {
+        fromUserId: userId,
+        roomId,
+        accepted,
       });
     }
   });

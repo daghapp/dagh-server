@@ -269,14 +269,14 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
 ];
 
 async function main() {
-  console.log("🌱 Seeding tour sites...");
+  console.log("Seeding tour sites...");
   const siteCount = await prisma.tourSite.count();
   if (siteCount == 0) {
     for (const site of tourSites) {
       await prisma.tourSite.create({ data: site });
     }
 
-    console.log(`✅ Seeded ${tourSites.length} tour sites successfully.`);
+    console.log(`Seeded ${tourSites.length} tour sites successfully.`);
   }
 
   // Seed Ledger Accounts
@@ -294,12 +294,184 @@ async function main() {
     skipDuplicates: true, // prevents errors if already seeded
   });
 
-  console.log("✅ Ledger accounts seeded successfully");
+  console.log("Ledger accounts seeded successfully");
+
+  // Seed Membership Plans
+  console.log("Seeding membership plans...");
+  const planCount = await prisma.membershipPlan.count();
+  if (planCount == 0) {
+    const membershipPlans: Prisma.MembershipPlanCreateInput[] = [
+      {
+        code: "FREE",
+        name: "Free",
+        description: "Basic access to DAGh platform features",
+        price: 0,
+        currency: "GHS",
+        interval: "MONTHLY",
+        features: [
+          "Basic profile listing",
+          "Community forum access",
+          "Tour listings & exploration",
+          "Email support",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "BASELINE",
+        name: "Baseline",
+        description: "Essential features for active diaspora members",
+        price: 150,
+        currency: "GHS",
+        interval: "MONTHLY",
+        features: [
+          "All Free features",
+          "Enhanced profile with media",
+          "Direct messaging",
+          "Tour booking discounts (5%)",
+          "Priority email support",
+        ],
+        isMostPopular: true,
+        isActive: true,
+      },
+      {
+        code: "SENIOR_PIONEER",
+        name: "Senior Pioneer",
+        description: "For diaspora seniors aged 60+",
+        price: 800,
+        currency: "GHS",
+        interval: "ANNUAL",
+        features: [
+          "All Baseline features",
+          "Senior-specific tour packages",
+          "Companion matching",
+          "Health & wellness resources",
+          "Tour booking discounts (10%)",
+          "Priority phone support",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "SANKOFA_SETTLED",
+        name: "'Sankofa' Settled",
+        description: "For returnees and settled diaspora members",
+        price: 1200,
+        currency: "GHS",
+        interval: "ANNUAL",
+        features: [
+          "All Baseline features",
+          "Property listing access",
+          "Business networking events",
+          "Investment opportunity alerts",
+          "Tour booking discounts (15%)",
+          "Dedicated support line",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "BASIC",
+        name: "Basic",
+        description: "Starter paid tier with added benefits",
+        price: 300,
+        currency: "GHS",
+        interval: "MONTHLY",
+        features: [
+          "All Baseline features",
+          "Itinerary generation",
+          "Visa application assistance",
+          "Cultural event invitations",
+          "Tour booking discounts (10%)",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "SILVER",
+        name: "Silver",
+        description: "Premium features for frequent travellers",
+        price: 500,
+        currency: "GHS",
+        interval: "MONTHLY",
+        features: [
+          "All Basic features",
+          "Expedited visa processing",
+          "Airport pickup & drop-off",
+          "Personalised itinerary planning",
+          "Tour booking discounts (15%)",
+          "Priority support with 4hr response",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "GOLD_INVESTOR",
+        name: "Gold Investor",
+        description: "For diaspora investors and high-net-worth members",
+        price: 3000,
+        currency: "GHS",
+        interval: "ANNUAL",
+        features: [
+          "All Silver features",
+          "Investment advisory sessions",
+          "Business matching & introductions",
+          "Government liaison support",
+          "Premium tour packages (20% off)",
+          "24/7 dedicated concierge",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "ELITE_AMBASSADOR",
+        name: "Elite Ambassador",
+        description: "The ultimate membership for diaspora leaders",
+        price: 6000,
+        currency: "GHS",
+        interval: "ANNUAL",
+        features: [
+          "All Gold Investor features",
+          "Ambassador designation & certificate",
+          "VIP event access & speaking opportunities",
+          "Media & PR opportunities",
+          "Complimentary tours (2/year)",
+          "White-glove 24/7 concierge",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+      {
+        code: "FAMILY_PLAN",
+        name: "Family Plan",
+        description: "Cover your whole family under one plan",
+        price: 800,
+        currency: "GHS",
+        interval: "MONTHLY",
+        features: [
+          "Up to 5 family members",
+          "All Basic features for each member",
+          "Family tour packages",
+          "Group booking discounts (20%)",
+          "Shared itinerary planning",
+          "Family priority support",
+        ],
+        isMostPopular: false,
+        isActive: true,
+      },
+    ];
+
+    for (const plan of membershipPlans) {
+      await prisma.membershipPlan.create({ data: plan });
+    }
+
+    console.log(`Seeded ${membershipPlans.length} membership plans successfully.`);
+  }
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Seed failed:", e);
+    console.error("Seed failed:", e);
     process.exit(1);
   })
   .finally(async () => {

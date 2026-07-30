@@ -28,6 +28,8 @@ import { router as ProfileValidationStepRoutes } from "./routes/profile-validati
 import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
 import { router as MessageRoutes } from "./routes/message.routes.js";
 import { router as CallsRoutes } from "./routes/calls.routes.js";
+// Phase 3.1 — Membership Plans & Tiers
+import { router as MembershipRoutes } from "./routes/membership.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
@@ -156,6 +158,8 @@ app.use("/providers", ProviderRoutes);
 // Phase 2.1 — Message routes wired up (previously registered but never connected to Socket.IO)
 app.use("/messages", MessageRoutes);
 app.use("/calls", CallsRoutes);
+// Phase 3.1 — Membership Plans & Tiers
+app.use("/membership", MembershipRoutes);
 
 app.use("/*path", (req: express.Request, res: express.Response) => {
   const path = Array.isArray(req.params.path) ? req.params.path.join("/") : req.params.path;

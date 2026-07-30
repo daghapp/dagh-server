@@ -118,7 +118,7 @@ router.post(
   audioUpload.single("audio"),
   handleAudioUploadError,
   validate(sendVoiceNoteSchema),
-  sendVoiceNote
+  sendVoiceNote,
 );
 
 /**

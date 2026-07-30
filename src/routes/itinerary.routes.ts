@@ -151,6 +151,22 @@ router.post(
 
 /**
  * @swagger
+ * /itinerary/requests:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get all itinerary requests for the authenticated user
+ *     tags: [Itinerary]
+ *     responses:
+ *       200:
+ *         description: Tour requests retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/requests", protectedRoute, getUserTourRequests);
+
+/**
+ * @swagger
  * /itinerary/{tourRequestId}:
  *   get:
  *     security:
@@ -195,21 +211,5 @@ router.post(
  *       404:
  *         description: Tour request not found or itinerary not available
  */
-/**
- * @swagger
- * /itinerary/requests:
- *   get:
- *     security:
- *       - bearerAuth: []
- *     summary: Get all itinerary requests for the authenticated user
- *     tags: [Itinerary]
- *     responses:
- *       200:
- *         description: Tour requests retrieved successfully
- *       401:
- *         description: Unauthorized
- */
-router.get("/requests", protectedRoute, getUserTourRequests);
-
 router.get("/:tourRequestId", protectedRoute, getItinerary);
 export { router };

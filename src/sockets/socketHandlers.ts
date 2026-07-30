@@ -119,7 +119,9 @@ export const setupSocketHandlers = (io: Server) => {
                 where: { id: userId },
                 data: { lastActiveAt: new Date() },
               })
-              .catch((err) => console.error("[Socket] Failed to update lastActiveAt on disconnect:", err));
+              .catch((err) =>
+                console.error("[Socket] Failed to update lastActiveAt on disconnect:", err),
+              );
           }
         }
         socket.leave(`user:${userId}`);
