@@ -11,7 +11,7 @@ REST API for the DAGH platform: tour management, visa-on-arrival processing, iti
 | Runtime | Node.js 20 |
 | Framework | Express 5 + Helmet |
 | Language | TypeScript 5.9 (strict) |
-| Database | PostgreSQL + Prisma 7.4 ORM |
+| Database | PostgreSQL + Prisma 7.4 ORM (driver adapter: `@prisma/adapter-pg`, config in `prisma.config.ts`) |
 | Payments | Hubtel (Mobile Money: MTN, Telecel, AT + Cards) |
 | File Storage | Cloudinary |
 | Real-time | Socket.IO 4.8 |
@@ -32,24 +32,28 @@ npm ci
 # Set up environment
 cp .env.example .env   # then fill in values
 
-# Run migrations
+# Run migrations (Prisma 7 reads DATABASE_URL from .env via prisma.config.ts)
 npx prisma migrate dev
 
-# Generate Prisma client
+# Generate Prisma client (output: generated/prisma, importFileExtension = "js")
 npx prisma generate
 
 # Seed database (25 tour sites + ledger accounts + 9 membership plans)
 npm run db:seed
 
-# Build
+# Build (runs `prisma generate && tsc`; the Prisma client is compiled into dist/generated)
 npm run build
 
 # Start
-npm start              # production (port 5000)
+npm start              # production (port 5000, or $PORT)
 npm run dev            # development (nodemon + tsx hot reload)
 ```
 
-**Docker:**
+**Docker:** the build does not require a live database — `prisma.config.ts` resolves
+`DATABASE_URL` with a placeholder fallback so `prisma generate` succeeds without a
+build arg. The running container still needs `DATABASE_URL` (and the other env vars)
+set in its environment.
+
 ```bash
 docker build -t dagh-server .
 docker run -p 5000:5000 dagh-server
@@ -59,15 +63,21 @@ docker run -p 5000:5000 dagh-server
 
 ## Environment Variables
 
-See `.env.example` for the full list. Key categories:
+See `.env.example` for the full template. Key categories (all read directly from `process.env`):
 
 ```env
+# Server
+PORT=5000
+NODE_ENV=production
+API_URL=https://dagh-server-fo64.onrender.com
+
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/dagh
 
 # Auth
 JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
+JWT_SECRET=            # call/token signaling (optional, has a default)
 SESSIONSECRET=
 
 # Hubtel (required)
@@ -88,10 +98,12 @@ RESEND_API_KEY=
 ALLOWED_ORIGINS=http://localhost:3000
 
 # OAuth
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+CLIENTID=              # Google OAuth client ID
+CLIENTSECRETE=         # Google OAuth client secret
+REDIRECTURI=           # Google OAuth callback URL
 FACEBOOK_APP_ID=
 FACEBOOK_APP_SECRET=
+FACEBOOK_CALLBACK_URL=
 APPLE_CLIENT_ID=
 APPLE_TEAM_ID=
 APPLE_KEY_ID=
@@ -112,10 +124,13 @@ VISA_STATUTORY_FEE_USD=200
 ## Project Structure
 
 ```
+prisma.config.ts                # Prisma 7 config (datasource URL from env, migration path)
+prisma/                         # schema.prisma + migrations
+generated/prisma/               # Generated Prisma client (compiled into dist/generated on build)
 src/
 ├── index.ts                    # Server start + graceful shutdown
 ├── server.ts                   # Express app setup, middleware, route mounting
-├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts)
+├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts + 9 membership plans)
 ├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
 ├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety
 ├── jobs/                       # Cron jobs (pending payments, user cleanup)
@@ -362,6 +377,9 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | GET | `/health` | Public | Health check (uptime, timestamp) |
 | GET | `/api-docs` | Public | Swagger UI |
 
+The root path `/` has no handler registered — it and any unmatched endpoint return
+a 404 via the catch-all middleware in `server.ts`.
+
 ---
 
 ## Database Schema (Summary)
@@ -458,14 +476,19 @@ Swagger UI available at `/api-docs` when the server is running. 92 fully documen
 
 ## Deployment
 
-The app is containerized with a multi-stage Docker build (Node 20 Alpine):
+The app is containerized with a multi-stage Docker build (Node 20 Alpine). The build
+stage runs `prisma generate && tsc` and compiles the Prisma client into
+`dist/generated`; the runner stage keeps only production dependencies and `dist`.
+The build does not require `DATABASE_URL` (see [Getting Started](#getting-started)).
 
 ```bash
 docker build -t dagh-server .
 docker run -p 5000:5000 dagh-server
 ```
 
-Deployed on Render via `render.yaml`. Build command: `npm ci && npm run build`.
+Deployed on Render via `render.yaml` (native Node). Build command:
+`npm ci && npm run build`. Current live instance: <https://dagh-server-fo64.onrender.com>
+(`/health` for a status check, `/api-docs` for Swagger).
 
 ---
 
