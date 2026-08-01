@@ -3,6 +3,7 @@
 
 import { prisma } from "./config";
 import type { Prisma } from "../generated/prisma/client.js";
+import { Gender, LookingFor } from "../generated/prisma/enums.js";
 
 // const prisma = new PrismaClient();
 
@@ -268,6 +269,120 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
   },
 ];
 
+// ── Dating module demo data ──────────────────────────────────────────────
+async function seedDatingData() {
+  console.log("Seeding dating data...");
+
+  const datingUsers: Array<{
+    email: string;
+    fullName: string;
+    gender: Gender;
+    dateOfBirth: Date;
+    headline: string;
+    about: string;
+    photos: string[];
+    heightCm: number;
+    interests: string[];
+    lookingFor: LookingFor;
+    minAge: number;
+    maxAge: number;
+    genderPreference: Gender[];
+  }> = [
+    {
+      email: "dating.demo@dagh.app",
+      fullName: "Ama Serwaa",
+      gender: Gender.FEMALE,
+      dateOfBirth: new Date("1994-04-12"),
+      headline: "Adventurer & foodie",
+      about:
+        "Accra-based creative who loves live music, beach walks in Kokrobite and discovering hidden chop bars.",
+      photos: ["https://images.unsplash.com/photo-1494790108377-be9c29b29330"],
+      heightCm: 168,
+      interests: ["Travel", "Music", "Food"],
+      lookingFor: LookingFor.LONG_TERM_PARTNER,
+      minAge: 28,
+      maxAge: 40,
+      genderPreference: [Gender.MALE],
+    },
+    {
+      email: "dating.demo2@dagh.app",
+      fullName: "Kwame Boateng",
+      gender: Gender.MALE,
+      dateOfBirth: new Date("1991-09-23"),
+      headline: "Engineer who loves the outdoors",
+      about:
+        "Kumasi-based engineer. Weekend hikes, football and planning my next trip home to the diaspora.",
+      photos: ["https://images.unsplash.com/photo-1500648767791-00dcc994a43e"],
+      heightCm: 180,
+      interests: ["Hiking", "Football", "Travel"],
+      lookingFor: LookingFor.LONG_TERM_PARTNER,
+      minAge: 25,
+      maxAge: 38,
+      genderPreference: [Gender.FEMALE],
+    },
+    {
+      email: "dating.demo3@dagh.app",
+      fullName: "Nana Yaa",
+      gender: Gender.FEMALE,
+      dateOfBirth: new Date("1997-01-05"),
+      headline: "Coffee lover ☕",
+      about:
+        "Marketing professional. I collect vinyl records, love film photography and my cat is my co-pilot.",
+      photos: ["https://images.unsplash.com/photo-1438761681033-6461ffad8d80"],
+      heightCm: 165,
+      interests: ["Photography", "Music", "Coffee"],
+      lookingFor: LookingFor.SHORT_TERM,
+      minAge: 26,
+      maxAge: 36,
+      genderPreference: [Gender.MALE],
+    },
+  ];
+
+  for (const demo of datingUsers) {
+    const existing = await prisma.user.findUnique({ where: { email: demo.email } });
+    if (existing) continue;
+
+    const user = await prisma.user.create({
+      data: {
+        authProvider: "EMAIL",
+        email: demo.email,
+        accountStatus: "ACTIVE",
+        fullName: demo.fullName,
+        gender: demo.gender,
+        dateOfBirth: demo.dateOfBirth,
+      },
+    });
+
+    const datingProfile = await prisma.datingProfile.create({
+      data: {
+        userId: user.id,
+        headline: demo.headline,
+        about: demo.about,
+        photos: demo.photos,
+        heightCm: demo.heightCm,
+        interests: demo.interests,
+        lookingFor: demo.lookingFor,
+      },
+    });
+
+    await prisma.discoveryPreference.create({
+      data: {
+        userId: user.id,
+        datingProfileId: datingProfile.id,
+        lookingFor: demo.lookingFor,
+        genderPreference: demo.genderPreference,
+        minAge: demo.minAge,
+        maxAge: demo.maxAge,
+        locationName: demo.gender === Gender.FEMALE ? "Accra" : "Kumasi",
+        locationLat: demo.gender === Gender.FEMALE ? 5.6037 : 6.6885,
+        locationLng: demo.gender === Gender.FEMALE ? -0.187 : -1.6244,
+      },
+    });
+  }
+
+  console.log("Dating demo data seeded successfully.");
+}
+
 async function main() {
   console.log("Seeding tour sites...");
   const siteCount = await prisma.tourSite.count();
@@ -467,6 +582,8 @@ async function main() {
 
     console.log(`Seeded ${membershipPlans.length} membership plans successfully.`);
   }
+
+  await seedDatingData();
 }
 
 main()

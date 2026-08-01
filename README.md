@@ -306,6 +306,26 @@ All endpoints return responses in a standardized envelope:
 | DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user |
 | POST | `/messages/report` | Bearer | Report a user (`targetId`, `reason`, `details`) |
 
+### Dating
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/dating/profile` | Bearer | Get your dating profile + discovery preferences |
+| POST | `/dating/profile/init` | Bearer | Initialize your dating profile |
+| PATCH | `/dating/profile` | Bearer | Update profile (`headline`, `about`, `photos`, `heightCm`, `interests`, `lookingFor`) |
+| GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
+| GET | `/dating/preferences` | Bearer | Get your discovery preferences |
+| PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
+| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates (excludes swiped/blocked/hidden) |
+| POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation. |
+| GET | `/dating/matches` | Bearer | List your active matches |
+| GET | `/dating/likes-received` | Bearer | List users who liked you |
+| DELETE | `/dating/matches/:matchId` | Bearer | Unmatch a user |
+
+Dating real-time events via Socket.IO: `match:mutual` (both users on mutual like), `match:incoming` (target received a like), plus existing `presence:status` / `presence:info`.
+
+Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
+
 ### Calls
 
 | Method | Endpoint | Auth | Description |
@@ -370,6 +390,14 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | PATCH | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents |
 | POST | `/admin/profile-verifications/:id/verify` | Admin | Fully verify user |
 
+### Admin — Moderation
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/reports` | Admin | List user reports (filter by `?status=PENDING\|REVIEWING\|RESOLVED\|DISMISSED`) |
+| PATCH | `/admin/reports/:reportId` | Admin | Update report status (`REVIEWING` / `RESOLVED` / `DISMISSED`) with optional note |
+| POST | `/admin/reports/:reportId/suspend` | Admin | Suspend the reported user and resolve the report |
+
 ### System
 
 | Method | Endpoint | Auth | Description |
@@ -414,6 +442,9 @@ a 404 via the catch-all middleware in `server.ts`.
 | `HubtelDirectReceiveLog` | Hubtel API response logs |
 | `LedgerAccount` / `LedgerTransaction` | Double-entry ledger |
 | `Message` / `Conversation` | Direct messaging (text, voice notes, images, videos, call logs) |
+| `DatingProfile` | 1:1 dating profile (headline, bio, photos, height, interests, looking-for) |
+| `UserSwipe` | Dating swipes (LIKE / SUPER_LIKE / PASS) |
+| `DiscoveryPreference` | Dating discovery filters + profile/online visibility |
 | `UserMatch` | User matching/swiping |
 | `UserBlock` | User blocking (prevents messaging and calls) |
 | `UserReport` | User safety reports |
@@ -449,7 +480,7 @@ npm run db:studio      # Open Prisma Studio GUI
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 92 fully documented endpoints across 19 route files.
+Swagger UI available at `/api-docs` when the server is running. 100 fully documented endpoints across 20 route files.
 
 ---
 
