@@ -50,6 +50,11 @@ model User {
 
   tourRequests TourRequest[]
 
+  datingProfile         DatingProfile?
+  swipesMade            UserSwipe[]   @relation("Swiper")
+  swipesReceived        UserSwipe[]   @relation("SwipeTarget")
+  discoveryPreference   DiscoveryPreference?
+
   @@map("users")
 }
 
@@ -345,6 +350,79 @@ model UserMatch {
   @@map("user_matches")
 }
 
+// ─────────────────────────────────────────
+// DATING MODULE — profile, swipes, discovery
+// ─────────────────────────────────────────
+model DatingProfile {
+  id                 String                @id @default(uuid())
+  userId             String                @unique
+  headline           String?
+  about              String?               @db.Text
+  photos             String[]
+  heightCm           Int?
+  interests          String[]
+  lookingFor         LookingFor?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discoveryPreference DiscoveryPreference?
+
+  @@map("dating_profiles")
+}
+
+enum LookingFor {
+  LONG_TERM_PARTNER
+  SHORT_TERM
+  FRIENDSHIP
+  NOT_SURE
+}
+
+enum SwipeDirection {
+  LIKE
+  SUPER_LIKE
+  PASS
+}
+
+model UserSwipe {
+  id        String         @id @default(uuid())
+  swiperId  String
+  targetId  String
+  direction SwipeDirection
+  createdAt DateTime       @default(now())
+
+  swiper User @relation("Swiper", fields: [swiperId], references: [id], onDelete: Cascade)
+  target User @relation("SwipeTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([swiperId, targetId])
+  @@index([targetId])
+  @@map("user_swipes")
+}
+
+model DiscoveryPreference {
+  id               String  @id @default(uuid())
+  userId           String  @unique
+  lookingFor       LookingFor?
+  genderPreference Gender[]
+  minAge           Int     @default(18)
+  maxAge           Int     @default(60)
+  maxDistanceKm    Int     @default(50)
+  locationLat      Float?
+  locationLng      Float?
+  locationName     String?
+  showProfile      Boolean @default(true)
+  showOnlineStatus Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  datingProfile DatingProfile  @relation(fields: [datingProfileId], references: [id], onDelete: Cascade)
+  datingProfileId String       @unique
+
+  @@map("discovery_preferences")
+}
+
 model UserBlock {
   id        String   @id @default(uuid())
   blockerId String
@@ -359,17 +437,31 @@ model UserBlock {
 }
 
 model UserReport {
-  id         String   @id @default(uuid())
-  reporterId String
-  targetId   String
-  reason     String
-  details    String?
-  createdAt  DateTime @default(now())
+  id             String        @id @default(uuid())
+  reporterId     String
+  targetId       String
+  reason         String
+  details        String?
+  status         ReportStatus  @default(PENDING)
+  resolutionNote String?
+  resolvedAt     DateTime?
+  resolvedById   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt @default(now())
 
   reporter User @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
   target   User @relation("ReportedUser", fields: [targetId], references: [id], onDelete: Cascade)
 
+  @@index([status])
+  @@index([targetId])
   @@map("user_reports")
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWING
+  RESOLVED
+  DISMISSED
 }
 
 model CallLog {

@@ -30,11 +30,14 @@ import { router as MessageRoutes } from "./routes/message.routes.js";
 import { router as CallsRoutes } from "./routes/calls.routes.js";
 // Phase 3.1 — Membership Plans & Tiers
 import { router as MembershipRoutes } from "./routes/membership.routes.js";
+// Dating module
+import { router as DatingRoutes } from "./routes/dating.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
 import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
+import { setIoInstance as setDatingIoInstance } from "./modules/dating/swipe.controller.js";
 import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
 
 dotenv.config();
@@ -160,6 +163,8 @@ app.use("/messages", MessageRoutes);
 app.use("/calls", CallsRoutes);
 // Phase 3.1 — Membership Plans & Tiers
 app.use("/membership", MembershipRoutes);
+// Dating module
+app.use("/dating", DatingRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({
@@ -188,6 +193,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 setupSocketHandlers(io);
 // Phase 2.1 — Inject Socket.IO instance into messages controller so it can emit real-time events
 setIoInstance(io);
+// Dating module — inject Socket.IO instance for match events
+setDatingIoInstance(io);
 
 export { server };
 export default app;
