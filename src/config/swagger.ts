@@ -35,7 +35,13 @@ const swaggerOptions: swaggerJSDoc.Options = {
       },
     },
   },
-  apis: ["./src/routes/*.ts", "./src/modules/**/*.ts", "./src/server.ts"], // Path to the API routes
+  // In production (Docker image) only the compiled dist/ is shipped, so JSDoc
+  // swagger comments are read from the compiled .js files. Locally, source .ts
+  // files are used. tsc preserves JSDoc comments (no removeComments).
+  apis:
+    process.env.NODE_ENV === "production"
+      ? ["./dist/src/routes/*.js", "./dist/src/modules/**/*.js", "./dist/src/server.js"]
+      : ["./src/routes/*.ts", "./src/modules/**/*.ts", "./src/server.ts"],
 };
 
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
