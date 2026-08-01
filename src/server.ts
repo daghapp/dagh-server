@@ -161,9 +161,23 @@ app.use("/calls", CallsRoutes);
 // Phase 3.1 — Membership Plans & Tiers
 app.use("/membership", MembershipRoutes);
 
-app.use("/*path", (req: express.Request, res: express.Response) => {
-  const path = Array.isArray(req.params.path) ? req.params.path.join("/") : req.params.path;
-  fail(res, 404, `Endpoint '/${path}' not found`);
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    name: "DAGH API",
+    version: "1.0.0",
+    status: "OK",
+    health: "/health",
+    docs: "/api-docs",
+    timestamp: new Date(),
+  });
+});
+
+// Express 5 catch-all: "/{*splat}" matches every path including the root "/"
+// (the previous "/*path" only matched paths with at least one segment).
+app.use("/{*splat}", (req: express.Request, res: express.Response) => {
+  const path = req.params.splat;
+  const displayPath = Array.isArray(path) ? path.join("/") : (path ?? "");
+  fail(res, 404, `Endpoint '/${displayPath}' not found`);
 });
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
