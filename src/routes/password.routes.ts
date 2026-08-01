@@ -8,6 +8,7 @@ import {
   loginSchema,
   registrationSchema,
   requestResetPasswordSchema,
+  resetPasswordSchema,
 } from "../validator/password-auth-validator.js";
 import { verifyOtpSchema, resendOtpSchema } from "../validator/otp-validator.js";
 import { refreshTokenSchema } from "../validator/token-validator.js";
@@ -471,5 +472,9 @@ router.post(
  *       500:
  *         description: Failed to reset password
  */
-router.post("/reset-password", passwordAuthController.resetPassword.bind(passwordAuthController));
+router.post(
+  "/reset-password",
+  validate(resetPasswordSchema),
+  passwordAuthController.resetPassword.bind(passwordAuthController),
+);
 export { router };

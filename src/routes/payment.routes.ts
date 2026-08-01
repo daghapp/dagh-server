@@ -1,6 +1,6 @@
 import express from "express";
 import { PaymentController } from "../modules/payment-management/payment.controller.js";
-import { initializePaymentSchema_momo } from "../validator/index.js";
+import { initializePaymentSchema } from "../validator/index.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import path from "node:path";
@@ -109,7 +109,7 @@ const paymentController = new PaymentController();
 router.post(
   "/initialize",
   protectedRoute,
-  validate(initializePaymentSchema_momo),
+  validate(initializePaymentSchema),
   paymentController.initializePayment.bind(paymentController),
 );
 

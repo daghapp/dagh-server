@@ -7,6 +7,29 @@ const router = Router();
 
 const appleAuthController = new AppleAuthController();
 
+const appleStrategyConfigured = () =>
+  Boolean(
+    process.env.APPLE_CLIENT_ID &&
+      process.env.APPLE_TEAM_ID &&
+      process.env.APPLE_KEY_ID &&
+      process.env.APPLE_PRIVATE_KEY_PATH &&
+      process.env.APPLE_CALLBACK_URL,
+  );
+
+const appleStrategyGuard = (
+  req: import("express").Request,
+  res: import("express").Response,
+  next: import("express").NextFunction,
+) => {
+  if (!appleStrategyConfigured()) {
+    return res.status(503).json({
+      success: false,
+      error: "Apple Sign In is not configured on this server.",
+    });
+  }
+  next();
+};
+
 /**
  * @swagger
  * /auth/apple:
@@ -17,7 +40,7 @@ const appleAuthController = new AppleAuthController();
  *       302:
  *         description: Redirects to Apple Sign In
  */
-router.get("/apple", (req, res, next) => {
+router.get("/apple", appleStrategyGuard, (req, res, next) => {
   const redirect = req.query.redirect as string | undefined;
   passport.authenticate("apple", {
     scope: ["name", "email"],
@@ -57,6 +80,7 @@ router.get("/apple", (req, res, next) => {
  */
 router.post(
   "/apple/callback",
+  appleStrategyGuard,
   passport.authenticate("apple", {
     failureRedirect: "/auth/apple/failed",
     session: false,

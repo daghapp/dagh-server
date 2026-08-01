@@ -2,9 +2,9 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 
-const STEP_PHONE_NUMBER_VERIFICATION = "phonenumber_verification";
-const STEP_PROFILE_IMAGE_VERIFICATION = "profile_image_validation";
-const STEP_DOCUMENT_VERIFICATION = "document_verification";
+const STEP_PHONE_NUMBER_VERIFICATION = "PHONE_NUMBER_VERIFICATION";
+const STEP_PROFILE_IMAGE_VERIFICATION = "PROFILE_IMAGE_VERIFICATION";
+const STEP_DOCUMENT_VERIFICATION = "DOCUMENT_VERIFICATION";
 
 type CurrentStepResponse = {
   current_step: string;

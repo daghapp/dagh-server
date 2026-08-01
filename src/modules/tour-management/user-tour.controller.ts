@@ -201,13 +201,17 @@ export class UserTourController {
       }
 
       //send email after successful booking
-      await sendEmail({
-        email: req.user?.email as string,
-        subject: "Tour Booking Confirmation",
-        html: `<p>Dear ${req.user?.fullName as string},</p>
+      try {
+        await sendEmail({
+          email: req.user?.email as string,
+          subject: "Tour Booking Confirmation",
+          html: `<p>Dear ${req.user?.fullName as string},</p>
             <p>Your booking has been successfully confirmed.</p>
             <p>Thank you for choosing our tour!</p>`,
-      });
+        });
+      } catch (emailError) {
+        console.error("Failed to send booking confirmation email:", emailError);
+      }
 
       return created(res, { paymentData: paymentResponse.data, booking: newBooking });
     } catch (error) {
@@ -272,13 +276,17 @@ export class UserTourController {
       });
 
       //send email after successful cancellation
-      await sendEmail({
-        email: req.user?.email as string,
-        subject: "Tour Booking Cancellation Confirmation",
-        html: `<p>Dear ${req.user?.fullName as string},</p>
+      try {
+        await sendEmail({
+          email: req.user?.email as string,
+          subject: "Tour Booking Cancellation Confirmation",
+          html: `<p>Dear ${req.user?.fullName as string},</p>
             <p>Your booking has been successfully cancelled.</p>
             <p>Thank you for your understanding.</p>`,
-      });
+        });
+      } catch (emailError) {
+        console.error("Failed to send cancellation email:", emailError);
+      }
 
       return ok(res, updatedBooking, "Booking cancelled successfully");
     } catch (error) {
@@ -427,13 +435,17 @@ export class UserTourController {
         });
 
         //send email after successful booking
-        await sendEmail({
-          email: req.user?.email as string,
-          subject: "Tour Booking Confirmation",
-          html: `<p>Dear ${req.user?.fullName as string},</p>
+        try {
+          await sendEmail({
+            email: req.user?.email as string,
+            subject: "Tour Booking Confirmation",
+            html: `<p>Dear ${req.user?.fullName as string},</p>
             <p>Your booking has been successfully confirmed.</p>
             <p>Thank you for choosing our tour!</p>`,
-        });
+          });
+        } catch (emailError) {
+          console.error("Failed to send booking confirmation email:", emailError);
+        }
         return ok(
           res,
           { bookingId: booking.id, paymentId: paymentResponse.paymentId },

@@ -154,12 +154,16 @@ export async function createTourRequest(
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC: Get a previously generated itinerary or generate if payment is made using tour request ID
 // ─────────────────────────────────────────────────────────────────────────────
-export async function getItineraryByRequestId(tourRequestId: string): Promise<ItineraryResponse> {
+export async function getItineraryByRequestId(
+  tourRequestId: string,
+  requesterId: string,
+): Promise<ItineraryResponse> {
   // Payment gating: itinerary is only visible after payment SUCCESS
   const tourRequest = await prisma.tourRequest.findUnique({
     where: { id: tourRequestId },
     select: {
       id: true,
+      userId: true,
       durationDays: true,
       paymentStatus: true,
       relocationInterest: true,
@@ -175,6 +179,9 @@ export async function getItineraryByRequestId(tourRequestId: string): Promise<It
 
   if (!tourRequest) {
     throw new Error("TOUR_REQUEST_NOT_FOUND");
+  }
+  if (tourRequest.userId !== requesterId) {
+    throw new Error("FORBIDDEN");
   }
   if (tourRequest.paymentStatus !== "SUCCESS") {
     throw new Error("PAYMENT_REQUIRED");

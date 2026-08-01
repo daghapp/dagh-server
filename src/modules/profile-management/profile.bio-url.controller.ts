@@ -22,6 +22,12 @@ export async function postBioProfileUrl(req: Request, res: Response) {
       },
     });
 
+    await prisma.profileVerification.upsert({
+      where: { userProfileId: updated.id },
+      update: { validationStep: "DOCUMENT_VERIFICATION" },
+      create: { userProfileId: updated.id, validationStep: "DOCUMENT_VERIFICATION" },
+    });
+
     return ok(
       res,
       {

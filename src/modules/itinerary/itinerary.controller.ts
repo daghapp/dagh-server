@@ -78,7 +78,7 @@ export async function getItinerary(req: Request, res: Response) {
       return fail(res, 400, "Tour request ID is required.");
     }
 
-    const itinerary = await getItineraryByRequestId(tourRequestId);
+    const itinerary = await getItineraryByRequestId(tourRequestId, req.user?.id as string);
 
     if (!itinerary) {
       return fail(res, 404, "No itinerary found for this tour request.");
@@ -129,6 +129,7 @@ export async function getItinerary(req: Request, res: Response) {
 
     let status = 500;
     if (code === "TOUR_REQUEST_NOT_FOUND") status = 404;
+    if (code === "FORBIDDEN") status = 403;
     if (code === "PAYMENT_REQUIRED") status = 403;
     if (code === "ITINERARY_NOT_FEASIBLE") status = 400;
     if (code === "NO_SITES_FOR_ITINERARY") status = 400;

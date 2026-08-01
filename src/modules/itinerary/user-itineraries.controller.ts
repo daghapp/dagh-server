@@ -29,7 +29,7 @@ export async function getUserItineraries(req: Request, res: Response) {
       paidRequests.map(async (r) => {
         // getItineraryByRequestId handles: request-not-found, payment gating,
         // existing itinerary retrieval OR lazy generation.
-        return getItineraryByRequestId(r.id);
+        return getItineraryByRequestId(r.id, userId);
       }),
     );
 

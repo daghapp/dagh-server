@@ -34,7 +34,7 @@ export class ProfileVerificationController {
       }
 
       const phoneNormalized = String(phoneNumber).trim();
-      const phoneDigits = phoneNormalized.replace(/\s+/g, "");
+      const phoneDigits = phoneNormalized.replace(/[\s+]/g, "");
       if (!/^\d{10,15}$/.test(phoneDigits)) {
         return fail(res, 400, "Phone number must be a valid phone number");
       }
@@ -131,11 +131,13 @@ export class ProfileVerificationController {
         update: {
           phone_number_verified: true,
           isVerified: true,
+          validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
         create: {
           userProfileId: profile.id,
           phone_number_verified: true,
           isVerified: true,
+          validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
       });
 
