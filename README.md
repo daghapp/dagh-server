@@ -1,6 +1,6 @@
 # Diaspora Affairs Ghana (DAGH) — Backend API
 
-REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, messaging, voice/video calling, and payments via Hubtel.
+REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, and payments via Hubtel.
 
 ---
 
@@ -138,6 +138,7 @@ src/
 ├── modules/
 │   ├── authentication/         # Register, login, OAuth, password reset
 │   ├── common/                 # Image upload
+│   ├── dating/                 # Dating profiles, discovery, swiping, matches
 │   ├── itinerary/              # Itinerary generation + payment
 │   ├── messages/               # Messaging, voice notes, calls, block/report (REST + Socket.IO)
 │   ├── payment-management/     # Payment processing
@@ -146,11 +147,11 @@ src/
 │   ├── provider-management/    # Nearby hotels
 │   ├── tour-management/        # Tour CRUD, booking, admin
 │   └── visa-management/        # Visa-on-arrival requests + approval
-├── routes/                     # Express route definitions (19 files)
-├── services/                   # Business logic (payment.service.ts)
+├── routes/                     # Express route definitions (20 files)
+├── services/                   # Business logic (membership, payment, matching)
 ├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
 ├── types/                      # TypeScript type augmentations (Express.User)
-├── validator/                  # Zod schemas (15 files)
+├── validator/                  # Zod schemas (18 files)
 └── views/                      # HTML/CSS for OAuth/payment callback pages
 ```
 
@@ -350,6 +351,10 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | POST | `/membership/support` | Bearer | Create a priority support ticket (paid tiers only) |
 | POST | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments |
 
+Paid subscriptions initialize a Hubtel checkout and are activated on payment callback
+(idempotent — already-processed callbacks are skipped). Generated Hubtel client
+references are capped at 36 characters to satisfy Hubtel's validation.
+
 ### Image Upload
 
 | Method | Endpoint | Auth | Description |
@@ -405,8 +410,8 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | GET | `/health` | Public | Health check (uptime, timestamp) |
 | GET | `/api-docs` | Public | Swagger UI |
 
-The root path `/` has no handler registered — it and any unmatched endpoint return
-a 404 via the catch-all middleware in `server.ts`.
+The root path `/` returns API information (name, version, health and docs links).
+Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`.
 
 ---
 
@@ -474,6 +479,8 @@ npm run lint:fix       # Auto-fix lint errors
 npm run format         # Format code with Prettier
 npm run format:check   # Check formatting without writing
 npm run db:studio      # Open Prisma Studio GUI
+npm test               # Run unit tests once (Vitest)
+npm run test:watch     # Run tests in watch mode
 ```
 
 ---
@@ -518,7 +525,8 @@ docker run -p 5000:5000 dagh-server
 ```
 
 Deployed on Render via `render.yaml` (native Node). Build command:
-`npm ci && npm run build`. Current live instance: <https://dagh-server-fo64.onrender.com>
+`npm ci && npm run build`; a `preDeployCommand` (`npx prisma migrate deploy`) applies
+pending database migrations before each deploy. Current live instance: <https://dagh-server-fo64.onrender.com>
 (`/health` for a status check, `/api-docs` for Swagger).
 
 ---

@@ -21,7 +21,7 @@ import {
   PaymentTargetType,
 } from "../../generated/prisma/client.js";
 import { InitializePaymentSchema, InitializePaymentSchema_MOMO } from "../validator/index.js";
-import { AxiosResponse } from "axios";
+import axios, { AxiosResponse } from "axios";
 import { HubtelDirectReceiveResponseSchema } from "../validator/index.js";
 
 export const HUBTEL_CALLBACK_URL = process.env.API_URL + "/payment/hubtel_callback";
@@ -47,11 +47,27 @@ type InitPaymentResult = {
 export async function initializePayment(input: InitPaymentInput): Promise<InitPaymentResult> {
   const reference = generateClientReference_targetType(input.targetType);
 
-  const hubtelResponse = await hubtelClient.post("/items/initiate", {
-    ...input,
-    merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
-    clientReference: reference,
-  });
+  let hubtelResponse;
+  try {
+    hubtelResponse = await hubtelClient.post("/items/initiate", {
+      ...input,
+      merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
+      clientReference: reference,
+    });
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const detail = error.response?.data?.errors
+        ? Object.values(error.response.data.errors).flat().join("; ")
+        : error.response?.data?.title || error.message;
+      return {
+        success: false,
+        message: `Hubtel error: ${detail}`,
+        paymentId: "",
+        paymentStatus: "",
+      };
+    }
+    throw error;
+  }
 
   const data = hubtelResponse.data;
 

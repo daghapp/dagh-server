@@ -19,7 +19,11 @@ export const generateClientReference_targetType = (
     .slice(0, length);
   const randomPart2 = crypto.randomBytes(2).toString("hex").slice(0, 4);
 
+  // Hubtel rejects client references longer than 36 characters, so the
+  // target type portion is truncated to keep the full reference within limit.
   const normalizedTarget = targetType.toUpperCase();
+  const fixedOverhead = 4 + 1 + length + 1 + 4; // "TXN-" + "-" + random + "-" + randomPart2
+  const trimmedTarget = normalizedTarget.slice(0, 36 - fixedOverhead);
 
-  return `TXN-${normalizedTarget}-${randomPart}-${randomPart2}`;
+  return `TXN-${trimmedTarget}-${randomPart}-${randomPart2}`;
 };
