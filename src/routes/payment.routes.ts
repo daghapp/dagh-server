@@ -3,7 +3,7 @@ import { PaymentController } from "../modules/payment-management/payment.control
 import { initializePaymentSchema } from "../validator/index.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
-import path from "node:path";
+import { viewsPath } from "../helpers/view-path.js";
 
 const router = express.Router();
 const paymentController = new PaymentController();
@@ -247,7 +247,7 @@ router.get(
  *               type: string
  */
 router.get("/processing", (_req, res) => {
-  res.status(200).sendFile(path.join(process.cwd(), "src/views/payment-reroute.html"));
+  res.status(200).sendFile(viewsPath("payment-reroute.html"));
 });
 
 /**
@@ -266,7 +266,7 @@ router.get("/processing", (_req, res) => {
  *               type: string
  */
 router.get("/p.js", (_req, res) => {
-  res.status(200).sendFile(path.join(process.cwd(), "src/views/p.js"));
+  res.status(200).sendFile(viewsPath("p.js"));
 });
 
 export { router };

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import passport from "passport";
 import { GoogleAuthController } from "../modules/authentication/index.js";
-import path from "path";
+import { viewsPath } from "../helpers/view-path.js";
 
 const router = Router();
 
@@ -69,7 +69,7 @@ router.get(
  *         description: Authentication failed - renders failure page
  */
 router.get("/google/failed", (_req, res) => {
-  res.status(401).sendFile(path.join(process.cwd(), "src/views/auth-failed.html"));
+  res.status(401).sendFile(viewsPath("auth-failed.html"));
 });
 
 /**
@@ -84,7 +84,7 @@ router.get("/google/failed", (_req, res) => {
  *         description: Authentication successful - renders success page
  */
 router.get("/google/success", (_req, res) => {
-  res.sendFile(path.join(process.cwd(), "src/views/auth-success.html"));
+  res.sendFile(viewsPath("auth-success.html"));
 });
 
 // router.get("/me", protectedRoute, (req, res) => {

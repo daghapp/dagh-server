@@ -26,6 +26,7 @@ COPY prisma.config.ts ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+COPY src/views ./dist/src/views
 
 ENV NODE_ENV=production
 

@@ -38,7 +38,7 @@ npx prisma migrate dev
 # Generate Prisma client (output: generated/prisma, importFileExtension = "js")
 npx prisma generate
 
-# Seed database (25 tour sites + ledger accounts + 9 membership plans)
+# Seed database (25 tour sites + ledger accounts + 9 membership plans + demo users/tours)
 npm run db:seed
 
 # Build (runs `prisma generate && tsc`; the Prisma client is compiled into dist/generated)
@@ -48,6 +48,25 @@ npm run build
 npm start              # production (port 5000, or $PORT)
 npm run dev            # development (nodemon + tsx hot reload)
 ```
+
+## Demo accounts
+
+`npm run db:seed` populates the database with test data for frontend development.
+All demo users are `ACTIVE` and ready to log in via `POST /auth/login`:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@dagh.app` | `Admin@12345` |
+| Demo user (bookings, visa, paid subscription) | `demo@dagh.app` | `Demo@12345` |
+| Demo user 2 | `demotwo@dagh.app` | `Demo@12345` |
+| Dating profile (Ama Serwaa) | `dating.demo@dagh.app` | `Demo@12345` |
+| Dating profile (Kwame Boateng) | `dating.demo2@dagh.app` | `Demo@12345` |
+| Dating profile (Nana Yaa) | `dating.demo3@dagh.app` | `Demo@12345` |
+
+The seed also adds 4 tour packages (with locations, itineraries and pricing),
+2 sample bookings, dating matches/conversations/messages, a visa-on-arrival
+request, and providers (hotels, a tour guide, car rental). The seed is
+idempotent — re-running it never duplicates existing rows.
 
 **Docker:** the build does not require a live database — `prisma.config.ts` resolves
 `DATABASE_URL` with a placeholder fallback so `prisma generate` succeeds without a

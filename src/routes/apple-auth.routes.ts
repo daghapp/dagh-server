@@ -1,7 +1,7 @@
 import { Router } from "express";
 import passport from "passport";
 import { AppleAuthController } from "../modules/authentication/apple-auth.controller.js";
-import path from "path";
+import { viewsPath } from "../helpers/view-path.js";
 
 const router = Router();
 
@@ -100,7 +100,7 @@ router.post(
  *         description: Authentication failed - renders failure page
  */
 router.get("/apple/failed", (_req, res) => {
-  res.status(401).sendFile(path.join(process.cwd(), "src/views/auth-failed.html"));
+  res.status(401).sendFile(viewsPath("auth-failed.html"));
 });
 
 /**
@@ -115,7 +115,7 @@ router.get("/apple/failed", (_req, res) => {
  *         description: Authentication successful - renders success page
  */
 router.get("/apple/success", (_req, res) => {
-  res.sendFile(path.join(process.cwd(), "src/views/auth-success.html"));
+  res.sendFile(viewsPath("auth-success.html"));
 });
 
 export { router };

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import passport from "passport";
 import { FacebookAuthController } from "../modules/authentication/facebook-auth.controller.js";
-import path from "path";
+import { viewsPath } from "../helpers/view-path.js";
 
 const router = Router();
 
@@ -57,7 +57,7 @@ router.get(
  *         description: Authentication failed - renders failure page
  */
 router.get("/facebook/failed", (req, res) => {
-  res.status(401).sendFile(path.join(process.cwd(), "src/views/auth-failed.html"));
+  res.status(401).sendFile(viewsPath("auth-failed.html"));
 });
 
 /**
@@ -72,7 +72,7 @@ router.get("/facebook/failed", (req, res) => {
  *         description: Authentication successful - renders success page
  */
 router.get("/facebook/success", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "src/views/auth-success.html"));
+  res.sendFile(viewsPath("auth-success.html"));
 });
 
 export { router };

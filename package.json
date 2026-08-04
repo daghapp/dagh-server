@@ -4,7 +4,8 @@
   "main": "index.ts",
   "scripts": {
     "dev": "nodemon",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && tsc && npm run build:views",
+    "build:views": "node -e \"require('fs').cpSync('src/views','dist/src/views',{recursive:true})\"",
     "start": "prisma migrate deploy && node dist/src/index.js",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
