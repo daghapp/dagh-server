@@ -47,9 +47,19 @@ const server = http.createServer(app);
 
 // Phase 1.2 — CORS tightened: require ALLOWED_ORIGINS env var (no wildcard fallback).
 // Previously used `process.env.API_URL || '*'` which opened the API to any origin.
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
-  : [];
+// The API's own public origin is always allowed so the Swagger UI served by this
+// server keeps working even if ALLOWED_ORIGINS is missing on the host.
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      ...(process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+        : []),
+      process.env.RENDER_EXTERNAL_URL,
+      process.env.API_URL,
+    ].filter((o): o is string => Boolean(o)),
+  ),
+);
 
 const io = new Server(server, {
   cors: {
