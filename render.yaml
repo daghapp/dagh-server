@@ -1,7 +1,7 @@
 services:
   - type: web
     name: dagh-server
-    env: node
+    runtime: node
     buildCommand: npm ci && npm run build
     preDeployCommand: npx prisma migrate deploy
     startCommand: npm start
@@ -9,4 +9,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: API_URL
+        value: https://dagh-server-fo64.onrender.com
+      - key: ALLOWED_ORIGINS
         value: https://dagh-server-fo64.onrender.com
