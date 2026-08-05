@@ -196,6 +196,10 @@ app.use("/{*splat}", (req: express.Request, res: express.Response) => {
 });
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err.message === "Not allowed by CORS") {
+    fail(res, 403, `Origin not allowed by CORS. Add it to ALLOWED_ORIGINS (or no Origin header for native clients)`);
+    return;
+  }
   console.error(err.stack);
   fail(res, 500, "Internal server error");
 });
