@@ -276,8 +276,8 @@ export class PasswordAuthController {
         });
       }
 
-      // Delete used OTP
-      await prisma.otp.delete({
+      // Delete used OTP (deleteMany avoids P2025 race on concurrent submissions)
+      await prisma.otp.deleteMany({
         where: { id: otpRecord.id },
       });
 
@@ -412,7 +412,7 @@ export class PasswordAuthController {
         data: { passwordHash: hashedNewPassword },
       });
 
-      await prisma.otp.delete({ where: { id: otpRecord.id } });
+      await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
 
       return ok(res, null as never, "Password reset successfully");
     } catch (error) {

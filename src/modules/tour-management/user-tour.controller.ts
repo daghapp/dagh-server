@@ -66,8 +66,10 @@ export class UserTourController {
         ];
       }
 
-      const pageNum = Math.max(1, Number(page));
-      const limitNum = Math.min(100, Math.max(1, Number(limit)));
+      const pageNum = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : 1;
+      const limitNum = Number.isFinite(Number(limit))
+        ? Math.min(100, Math.max(1, Number(limit)))
+        : 10;
       const skip = (pageNum - 1) * limitNum;
 
       const [tours, total] = await Promise.all([
@@ -488,19 +490,32 @@ export class UserTourController {
       // 2. Map ResponseCode to PaymentStatus
       const newStatus = paymentStatusFromHubtel(ResponseCode);
 
-      // 3. Update Payment record
+      // 3. Update Payment record (guard against retried/unknown references → P2025)
+      const existingPayment = await prisma.payment.findUnique({
+        where: { reference: Data.ClientReference },
+      });
+      if (!existingPayment) {
+        return fail(res, 404, "Payment not found");
+      }
+
       const payment = await prisma.payment.update({
         where: { reference: Data.ClientReference },
         data: { status: newStatus },
       });
 
-      // 4. Update linked Tour Booking record
-      const booking = await prisma.tour_bookings.update({
-        where: { paymentId: payment.id },
-        data: { paymentStatus: newStatus },
-      });
+      // 4. Update linked Tour Booking record (non-fatal: callback may be for
+      // a non-tour payment target, e.g. membership/subscription)
+      let booking: { id: string } | null = null;
+      try {
+        booking = await prisma.tour_bookings.update({
+          where: { paymentId: payment.id },
+          data: { paymentStatus: newStatus },
+        });
+      } catch (bookingError) {
+        console.error("No tour booking linked to payment:", payment.id, bookingError);
+      }
 
-      if (newStatus === "SUCCESS") {
+      if (newStatus === "SUCCESS" && booking) {
         try {
           await UserTourController.copyItineraryToUserTables(
             payment.userId,

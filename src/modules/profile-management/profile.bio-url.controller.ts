@@ -14,6 +14,15 @@ export async function postBioProfileUrl(req: Request, res: Response) {
       return fail(res, 400, "bio_profile_url is required");
     }
 
+    const existingProfile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!existingProfile) {
+      return fail(res, 404, "Profile not found. Please initialize your profile first.");
+    }
+
     const updated = await prisma.userProfile.update({
       where: { userId },
       data: {

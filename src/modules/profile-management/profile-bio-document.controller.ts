@@ -13,6 +13,15 @@ export async function postBioDocument(req: Request, res: Response) {
 
     const body = req.body as PostBioDocumentInput;
 
+    const existingProfile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!existingProfile) {
+      return fail(res, 404, "Profile not found. Please initialize your profile first.");
+    }
+
     const updated = await prisma.userProfile.update({
       where: { userId },
       data: {

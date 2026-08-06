@@ -139,8 +139,10 @@ export const recordSwipe = async (req: Request, res: Response) => {
 export const getRecommendations = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const limit = req.query.limit ? Math.min(Number(req.query.limit), 50) : 20;
-    const offset = req.query.offset ? Number(req.query.offset) : 0;
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw) ? Math.min(limitRaw, 50) : 20;
+    const offsetRaw = Number(req.query.offset);
+    const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
 
     const result = await getDiscoveryCandidates(userId, { limit, offset });
     return ok(res, result.candidates);

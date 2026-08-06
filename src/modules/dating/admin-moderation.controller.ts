@@ -17,8 +17,10 @@ const reportInclude = {
 export const listReports = async (req: Request, res: Response) => {
   try {
     const status = req.query.status as string | undefined;
-    const page = Math.max(Number(req.query.page ?? 1), 1);
-    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 100);
+    const pageRaw = Number(req.query.page ?? 1);
+    const page = Number.isFinite(pageRaw) ? Math.max(pageRaw, 1) : 1;
+    const limitRaw = Number(req.query.limit ?? 20);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 20;
 
     const where = status && status !== "ALL" ? { status: status as never } : {};
 

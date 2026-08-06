@@ -106,7 +106,10 @@ export class UserVisaController {
 
       const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
         where: { paymentId: payment.id },
-        select: { packageType: true },
+        select: {
+          packageType: true,
+          user: { select: { email: true, fullName: true } },
+        },
       });
 
       if (!visaRequest) {
@@ -159,13 +162,17 @@ export class UserVisaController {
             data: { status: "EXPEDITED_AIRPORT_PAYMENT_PENDING" },
           });
 
-          await sendEmail({
-            email: req.user?.email as string,
-            subject: "Visa request payment confirmation",
-            html: `<p>Dear ${req.user?.fullName as string},</p>
+          try {
+            await sendEmail({
+              email: visaRequest.user?.email as string,
+              subject: "Visa request payment confirmation",
+              html: `<p>Dear ${visaRequest.user?.fullName as string},</p>
                 <p>You are required to pay the statutory $200 USD fee directly to GIS at Kotoka International Airport upon arrival.</p>
                 <p>Thank you for choosing our tour!</p>`,
-          });
+            });
+          } catch (emailError) {
+            console.error("Failed to send visa payment confirmation email:", emailError);
+          }
         }
 
         await prisma.hubtelDirectReceiveLog.create({

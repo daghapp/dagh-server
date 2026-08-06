@@ -373,6 +373,19 @@ export const markAsRead = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const messageId = req.params.messageId as string;
 
+    const existing = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: { receiverId: true },
+    });
+
+    if (!existing) {
+      return fail(res, 404, "Message not found");
+    }
+
+    if (existing.receiverId !== userId) {
+      return fail(res, 403, "You are not the receiver of this message");
+    }
+
     const message = await prisma.message.update({
       where: { id: messageId, receiverId: userId },
       data: { isRead: true, readAt: new Date() },

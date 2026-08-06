@@ -58,7 +58,7 @@ export const generateRtcToken = async (req: Request, res: Response) => {
     }
 
     // Secure token hash for room authentication
-    const tokenSecret = process.env.JWT_SECRET || "default_call_secret";
+    const tokenSecret = process.env.JWT_ACCESS_SECRET || "default_call_secret";
     const tokenPayload = `${userId}:${roomId}:${Date.now()}`;
     const token = crypto.createHmac("sha256", tokenSecret).update(tokenPayload).digest("hex");
 
