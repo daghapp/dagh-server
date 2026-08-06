@@ -204,6 +204,11 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     fail(res, 403, `Origin not allowed by CORS. Add it to ALLOWED_ORIGINS (or no Origin header for native clients)`);
     return;
   }
+  const bodyError = err as Error & { status?: number; type?: string };
+  if (bodyError instanceof SyntaxError && bodyError.status === 400 && "body" in bodyError) {
+    fail(res, 400, "Invalid JSON body");
+    return;
+  }
   console.error(err.stack);
   fail(res, 500, "Internal server error");
 });
