@@ -178,6 +178,10 @@ src/
 
 ## API Endpoints
 
+> **Detailed developer reference:** see `docs/api-reference.md` for every
+> endpoint with payloads and examples, and `docs/verification-flow.md` for the
+> identity-verification integration guide.
+
 All endpoints return responses in a standardized envelope:
 
 **Success (single item):**
@@ -242,6 +246,7 @@ All endpoints return responses in a standardized envelope:
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/profile/init` | Bearer | Initialize profile |
+| PATCH | `/profile` | Bearer | Update own `fullName`, `gender`, `dateOfBirth`, `ethnicity` |
 | PATCH | `/profile/ethnicity` | Bearer | Set ethnicity |
 
 ### Profile Verification
@@ -254,6 +259,24 @@ All endpoints return responses in a standardized envelope:
 | POST | `/verification/bio_profile_url` | Bearer | Submit bio profile URL |
 | POST | `/verification/bio_document_urls` | Bearer | Submit bio documents |
 | GET | `/verification/validation-step/status` | Bearer | Get current verification step |
+
+`GET /verification/validation-step/status` returns the current step and its review state:
+
+```json
+{
+  "success": true,
+  "data": {
+    "current_step": "DOCUMENT_VERIFICATION",
+    "status": "REJECTED",
+    "verification_message": "Expired document"
+  }
+}
+```
+
+- `current_step` is one of `PHONE_NUMBER_VERIFICATION`, `PROFILE_IMAGE_VERIFICATION`, `DOCUMENT_VERIFICATION` (an optional `?step=` query overrides inference).
+- `status` is `PENDING` (awaiting review), `VERIFIED` (step completed/approved), or `REJECTED` (an admin rejected the step). `verification_message` is included only when `status` is `REJECTED` and contains the admin's rejection reason.
+
+Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_document_urls` (passport/Ghana card).
 
 ### Tour Management
 
@@ -332,7 +355,7 @@ All endpoints return responses in a standardized envelope:
 |--------|----------|------|-------------|
 | GET | `/dating/profile` | Bearer | Get your dating profile + discovery preferences |
 | POST | `/dating/profile/init` | Bearer | Initialize your dating profile |
-| PATCH | `/dating/profile` | Bearer | Update profile (`headline`, `about`, `photos`, `heightCm`, `interests`, `lookingFor`) |
+| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) |
 | GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
 | GET | `/dating/preferences` | Bearer | Get your discovery preferences |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
@@ -414,6 +437,12 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 | PATCH | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents |
 | POST | `/admin/profile-verifications/:id/verify` | Admin | Fully verify user |
 
+Admin decisions drive the user-facing status endpoint: approving face or documents
+also flips the corresponding `bio_profile_verification`/`document_verification`
+flag (making the step report `VERIFIED`), rejecting a step clears `isVerified` and
+surfaces `REJECTED` with the supplied reason in `verification_message`.
+`POST .../verify` marks every step approved and sets `isVerified` to `true`.
+
 ### Admin — Moderation
 
 | Method | Endpoint | Auth | Description |
@@ -466,7 +495,7 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `HubtelDirectReceiveLog` | Hubtel API response logs |
 | `LedgerAccount` / `LedgerTransaction` | Double-entry ledger |
 | `Message` / `Conversation` | Direct messaging (text, voice notes, images, videos, call logs) |
-| `DatingProfile` | 1:1 dating profile (headline, bio, photos, height, interests, looking-for) |
+| `DatingProfile` | 1:1 dating profile (headline, bio, photos, height, interests, looking-for, location, education/career, cultural background) |
 | `UserSwipe` | Dating swipes (LIKE / SUPER_LIKE / PASS) |
 | `DiscoveryPreference` | Dating discovery filters + profile/online visibility |
 | `UserMatch` | User matching/swiping |

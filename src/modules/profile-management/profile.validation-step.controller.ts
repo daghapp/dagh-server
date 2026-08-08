@@ -1,38 +1,19 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
-
-const STEP_PHONE_NUMBER_VERIFICATION = "PHONE_NUMBER_VERIFICATION";
-const STEP_PROFILE_IMAGE_VERIFICATION = "PROFILE_IMAGE_VERIFICATION";
-const STEP_DOCUMENT_VERIFICATION = "DOCUMENT_VERIFICATION";
+import {
+  STEP_PHONE_NUMBER_VERIFICATION,
+  STEP_PROFILE_IMAGE_VERIFICATION,
+  STEP_DOCUMENT_VERIFICATION,
+  getStatusForStep,
+  getRejectionReason,
+} from "../../helpers/verification-status.js";
 
 type CurrentStepResponse = {
   current_step: string;
   status: string;
+  verification_message?: string | null;
 };
-
-function getStatusForStep(args: {
-  step: string;
-  userProfile: Record<string, unknown> | null;
-  userVerification: Record<string, unknown> | null;
-}): string {
-  const { step, userProfile: _userProfile, userVerification } = args;
-
-  if (step === STEP_PHONE_NUMBER_VERIFICATION) {
-    return userVerification?.phone_number_verified ? "VERIFIED" : "PENDING";
-  }
-
-  if (step === STEP_DOCUMENT_VERIFICATION) {
-    return userVerification?.document_verification ? "VERIFIED" : "PENDING";
-  }
-
-  if (step === STEP_PROFILE_IMAGE_VERIFICATION) {
-    return userVerification?.bio_profile_verification ? "VERIFIED" : "PENDING";
-  }
-
-  // Fallback: if step is unknown, report not started.
-  return "PENDING";
-}
 
 export async function getValidationStepStatus(req: Request, res: Response) {
   try {
@@ -74,16 +55,16 @@ export async function getValidationStepStatus(req: Request, res: Response) {
 
     const validationStep = requestedStep ?? inferredCurrentStep;
 
-    const status = getStatusForStep({
-      step: validationStep,
-      userProfile,
-      userVerification,
-    });
+    const status = getStatusForStep(validationStep, userVerification);
 
     const payload: CurrentStepResponse = {
       current_step: validationStep,
       status,
     };
+
+    if (status === "REJECTED") {
+      payload.verification_message = getRejectionReason(validationStep, userVerification);
+    }
 
     return ok(res, payload, "Current validation step retrieved successfully.");
   } catch (error) {

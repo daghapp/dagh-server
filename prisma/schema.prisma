@@ -362,6 +362,22 @@ model DatingProfile {
   heightCm           Int?
   interests          String[]
   lookingFor         LookingFor?
+
+  // --- Profile settings: Basic Info ---
+  location           String?
+
+  // --- Profile settings: Education & Career ---
+  degree             String?
+  university         String?
+  profession         String?
+  industry           String?
+  workLocation       String?
+
+  // --- Profile settings: Cultural Background ---
+  languages          String[]
+  religion           String?
+  hometown           String?
+
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 

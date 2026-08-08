@@ -26,6 +26,38 @@ describe("datingProfileSchema", () => {
     const result = datingProfileSchema.safeParse({ lookingFor: "BOGUS" });
     expect(result.success).toBe(false);
   });
+
+  it("accepts the full profile-settings payload", () => {
+    const result = datingProfileSchema.safeParse({
+      location: "Accra, Ghana",
+      degree: "BSc Computer Science",
+      university: "University of Ghana",
+      profession: "Software Engineer",
+      industry: "Technology",
+      workLocation: "Accra",
+      languages: ["English", "Twi"],
+      religion: "Christianity",
+      hometown: "Kumasi",
+      lookingFor: "LONG_TERM_PARTNER",
+      interests: ["Cooking", "Photography", "Tech"],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-string location", () => {
+    const result = datingProfileSchema.safeParse({ location: 123 });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-string entries in languages", () => {
+    const result = datingProfileSchema.safeParse({ languages: ["English", 42] });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an over-long religion value", () => {
+    const result = datingProfileSchema.safeParse({ religion: "x".repeat(61) });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("discoveryPreferenceSchema", () => {

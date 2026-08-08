@@ -9,6 +9,7 @@ const datingProfileInclude = {
       fullName: true,
       dateOfBirth: true,
       gender: true,
+      ethnicity: true,
       profile: { select: { bio_profile_image_url: true, profileUrl: true } },
     },
   },
@@ -73,7 +74,23 @@ export const initDatingProfile = async (req: Request, res: Response) => {
 export const updateDatingProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { headline, about, photos, heightCm, interests, lookingFor } = req.body;
+    const {
+      headline,
+      about,
+      photos,
+      heightCm,
+      interests,
+      lookingFor,
+      location,
+      degree,
+      university,
+      profession,
+      industry,
+      workLocation,
+      languages,
+      religion,
+      hometown,
+    } = req.body;
 
     const existing = await prisma.datingProfile.findUnique({ where: { userId } });
     if (!existing) {
@@ -89,6 +106,15 @@ export const updateDatingProfile = async (req: Request, res: Response) => {
         heightCm: heightCm ?? undefined,
         interests: interests ?? undefined,
         lookingFor: lookingFor ?? undefined,
+        location: location ?? undefined,
+        degree: degree ?? undefined,
+        university: university ?? undefined,
+        profession: profession ?? undefined,
+        industry: industry ?? undefined,
+        workLocation: workLocation ?? undefined,
+        languages: languages ?? undefined,
+        religion: religion ?? undefined,
+        hometown: hometown ?? undefined,
       },
     });
 

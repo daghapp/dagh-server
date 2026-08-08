@@ -12,6 +12,24 @@ export const datingProfileSchema = z.object({
     .optional(),
   interests: z.array(z.string().min(1).max(40)).max(20, "Maximum of 20 interests").optional(),
   lookingFor: z.enum(["LONG_TERM_PARTNER", "SHORT_TERM", "FRIENDSHIP", "NOT_SURE"]).optional(),
+
+  // --- Basic Info ---
+  location: z.string().max(120, "Location must not exceed 120 characters").optional(),
+
+  // --- Education & Career ---
+  degree: z.string().max(120).optional(),
+  university: z.string().max(120).optional(),
+  profession: z.string().max(120).optional(),
+  industry: z.string().max(120).optional(),
+  workLocation: z.string().max(120).optional(),
+
+  // --- Cultural Background ---
+  languages: z
+    .array(z.string().min(1).max(40))
+    .max(20, "Maximum of 20 languages")
+    .optional(),
+  religion: z.string().max(60).optional(),
+  hometown: z.string().max(120).optional(),
 });
 
 export type DatingProfileInput = z.infer<typeof datingProfileSchema>;

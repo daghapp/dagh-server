@@ -111,6 +111,7 @@ export class AdminProfileController {
       const updateData: Record<string, unknown> = {
         bioDataStatus:
           action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+        isVerified: action === "APPROVED" ? verification.isVerified : false,
       };
 
       if (action === "APPROVED") {
@@ -166,6 +167,8 @@ export class AdminProfileController {
       const updateData: Record<string, unknown> = {
         faceStatus:
           action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+        bio_profile_verification: action === "APPROVED",
+        isVerified: action === "APPROVED" ? verification.isVerified : false,
       };
 
       if (action === "APPROVED") {
@@ -221,6 +224,8 @@ export class AdminProfileController {
       const updateData: Record<string, unknown> = {
         documentStatus:
           action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+        document_verification: action === "APPROVED",
+        isVerified: action === "APPROVED" ? verification.isVerified : false,
       };
 
       if (action === "APPROVED") {
@@ -269,6 +274,9 @@ export class AdminProfileController {
         where: { id },
         data: {
           isVerified: true,
+          phone_number_verified: true,
+          bio_profile_verification: true,
+          document_verification: true,
           bioDataStatus: "APPROVED",
           bioDataApprovedBy: adminId,
           bioDataApprovedAt: new Date(),

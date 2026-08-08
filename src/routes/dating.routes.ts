@@ -111,6 +111,35 @@ router.post("/profile/init", initDatingProfile);
  *               lookingFor:
  *                 type: string
  *                 enum: [LONG_TERM_PARTNER, SHORT_TERM, FRIENDSHIP, NOT_SURE]
+ *               location:
+ *                 type: string
+ *                 description: Basic Info - current location
+ *               degree:
+ *                 type: string
+ *                 description: Education & Career - degree
+ *               university:
+ *                 type: string
+ *                 description: Education & Career - university
+ *               profession:
+ *                 type: string
+ *                 description: Education & Career - profession
+ *               industry:
+ *                 type: string
+ *                 description: Education & Career - industry
+ *               workLocation:
+ *                 type: string
+ *                 description: Education & Career - work location
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Cultural Background - languages spoken
+ *               religion:
+ *                 type: string
+ *                 description: Cultural Background - religion
+ *               hometown:
+ *                 type: string
+ *                 description: Cultural Background - hometown / ancestral village
  *     responses:
  *       200:
  *         description: Dating profile updated
