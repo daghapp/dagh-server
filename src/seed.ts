@@ -292,6 +292,8 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
 ];
 
 // ── Dating module demo data ──────────────────────────────────────────────
+// Idempotent: re-running refreshes the demo dating profiles with the values
+// below (upserts), so frontend devs can always reset their test data.
 async function seedDatingData() {
   console.log("Seeding dating data...");
 
@@ -300,12 +302,22 @@ async function seedDatingData() {
     fullName: string;
     gender: Gender;
     dateOfBirth: Date;
+    ethnicity: Ethnicity;
     headline: string;
     about: string;
     photos: string[];
     heightCm: number;
     interests: string[];
     lookingFor: LookingFor;
+    location: string;
+    degree: string;
+    university: string;
+    profession: string;
+    industry: string;
+    workLocation: string;
+    languages: string[];
+    religion: string;
+    hometown: string;
     minAge: number;
     maxAge: number;
     genderPreference: Gender[];
@@ -315,6 +327,7 @@ async function seedDatingData() {
       fullName: "Ama Serwaa",
       gender: Gender.FEMALE,
       dateOfBirth: new Date("1994-04-12"),
+      ethnicity: Ethnicity.African,
       headline: "Adventurer & foodie",
       about:
         "Accra-based creative who loves live music, beach walks in Kokrobite and discovering hidden chop bars.",
@@ -322,6 +335,15 @@ async function seedDatingData() {
       heightCm: 168,
       interests: ["Travel", "Music", "Food"],
       lookingFor: LookingFor.LONG_TERM_PARTNER,
+      location: "Accra, Ghana",
+      degree: "BFA Graphic Design",
+      university: "Kwame Nkrumah University of Science and Technology (KNUST)",
+      profession: "Creative Director",
+      industry: "Design & Media",
+      workLocation: "Accra",
+      languages: ["English", "Twi"],
+      religion: "Christianity",
+      hometown: "Cape Coast",
       minAge: 28,
       maxAge: 40,
       genderPreference: [Gender.MALE],
@@ -331,6 +353,7 @@ async function seedDatingData() {
       fullName: "Kwame Boateng",
       gender: Gender.MALE,
       dateOfBirth: new Date("1991-09-23"),
+      ethnicity: Ethnicity.African,
       headline: "Engineer who loves the outdoors",
       about:
         "Kumasi-based engineer. Weekend hikes, football and planning my next trip home to the diaspora.",
@@ -338,6 +361,15 @@ async function seedDatingData() {
       heightCm: 180,
       interests: ["Hiking", "Football", "Travel"],
       lookingFor: LookingFor.LONG_TERM_PARTNER,
+      location: "Kumasi, Ghana",
+      degree: "MSc Civil Engineering",
+      university: "University of Ghana",
+      profession: "Structural Engineer",
+      industry: "Construction",
+      workLocation: "Kumasi",
+      languages: ["English", "Twi", "Hausa"],
+      religion: "Christianity",
+      hometown: "Kumasi",
       minAge: 25,
       maxAge: 38,
       genderPreference: [Gender.FEMALE],
@@ -347,6 +379,7 @@ async function seedDatingData() {
       fullName: "Nana Yaa",
       gender: Gender.FEMALE,
       dateOfBirth: new Date("1997-01-05"),
+      ethnicity: Ethnicity.African,
       headline: "Coffee lover ☕",
       about:
         "Marketing professional. I collect vinyl records, love film photography and my cat is my co-pilot.",
@@ -354,30 +387,87 @@ async function seedDatingData() {
       heightCm: 165,
       interests: ["Photography", "Music", "Coffee"],
       lookingFor: LookingFor.SHORT_TERM,
+      location: "Accra, Ghana",
+      degree: "BSc Marketing",
+      university: "University of Ghana",
+      profession: "Brand Manager",
+      industry: "Marketing",
+      workLocation: "Accra",
+      languages: ["English", "Twi", "French"],
+      religion: "Christianity",
+      hometown: "Accra",
       minAge: 26,
       maxAge: 36,
       genderPreference: [Gender.MALE],
     },
+    {
+      email: "dating.demo4@dagh.app",
+      fullName: "Efua Amoako",
+      gender: Gender.FEMALE,
+      dateOfBirth: new Date("1995-08-30"),
+      ethnicity: Ethnicity.African,
+      headline: "Yoga teacher & plant mom",
+      about:
+        "Cape Coast raised, Accra based. I teach yoga, paint on the weekends and am always up for a beach day.",
+      photos: ["https://images.unsplash.com/photo-1517841905240-472988babdf9"],
+      heightCm: 163,
+      interests: ["Yoga", "Art", "Travel", "Food"],
+      lookingFor: LookingFor.LONG_TERM_PARTNER,
+      location: "Accra, Ghana",
+      degree: "BSc Physiotherapy",
+      university: "University of Cape Coast",
+      profession: "Yoga Instructor",
+      industry: "Health & Wellness",
+      workLocation: "Accra",
+      languages: ["English", "Fante"],
+      religion: "Christianity",
+      hometown: "Cape Coast",
+      minAge: 26,
+      maxAge: 40,
+      genderPreference: [Gender.MALE],
+    },
+    {
+      email: "dating.demo5@dagh.app",
+      fullName: "Kojo Asante",
+      gender: Gender.MALE,
+      dateOfBirth: new Date("1989-11-11"),
+      ethnicity: Ethnicity.African,
+      headline: "Chef & food blogger",
+      about:
+        "I run a small kitchen in Osu. If you love good jollof, travel stories and vinyl nights, we'll get along.",
+      photos: ["https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"],
+      heightCm: 182,
+      interests: ["Food", "Travel", "Music", "Football"],
+      lookingFor: LookingFor.LONG_TERM_PARTNER,
+      location: "Accra, Ghana",
+      degree: "Diploma in Culinary Arts",
+      university: "Accra Technical University",
+      profession: "Chef",
+      industry: "Hospitality",
+      workLocation: "Accra",
+      languages: ["English", "Ga", "Twi"],
+      religion: "Christianity",
+      hometown: "Takoradi",
+      minAge: 25,
+      maxAge: 38,
+      genderPreference: [Gender.FEMALE],
+    },
   ];
 
   for (const demo of datingUsers) {
-    const existing = await prisma.user.findUnique({ where: { email: demo.email } });
-    if (existing) {
-      // Ensure demo accounts are active and login-ready on re-runs
-      await prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          accountStatus: AccountStatus.ACTIVE,
-          ...(existing.passwordHash ? {} : { passwordHash: await bcrypt.hash(DEMO_PASSWORD, 10) }),
-        },
-      });
-      continue;
-    }
-
     const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
 
-    const user = await prisma.user.create({
-      data: {
+    const user = await prisma.user.upsert({
+      where: { email: demo.email },
+      update: {
+        accountStatus: AccountStatus.ACTIVE,
+        fullName: demo.fullName,
+        gender: demo.gender,
+        dateOfBirth: demo.dateOfBirth,
+        ethnicity: demo.ethnicity,
+        passwordHash,
+      },
+      create: {
         authProvider: AuthProvider.PASSWORD,
         email: demo.email,
         passwordHash,
@@ -385,16 +475,46 @@ async function seedDatingData() {
         fullName: demo.fullName,
         gender: demo.gender,
         dateOfBirth: demo.dateOfBirth,
-        phoneNumber: demo.email === "dating.demo@dagh.app" ? "+233241000001" : demo.email === "dating.demo2@dagh.app" ? "+233241000002" : "+233241000003",
+        ethnicity: demo.ethnicity,
+        phoneNumber:
+          demo.email === "dating.demo@dagh.app"
+            ? "+233241000001"
+            : demo.email === "dating.demo2@dagh.app"
+              ? "+233241000002"
+              : demo.email === "dating.demo3@dagh.app"
+                ? "+233241000003"
+                : demo.email === "dating.demo4@dagh.app"
+                  ? "+233241000004"
+                  : "+233241000005",
       },
     });
 
-    await prisma.userProfile.create({
-      data: { userId: user.id },
+    await prisma.userProfile.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id },
     });
 
-    const datingProfile = await prisma.datingProfile.create({
-      data: {
+    const datingProfile = await prisma.datingProfile.upsert({
+      where: { userId: user.id },
+      update: {
+        headline: demo.headline,
+        about: demo.about,
+        photos: demo.photos,
+        heightCm: demo.heightCm,
+        interests: demo.interests,
+        lookingFor: demo.lookingFor,
+        location: demo.location,
+        degree: demo.degree,
+        university: demo.university,
+        profession: demo.profession,
+        industry: demo.industry,
+        workLocation: demo.workLocation,
+        languages: demo.languages,
+        religion: demo.religion,
+        hometown: demo.hometown,
+      },
+      create: {
         userId: user.id,
         headline: demo.headline,
         about: demo.about,
@@ -402,20 +522,35 @@ async function seedDatingData() {
         heightCm: demo.heightCm,
         interests: demo.interests,
         lookingFor: demo.lookingFor,
+        location: demo.location,
+        degree: demo.degree,
+        university: demo.university,
+        profession: demo.profession,
+        industry: demo.industry,
+        workLocation: demo.workLocation,
+        languages: demo.languages,
+        religion: demo.religion,
+        hometown: demo.hometown,
       },
     });
 
-    await prisma.discoveryPreference.create({
-      data: {
+    await prisma.discoveryPreference.upsert({
+      where: { userId: user.id },
+      update: {
+        lookingFor: demo.lookingFor,
+        genderPreference: demo.genderPreference,
+        minAge: demo.minAge,
+        maxAge: demo.maxAge,
+        locationName: demo.location,
+      },
+      create: {
         userId: user.id,
         datingProfileId: datingProfile.id,
         lookingFor: demo.lookingFor,
         genderPreference: demo.genderPreference,
         minAge: demo.minAge,
         maxAge: demo.maxAge,
-        locationName: demo.gender === Gender.FEMALE ? "Accra" : "Kumasi",
-        locationLat: demo.gender === Gender.FEMALE ? 5.6037 : 6.6885,
-        locationLng: demo.gender === Gender.FEMALE ? -0.187 : -1.6244,
+        locationName: demo.location,
       },
     });
   }
@@ -481,6 +616,134 @@ async function seedDemoUsers() {
     if (!profileExists) {
       await prisma.userProfile.create({
         data: { userId: user.id },
+      });
+    }
+
+    if (demo.email === "demo@dagh.app") {
+      const dp = await prisma.datingProfile.upsert({
+        where: { userId: user.id },
+        update: {
+          headline: "Software Engineer from Accra",
+          about: "Diaspora Ghanaian back home to build, connect and travel. Always up for a hike.",
+          photos: ["https://images.unsplash.com/photo-1522529599102-193c0d76b5b6"],
+          heightCm: 175,
+          interests: ["Tech", "Music", "Travel"],
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          location: "Accra, Ghana",
+          degree: "BSc Computer Science",
+          university: "University of Ghana",
+          profession: "Software Engineer",
+          industry: "Technology",
+          workLocation: "Accra",
+          languages: ["English", "Twi"],
+          religion: "Christianity",
+          hometown: "Kumasi",
+        },
+        create: {
+          userId: user.id,
+          headline: "Software Engineer from Accra",
+          about: "Diaspora Ghanaian back home to build, connect and travel. Always up for a hike.",
+          photos: ["https://images.unsplash.com/photo-1522529599102-193c0d76b5b6"],
+          heightCm: 175,
+          interests: ["Tech", "Music", "Travel"],
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          location: "Accra, Ghana",
+          degree: "BSc Computer Science",
+          university: "University of Ghana",
+          profession: "Software Engineer",
+          industry: "Technology",
+          workLocation: "Accra",
+          languages: ["English", "Twi"],
+          religion: "Christianity",
+          hometown: "Kumasi",
+        },
+      });
+      await prisma.discoveryPreference.upsert({
+        where: { userId: user.id },
+        update: {
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          genderPreference: [Gender.FEMALE],
+          minAge: 22,
+          maxAge: 35,
+          locationName: "Accra",
+          locationLat: 5.6037,
+          locationLng: -0.187,
+        },
+        create: {
+          userId: user.id,
+          datingProfileId: dp.id,
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          genderPreference: [Gender.FEMALE],
+          minAge: 22,
+          maxAge: 35,
+          locationName: "Accra",
+          locationLat: 5.6037,
+          locationLng: -0.187,
+        },
+      });
+    }
+
+    if (demo.email === "demotwo@dagh.app") {
+      const dp = await prisma.datingProfile.upsert({
+        where: { userId: user.id },
+        update: {
+          headline: "Traveller & bookworm",
+          about: "I read a lot and plan my next trip home. Looking for deep conversations and good company.",
+          photos: ["https://images.unsplash.com/photo-1524504388940-b1c1722653e1"],
+          heightCm: 166,
+          interests: ["Books", "Travel", "Photography"],
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          location: "Accra, Ghana",
+          degree: "MBA",
+          university: "University of Ghana Business School",
+          profession: "Product Manager",
+          industry: "Technology",
+          workLocation: "Remote",
+          languages: ["English", "Twi"],
+          religion: "Christianity",
+          hometown: "Kumasi",
+        },
+        create: {
+          userId: user.id,
+          headline: "Traveller & bookworm",
+          about: "I read a lot and plan my next trip home. Looking for deep conversations and good company.",
+          photos: ["https://images.unsplash.com/photo-1524504388940-b1c1722653e1"],
+          heightCm: 166,
+          interests: ["Books", "Travel", "Photography"],
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          location: "Accra, Ghana",
+          degree: "MBA",
+          university: "University of Ghana Business School",
+          profession: "Product Manager",
+          industry: "Technology",
+          workLocation: "Remote",
+          languages: ["English", "Twi"],
+          religion: "Christianity",
+          hometown: "Kumasi",
+        },
+      });
+      await prisma.discoveryPreference.upsert({
+        where: { userId: user.id },
+        update: {
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          genderPreference: [Gender.MALE],
+          minAge: 25,
+          maxAge: 38,
+          locationName: "Accra",
+          locationLat: 5.6037,
+          locationLng: -0.187,
+        },
+        create: {
+          userId: user.id,
+          datingProfileId: dp.id,
+          lookingFor: LookingFor.LONG_TERM_PARTNER,
+          genderPreference: [Gender.MALE],
+          minAge: 25,
+          maxAge: 38,
+          locationName: "Accra",
+          locationLat: 5.6037,
+          locationLng: -0.187,
+        },
       });
     }
   }
@@ -940,7 +1203,11 @@ async function seedDatingInteractions() {
   const ama = await getByEmail("dating.demo@dagh.app");
   const kwame = await getByEmail("dating.demo2@dagh.app");
   const nana = await getByEmail("dating.demo3@dagh.app");
-  if (!ama || !kwame || !nana) {
+  const efua = await getByEmail("dating.demo4@dagh.app");
+  const kojo = await getByEmail("dating.demo5@dagh.app");
+  const demoKofi = await getByEmail("demo@dagh.app");
+  const abena = await getByEmail("demotwo@dagh.app");
+  if (!ama || !kwame || !nana || !efua || !kojo || !demoKofi || !abena) {
     console.log("Dating demo users missing — skipping interactions.");
     return;
   }
@@ -952,6 +1219,19 @@ async function seedDatingInteractions() {
     { swiperId: ama.id, targetId: nana.id, direction: "LIKE" as const },
     { swiperId: nana.id, targetId: ama.id, direction: "LIKE" as const },
     { swiperId: kwame.id, targetId: nana.id, direction: "PASS" as const },
+    { swiperId: ama.id, targetId: demoKofi.id, direction: "LIKE" as const },
+    { swiperId: demoKofi.id, targetId: ama.id, direction: "LIKE" as const },
+    { swiperId: nana.id, targetId: demoKofi.id, direction: "LIKE" as const },
+    { swiperId: demoKofi.id, targetId: nana.id, direction: "LIKE" as const },
+    { swiperId: kojo.id, targetId: kwame.id, direction: "PASS" as const },
+    { swiperId: kojo.id, targetId: ama.id, direction: "SUPER_LIKE" as const },
+    { swiperId: ama.id, targetId: kojo.id, direction: "LIKE" as const },
+    { swiperId: kwame.id, targetId: efua.id, direction: "LIKE" as const },
+    { swiperId: efua.id, targetId: kwame.id, direction: "LIKE" as const },
+    { swiperId: efua.id, targetId: demoKofi.id, direction: "LIKE" as const },
+    { swiperId: kojo.id, targetId: nana.id, direction: "LIKE" as const },
+    { swiperId: abena.id, targetId: demoKofi.id, direction: "LIKE" as const },
+    { swiperId: demoKofi.id, targetId: abena.id, direction: "LIKE" as const },
   ];
   for (const s of swipes) {
     await prisma.userSwipe.upsert({
@@ -967,6 +1247,16 @@ async function seedDatingInteractions() {
     { userId: kwame.id, matchedId: ama.id },
     { userId: ama.id, matchedId: nana.id },
     { userId: nana.id, matchedId: ama.id },
+    { userId: ama.id, matchedId: demoKofi.id },
+    { userId: demoKofi.id, matchedId: ama.id },
+    { userId: nana.id, matchedId: demoKofi.id },
+    { userId: demoKofi.id, matchedId: nana.id },
+    { userId: ama.id, matchedId: kojo.id },
+    { userId: kojo.id, matchedId: ama.id },
+    { userId: kwame.id, matchedId: efua.id },
+    { userId: efua.id, matchedId: kwame.id },
+    { userId: demoKofi.id, matchedId: abena.id },
+    { userId: abena.id, matchedId: demoKofi.id },
   ];
   for (const m of matches) {
     await prisma.userMatch.upsert({
@@ -978,6 +1268,14 @@ async function seedDatingInteractions() {
 
   // Conversations + messages
   const chats: Array<{ a: typeof ama; b: typeof kwame; messages: Array<{ sender: typeof ama; content: string; minutesAgo: number }> }> = [
+    {
+      a: demoKofi,
+      b: ama,
+      messages: [
+        { sender: ama, content: "Hey Kofi! Nice to match with you. How's the coding going?", minutesAgo: 120 },
+        { sender: demoKofi, content: "Hi Ama! Thanks, it's going great. Just finishing up some features.", minutesAgo: 110 },
+      ],
+    },
     {
       a: ama,
       b: kwame,
@@ -996,20 +1294,49 @@ async function seedDatingInteractions() {
         { sender: ama, content: "Absolutely, I'm free this weekend!", minutesAgo: 45 },
       ],
     },
+    {
+      a: kojo,
+      b: ama,
+      messages: [
+        { sender: kojo, content: "Hey Ama! Heard you're into live music — ever catch a show at the Alliance Française?", minutesAgo: 200 },
+        { sender: ama, content: "Hi Kojo! Yes, the jazz nights there are great. You're a chef, right?", minutesAgo: 180 },
+        { sender: kojo, content: "That's me. I'll cook you my best jollof if you bring the playlist.", minutesAgo: 160 },
+      ],
+    },
+    {
+      a: kwame,
+      b: efua,
+      messages: [
+        { sender: efua, content: "Hi Kwame! A fellow outdoor person — love it. I teach yoga by the beach on Saturdays.", minutesAgo: 90 },
+        { sender: kwame, content: "Hi Efua! Yoga sounds like the perfect pre-hike warm-up. We should plan one.", minutesAgo: 75 },
+      ],
+    },
+    {
+      a: demoKofi,
+      b: abena,
+      messages: [
+        { sender: abena, content: "Hey Kofi! Glad we matched. How's the new project coming along?", minutesAgo: 50 },
+        { sender: demoKofi, content: "Hey Abena! It's going well, thanks. Coffee to celebrate sometime?", minutesAgo: 35 },
+      ],
+    },
   ];
 
   for (const chat of chats) {
     const participantIds = [chat.a.id, chat.b.id];
     const lastMsg = chat.messages[chat.messages.length - 1];
-    const conversation = await prisma.conversation.upsert({
-      where: { id: crypto.randomUUID() },
-      update: {},
-      create: {
-        participants: participantIds,
-        lastMessage: lastMsg.content,
-        lastMessageAt: new Date(Date.now() - lastMsg.minutesAgo * 60 * 1000),
-      },
+    const existingConversation = await prisma.conversation.findFirst({
+      where: { participants: { hasEvery: participantIds } },
+      orderBy: { createdAt: "desc" },
     });
+    const conversation =
+      existingConversation ??
+      (await prisma.conversation.create({
+        data: {
+          participants: participantIds,
+          lastMessage: lastMsg.content,
+          lastMessageAt: new Date(Date.now() - lastMsg.minutesAgo * 60 * 1000),
+        },
+      }));
 
     for (const msg of chat.messages) {
       const exists = await prisma.message.findFirst({
@@ -1248,106 +1575,63 @@ async function main() {
       },
       {
         code: "BASELINE",
-        name: "Baseline",
+        name: "Sankofa Membership",
         description: "Essential features for active diaspora members",
         price: 150,
         currency: "GHS",
         interval: "MONTHLY",
         features: [
-          "All Free features",
-          "Enhanced profile with media",
-          "Direct messaging",
-          "Tour booking discounts (5%)",
-          "Priority email support",
+          "Access to all the core tools",
+          "Prioritized profile for matches",
+          "Entry gifts and discount packs",
+          "24/7 client service",
         ],
         isMostPopular: true,
         isActive: true,
       },
       {
         code: "SENIOR_PIONEER",
-        name: "Senior Pioneer",
-        description: "For diaspora seniors aged 60+",
-        price: 800,
+        name: "Junior Pioneer",
+        description: "For active users seeking more exposure",
+        price: 300,
         currency: "GHS",
-        interval: "ANNUAL",
+        interval: "MONTHLY",
         features: [
-          "All Baseline features",
-          "Senior-specific tour packages",
-          "Companion matching",
-          "Health & wellness resources",
-          "Tour booking discounts (10%)",
-          "Priority phone support",
+          "All features in Sankofa Membership",
+          "Profile boost twice a week",
+          "Free match and unlimited likes",
+          "Special event access",
         ],
         isMostPopular: false,
         isActive: true,
       },
       {
         code: "SANKOFA_SETTLED",
-        name: "'Sankofa' Settled",
+        name: "Sankofa Settled",
         description: "For returnees and settled diaspora members",
-        price: 1200,
-        currency: "GHS",
-        interval: "ANNUAL",
-        features: [
-          "All Baseline features",
-          "Property listing access",
-          "Business networking events",
-          "Investment opportunity alerts",
-          "Tour booking discounts (15%)",
-          "Dedicated support line",
-        ],
-        isMostPopular: false,
-        isActive: true,
-      },
-      {
-        code: "BASIC",
-        name: "Basic",
-        description: "Starter paid tier with added benefits",
-        price: 300,
+        price: 150,
         currency: "GHS",
         interval: "MONTHLY",
         features: [
-          "All Baseline features",
-          "Itinerary generation",
-          "Visa application assistance",
-          "Cultural event invitations",
-          "Tour booking discounts (10%)",
-        ],
-        isMostPopular: false,
-        isActive: true,
-      },
-      {
-        code: "SILVER",
-        name: "Silver",
-        description: "Premium features for frequent travellers",
-        price: 500,
-        currency: "GHS",
-        interval: "MONTHLY",
-        features: [
-          "All Basic features",
-          "Expedited visa processing",
-          "Airport pickup & drop-off",
-          "Personalised itinerary planning",
-          "Tour booking discounts (15%)",
-          "Priority support with 4hr response",
+          "All features in Sankofa Membership",
+          "Profile boost twice a week",
+          "Free match and unlimited likes",
+          "Special event access",
         ],
         isMostPopular: false,
         isActive: true,
       },
       {
         code: "GOLD_INVESTOR",
-        name: "Gold Investor",
-        description: "For diaspora investors and high-net-worth members",
-        price: 3000,
+        name: "Gold Traveler",
+        description: "Premium features for frequent travellers",
+        price: 600,
         currency: "GHS",
-        interval: "ANNUAL",
+        interval: "MONTHLY",
         features: [
-          "All Silver features",
-          "Investment advisory sessions",
-          "Business matching & introductions",
-          "Government liaison support",
-          "Premium tour packages (20% off)",
-          "24/7 dedicated concierge",
+          "All features in Sankofa Settled",
+          "Priority booking on all tours",
+          "VIP events and concierge service",
         ],
         isMostPopular: false,
         isActive: true,
@@ -1356,34 +1640,30 @@ async function main() {
         code: "ELITE_AMBASSADOR",
         name: "Elite Ambassador",
         description: "The ultimate membership for diaspora leaders",
-        price: 6000,
+        price: 900,
         currency: "GHS",
-        interval: "ANNUAL",
+        interval: "MONTHLY",
         features: [
-          "All Gold Investor features",
-          "Ambassador designation & certificate",
-          "VIP event access & speaking opportunities",
-          "Media & PR opportunities",
-          "Complimentary tours (2/year)",
-          "White-glove 24/7 concierge",
+          "All features in Gold Traveler",
+          "Dedicated ambassador hotline",
+          "Exclusive investment & PR alerts",
+          "Free VIP event access",
         ],
         isMostPopular: false,
         isActive: true,
       },
       {
         code: "FAMILY_PLAN",
-        name: "Family Plan",
+        name: "Flexible Family Plan",
         description: "Cover your whole family under one plan",
-        price: 800,
+        price: 0,
         currency: "GHS",
-        interval: "MONTHLY",
+        interval: "CUSTOM",
         features: [
           "Up to 5 family members",
-          "All Basic features for each member",
-          "Family tour packages",
-          "Group booking discounts (20%)",
-          "Shared itinerary planning",
-          "Family priority support",
+          "All features in Gold Traveler",
+          "Custom group tours",
+          "Dedicated family support",
         ],
         isMostPopular: false,
         isActive: true,
