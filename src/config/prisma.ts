@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
+import pg from "pg";
 
 const connectionString = process.env.DATABASE_URL!;
 
@@ -8,6 +9,8 @@ const adapter = new PrismaPg({
   connectionString,
   // Force IPv4: some hosts advertise AAAA records but their IPv6 path is
   // blackholed, and Node's Happy Eyeballs fallback can hang before switching.
+  // `family` is a valid pg runtime option but is not declared in @types/pg,
+  // so it requires the cast below.
   family: 4,
   // Bound the pg pool so a slow/paused database fails fast instead of hanging
   // the request queue (previously defaulted to 10 connections, no timeouts).
@@ -16,7 +19,7 @@ const adapter = new PrismaPg({
   idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS) || 30000,
   query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 10000,
   statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS) || 10000,
-});
+} as pg.PoolConfig);
 
 const basePrisma = new PrismaClient({ adapter });
 
