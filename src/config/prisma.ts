@@ -6,6 +6,9 @@ const connectionString = process.env.DATABASE_URL!;
 
 const adapter = new PrismaPg({
   connectionString,
+  // Force IPv4: some hosts advertise AAAA records but their IPv6 path is
+  // blackholed, and Node's Happy Eyeballs fallback can hang before switching.
+  family: 4,
   // Bound the pg pool so a slow/paused database fails fast instead of hanging
   // the request queue (previously defaulted to 10 connections, no timeouts).
   max: Number(process.env.DATABASE_POOL_MAX) || 10,
