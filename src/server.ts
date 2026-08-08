@@ -6,6 +6,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
+import * as Sentry from "@sentry/node";
 import { router as PasswordRoutes } from "./routes/password.routes.js";
 import passport from "./config/passport.js";
 import { router as OauthRoutes } from "./routes/google-auth.routes.js";
@@ -198,6 +199,11 @@ app.use("/{*splat}", (req: express.Request, res: express.Response) => {
   const displayPath = Array.isArray(path) ? path.join("/") : (path ?? "");
   fail(res, 404, `Endpoint '/${displayPath}' not found`);
 });
+
+// Capture unhandled errors with Sentry before responding. Registered after all
+// controllers so route errors are reported; our custom error middleware below
+// still handles the response.
+Sentry.setupExpressErrorHandler(app);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err.message === "Not allowed by CORS") {
