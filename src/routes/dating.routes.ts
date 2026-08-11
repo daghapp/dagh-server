@@ -12,6 +12,7 @@ import {
   initDatingProfile,
   updateDatingProfile,
   getDatingProfileById,
+  getDatingProfileStatus,
   getDiscoveryPreference,
   updateDiscoveryPreference,
 } from "../modules/dating/dating.controller.js";
@@ -59,9 +60,65 @@ router.get("/profile", getMyDatingProfile);
  * /dating/profile/init:
  *   post:
  *     summary: Initialize the authenticated user's dating profile
+ *     description: Accepts the full profile-creation payload so every field from the creation form is saved in one call. Idempotent.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               headline:
+ *                 type: string
+ *               about:
+ *                 type: string
+ *               photos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               heightCm:
+ *                 type: integer
+ *               interests:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               lookingFor:
+ *                 type: string
+ *                 enum: [LONG_TERM_PARTNER, SHORT_TERM, FRIENDSHIP, NOT_SURE]
+ *               location:
+ *                 type: string
+ *               degree:
+ *                 type: string
+ *               university:
+ *                 type: string
+ *               profession:
+ *                 type: string
+ *               industry:
+ *                 type: string
+ *               workLocation:
+ *                 type: string
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               religion:
+ *                 type: string
+ *               hometown:
+ *                 type: string
+ *               fullName:
+ *                 type: string
+ *               gender:
+ *                 type: string
+ *                 enum: [MALE, FEMALE, OTHER]
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *               ethnicity:
+ *                 type: string
+ *                 enum: [African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other]
  *     responses:
  *       201:
  *         description: Dating profile created
@@ -70,7 +127,7 @@ router.get("/profile", getMyDatingProfile);
  *       500:
  *         description: Internal server error
  */
-router.post("/profile/init", initDatingProfile);
+router.post("/profile/init", validate(datingProfileSchema), initDatingProfile);
 
 /**
  * @swagger
@@ -140,6 +197,21 @@ router.post("/profile/init", initDatingProfile);
  *               hometown:
  *                 type: string
  *                 description: Cultural Background - hometown / ancestral village
+ *               fullName:
+ *                 type: string
+ *                 description: Account - full name (saved on the user's account)
+ *               gender:
+ *                 type: string
+ *                 enum: [MALE, FEMALE, OTHER]
+ *                 description: Account - gender (saved on the user's account)
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *                 description: Account - date of birth (saved on the user's account)
+ *               ethnicity:
+ *                 type: string
+ *                 enum: [African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other]
+ *                 description: Account - ethnicity (saved on the user's account)
  *     responses:
  *       200:
  *         description: Dating profile updated
@@ -149,6 +221,42 @@ router.post("/profile/init", initDatingProfile);
  *         description: Internal server error
  */
 router.patch("/profile", validate(datingProfileSchema), updateDatingProfile);
+
+/**
+ * @swagger
+ * /dating/profile/status:
+ *   get:
+ *     summary: Get dating profile status (used to skip onboarding for returning users)
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile existence and completion status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     hasProfile:
+ *                       type: boolean
+ *                     profileStatus:
+ *                       type: string
+ *                       enum: [INCOMPLETE, COMPLETE]
+ *                     profile:
+ *                       type: object
+ *                       nullable: true
+ *                       description: The dating profile (with discovery preferences) when present, otherwise null
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/profile/status", getDatingProfileStatus);
 
 /**
  * @swagger

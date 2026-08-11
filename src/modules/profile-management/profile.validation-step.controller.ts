@@ -3,10 +3,12 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import {
   STEP_PHONE_NUMBER_VERIFICATION,
-  STEP_PROFILE_IMAGE_VERIFICATION,
-  STEP_DOCUMENT_VERIFICATION,
-  getStatusForStep,
+  buildVerificationSteps,
+  getCompletedVerificationSteps,
   getRejectionReason,
+  getStatusForStep,
+  inferCurrentStep,
+  type VerificationStepStatus,
 } from "../../helpers/verification-status.js";
 
 type CurrentStepResponse = {
@@ -14,6 +16,77 @@ type CurrentStepResponse = {
   status: string;
   verification_message?: string | null;
 };
+
+export type VerificationStatusResponse = {
+  profileExists: boolean;
+  isVerified: boolean;
+  currentStep: string;
+  verificationMessage: string | null;
+  steps: Record<string, { status: VerificationStepStatus; verificationMessage: string | null }>;
+  completedSteps: string[];
+};
+
+/**
+ * Comprehensive verification status for the authenticated user.
+ * Returns the state of every verification step (phone, profile image, documents),
+ * the current/inferred step, and whether the profile exists at all — so the
+ * frontend can decide whether to start the flow or skip it for returning users.
+ */
+export async function getVerificationStatus(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id as string;
+    if (!userId) {
+      return fail(res, 401, "Unauthorized");
+    }
+
+    const userProfile = await prisma.userProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!userProfile) {
+      return ok(
+        res,
+        {
+          profileExists: false,
+          isVerified: false,
+          currentStep: STEP_PHONE_NUMBER_VERIFICATION,
+          verificationMessage: null,
+          steps: buildVerificationSteps(null),
+          completedSteps: [],
+        },
+        "Verification status retrieved successfully.",
+      );
+    }
+
+    const verification = await prisma.profileVerification.findUnique({
+      where: { userProfileId: userProfile.id },
+    });
+
+    const currentStep = inferCurrentStep(
+      verification,
+      (verification as { validationStep?: string } | null)?.validationStep,
+    );
+
+    const steps = buildVerificationSteps(verification);
+
+    const completedSteps = getCompletedVerificationSteps(verification);
+
+    const payload: VerificationStatusResponse = {
+      profileExists: true,
+      isVerified: verification?.isVerified ?? false,
+      currentStep,
+      verificationMessage:
+        verification?.verification_message ?? getRejectionReason(currentStep, verification) ?? null,
+      steps,
+      completedSteps,
+    };
+
+    return ok(res, payload, "Verification status retrieved successfully.");
+  } catch (error) {
+    console.error("[getVerificationStatus]", error);
+    return fail(res, 500, "Failed to retrieve verification status.");
+  }
+}
 
 export async function getValidationStepStatus(req: Request, res: Response) {
   try {
@@ -43,15 +116,10 @@ export async function getValidationStepStatus(req: Request, res: Response) {
     // `validationStep` field exists in schema, but may not be reflected in generated Prisma types
     // until `prisma generate` is re-run. Access it safely.
     // If the caller provided ?step=..., respect it; otherwise use stored/inferred current step.
-    const inferredCurrentStep =
-      (userVerification as { validationStep?: string })?.validationStep ??
-      (!userVerification?.phone_number_verified
-        ? STEP_PHONE_NUMBER_VERIFICATION
-        : !userVerification?.bio_profile_verification
-          ? STEP_PROFILE_IMAGE_VERIFICATION
-          : !userVerification?.document_verification
-            ? STEP_DOCUMENT_VERIFICATION
-            : STEP_DOCUMENT_VERIFICATION);
+    const inferredCurrentStep = inferCurrentStep(
+      userVerification,
+      (userVerification as { validationStep?: string } | null)?.validationStep,
+    );
 
     const validationStep = requestedStep ?? inferredCurrentStep;
 

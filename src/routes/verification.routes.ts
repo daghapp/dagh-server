@@ -10,6 +10,7 @@ import { postBioDocumentSchema } from "../validator/profile-bio-document-validat
 import { postBioProfileUrl } from "../modules/profile-management/profile.bio-url.controller.js";
 import { postBioDocument } from "../modules/profile-management/profile-bio-document.controller.js";
 import { initProfile } from "../modules/profile-management/profile.init.controller.js";
+import { getVerificationStatus } from "../modules/profile-management/profile.validation-step.controller.js";
 
 const router = express.Router();
 
@@ -92,6 +93,59 @@ router.post(
   validate(verifyPhoneOtpSchema),
   profileVerificationController.verifyPhoneOtpForVerification.bind(profileVerificationController),
 );
+
+/**
+ * @swagger
+ * /verification/status:
+ *   get:
+ *     summary: Get the full verification status for the authenticated user
+ *     tags: [Verification]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Verification status for every step (phone, profile image, documents)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     profileExists:
+ *                       type: boolean
+ *                     isVerified:
+ *                       type: boolean
+ *                     currentStep:
+ *                       type: string
+ *                       enum: [PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION]
+ *                     verificationMessage:
+ *                       type: string
+ *                       nullable: true
+ *                     steps:
+ *                       type: object
+ *                       description: Status per step (PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION)
+ *                       additionalProperties:
+ *                         type: object
+ *                         properties:
+ *                           status:
+ *                             type: string
+ *                             enum: [PENDING, VERIFIED, REJECTED]
+ *                           verificationMessage:
+ *                             type: string
+ *                             nullable: true
+ *                     completedSteps:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/status", protectedRoute, getVerificationStatus);
 
 /**
  * @swagger

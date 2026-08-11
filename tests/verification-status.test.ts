@@ -5,8 +5,11 @@ import {
   STEP_DOCUMENT_VERIFICATION,
   getStatusForStep,
   getRejectionReason,
+  buildVerificationSteps,
+  getCompletedVerificationSteps,
+  inferCurrentStep,
   type VerificationStepState,
-} from "./verification-status.js";
+} from "../src/helpers/verification-status.js";
 
 describe("getStatusForStep", () => {
   it("reports PENDING for phone before verification", () => {
@@ -14,9 +17,9 @@ describe("getStatusForStep", () => {
   });
 
   it("reports VERIFIED for phone once verified", () => {
-    expect(
-      getStatusForStep(STEP_PHONE_NUMBER_VERIFICATION, { phone_number_verified: true }),
-    ).toBe("VERIFIED");
+    expect(getStatusForStep(STEP_PHONE_NUMBER_VERIFICATION, { phone_number_verified: true })).toBe(
+      "VERIFIED",
+    );
   });
 
   it("reports REJECTED for profile image when face is rejected", () => {
@@ -39,12 +42,12 @@ describe("getStatusForStep", () => {
   });
 
   it("reports REJECTED for documents when document or bio data is rejected", () => {
-    expect(
-      getStatusForStep(STEP_DOCUMENT_VERIFICATION, { documentStatus: "REJECTED" }),
-    ).toBe("REJECTED");
-    expect(
-      getStatusForStep(STEP_DOCUMENT_VERIFICATION, { bioDataStatus: "REJECTED" }),
-    ).toBe("REJECTED");
+    expect(getStatusForStep(STEP_DOCUMENT_VERIFICATION, { documentStatus: "REJECTED" })).toBe(
+      "REJECTED",
+    );
+    expect(getStatusForStep(STEP_DOCUMENT_VERIFICATION, { bioDataStatus: "REJECTED" })).toBe(
+      "REJECTED",
+    );
   });
 
   it("reports VERIFIED for documents when document is approved", () => {
@@ -82,9 +85,7 @@ describe("getRejectionReason", () => {
       faceStatus: "REJECTED",
       verification_message: "Verification failed",
     };
-    expect(getRejectionReason(STEP_PROFILE_IMAGE_VERIFICATION, state)).toBe(
-      "Verification failed",
-    );
+    expect(getRejectionReason(STEP_PROFILE_IMAGE_VERIFICATION, state)).toBe("Verification failed");
   });
 
   it("prefers document over bio data rejection reason", () => {
@@ -102,5 +103,76 @@ describe("getRejectionReason", () => {
 
   it("returns null when the step is not reviewable", () => {
     expect(getRejectionReason(STEP_PHONE_NUMBER_VERIFICATION, {})).toBeNull();
+  });
+});
+
+describe("inferCurrentStep", () => {
+  it("starts at phone verification when nothing is verified", () => {
+    expect(inferCurrentStep({})).toBe(STEP_PHONE_NUMBER_VERIFICATION);
+  });
+
+  it("moves to profile image once the phone is verified", () => {
+    expect(inferCurrentStep({ phone_number_verified: true })).toBe(STEP_PROFILE_IMAGE_VERIFICATION);
+  });
+
+  it("moves to documents once bio profile is verified", () => {
+    expect(inferCurrentStep({ phone_number_verified: true, bio_profile_verification: true })).toBe(
+      STEP_DOCUMENT_VERIFICATION,
+    );
+  });
+
+  it("prefers the persisted validationStep", () => {
+    expect(inferCurrentStep({}, "DOCUMENT_VERIFICATION")).toBe(STEP_DOCUMENT_VERIFICATION);
+  });
+
+  it("defaults to documents when every step is done", () => {
+    expect(
+      inferCurrentStep({
+        phone_number_verified: true,
+        bio_profile_verification: true,
+        document_verification: true,
+      }),
+    ).toBe(STEP_DOCUMENT_VERIFICATION);
+  });
+});
+
+describe("buildVerificationSteps", () => {
+  it("reports every step PENDING with no state", () => {
+    const steps = buildVerificationSteps(null);
+    for (const step of Object.values(steps)) {
+      expect(step.status).toBe("PENDING");
+      expect(step.verificationMessage).toBeNull();
+    }
+  });
+
+  it("marks a REJECTED step with its rejection message", () => {
+    const steps = buildVerificationSteps({
+      documentStatus: "REJECTED",
+      documentRejectionReason: "Expired document",
+    });
+    expect(steps[STEP_DOCUMENT_VERIFICATION]).toEqual({
+      status: "REJECTED",
+      verificationMessage: "Expired document",
+    });
+  });
+
+  it("leaves verificationMessage null for VERIFIED steps", () => {
+    const steps = buildVerificationSteps({ phone_number_verified: true });
+    expect(steps[STEP_PHONE_NUMBER_VERIFICATION]).toEqual({
+      status: "VERIFIED",
+      verificationMessage: null,
+    });
+  });
+});
+
+describe("getCompletedVerificationSteps", () => {
+  it("returns only VERIFIED steps", () => {
+    expect(getCompletedVerificationSteps({ phone_number_verified: true })).toEqual([
+      STEP_PHONE_NUMBER_VERIFICATION,
+    ]);
+  });
+
+  it("returns an empty array when nothing is verified", () => {
+    expect(getCompletedVerificationSteps(null)).toEqual([]);
   });
 });

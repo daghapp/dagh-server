@@ -142,6 +142,7 @@ Settings "Basic Info" and "Cultural Background" steps). All fields optional.
 | POST | `/verification/phone/verify-otp` | Bearer | Validate the 6-digit code; marks phone step verified. |
 | POST | `/verification/bio_profile_url` | Bearer | Save the face-scan image URL; advance to document step. |
 | POST | `/verification/bio_document_urls` | Bearer | Save document images + type; enter pending review. |
+| GET | `/verification/status` | Bearer | Full verification status (per-step `PENDING / VERIFIED / REJECTED`, current step, completed steps). |
 | GET | `/verification/validation-step/status` | Bearer | Poll current step and its `PENDING / VERIFIED / REJECTED` status. |
 
 The OTP arrives **by email** (subject "Phone Verification OTP", 10-minute expiry).
@@ -153,10 +154,28 @@ Phone numbers are normalized (whitespace + leading `+` stripped).
 
 // GET /verification/validation-step/status
 { "success": true, "data": { "current_step": "DOCUMENT_VERIFICATION", "status": "REJECTED", "verification_message": "Expired document" } }
+
+// GET /verification/status
+{
+  "success": true,
+  "data": {
+    "profileExists": true,
+    "isVerified": false,
+    "currentStep": "DOCUMENT_VERIFICATION",
+    "verificationMessage": null,
+    "steps": {
+      "PHONE_NUMBER_VERIFICATION": { "status": "VERIFIED", "verificationMessage": null },
+      "PROFILE_IMAGE_VERIFICATION": { "status": "PENDING", "verificationMessage": null },
+      "DOCUMENT_VERIFICATION": { "status": "PENDING", "verificationMessage": null }
+    },
+    "completedSteps": ["PHONE_NUMBER_VERIFICATION"]
+  }
+}
 ```
 
 `current_step` ∈ `PHONE_NUMBER_VERIFICATION | PROFILE_IMAGE_VERIFICATION | DOCUMENT_VERIFICATION`.
 `verification_message` is only present when `status` is `REJECTED`.
+`GET /verification/status` returns `profileExists: false` (instead of 404) when the user has no profile yet.
 
 See `docs/verification-flow.md` for the full frontend integration guide.
 
@@ -337,13 +356,14 @@ Query: `tourSiteId` (required), `radiusKm` (default 30), `limit` (default 10).
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
 | GET | `/dating/profile` | Bearer | Get own dating profile + discovery preferences. |
-| POST | `/dating/profile/init` | Bearer | Initialize own dating profile (idempotent). |
-| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals). |
+| POST | `/dating/profile/init` | Bearer | Initialize own dating profile (idempotent; accepts the full creation payload). |
+| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals) + account fields. |
+| GET | `/dating/profile/status` | Bearer | Profile existence + completion status (bypass onboarding for returning users). |
 | GET | `/dating/profile/:userId` | Bearer | View another user's public profile (blocked users excluded → 403). |
 | GET | `/dating/preferences` | Bearer | Get own discovery preferences. |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences. |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |
-| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes swiped / blocked / hidden). |
+| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). |
 | GET | `/dating/matches` | Bearer | List active matches. |
 | GET | `/dating/likes-received` | Bearer | List users who liked you. |
 | DELETE | `/dating/matches/:matchId` | Bearer | Unmatch (soft-remove). |
@@ -401,10 +421,21 @@ Full field list: `headline`, `about`, `photos` (max 9), `heightCm` (120–250),
 `location`, `degree`, `university`, `profession`, `industry`, `workLocation`,
 `languages` (max 20), `religion`, `hometown`.
 
-Account-level fields (`fullName`, `gender`, `dateOfBirth`, `ethnicity`) are set
-via `PATCH /profile` (see Profile Management).
+Account-level fields (`fullName`, `gender`, `dateOfBirth`, `ethnicity`) are also
+accepted and saved on the user's account — so a single `PATCH /dating/profile`
+(and `POST /dating/profile/init`) captures every value from the profile forms.
 
 `404` if the dating profile hasn't been initialized (`POST /dating/profile/init` first).
+
+### GET /dating/profile/status
+
+Returns `hasProfile`, a computed `profileStatus` (`INCOMPLETE` / `COMPLETE`), and
+the profile (with discovery preferences) when present. Returning users who already
+have a profile can use this to skip the initial profile creation/skip screen:
+
+```json
+{ "success": true, "data": { "hasProfile": true, "profileStatus": "COMPLETE", "profile": { "id": "…", "headline": "…", "photos": ["…"] } } }
+```
 
 ### GET /dating/profile
 
@@ -457,7 +488,7 @@ can show the name and compute age from `dateOfBirth`.
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
 | GET | `/calls/history` | Bearer | Last 50 incoming/outgoing call logs. |
-| POST | `/calls/token` | Bearer | Generate a WebRTC room token for a call (valid 1 hour). |
+| POST | `/calls/token` | Bearer | Generate a LiveKit AccessToken for a call room + `serviceUrl` (valid 1 hour). |
 
 ### POST /calls/token
 
@@ -466,6 +497,8 @@ can show the name and compute age from `dateOfBirth`.
 ```
 
 `callType` ∈ `VOICE | VIDEO` (default `VOICE`). Pair with Socket.IO signaling events (`call:initiate`, `call:accept`, etc.).
+
+When LiveKit is configured (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`), the response contains a real room-scoped LiveKit token and `serviceUrl` is the `LIVEKIT_URL` the client connects to for media. Without LiveKit env vars, a placeholder HMAC token is returned (dev only).
 
 ---
 

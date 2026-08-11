@@ -4,8 +4,8 @@ import {
   haversineKm,
   resolveTierBoost,
   scoreCandidate,
-} from "../services/matching.service.js";
-import type { MatchCandidate } from "../services/matching.service.js";
+} from "../src/services/matching.service.js";
+import type { MatchCandidate } from "../src/services/matching.service.js";
 
 const baseFilters = {
   genderPreference: [] as never[],

@@ -3,7 +3,7 @@ import {
   datingProfileSchema,
   discoveryPreferenceSchema,
   swipeSchema,
-} from "../validator/datingValidation.js";
+} from "../src/validator/datingValidation.js";
 
 describe("datingProfileSchema", () => {
   it("accepts a minimal update", () => {
@@ -56,6 +56,31 @@ describe("datingProfileSchema", () => {
 
   it("rejects an over-long religion value", () => {
     const result = datingProfileSchema.safeParse({ religion: "x".repeat(61) });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts account-level fields from the creation form", () => {
+    const result = datingProfileSchema.safeParse({
+      fullName: "Ama Mensah",
+      gender: "FEMALE",
+      dateOfBirth: "1995-06-15",
+      ethnicity: "African",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an invalid account gender", () => {
+    const result = datingProfileSchema.safeParse({ gender: "UNKNOWN" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid account ethnicity", () => {
+    const result = datingProfileSchema.safeParse({ ethnicity: "Martian" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an account date of birth in the future", () => {
+    const result = datingProfileSchema.safeParse({ dateOfBirth: "2099-01-01" });
     expect(result.success).toBe(false);
   });
 });

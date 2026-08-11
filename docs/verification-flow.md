@@ -410,6 +410,40 @@ and contains the admin's rejection reason (e.g. *"Expired document"*).
 
 ---
 
+### 2.8 Get full verification status
+
+`GET /verification/status` — Bearer
+
+Returns the state of every verification step in one call (phone, profile image,
+documents), the current/inferred step, and whether the user's profile exists.
+Use it on app load to decide whether to start the verification flow or skip it
+for returning users.
+
+**Response 200:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "profileExists": true,
+    "isVerified": false,
+    "currentStep": "DOCUMENT_VERIFICATION",
+    "verificationMessage": null,
+    "steps": {
+      "PHONE_NUMBER_VERIFICATION": { "status": "VERIFIED", "verificationMessage": null },
+      "PROFILE_IMAGE_VERIFICATION": { "status": "PENDING", "verificationMessage": null },
+      "DOCUMENT_VERIFICATION": { "status": "PENDING", "verificationMessage": null }
+    },
+    "completedSteps": ["PHONE_NUMBER_VERIFICATION"]
+  }
+}
+```
+
+`profileExists` is `false` (HTTP 200, not 404) when the user has no profile yet.
+The per-step `status` values and their screen mapping are the same as in 2.7.
+
+---
+
 ## 3. Status semantics (how a record moves through the flow)
 
 | Step (`current_step`) | Verified when | Rejected when |

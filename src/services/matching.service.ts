@@ -149,7 +149,9 @@ async function loadMyFilters(userId: string): Promise<{
 
 /**
  * Fetch ranked discovery candidates for a user.
- * Excludes: self, already-swiped users, blocked users, hidden profiles.
+ * Excludes: self, users explicitly passed (PASS), blocked users, hidden profiles.
+ * Sending an expression of interest (LIKE / SUPER_LIKE) does NOT remove the
+ * person from the discovery queue.
  * Optionally filters by gender preference and age range.
  */
 export async function getDiscoveryCandidates(
@@ -161,7 +163,7 @@ export async function getDiscoveryCandidates(
 
   const [swipes, blocks] = await Promise.all([
     prisma.userSwipe.findMany({
-      where: { swiperId: userId },
+      where: { swiperId: userId, direction: "PASS" },
       select: { targetId: true },
     }),
     prisma.userBlock.findMany({

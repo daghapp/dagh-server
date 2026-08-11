@@ -99,6 +99,12 @@ JWT_REFRESH_SECRET=
 JWT_SECRET=            # call/token signaling (optional, has a default)
 SESSIONSECRET=
 
+# Call / WebRTC media (LiveKit preferred; see https://cloud.livekit.io)
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+CALL_SERVICE_URL=      # fallback serviceUrl when LiveKit is not configured
+
 # Hubtel (required)
 HUBTEL_CLIENT_ID=
 HUBTEL_CLIENT_SECRET=
@@ -258,6 +264,7 @@ All endpoints return responses in a standardized envelope:
 | POST | `/verification/phone/verify-otp` | Bearer | Verify phone OTP |
 | POST | `/verification/bio_profile_url` | Bearer | Submit bio profile URL |
 | POST | `/verification/bio_document_urls` | Bearer | Submit bio documents |
+| GET | `/verification/status` | Bearer | Full verification status (per-step status, current step, completed steps) |
 | GET | `/verification/validation-step/status` | Bearer | Get current verification step |
 
 `GET /verification/validation-step/status` returns the current step and its review state:
@@ -354,12 +361,13 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/dating/profile` | Bearer | Get your dating profile + discovery preferences |
-| POST | `/dating/profile/init` | Bearer | Initialize your dating profile |
-| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) |
+| POST | `/dating/profile/init` | Bearer | Initialize your dating profile (accepts the full creation payload) |
+| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) + account fields |
+| GET | `/dating/profile/status` | Bearer | Profile existence + completion status (skip onboarding for returning users) |
 | GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
 | GET | `/dating/preferences` | Bearer | Get your discovery preferences |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
-| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates (excludes swiped/blocked/hidden) |
+| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates (excludes passed/blocked/hidden; likes stay in the queue) |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation. |
 | GET | `/dating/matches` | Bearer | List your active matches |
 | GET | `/dating/likes-received` | Bearer | List users who liked you |
@@ -374,11 +382,12 @@ Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/calls/history` | Bearer | Get incoming/outgoing call history (last 50) |
-| POST | `/calls/token` | Bearer | Generate WebRTC RTC session token (`roomId`, `callType: VOICE|VIDEO`). Valid 1 hour. |
+| POST | `/calls/token` | Bearer | Generate a LiveKit AccessToken + `serviceUrl` for a call (`roomId`, `callType: VOICE|VIDEO`). Valid 1 hour. |
 
 Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`, `call:initiate`, `call:accept`, `call:decline`, `call:end`, `call:signal`, `call:busy`, `call:timeout`, `call:switch_video_request`, `call:switch_video_respond`, `presence:status`.
 
 **Call behavior:**
+- Media: `POST /calls/token` issues a room-scoped **LiveKit AccessToken** (`LIVEKIT_URL` is returned as `serviceUrl`, used by the client to connect to the media server). Without LiveKit env vars it falls back to a placeholder HMAC token for dev only.
 - Busy check: prevents calls if either party is already in an active call (`call:busy`)
 - Ringing timeout: unanswered calls auto-expire after 30 seconds (`call:timeout`)
 - Mid-call video upgrade: voice calls can be switched to video via `call:switch_video_request` / `call:switch_video_respond`

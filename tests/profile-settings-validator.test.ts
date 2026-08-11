@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { profileSettingsSchema } from "../validator/profile-settings-validator.js";
+import { profileSettingsSchema } from "../src/validator/profile-settings-validator.js";
 
 describe("profileSettingsSchema", () => {
   it("accepts an empty update", () => {

@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { prisma } from "../config/index.js";
 import { isUserBlocked } from "../helpers/safety.js";
+import { getCallServiceUrl } from "../helpers/call-service.js";
 import { CallType, CallStatus, MessageType } from "../../generated/prisma/client.js";
 
 interface AuthenticatedSocket extends Socket {
@@ -138,10 +139,13 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
 
       socket.join(roomId);
 
+      const serviceUrl = getCallServiceUrl();
+
       const incomingPayload = {
         callLogId: callLog.id,
         roomId,
         callType: type,
+        serviceUrl,
         caller: {
           id: caller.id,
           fullName: caller.fullName,
@@ -151,7 +155,7 @@ export const registerCallSocketHandlers = (io: Server, socket: AuthenticatedSock
 
       // Emit incoming call to receiver's socket room
       io.to(`user:${receiverId}`).emit("call:incoming", incomingPayload);
-      socket.emit("call:initiated", { callLogId: callLog.id, roomId, callType: type });
+      socket.emit("call:initiated", { callLogId: callLog.id, roomId, callType: type, serviceUrl });
     } catch (error) {
       console.error("[CallSocket] call:initiate error:", error);
       socket.emit("call:error", { message: "Failed to initiate call" });

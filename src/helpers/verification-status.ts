@@ -65,3 +65,54 @@ export function getRejectionReason(
 
   return reason ?? state.verification_message ?? null;
 }
+
+export const VERIFICATION_STEPS = [
+  STEP_PHONE_NUMBER_VERIFICATION,
+  STEP_PROFILE_IMAGE_VERIFICATION,
+  STEP_DOCUMENT_VERIFICATION,
+] as const;
+
+/**
+ * Infer the current verification step from stored progress.
+ * Prefers the persisted `validationStep` when present.
+ */
+export function inferCurrentStep(
+  state: VerificationStepState | null,
+  storedValidationStep?: string | null,
+): string {
+  return (
+    storedValidationStep ??
+    (!state?.phone_number_verified
+      ? STEP_PHONE_NUMBER_VERIFICATION
+      : !state?.bio_profile_verification
+        ? STEP_PROFILE_IMAGE_VERIFICATION
+        : !state?.document_verification
+          ? STEP_DOCUMENT_VERIFICATION
+          : STEP_DOCUMENT_VERIFICATION)
+  );
+}
+
+export type StepVerificationStatus = {
+  status: VerificationStepStatus;
+  verificationMessage: string | null;
+};
+
+/**
+ * Build the status of every verification step from a single state object.
+ */
+export function buildVerificationSteps(
+  state: VerificationStepState | null,
+): Record<string, StepVerificationStatus> {
+  return VERIFICATION_STEPS.reduce<Record<string, StepVerificationStatus>>((acc, step) => {
+    const status = getStatusForStep(step, state);
+    acc[step] = {
+      status,
+      verificationMessage: status === "REJECTED" ? getRejectionReason(step, state) : null,
+    };
+    return acc;
+  }, {});
+}
+
+export function getCompletedVerificationSteps(state: VerificationStepState | null): string[] {
+  return VERIFICATION_STEPS.filter((step) => getStatusForStep(step, state) === "VERIFIED");
+}

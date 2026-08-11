@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { generateClientReference, generateClientReference_targetType } from "./client-ref.js";
+import {
+  generateClientReference,
+  generateClientReference_targetType,
+} from "../src/helpers/client-ref.js";
 
 // Hubtel rejects client references longer than 36 characters
 const HUBTEL_MAX_LENGTH = 36;
@@ -21,7 +24,11 @@ describe("generateClientReference_targetType", () => {
   });
 
   it("is unique across calls", () => {
-    const refs = new Set(Array.from({ length: 50 }, () => generateClientReference_targetType("MEMBERSHIP_SUBSCRIPTION")));
+    const refs = new Set(
+      Array.from({ length: 50 }, () =>
+        generateClientReference_targetType("MEMBERSHIP_SUBSCRIPTION"),
+      ),
+    );
     expect(refs.size).toBe(50);
   });
 });

@@ -1,6 +1,48 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
+import { resolveDatingProfileStatus } from "../../helpers/dating-profile-status.js";
+import type { Ethnicity } from "../../../generated/prisma/enums.js";
+
+type AccountProfileData = {
+  fullName?: string;
+  gender?: string;
+  dateOfBirth?: Date;
+  ethnicity?: Ethnicity;
+};
+
+function buildAccountProfileData(body: Record<string, unknown>): AccountProfileData {
+  const data: AccountProfileData = {};
+  if (typeof body.fullName === "string") data.fullName = body.fullName;
+  if (typeof body.gender === "string") data.gender = body.gender;
+  if (body.dateOfBirth !== undefined) data.dateOfBirth = new Date(body.dateOfBirth as string);
+  if (typeof body.ethnicity === "string") data.ethnicity = body.ethnicity as Ethnicity;
+  return data;
+}
+
+function buildDatingProfileData(body: Record<string, unknown>) {
+  const data: Record<string, unknown> = {};
+  for (const key of [
+    "headline",
+    "about",
+    "photos",
+    "heightCm",
+    "interests",
+    "lookingFor",
+    "location",
+    "degree",
+    "university",
+    "profession",
+    "industry",
+    "workLocation",
+    "languages",
+    "religion",
+    "hometown",
+  ] as const) {
+    if (body[key] !== undefined) data[key] = body[key];
+  }
+  return data;
+}
 
 const datingProfileInclude = {
   user: {
@@ -43,10 +85,13 @@ export const getMyDatingProfile = async (req: Request, res: Response) => {
 
 /**
  * Initialize (or retrieve existing) dating profile for the current user.
+ * Accepts the full profile-creation payload so every field from the creation
+ * form is captured in a single call.
  */
 export const initDatingProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const body = req.body as Record<string, unknown>;
 
     const existing = await prisma.datingProfile.findUnique({ where: { userId } });
     if (existing) {
@@ -58,8 +103,15 @@ export const initDatingProfile = async (req: Request, res: Response) => {
         userId,
         photos: [],
         interests: [],
+        ...buildDatingProfileData(body),
       },
     });
+
+    // Persist account-level fields submitted with the creation form.
+    const accountData = buildAccountProfileData(body);
+    if (Object.keys(accountData).length > 0) {
+      await prisma.user.update({ where: { id: userId }, data: accountData });
+    }
 
     return created(res, profile, "Dating profile created successfully.");
   } catch (error) {
@@ -70,27 +122,13 @@ export const initDatingProfile = async (req: Request, res: Response) => {
 
 /**
  * Update the current user's dating profile fields.
+ * Also persists account-level fields (fullName, gender, dateOfBirth, ethnicity)
+ * when they accompany the update, so every value from the profile forms is saved.
  */
 export const updateDatingProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const {
-      headline,
-      about,
-      photos,
-      heightCm,
-      interests,
-      lookingFor,
-      location,
-      degree,
-      university,
-      profession,
-      industry,
-      workLocation,
-      languages,
-      religion,
-      hometown,
-    } = req.body;
+    const body = req.body as Record<string, unknown>;
 
     const existing = await prisma.datingProfile.findUnique({ where: { userId } });
     if (!existing) {
@@ -99,29 +137,46 @@ export const updateDatingProfile = async (req: Request, res: Response) => {
 
     const profile = await prisma.datingProfile.update({
       where: { userId },
-      data: {
-        headline: headline ?? undefined,
-        about: about ?? undefined,
-        photos: photos ?? undefined,
-        heightCm: heightCm ?? undefined,
-        interests: interests ?? undefined,
-        lookingFor: lookingFor ?? undefined,
-        location: location ?? undefined,
-        degree: degree ?? undefined,
-        university: university ?? undefined,
-        profession: profession ?? undefined,
-        industry: industry ?? undefined,
-        workLocation: workLocation ?? undefined,
-        languages: languages ?? undefined,
-        religion: religion ?? undefined,
-        hometown: hometown ?? undefined,
-      },
+      data: buildDatingProfileData(body),
     });
+
+    const accountData = buildAccountProfileData(body);
+    if (Object.keys(accountData).length > 0) {
+      await prisma.user.update({ where: { id: userId }, data: accountData });
+    }
 
     return ok(res, profile, "Dating profile updated successfully.");
   } catch (error) {
     console.error("Update dating profile error:", error);
     return fail(res, 500, "Failed to update dating profile");
+  }
+};
+
+/**
+ * Get the authenticated user's dating profile status.
+ * Returning users who already possess a (complete) profile can use this to
+ * bypass the initial profile creation/skip screen entirely.
+ */
+export const getDatingProfileStatus = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const profile = await prisma.datingProfile.findUnique({
+      where: { userId },
+      include: { discoveryPreference: true },
+    });
+
+    const hasProfile = Boolean(profile);
+    const profileStatus = resolveDatingProfileStatus(profile);
+
+    return ok(res, {
+      hasProfile,
+      profileStatus,
+      profile: profile ?? null,
+    });
+  } catch (error) {
+    console.error("Get dating profile status error:", error);
+    return fail(res, 500, "Failed to fetch dating profile status");
   }
 };
 

@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import { getCallServiceUrl } from "../../helpers/call-service.js";
+import { generateLiveKitRoomToken } from "../../helpers/livekit.js";
 import crypto from "crypto";
 
 /**
@@ -44,9 +46,9 @@ export const getCallHistory = async (req: Request, res: Response) => {
 };
 
 /**
- * Generate WebRTC RTC session access token / room credentials
- * TODO: This is a placeholder HMAC token. For production, integrate with a
- * real WebRTC provider (LiveKit, Daily.co, Twilio) and return provider-native tokens.
+ * Generate a LiveKit AccessToken for a call room. When LiveKit is not
+ * configured (no LIVEKIT_* env vars), falls back to a placeholder HMAC
+ * token for local development.
  */
 export const generateRtcToken = async (req: Request, res: Response) => {
   try {
@@ -57,16 +59,36 @@ export const generateRtcToken = async (req: Request, res: Response) => {
       return fail(res, 400, "Room ID is required");
     }
 
-    // Secure token hash for room authentication
+    const liveKitToken = await generateLiveKitRoomToken({
+      roomId,
+      identity: userId,
+      name: req.user!.fullName,
+    });
+
+    if (liveKitToken) {
+      return ok(res, {
+        roomId,
+        userId,
+        callType,
+        token: liveKitToken.token,
+        serviceUrl: liveKitToken.serviceUrl,
+        expiresIn: liveKitToken.expiresIn,
+      });
+    }
+
+    // Placeholder HMAC token for dev environments without LiveKit
     const tokenSecret = process.env.JWT_ACCESS_SECRET || "default_call_secret";
     const tokenPayload = `${userId}:${roomId}:${Date.now()}`;
     const token = crypto.createHmac("sha256", tokenSecret).update(tokenPayload).digest("hex");
+
+    const serviceUrl = getCallServiceUrl() || `${req.protocol}://${req.get("host")}`;
 
     return ok(res, {
       roomId,
       userId,
       callType,
       token,
+      serviceUrl,
       expiresIn: 3600, // 1 hour token expiry
     });
   } catch (error) {

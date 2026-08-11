@@ -26,7 +26,11 @@ router.get("/history", getCallHistory);
  * @swagger
  * /calls/token:
  *   post:
- *     summary: Generate RTC room connection token for WebRTC call
+ *     summary: Generate a LiveKit AccessToken for a WebRTC call room
+ *     description: >
+ *       Returns a room-scoped LiveKit token and the media service URL. When
+ *       LiveKit is not configured, falls back to a placeholder HMAC token
+ *       (dev only).
  *     tags: [Calls]
  *     security:
  *       - bearerAuth: []
@@ -48,6 +52,26 @@ router.get("/history", getCallHistory);
  *     responses:
  *       200:
  *         description: RTC token generated (valid for 1 hour)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 roomId:
+ *                   type: string
+ *                 userId:
+ *                   type: string
+ *                 callType:
+ *                   type: string
+ *                   enum: [VOICE, VIDEO]
+ *                 token:
+ *                   type: string
+ *                 serviceUrl:
+ *                   type: string
+ *                   description: LiveKit WSS URL (LIVEKIT_URL), or CALL_SERVICE_URL/API_URL fallback
+ *                 expiresIn:
+ *                   type: integer
+ *                   description: Token lifetime in seconds
  *       400:
  *         description: Room ID is required
  *       500:
