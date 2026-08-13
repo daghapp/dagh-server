@@ -153,6 +153,10 @@ async function loadMyFilters(userId: string): Promise<{
  * Sending an expression of interest (LIKE / SUPER_LIKE) does NOT remove the
  * person from the discovery queue.
  * Optionally filters by gender preference and age range.
+ *
+ * Ranking is computed after fetching every candidate that matches the DB-side
+ * filters, then the page is sliced — so offset pagination returns the true
+ * top-ranked candidates instead of ranking only the fetched page.
  */
 export async function getDiscoveryCandidates(
   userId: string,
@@ -212,35 +216,33 @@ export async function getDiscoveryCandidates(
     ],
   };
 
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      where,
-      take: limit,
-      skip: offset,
-      orderBy: { lastActiveAt: "desc" },
-      select: {
-        id: true,
-        fullName: true,
-        gender: true,
-        dateOfBirth: true,
-        datingProfile: {
-          select: {
-            headline: true,
-            about: true,
-            photos: true,
-            heightCm: true,
-            interests: true,
-            lookingFor: true,
-          },
+  // Fetch every matching candidate (projected columns only), rank in memory,
+  // then paginate — DB-side take/skip would rank a subset, not the whole pool.
+  const users = await prisma.user.findMany({
+    where,
+    orderBy: { lastActiveAt: "desc" },
+    select: {
+      id: true,
+      fullName: true,
+      gender: true,
+      dateOfBirth: true,
+      lastActiveAt: true,
+      datingProfile: {
+        select: {
+          headline: true,
+          about: true,
+          photos: true,
+          heightCm: true,
+          interests: true,
+          lookingFor: true,
         },
-        subscription: { select: { tierCode: true } },
-        profile: { select: { bio_profile_image_url: true } },
       },
-    }),
-    prisma.user.count({ where }),
-  ]);
+      subscription: { select: { tierCode: true } },
+      profile: { select: { bio_profile_image_url: true } },
+    },
+  });
 
-  const candidates: MatchCandidate[] = users.map((u) => {
+  const ranked = users.map((u) => {
     const profile = u.datingProfile!;
     const age = calculateAge(u.dateOfBirth);
     // Candidates do not currently expose a location, so distance-based scoring
@@ -271,7 +273,10 @@ export async function getDiscoveryCandidates(
     return baseCandidate;
   });
 
-  candidates.sort((a, b) => b.score - a.score);
+  ranked.sort((a, b) => b.score - a.score);
+
+  const total = ranked.length;
+  const candidates = ranked.slice(offset, offset + limit);
 
   return { candidates, total };
 }

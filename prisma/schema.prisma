@@ -50,6 +50,8 @@ model User {
 
   tourRequests TourRequest[]
 
+  adminActivityLogs AdminActivityLog[]
+
   datingProfile         DatingProfile?
   swipesMade            UserSwipe[]   @relation("Swiper")
   swipesReceived        UserSwipe[]   @relation("SwipeTarget")
@@ -682,6 +684,28 @@ model LedgerTransaction {
   type        String // CREDIT or DEBIT
   description String?
   createdAt   DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────
+// ADMIN ACTIVITY LOG — audit trail for admin console actions
+// (approve/reject/retry/status changes). Unlike the provider-scoped
+// `AuditLog`, this is keyed to any domain entity via entityType + entityId.
+// ─────────────────────────────────────────
+model AdminActivityLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  entityType String // e.g. "VISA_REQUEST", "PAYMENT", "TOUR", "USER", "REPORT"
+  entityId   String?
+  action     String // e.g. "APPROVED", "REJECTED", "NOTE_ADDED", "STATUS_CHANGED"
+  note       String?
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("admin_activity_logs")
 }
 
 // ─────────────────────────────────────────

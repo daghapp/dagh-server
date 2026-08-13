@@ -16,8 +16,10 @@ import {
   MembershipTierCode,
   MessageType,
   PaymentStatus,
+  PaymentTargetType,
   SubscriptionStatus,
   TransportType,
+  VisaApprovalStatus,
   VisaPackageType,
   VisaRequestStatus,
 } from "../generated/prisma/enums.js";
@@ -1396,6 +1398,170 @@ async function seedVisaRequests() {
   console.log("Visa request seeded successfully.");
 }
 
+// ── Admin console demo data ────────────────────────────────────────────────
+// Creates a spread of visa requests (queued / approved / rejected / failed),
+// linked payments, and admin activity logs so the console KPI cards and tables
+// are non-empty after a fresh seed. Idempotent: keyed off passport numbers.
+async function seedAdminConsoleData() {
+  console.log("Seeding admin console data...");
+
+  const demoUser = await prisma.user.findUnique({ where: { email: "demo@dagh.app" } });
+  const admin = await prisma.user.findUnique({ where: { email: "admin@dagh.app" } });
+  if (!demoUser || !admin) return;
+
+  const visaSeeds: Array<{
+    passport: string;
+    status: VisaRequestStatus;
+    packageType: VisaPackageType;
+    amount: number;
+    purpose: string;
+    approval?: VisaApprovalStatus;
+  }> = [
+    {
+      passport: "G000222222",
+      status: VisaRequestStatus.READY_FOR_GIS_SUBMISSION,
+      packageType: VisaPackageType.STANDARD,
+      amount: 664,
+      purpose: "Business conference",
+    },
+    {
+      passport: "G000333333",
+      status: VisaRequestStatus.EXPEDITED_AIRPORT_PAYMENT_PENDING,
+      packageType: VisaPackageType.EXPEDITED,
+      amount: 1450,
+      purpose: "Family visit",
+    },
+    {
+      passport: "G000444444",
+      status: VisaRequestStatus.APPROVED,
+      packageType: VisaPackageType.STANDARD,
+      amount: 664,
+      purpose: "Tourism",
+      approval: VisaApprovalStatus.APPROVED,
+    },
+    {
+      passport: "G000555555",
+      status: VisaRequestStatus.REJECTED,
+      packageType: VisaPackageType.STANDARD,
+      amount: 664,
+      purpose: "Tourism",
+      approval: VisaApprovalStatus.REJECTED,
+    },
+    {
+      passport: "G000666666",
+      status: VisaRequestStatus.PAYMENT_FAILED,
+      packageType: VisaPackageType.STANDARD,
+      amount: 664,
+      purpose: "Volunteering",
+    },
+    {
+      passport: "G000777777",
+      status: VisaRequestStatus.PENDING,
+      packageType: VisaPackageType.STANDARD,
+      amount: 664,
+      purpose: "Tourism",
+    },
+  ];
+
+  for (const seed of visaSeeds) {
+    const existing = await prisma.visaOnArrivalData.findFirst({
+      where: { passport_number: seed.passport },
+    });
+    if (existing) continue;
+
+    const payment = await prisma.payment.create({
+      data: {
+        userId: demoUser.id,
+        reference: `ADM-SEED-VISA-${seed.passport}`,
+        targetType: PaymentTargetType.VISA_ON_ARRIVAL,
+        targetId: "pending", // replaced below once the request exists
+        amount: seed.amount,
+        currency: "GHS",
+        status:
+          seed.status === VisaRequestStatus.PAYMENT_FAILED
+            ? PaymentStatus.FAILED
+            : PaymentStatus.SUCCESS,
+        provider: "HUBTEL",
+        description: `Visa on Arrival - ${seed.packageType}`,
+      },
+    });
+
+    const request = await prisma.visaOnArrivalRequest.create({
+      data: {
+        userId: demoUser.id,
+        status: seed.status,
+        packageType: seed.packageType,
+        paymentId: payment.id,
+        visaData: {
+          create: {
+            passport_image_url: "https://images.unsplash.com/photo-1627123424574-724758594e93",
+            bio_page_image_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
+            flight_itinerary_image_url: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05",
+            passport_number: seed.passport,
+            purpose_of_trip: seed.purpose,
+            date_of_departure: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
+            date_of_arrival: new Date(Date.now() + 22 * 24 * 60 * 60 * 1000),
+          },
+        },
+      },
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { targetId: request.id },
+    });
+
+    if (seed.approval) {
+      await prisma.visaApproval.create({
+        data: {
+          requestId: request.id,
+          status: seed.approval,
+          approvedBy: admin.id,
+          approvedAt: new Date(),
+          notes: seed.approval === VisaApprovalStatus.APPROVED ? "Documents verified" : "Incomplete documentation",
+        },
+      });
+    }
+
+    await prisma.adminActivityLog.create({
+      data: {
+        actorId: admin.id,
+        entityType: "VISA_REQUEST",
+        entityId: request.id,
+        action: seed.approval ?? "PAYMENT_RECEIVED",
+        note: `Seeded ${seed.passport} — ${seed.purpose}`,
+      },
+    });
+  }
+
+  // A SUCCESS payment on the confirmed tour booking so the payments table and
+  // revenue KPIs include non-visa revenue too.
+  const confirmedBooking = await prisma.tour_bookings.findUnique({
+    where: { bookingReference: "DAGH-BOOK-CONFIRMED-001" },
+  });
+  if (confirmedBooking && !confirmedBooking.paymentId) {
+    const payment = await prisma.payment.create({
+      data: {
+        userId: demoUser.id,
+        reference: "ADM-SEED-BOOK-CONFIRMED-001",
+        targetType: PaymentTargetType.TOUR_BOOKING,
+        targetId: confirmedBooking.id,
+        amount: Number(confirmedBooking.totalPrice),
+        currency: "GHS",
+        status: PaymentStatus.SUCCESS,
+        provider: "HUBTEL",
+        description: "Coastal Heritage Discovery — 2 pax",
+      },
+    });
+    await prisma.tour_bookings.update({
+      where: { id: confirmedBooking.id },
+      data: { paymentId: payment.id },
+    });
+  }
+
+  console.log("Admin console data seeded successfully.");
+}
+
 // ── Providers (hotels, tour guides, car rentals) ──────────────────────────
 async function seedProviders() {
   console.log("Seeding providers...");
@@ -1684,6 +1850,7 @@ async function main() {
   await seedTourBookings();
   await seedDatingInteractions();
   await seedVisaRequests();
+  await seedAdminConsoleData();
   await seedProviders();
 
   console.log("✔ All seeds completed.");

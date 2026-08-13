@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
-import { ok, fail } from "../../helpers/response.js";
+import { ok, fail, paginated } from "../../helpers/response.js";
 
 // ─────────────────────────────────────────
 // Admin moderation — report queue & actions
@@ -35,7 +35,7 @@ export const listReports = async (req: Request, res: Response) => {
       prisma.userReport.count({ where }),
     ]);
 
-    return ok(res, { reports, total, page, limit });
+    return paginated(res, reports, total, page, limit);
   } catch (error) {
     console.error("List reports error:", error);
     return fail(res, 500, "Failed to fetch reports");

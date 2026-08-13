@@ -5,8 +5,10 @@ import dotenv from "dotenv";
 import helmet from "helmet";
 import morgan from "morgan";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
 import * as Sentry from "@sentry/node";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { connectRedis, getRedisPubClient, getRedisSubClient } from "./config/redis.js";
+import { createRateLimiter } from "./middleware/rateLimit.js";
 import { router as PasswordRoutes } from "./routes/password.routes.js";
 import passport from "./config/passport.js";
 import { router as OauthRoutes } from "./routes/google-auth.routes.js";
@@ -21,6 +23,7 @@ import { router as ProfileRoutes } from "./routes/profile-routes.routes.js";
 import { router as VerificationRoutes } from "./routes/verification.routes.js";
 
 import { router as AdminRoutes } from "./routes/admin.routes.js";
+import { router as AdminConsoleRoutes } from "./routes/admin-console.routes.js";
 import { router as AdminProfileRoutes } from "./routes/admin-profile-routes.js";
 import { router as VisaRoutes } from "./routes/visa.routes.js";
 import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
@@ -42,6 +45,10 @@ import { setIoInstance as setDatingIoInstance } from "./modules/dating/swipe.con
 import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
 
 dotenv.config();
+
+// Connect Redis before the Socket.IO adapter / rate limiters are set up. Falls
+// back to single-instance behavior when REDIS_URL is not configured.
+await connectRedis();
 
 const app = express();
 const server = http.createServer(app);
@@ -80,7 +87,16 @@ const io = new Server(server, {
   },
 });
 
-const authLimiter = rateLimit({
+// Shared pub/sub adapter so messages, presence, and call signaling fan out
+// across all instances instead of only the process the socket is connected to.
+const redisPub = getRedisPubClient();
+const redisSub = getRedisSubClient();
+if (redisPub && redisSub) {
+  io.adapter(createAdapter(redisPub, redisSub));
+  console.log("[socket.io] Redis adapter enabled");
+}
+
+const authLimiter = createRateLimiter("auth", 15 * 60 * 1000, {
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: { success: false, error: "Too many requests, please try again later" },
@@ -151,7 +167,7 @@ app.use("/auth", authLimiter, OauthRoutes);
 app.use("/auth", authLimiter, FacebookRoutes);
 app.use("/auth", authLimiter, AppleRoutes);
 app.use("/upload", ImageUploadRoutes);
-const paymentLimiter = rateLimit({
+const paymentLimiter = createRateLimiter("payment", 15 * 60 * 1000, {
   windowMs: 15 * 60 * 1000,
   max: 50,
   message: { success: false, error: "Too many payment requests, please try again later" },
@@ -167,6 +183,7 @@ app.use("/verification", ProfileValidationStepRoutes);
 app.use("/profile", ProfileEthnicityRoutes);
 
 app.use("/admin", AdminRoutes);
+app.use("/admin", AdminConsoleRoutes);
 app.use("/admin", AdminProfileRoutes);
 
 app.use("/visa-requests", VisaRoutes);

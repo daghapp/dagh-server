@@ -2,13 +2,16 @@ import { Server, Socket } from "socket.io";
 import { prisma } from "../config/index.js";
 import jwt from "jsonwebtoken";
 import { registerCallSocketHandlers } from "./callSocket.js";
+import {
+  markOnline,
+  markOffline,
+  isOnline,
+  getPresenceAudience,
+} from "../helpers/presence.js";
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
 }
-
-// Track online users in memory (userId -> set of socket IDs)
-const onlineUsers = new Map<string, Set<string>>();
 
 export const setupSocketHandlers = (io: Server) => {
   // Authentication middleware for Socket.IO
@@ -41,14 +44,16 @@ export const setupSocketHandlers = (io: Server) => {
     if (userId) {
       socket.join(`user:${userId}`);
 
-      // Manage presence
-      if (!onlineUsers.has(userId)) {
-        onlineUsers.set(userId, new Set());
-      }
-      onlineUsers.get(userId)!.add(socket.id);
+      // Track presence (local map + Redis when available)
+      await markOnline(userId, socket.id);
 
-      // Broadcast online status to connected peers
-      io.emit("presence:status", { userId, isOnline: true });
+      // Notify only the user's conversation partners & matches, not every
+      // connected client, and fire-and-forget the DB touch.
+      getPresenceAudience(userId).then((peers) => {
+        for (const peerId of peers) {
+          io.to(`user:${peerId}`).emit("presence:status", { userId, isOnline: true });
+        }
+      });
 
       // Update user last active timestamp in background
       prisma.user
@@ -98,33 +103,39 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // Check user online status query
-    socket.on("presence:check", ({ targetUserId }) => {
-      const isOnline = onlineUsers.has(targetUserId) && onlineUsers.get(targetUserId)!.size > 0;
-      socket.emit("presence:info", { userId: targetUserId, isOnline });
+    // Check user online status query (Redis-backed, so it works across instances)
+    socket.on("presence:check", async ({ targetUserId }) => {
+      const online = await isOnline(targetUserId);
+      socket.emit("presence:info", { userId: targetUserId, isOnline: online });
     });
 
     // Handle disconnection
     socket.on("disconnect", () => {
       if (userId) {
-        const userSockets = onlineUsers.get(userId);
-        if (userSockets) {
-          userSockets.delete(socket.id);
-          if (userSockets.size === 0) {
-            onlineUsers.delete(userId);
-            io.emit("presence:status", { userId, isOnline: false, lastActiveAt: new Date() });
-
-            prisma.user
-              .update({
-                where: { id: userId },
-                data: { lastActiveAt: new Date() },
-              })
-              .catch((err) =>
-                console.error("[Socket] Failed to update lastActiveAt on disconnect:", err),
-              );
+        markOffline(userId, socket.id).then((wentOffline) => {
+          if (wentOffline) {
+            getPresenceAudience(userId).then((peers) => {
+              for (const peerId of peers) {
+                io.to(`user:${peerId}`).emit("presence:status", {
+                  userId,
+                  isOnline: false,
+                  lastActiveAt: new Date(),
+                });
+              }
+            });
           }
-        }
+        });
+
         socket.leave(`user:${userId}`);
+
+        prisma.user
+          .update({
+            where: { id: userId },
+            data: { lastActiveAt: new Date() },
+          })
+          .catch((err) =>
+            console.error("[Socket] Failed to update lastActiveAt on disconnect:", err),
+          );
       }
     });
   });

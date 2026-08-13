@@ -64,9 +64,11 @@ All demo users are `ACTIVE` and ready to log in via `POST /auth/login`:
 | Dating profile (Nana Yaa) | `dating.demo3@dagh.app` | `Demo@12345` |
 
 The seed also adds 4 tour packages (with locations, itineraries and pricing),
-2 sample bookings, dating matches/conversations/messages, a visa-on-arrival
-request, and providers (hotels, a tour guide, car rental). The seed is
-idempotent — re-running it never duplicates existing rows.
+2 sample bookings, dating matches/conversations/messages, 6 visa-on-arrival
+requests across all statuses (with linked payments, approvals and admin
+activity logs), an itinerary-tour-booking payment, and providers (hotels, a
+tour guide, car rental). The seed is idempotent — re-running it never
+duplicates existing rows.
 
 **Docker:** the build does not require a live database — `prisma.config.ts` resolves
 `DATABASE_URL` with a placeholder fallback so `prisma generate` succeeds without a
@@ -92,6 +94,13 @@ API_URL=https://dagh-server-fo64.onrender.com
 
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/dagh
+DATABASE_POOL_MAX=10            # pg pool per instance (optional, default 10)
+
+# Redis — REQUIRED for running more than one instance behind a load balancer.
+# Enables a shared Socket.IO adapter (realtime fan-out across instances),
+# cross-instance presence, a shared rate-limit store, and distributed locks so
+# the cron jobs run on exactly one replica. Leave unset for single-instance mode.
+REDIS_URL=redis://localhost:6379
 
 # Auth
 JWT_ACCESS_SECRET=
@@ -146,6 +155,32 @@ VISA_STATUTORY_FEE_USD=200
 
 ---
 
+## Scaling
+
+The app runs as a single Node process per instance. To run multiple replicas
+behind a load balancer:
+
+1. **Set `REDIS_URL`** on every instance. Without it, Socket.IO messages,
+   presence, and call signaling only reach sockets on the same process,
+   rate-limit counters are per-instance, and each replica runs the cron jobs
+   (causing duplicate payment checks / emails).
+2. **Session store** is Postgres-backed (`connect-pg-simple`, `session` table
+   auto-created), so OAuth/passport sessions survive restarts and are shared
+   across instances.
+3. **Cron jobs** (`check-pending-payments`, `user-cleanup`) run under a Redis
+   distributed lock and per-item claims, so exactly one replica executes them
+   and crashed runs can't double-credit the ledger.
+4. **Presence** fan-out is scoped to conversation partners & matches instead of
+   broadcasting to every connected client.
+5. Keep the pg connection pool per instance proportional to replica count
+   (`DATABASE_POOL_MAX`). Add a Postgres read replica when read-heavy endpoints
+   (tours, discovery) become hot.
+
+> Single instance, no `REDIS_URL`: everything still works — in-memory presence,
+> default per-instance rate limiting, unlocked cron jobs.
+
+---
+
 ## Project Structure
 
 ```
@@ -161,6 +196,7 @@ src/
 ├── jobs/                       # Cron jobs (pending payments, user cleanup)
 ├── middleware/                  # Auth, admin, validation, Cloudinary upload, audio upload, Hubtel callback
 ├── modules/
+│   ├── admin/                  # Admin console (dashboard, visa console, payments console)
 │   ├── authentication/         # Register, login, OAuth, password reset
 │   ├── common/                 # Image upload
 │   ├── dating/                 # Dating profiles, discovery, swiping, matches
@@ -172,7 +208,7 @@ src/
 │   ├── provider-management/    # Nearby hotels
 │   ├── tour-management/        # Tour CRUD, booking, admin
 │   └── visa-management/        # Visa-on-arrival requests + approval
-├── routes/                     # Express route definitions (20 files)
+├── routes/                     # Express route definitions (21 files)
 ├── services/                   # Business logic (membership, payment, matching)
 ├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
 ├── types/                      # TypeScript type augmentations (Express.User)
@@ -185,8 +221,9 @@ src/
 ## API Endpoints
 
 > **Detailed developer reference:** see `docs/api-reference.md` for every
-> endpoint with payloads and examples, and `docs/verification-flow.md` for the
-> identity-verification integration guide.
+> endpoint with payloads and examples, `docs/admin-console-api.md` for the admin
+> console surface + frontend wiring patterns, and `docs/verification-flow.md` for
+> the identity-verification integration guide.
 
 All endpoints return responses in a standardized envelope:
 
@@ -418,6 +455,12 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 |--------|----------|------|-------------|
 | GET | `/providers/nearby-hotels` | Bearer | Find nearby hotels for itinerary |
 
+### Admin — Dashboard
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/dashboard/summary` | Admin | KPI summary: tours (bulk/custom), pending visa queue, successful payments + MoM %, alerts (pending reports / verifications / failed payments) |
+
 ### Admin — User Management
 
 | Method | Endpoint | Auth | Description |
@@ -429,12 +472,24 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 | PATCH | `/admin/users/:userId/reactivate` | Admin | Reactivate user |
 | DELETE | `/admin/users/:userId` | Admin | Delete user |
 
-### Admin — Visa Management
+### Admin — Visa Console
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/admin/visa-requests/paid` | Admin | List paid visa requests |
-| POST | `/admin/visa-requests/approve` | Admin | Approve visa request |
+| GET | `/admin/visa-requests` | Admin | Visa queue (paginated; filters: `status`, `q` passport/purpose/name/email, `from`/`to`) |
+| GET | `/admin/visa-requests/stats` | Admin | Visa KPIs (total, pending review, rejected, approved today, rejection rate) |
+| GET | `/admin/visa-requests/:id` | Admin | Visa detail with user, documents, payment, approval + activity log |
+| POST | `/admin/visa-requests/:id/approve` | Admin | Approve visa (idempotent; optional `note`) — writes approval + activity log |
+| POST | `/admin/visa-requests/:id/reject` | Admin | Reject visa (idempotent; optional `note`) |
+| GET | `/admin/visa-requests/paid` | Admin | List paid visa requests (legacy) |
+| POST | `/admin/visa-requests/approve` | Admin | Approve visa request (legacy, body `{ requestId }`) |
+
+### Admin — Payments
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/payments` | Admin | Transaction list (paginated; filters: `status`, `targetType`, `q` reference/user, `from`/`to`) |
+| GET | `/admin/payments/stats` | Admin | Payment KPIs (total revenue, success/pending/failed counts + amounts, success rate) |
 
 ### Admin — Profile Verification
 
@@ -500,6 +555,7 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `VisaOnArrivalRequest` | Visa-on-arrival applications |
 | `VisaOnArrivalData` | Visa applicant data |
 | `VisaApproval` | Admin visa approval |
+| `AdminActivityLog` | Admin console audit trail (who did what, on what entity) |
 | `Payment` | Polymorphic payment records (tour, visa, itinerary) |
 | `HubtelDirectReceiveLog` | Hubtel API response logs |
 | `LedgerAccount` / `LedgerTransaction` | Double-entry ledger |
@@ -544,7 +600,9 @@ npm run test:watch     # Run tests in watch mode
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 100 fully documented endpoints across 20 route files.
+Swagger UI available at `/api-docs` when the server is running. 117 documented
+operations across 21 route files (source of truth: JSDoc annotations in
+`src/routes/*.ts` — update the annotation, not the spec).
 
 ---
 
