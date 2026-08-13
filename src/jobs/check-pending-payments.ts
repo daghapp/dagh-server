@@ -67,8 +67,7 @@ export const checkPendingPaymentsJob = () => {
               }
 
               const emailTarget =
-                newStatus === "SUCCESS" &&
-                payment.targetType === PaymentTargetType.VISA_ON_ARRIVAL
+                newStatus === "SUCCESS" && payment.targetType === PaymentTargetType.VISA_ON_ARRIVAL
                   ? payment
                   : null;
 

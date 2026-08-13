@@ -48,9 +48,7 @@ export async function connectRedis(): Promise<boolean> {
   } catch (error) {
     console.error("[redis] failed to connect:", error);
     for (const c of clients) {
-      c
-        .disconnect()
-        .catch(() => {});
+      c.disconnect().catch(() => {});
     }
     mainClient = null;
     pubClient = null;
@@ -76,13 +74,7 @@ export function getRedisSubClient(): RedisClientType | null {
 }
 
 export async function disconnectRedis(): Promise<void> {
-  await Promise.all(
-    clients.map((c) =>
-      c
-        .disconnect()
-        .catch(() => {}),
-    ),
-  );
+  await Promise.all(clients.map((c) => c.disconnect().catch(() => {})));
   clients.length = 0;
   mainClient = null;
   pubClient = null;

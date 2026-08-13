@@ -2,12 +2,7 @@ import { Server, Socket } from "socket.io";
 import { prisma } from "../config/index.js";
 import jwt from "jsonwebtoken";
 import { registerCallSocketHandlers } from "./callSocket.js";
-import {
-  markOnline,
-  markOffline,
-  isOnline,
-  getPresenceAudience,
-} from "../helpers/presence.js";
+import { markOnline, markOffline, isOnline, getPresenceAudience } from "../helpers/presence.js";
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;

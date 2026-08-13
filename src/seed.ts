@@ -690,7 +690,8 @@ async function seedDemoUsers() {
         where: { userId: user.id },
         update: {
           headline: "Traveller & bookworm",
-          about: "I read a lot and plan my next trip home. Looking for deep conversations and good company.",
+          about:
+            "I read a lot and plan my next trip home. Looking for deep conversations and good company.",
           photos: ["https://images.unsplash.com/photo-1524504388940-b1c1722653e1"],
           heightCm: 166,
           interests: ["Books", "Travel", "Photography"],
@@ -708,7 +709,8 @@ async function seedDemoUsers() {
         create: {
           userId: user.id,
           headline: "Traveller & bookworm",
-          about: "I read a lot and plan my next trip home. Looking for deep conversations and good company.",
+          about:
+            "I read a lot and plan my next trip home. Looking for deep conversations and good company.",
           photos: ["https://images.unsplash.com/photo-1524504388940-b1c1722653e1"],
           heightCm: 166,
           interests: ["Books", "Travel", "Photography"],
@@ -796,7 +798,13 @@ async function seedTours() {
     trending: boolean;
     shortDescription: string;
     description: string;
-    locations: Array<{ name: string; city: string; region: string; description: string; visitDuration: number }>;
+    locations: Array<{
+      name: string;
+      city: string;
+      region: string;
+      description: string;
+      visitDuration: number;
+    }>;
     itinerary: Array<{
       dayNumber: number;
       title: string;
@@ -806,7 +814,13 @@ async function seedTours() {
       dinner: boolean;
       accommodationName: string;
       accommodationType: string;
-      activities: Array<{ activityTime: string; activity: string; durationMinutes: number; included: boolean; locationName: string }>;
+      activities: Array<{
+        activityTime: string;
+        activity: string;
+        durationMinutes: number;
+        included: boolean;
+        locationName: string;
+      }>;
     }>;
     includes: string[];
     excludes: string[];
@@ -826,25 +840,68 @@ async function seedTours() {
       description:
         "A 3-day journey through Ghana's slave castles, coastal forts and the vibrant culture of the Central Region, including visits to the Kwame Nkrumah Mausoleum, Cape Coast Castle and Elmina Castle.",
       locations: [
-        { name: "Kwame Nkrumah Mausoleum", city: "Accra", region: "Greater Accra", description: "Museum and mausoleum honouring Ghana's first president.", visitDuration: 90 },
-        { name: "Cape Coast Castle", city: "Cape Coast", region: "Central", description: "UNESCO World Heritage slave castle.", visitDuration: 150 },
-        { name: "Elmina Castle", city: "Elmina", region: "Central", description: "Oldest European building in sub-Saharan Africa.", visitDuration: 120 },
-        { name: "Kakum National Park", city: "Kakum", region: "Central", description: "Canopy walkway over the rainforest.", visitDuration: 120 },
+        {
+          name: "Kwame Nkrumah Mausoleum",
+          city: "Accra",
+          region: "Greater Accra",
+          description: "Museum and mausoleum honouring Ghana's first president.",
+          visitDuration: 90,
+        },
+        {
+          name: "Cape Coast Castle",
+          city: "Cape Coast",
+          region: "Central",
+          description: "UNESCO World Heritage slave castle.",
+          visitDuration: 150,
+        },
+        {
+          name: "Elmina Castle",
+          city: "Elmina",
+          region: "Central",
+          description: "Oldest European building in sub-Saharan Africa.",
+          visitDuration: 120,
+        },
+        {
+          name: "Kakum National Park",
+          city: "Kakum",
+          region: "Central",
+          description: "Canopy walkway over the rainforest.",
+          visitDuration: 120,
+        },
       ],
       itinerary: [
         {
           dayNumber: 1,
           title: "Arrival & Accra Highlights",
-          description: "City tour of Accra with visits to the Kwame Nkrumah Mausoleum and Independence Arch.",
+          description:
+            "City tour of Accra with visits to the Kwame Nkrumah Mausoleum and Independence Arch.",
           breakfast: true,
           lunch: true,
           dinner: true,
           accommodationName: "Labadi Beach Hotel",
           accommodationType: "HOTEL",
           activities: [
-            { activityTime: "09:00", activity: "Kwame Nkrumah Mausoleum guided tour", durationMinutes: 90, included: true, locationName: "Accra" },
-            { activityTime: "12:30", activity: "Lunch at a local chop bar", durationMinutes: 60, included: true, locationName: "Accra" },
-            { activityTime: "15:00", activity: "Independence Square & Black Star Gate", durationMinutes: 60, included: true, locationName: "Accra" },
+            {
+              activityTime: "09:00",
+              activity: "Kwame Nkrumah Mausoleum guided tour",
+              durationMinutes: 90,
+              included: true,
+              locationName: "Accra",
+            },
+            {
+              activityTime: "12:30",
+              activity: "Lunch at a local chop bar",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Accra",
+            },
+            {
+              activityTime: "15:00",
+              activity: "Independence Square & Black Star Gate",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Accra",
+            },
           ],
         },
         {
@@ -857,9 +914,27 @@ async function seedTours() {
           accommodationName: "Cape Coast Castle Hotel",
           accommodationType: "GUESTHOUSE",
           activities: [
-            { activityTime: "08:30", activity: "Cape Coast Castle tour", durationMinutes: 150, included: true, locationName: "Cape Coast" },
-            { activityTime: "12:00", activity: "Lunch overlooking the Atlantic", durationMinutes: 60, included: true, locationName: "Cape Coast" },
-            { activityTime: "14:30", activity: "Elmina Castle & fishing village", durationMinutes: 120, included: true, locationName: "Elmina" },
+            {
+              activityTime: "08:30",
+              activity: "Cape Coast Castle tour",
+              durationMinutes: 150,
+              included: true,
+              locationName: "Cape Coast",
+            },
+            {
+              activityTime: "12:00",
+              activity: "Lunch overlooking the Atlantic",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Cape Coast",
+            },
+            {
+              activityTime: "14:30",
+              activity: "Elmina Castle & fishing village",
+              durationMinutes: 120,
+              included: true,
+              locationName: "Elmina",
+            },
           ],
         },
         {
@@ -872,13 +947,38 @@ async function seedTours() {
           accommodationName: "",
           accommodationType: "",
           activities: [
-            { activityTime: "07:30", activity: "Kakum canopy walkway", durationMinutes: 120, included: true, locationName: "Kakum" },
-            { activityTime: "12:00", activity: "Lunch at Kakum visitor centre", durationMinutes: 60, included: true, locationName: "Kakum" },
-            { activityTime: "14:00", activity: "Departure back to Accra", durationMinutes: 180, included: false, locationName: "Accra" },
+            {
+              activityTime: "07:30",
+              activity: "Kakum canopy walkway",
+              durationMinutes: 120,
+              included: true,
+              locationName: "Kakum",
+            },
+            {
+              activityTime: "12:00",
+              activity: "Lunch at Kakum visitor centre",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Kakum",
+            },
+            {
+              activityTime: "14:00",
+              activity: "Departure back to Accra",
+              durationMinutes: 180,
+              included: false,
+              locationName: "Accra",
+            },
           ],
         },
       ],
-      includes: ["All hotel accommodation", "Daily breakfast, lunch and dinner", "Air-conditioned transport", "Professional tour guide", "All entrance fees", "Bottled water"],
+      includes: [
+        "All hotel accommodation",
+        "Daily breakfast, lunch and dinner",
+        "Air-conditioned transport",
+        "Professional tour guide",
+        "All entrance fees",
+        "Bottled water",
+      ],
       excludes: ["International flights", "Travel insurance", "Personal expenses", "Gratuities"],
     },
     {
@@ -896,9 +996,27 @@ async function seedTours() {
       description:
         "Discover the seat of the Ashanti Kingdom with visits to the Manhyia Palace Museum, Kejetia Market and the sacred Lake Bosomtwe.",
       locations: [
-        { name: "Manhyia Palace Museum", city: "Kumasi", region: "Ashanti", description: "Official seat of the Asantehene.", visitDuration: 90 },
-        { name: "Kejetia Market", city: "Kumasi", region: "Ashanti", description: "One of the largest open-air markets in West Africa.", visitDuration: 120 },
-        { name: "Lake Bosomtwe", city: "Bosomtwe", region: "Ashanti", description: "Ghana's only natural crater lake.", visitDuration: 90 },
+        {
+          name: "Manhyia Palace Museum",
+          city: "Kumasi",
+          region: "Ashanti",
+          description: "Official seat of the Asantehene.",
+          visitDuration: 90,
+        },
+        {
+          name: "Kejetia Market",
+          city: "Kumasi",
+          region: "Ashanti",
+          description: "One of the largest open-air markets in West Africa.",
+          visitDuration: 120,
+        },
+        {
+          name: "Lake Bosomtwe",
+          city: "Bosomtwe",
+          region: "Ashanti",
+          description: "Ghana's only natural crater lake.",
+          visitDuration: 90,
+        },
       ],
       itinerary: [
         {
@@ -911,9 +1029,27 @@ async function seedTours() {
           accommodationName: "Golden Tulip Kumasi",
           accommodationType: "HOTEL",
           activities: [
-            { activityTime: "09:30", activity: "Manhyia Palace Museum", durationMinutes: 90, included: true, locationName: "Kumasi" },
-            { activityTime: "12:00", activity: "Kejetia Market & kente shopping", durationMinutes: 120, included: true, locationName: "Kumasi" },
-            { activityTime: "16:00", activity: "Cultural drumming and dance performance", durationMinutes: 60, included: true, locationName: "Kumasi" },
+            {
+              activityTime: "09:30",
+              activity: "Manhyia Palace Museum",
+              durationMinutes: 90,
+              included: true,
+              locationName: "Kumasi",
+            },
+            {
+              activityTime: "12:00",
+              activity: "Kejetia Market & kente shopping",
+              durationMinutes: 120,
+              included: true,
+              locationName: "Kumasi",
+            },
+            {
+              activityTime: "16:00",
+              activity: "Cultural drumming and dance performance",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Kumasi",
+            },
           ],
         },
         {
@@ -926,13 +1062,37 @@ async function seedTours() {
           accommodationName: "",
           accommodationType: "",
           activities: [
-            { activityTime: "08:00", activity: "Lake Bosomtwe boat ride", durationMinutes: 90, included: true, locationName: "Lake Bosomtwe" },
-            { activityTime: "12:00", activity: "Lunch at lakeside village", durationMinutes: 60, included: true, locationName: "Lake Bosomtwe" },
-            { activityTime: "14:00", activity: "Return transfer to Accra", durationMinutes: 240, included: false, locationName: "Accra" },
+            {
+              activityTime: "08:00",
+              activity: "Lake Bosomtwe boat ride",
+              durationMinutes: 90,
+              included: true,
+              locationName: "Lake Bosomtwe",
+            },
+            {
+              activityTime: "12:00",
+              activity: "Lunch at lakeside village",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Lake Bosomtwe",
+            },
+            {
+              activityTime: "14:00",
+              activity: "Return transfer to Accra",
+              durationMinutes: 240,
+              included: false,
+              locationName: "Accra",
+            },
           ],
         },
       ],
-      includes: ["Hotel accommodation", "Breakfast, lunch and dinner", "Transport", "Guided tours", "Entrance fees"],
+      includes: [
+        "Hotel accommodation",
+        "Breakfast, lunch and dinner",
+        "Transport",
+        "Guided tours",
+        "Entrance fees",
+      ],
       excludes: ["Personal expenses", "Gratuities", "Travel insurance"],
     },
     {
@@ -950,9 +1110,27 @@ async function seedTours() {
       description:
         "A nature escape to the Volta Region featuring Wli Waterfalls, the Tafi Atome Monkey Sanctuary and Mount Afadjato.",
       locations: [
-        { name: "Wli Waterfalls", city: "Hohoe", region: "Volta", description: "The highest waterfall in West Africa.", visitDuration: 120 },
-        { name: "Tafi Atome Monkey Sanctuary", city: "Tafi Atome", region: "Volta", description: "Community-run Mona monkey sanctuary.", visitDuration: 90 },
-        { name: "Mount Afadjato", city: "Gbledi", region: "Volta", description: "Ghana's highest peak.", visitDuration: 150 },
+        {
+          name: "Wli Waterfalls",
+          city: "Hohoe",
+          region: "Volta",
+          description: "The highest waterfall in West Africa.",
+          visitDuration: 120,
+        },
+        {
+          name: "Tafi Atome Monkey Sanctuary",
+          city: "Tafi Atome",
+          region: "Volta",
+          description: "Community-run Mona monkey sanctuary.",
+          visitDuration: 90,
+        },
+        {
+          name: "Mount Afadjato",
+          city: "Gbledi",
+          region: "Volta",
+          description: "Ghana's highest peak.",
+          visitDuration: 150,
+        },
       ],
       itinerary: [
         {
@@ -965,9 +1143,27 @@ async function seedTours() {
           accommodationName: "Wli Nature Lodge",
           accommodationType: "GUESTHOUSE",
           activities: [
-            { activityTime: "07:30", activity: "Transfer from Accra to Hohoe", durationMinutes: 240, included: false, locationName: "Volta" },
-            { activityTime: "14:00", activity: "Wli Waterfalls hike", durationMinutes: 120, included: true, locationName: "Wli" },
-            { activityTime: "18:00", activity: "Bonfire night at the lodge", durationMinutes: 90, included: true, locationName: "Wli" },
+            {
+              activityTime: "07:30",
+              activity: "Transfer from Accra to Hohoe",
+              durationMinutes: 240,
+              included: false,
+              locationName: "Volta",
+            },
+            {
+              activityTime: "14:00",
+              activity: "Wli Waterfalls hike",
+              durationMinutes: 120,
+              included: true,
+              locationName: "Wli",
+            },
+            {
+              activityTime: "18:00",
+              activity: "Bonfire night at the lodge",
+              durationMinutes: 90,
+              included: true,
+              locationName: "Wli",
+            },
           ],
         },
         {
@@ -980,13 +1176,37 @@ async function seedTours() {
           accommodationName: "",
           accommodationType: "",
           activities: [
-            { activityTime: "08:00", activity: "Tafi Atome Monkey Sanctuary", durationMinutes: 90, included: true, locationName: "Tafi Atome" },
-            { activityTime: "10:30", activity: "Mount Afadjato summit hike", durationMinutes: 150, included: true, locationName: "Afadjato" },
-            { activityTime: "14:00", activity: "Return transfer to Accra", durationMinutes: 240, included: false, locationName: "Accra" },
+            {
+              activityTime: "08:00",
+              activity: "Tafi Atome Monkey Sanctuary",
+              durationMinutes: 90,
+              included: true,
+              locationName: "Tafi Atome",
+            },
+            {
+              activityTime: "10:30",
+              activity: "Mount Afadjato summit hike",
+              durationMinutes: 150,
+              included: true,
+              locationName: "Afadjato",
+            },
+            {
+              activityTime: "14:00",
+              activity: "Return transfer to Accra",
+              durationMinutes: 240,
+              included: false,
+              locationName: "Accra",
+            },
           ],
         },
       ],
-      includes: ["Lodge accommodation", "Meals as listed", "Transport", "Local guides", "Entrance fees"],
+      includes: [
+        "Lodge accommodation",
+        "Meals as listed",
+        "Transport",
+        "Local guides",
+        "Entrance fees",
+      ],
       excludes: ["Hiking boots", "Personal expenses", "Travel insurance"],
     },
     {
@@ -1004,9 +1224,27 @@ async function seedTours() {
       description:
         "A 4-day safari through Mole National Park with elephant sightings, the historic Larabanga Mosque and Paga's sacred crocodile pond.",
       locations: [
-        { name: "Mole National Park", city: "Damongo", region: "Savannah", description: "Ghana's largest wildlife refuge.", visitDuration: 180 },
-        { name: "Larabanga Mosque", city: "Larabanga", region: "Savannah", description: "One of the oldest mosques in West Africa.", visitDuration: 60 },
-        { name: "Paga Crocodile Pond", city: "Paga", region: "Upper East", description: "Sacred pond of tame crocodiles.", visitDuration: 90 },
+        {
+          name: "Mole National Park",
+          city: "Damongo",
+          region: "Savannah",
+          description: "Ghana's largest wildlife refuge.",
+          visitDuration: 180,
+        },
+        {
+          name: "Larabanga Mosque",
+          city: "Larabanga",
+          region: "Savannah",
+          description: "One of the oldest mosques in West Africa.",
+          visitDuration: 60,
+        },
+        {
+          name: "Paga Crocodile Pond",
+          city: "Paga",
+          region: "Upper East",
+          description: "Sacred pond of tame crocodiles.",
+          visitDuration: 90,
+        },
       ],
       itinerary: [
         {
@@ -1019,8 +1257,20 @@ async function seedTours() {
           accommodationName: "Mole Motel",
           accommodationType: "HOTEL",
           activities: [
-            { activityTime: "07:00", activity: "Depart Accra for Damongo", durationMinutes: 480, included: false, locationName: "Northern" },
-            { activityTime: "18:00", activity: "Sunset view over Mole escarpment", durationMinutes: 60, included: true, locationName: "Mole" },
+            {
+              activityTime: "07:00",
+              activity: "Depart Accra for Damongo",
+              durationMinutes: 480,
+              included: false,
+              locationName: "Northern",
+            },
+            {
+              activityTime: "18:00",
+              activity: "Sunset view over Mole escarpment",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Mole",
+            },
           ],
         },
         {
@@ -1033,8 +1283,20 @@ async function seedTours() {
           accommodationName: "Mole Motel",
           accommodationType: "HOTEL",
           activities: [
-            { activityTime: "06:30", activity: "Morning game drive", durationMinutes: 180, included: true, locationName: "Mole National Park" },
-            { activityTime: "15:00", activity: "Elephant tracking on foot", durationMinutes: 120, included: true, locationName: "Mole National Park" },
+            {
+              activityTime: "06:30",
+              activity: "Morning game drive",
+              durationMinutes: 180,
+              included: true,
+              locationName: "Mole National Park",
+            },
+            {
+              activityTime: "15:00",
+              activity: "Elephant tracking on foot",
+              durationMinutes: 120,
+              included: true,
+              locationName: "Mole National Park",
+            },
           ],
         },
         {
@@ -1047,8 +1309,20 @@ async function seedTours() {
           accommodationName: "Paga Guest House",
           accommodationType: "GUESTHOUSE",
           activities: [
-            { activityTime: "09:00", activity: "Larabanga Mosque visit", durationMinutes: 60, included: true, locationName: "Larabanga" },
-            { activityTime: "13:00", activity: "Paga Crocodile Pond", durationMinutes: 90, included: true, locationName: "Paga" },
+            {
+              activityTime: "09:00",
+              activity: "Larabanga Mosque visit",
+              durationMinutes: 60,
+              included: true,
+              locationName: "Larabanga",
+            },
+            {
+              activityTime: "13:00",
+              activity: "Paga Crocodile Pond",
+              durationMinutes: 90,
+              included: true,
+              locationName: "Paga",
+            },
           ],
         },
         {
@@ -1061,11 +1335,24 @@ async function seedTours() {
           accommodationName: "",
           accommodationType: "",
           activities: [
-            { activityTime: "07:00", activity: "Depart Paga for Accra", durationMinutes: 600, included: false, locationName: "Northern" },
+            {
+              activityTime: "07:00",
+              activity: "Depart Paga for Accra",
+              durationMinutes: 600,
+              included: false,
+              locationName: "Northern",
+            },
           ],
         },
       ],
-      includes: ["3 nights accommodation", "All meals", "Game drives", "Park entrance fees", "Transport", "Local guides"],
+      includes: [
+        "3 nights accommodation",
+        "All meals",
+        "Game drives",
+        "Park entrance fees",
+        "Transport",
+        "Local guides",
+      ],
       excludes: ["International flights", "Travel insurance", "Personal expenses", "Gratuities"],
     },
   ];
@@ -1148,7 +1435,9 @@ async function seedTourBookings() {
   console.log("Seeding tour bookings...");
 
   const demoUser = await prisma.user.findUnique({ where: { email: "demo@dagh.app" } });
-  const tour = await prisma.tour_packages.findFirst({ where: { slug: "coastal-heritage-discovery" } });
+  const tour = await prisma.tour_packages.findFirst({
+    where: { slug: "coastal-heritage-discovery" },
+  });
   if (!demoUser || !tour) return;
 
   const bookings = [
@@ -1269,23 +1558,51 @@ async function seedDatingInteractions() {
   }
 
   // Conversations + messages
-  const chats: Array<{ a: typeof ama; b: typeof kwame; messages: Array<{ sender: typeof ama; content: string; minutesAgo: number }> }> = [
+  const chats: Array<{
+    a: typeof ama;
+    b: typeof kwame;
+    messages: Array<{ sender: typeof ama; content: string; minutesAgo: number }>;
+  }> = [
     {
       a: demoKofi,
       b: ama,
       messages: [
-        { sender: ama, content: "Hey Kofi! Nice to match with you. How's the coding going?", minutesAgo: 120 },
-        { sender: demoKofi, content: "Hi Ama! Thanks, it's going great. Just finishing up some features.", minutesAgo: 110 },
+        {
+          sender: ama,
+          content: "Hey Kofi! Nice to match with you. How's the coding going?",
+          minutesAgo: 120,
+        },
+        {
+          sender: demoKofi,
+          content: "Hi Ama! Thanks, it's going great. Just finishing up some features.",
+          minutesAgo: 110,
+        },
       ],
     },
     {
       a: ama,
       b: kwame,
       messages: [
-        { sender: kwame, content: "Hey Ama! I saw we matched. How's your week going?", minutesAgo: 320 },
-        { sender: ama, content: "Hi Kwame! It's been great, just got back from a hike at Aburi. You?", minutesAgo: 310 },
-        { sender: kwame, content: "Nice! I'm planning a trip to Mole National Park next month. Love the outdoors.", minutesAgo: 300 },
-        { sender: ama, content: "That sounds amazing! I've always wanted to see the elephants there.", minutesAgo: 290 },
+        {
+          sender: kwame,
+          content: "Hey Ama! I saw we matched. How's your week going?",
+          minutesAgo: 320,
+        },
+        {
+          sender: ama,
+          content: "Hi Kwame! It's been great, just got back from a hike at Aburi. You?",
+          minutesAgo: 310,
+        },
+        {
+          sender: kwame,
+          content: "Nice! I'm planning a trip to Mole National Park next month. Love the outdoors.",
+          minutesAgo: 300,
+        },
+        {
+          sender: ama,
+          content: "That sounds amazing! I've always wanted to see the elephants there.",
+          minutesAgo: 290,
+        },
       ],
     },
     {
@@ -1300,25 +1617,55 @@ async function seedDatingInteractions() {
       a: kojo,
       b: ama,
       messages: [
-        { sender: kojo, content: "Hey Ama! Heard you're into live music — ever catch a show at the Alliance Française?", minutesAgo: 200 },
-        { sender: ama, content: "Hi Kojo! Yes, the jazz nights there are great. You're a chef, right?", minutesAgo: 180 },
-        { sender: kojo, content: "That's me. I'll cook you my best jollof if you bring the playlist.", minutesAgo: 160 },
+        {
+          sender: kojo,
+          content:
+            "Hey Ama! Heard you're into live music — ever catch a show at the Alliance Française?",
+          minutesAgo: 200,
+        },
+        {
+          sender: ama,
+          content: "Hi Kojo! Yes, the jazz nights there are great. You're a chef, right?",
+          minutesAgo: 180,
+        },
+        {
+          sender: kojo,
+          content: "That's me. I'll cook you my best jollof if you bring the playlist.",
+          minutesAgo: 160,
+        },
       ],
     },
     {
       a: kwame,
       b: efua,
       messages: [
-        { sender: efua, content: "Hi Kwame! A fellow outdoor person — love it. I teach yoga by the beach on Saturdays.", minutesAgo: 90 },
-        { sender: kwame, content: "Hi Efua! Yoga sounds like the perfect pre-hike warm-up. We should plan one.", minutesAgo: 75 },
+        {
+          sender: efua,
+          content:
+            "Hi Kwame! A fellow outdoor person — love it. I teach yoga by the beach on Saturdays.",
+          minutesAgo: 90,
+        },
+        {
+          sender: kwame,
+          content: "Hi Efua! Yoga sounds like the perfect pre-hike warm-up. We should plan one.",
+          minutesAgo: 75,
+        },
       ],
     },
     {
       a: demoKofi,
       b: abena,
       messages: [
-        { sender: abena, content: "Hey Kofi! Glad we matched. How's the new project coming along?", minutesAgo: 50 },
-        { sender: demoKofi, content: "Hey Abena! It's going well, thanks. Coffee to celebrate sometime?", minutesAgo: 35 },
+        {
+          sender: abena,
+          content: "Hey Kofi! Glad we matched. How's the new project coming along?",
+          minutesAgo: 50,
+        },
+        {
+          sender: demoKofi,
+          content: "Hey Abena! It's going well, thanks. Coffee to celebrate sometime?",
+          minutesAgo: 35,
+        },
       ],
     },
   ];
@@ -1385,7 +1732,8 @@ async function seedVisaRequests() {
         create: {
           passport_image_url: "https://images.unsplash.com/photo-1627123424574-724758594e93",
           bio_page_image_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
-          flight_itinerary_image_url: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05",
+          flight_itinerary_image_url:
+            "https://images.unsplash.com/photo-1436491865332-7a61a109cc05",
           passport_number: "G000123456",
           purpose_of_trip: "Tourism",
           date_of_departure: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
@@ -1496,7 +1844,8 @@ async function seedAdminConsoleData() {
           create: {
             passport_image_url: "https://images.unsplash.com/photo-1627123424574-724758594e93",
             bio_page_image_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
-            flight_itinerary_image_url: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05",
+            flight_itinerary_image_url:
+              "https://images.unsplash.com/photo-1436491865332-7a61a109cc05",
             passport_number: seed.passport,
             purpose_of_trip: seed.purpose,
             date_of_departure: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
@@ -1518,7 +1867,10 @@ async function seedAdminConsoleData() {
           status: seed.approval,
           approvedBy: admin.id,
           approvedAt: new Date(),
-          notes: seed.approval === VisaApprovalStatus.APPROVED ? "Documents verified" : "Incomplete documentation",
+          notes:
+            seed.approval === VisaApprovalStatus.APPROVED
+              ? "Documents verified"
+              : "Incomplete documentation",
         },
       });
     }

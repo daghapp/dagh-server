@@ -35,10 +35,7 @@ export async function withDistributedLock<T>(
  * Claim a single work item (e.g. one pending payment) so concurrent runs /
  * restarts can't process it twice. Returns true only for the first claimant.
  */
-export async function tryAcquireWorkItem(
-  itemKey: string,
-  ttlMs: number,
-): Promise<boolean> {
+export async function tryAcquireWorkItem(itemKey: string, ttlMs: number): Promise<boolean> {
   const redis = getRedisClient();
   if (!redis) return true;
 
