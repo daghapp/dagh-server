@@ -20,49 +20,49 @@ const {
   APPLE_CALLBACK_URL,
 } = process.env;
 
-if (!CLIENTID || !CLIENTSECRETE || !REDIRECTURI) {
-  throw new Error("Google OAuth env vars missing");
-}
+// Google OAuth Strategy (registered only when credentials are configured,
+// so tests/CI can run without OAuth env vars)
+if (CLIENTID && CLIENTSECRETE && REDIRECTURI) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: CLIENTID,
+        clientSecret: CLIENTSECRETE,
+        callbackURL: REDIRECTURI || "http://localhost:3000/auth/google/callback",
+      },
+      async (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          if (!email) return done(new Error("No email from Google"), false);
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: CLIENTID,
-      clientSecret: CLIENTSECRETE,
-      callbackURL: REDIRECTURI || "http://localhost:3000/auth/google/callback",
-    },
-    async (_accessToken, _refreshToken, profile, done) => {
-      try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) return done(new Error("No email from Google"), false);
+          let user = await prisma.user.findUnique({ where: { email } });
 
-        let user = await prisma.user.findUnique({ where: { email } });
-
-        if (user) {
-          if (user.authProvider === "PASSWORD") {
-            user = await prisma.user.update({
-              where: { id: user.id },
-              data: { authProvider: "GOOGLE" },
-            });
+          if (user) {
+            if (user.authProvider === "PASSWORD") {
+              user = await prisma.user.update({
+                where: { id: user.id },
+                data: { authProvider: "GOOGLE" },
+              });
+            }
+            return done(null, user);
           }
-          return done(null, user);
+
+          user = await prisma.user.create({
+            data: {
+              fullName: profile.displayName ?? email.split("@")[0],
+              email,
+              authProvider: "GOOGLE",
+            },
+          });
+
+          done(null, user);
+        } catch (err) {
+          done(err instanceof Error ? err : new Error(String(err)), false);
         }
-
-        user = await prisma.user.create({
-          data: {
-            fullName: profile.displayName ?? email.split("@")[0],
-            email,
-            authProvider: "GOOGLE",
-          },
-        });
-
-        done(null, user);
-      } catch (err) {
-        done(err instanceof Error ? err : new Error(String(err)), false);
-      }
-    },
-  ),
-);
+      },
+    ),
+  );
+}
 
 // Facebook Strategy
 if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET && FACEBOOK_CALLBACK_URL) {
