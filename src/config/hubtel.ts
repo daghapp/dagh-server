@@ -15,7 +15,9 @@ const requiredEnvVars = [
   "HUBTEL_BASE_URL",
 ] as const;
 const missing = requiredEnvVars.filter((key) => !process.env[key]);
-if (missing.length) {
+// Skip boot-time validation in tests (NODE_ENV=test): the client is never
+// called there, and CI has no .env file with Hubtel credentials.
+if (missing.length && process.env.NODE_ENV !== "test") {
   throw new Error(`Missing required Hubtel env vars: ${missing.join(", ")}`);
 }
 
