@@ -24,7 +24,7 @@ import { router as VerificationRoutes } from "./routes/verification.routes.js";
 
 import { router as AdminRoutes } from "./routes/admin.routes.js";
 import { router as AdminConsoleRoutes } from "./routes/admin-console.routes.js";
-import { router as AdminProfileRoutes } from "./routes/admin-profile-routes.js";
+import { router as AdminProfileRoutes } from "./routes/admin-profile.routes.js";
 import { router as VisaRoutes } from "./routes/visa.routes.js";
 import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
 import { router as ProviderRoutes } from "./routes/provider.routes.js";

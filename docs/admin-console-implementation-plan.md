@@ -38,7 +38,7 @@ Already usable:
 | Users | `GET/PATCH/DELETE /admin/users…` |
 | Tours (admin write) | `POST/PUT/DELETE /tours` (+ itinerary) behind `requireAdmin` |
 | Visa (admin) | `GET /admin/visa-requests/paid`, `POST /admin/visa-requests/approve` |
-| Profile verification | `admin-profile-routes` |
+| Profile verification | `admin-profile.routes` |
 | Dating reports | `/admin/reports` |
 | Payments (user) | Hubtel init + status; `Payment` + ledger models |
 | Audit | `AuditLog` model exists but is provider-scoped — not suitable as-is for admin activity |
