@@ -6,6 +6,8 @@ import type { Prisma } from "../generated/prisma/client.js";
 import {
   AccountStatus,
   AccountType,
+  AdminDepartment,
+  AdminRole,
   ApartmentType,
   AuthProvider,
   BookingStatus,
@@ -619,6 +621,21 @@ async function seedDemoUsers() {
       await prisma.userProfile.create({
         data: { userId: user.id },
       });
+    }
+
+    if (demo.email === "admin@dagh.app") {
+      const adminProfileExists = await prisma.adminProfile.findUnique({
+        where: { userId: user.id },
+      });
+      if (!adminProfileExists) {
+        await prisma.adminProfile.create({
+          data: {
+            userId: user.id,
+            department: AdminDepartment.DIASPORA_AFFAIRS,
+            role: AdminRole.SUPER_ADMIN,
+          },
+        });
+      }
     }
 
     if (demo.email === "demo@dagh.app") {

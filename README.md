@@ -222,7 +222,8 @@ src/
 
 > **Detailed developer reference:** see `docs/api-reference.md` for every
 > endpoint with payloads and examples, `docs/admin-console-api.md` for the admin
-> console surface + frontend wiring patterns, and `docs/verification-flow.md` for
+> console surface + frontend wiring patterns, `docs/admin-gateway-registration.md`
+> for the Admin Gateway registration flow, and `docs/verification-flow.md` for
 > the identity-verification integration guide.
 
 All endpoints return responses in a standardized envelope:

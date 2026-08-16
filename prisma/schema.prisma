@@ -51,6 +51,7 @@ model User {
   tourRequests TourRequest[]
 
   adminActivityLogs AdminActivityLog[]
+  adminProfile      AdminProfile?
 
   datingProfile         DatingProfile?
   swipesMade            UserSwipe[]   @relation("Swiper")
@@ -706,6 +707,47 @@ model AdminActivityLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("admin_activity_logs")
+}
+
+// ─────────────────────────────────────────
+// ADMIN PROFILE — department + role for admin console accounts.
+// One per admin `User`; created on admin registration (or seed).
+// ─────────────────────────────────────────
+model AdminProfile {
+  id         String           @id @default(uuid())
+  userId     String           @unique
+  department AdminDepartment
+  role       AdminRole
+  createdBy  String? // userId of the account that registered this admin (null for self-registration/seed)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
+}
+
+enum AdminDepartment {
+  DIASPORA_AFFAIRS
+  OPERATIONS
+  VISA
+  TOURS
+  FINANCE
+  LEGAL
+  MARKETING
+  MODERATION
+  CUSTOMER_SUPPORT
+  IT_SUPPORT
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  VISA_OFFICER
+  TOUR_MANAGER
+  FINANCE
+  SUPPORT
+  MODERATOR
 }
 
 // ─────────────────────────────────────────
