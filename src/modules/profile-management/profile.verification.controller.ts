@@ -130,17 +130,22 @@ export class ProfileVerificationController {
         where: { userProfileId: profile.id },
         update: {
           phone_number_verified: true,
+          isVerified: true,
           validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
         create: {
           userProfileId: profile.id,
           phone_number_verified: true,
-          isVerified: false,
+          isVerified: true,
           validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
       });
 
-      return ok(res, verification, "Phone number verified successfully");
+      return ok(
+        res,
+        { ...verification, isVerified: true },
+        "Phone number verified successfully"
+      );
     } catch (_error) {
       return fail(res, 500, "Failed to verify OTP");
     }
