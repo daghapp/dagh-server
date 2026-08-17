@@ -212,6 +212,21 @@ app.get("/", (_req, res) => {
 });
 
 // Express 5 catch-all: "/{*splat}" matches every path including the root "/"
+// /sentry-debug - throw an intentional error to verify Sentry captures events.
+/**
+ * @swagger
+ * /sentry-debug:
+ *   get:
+ *     summary: Trigger a test error to verify Sentry is capturing events
+ *     tags: [System]
+ *     responses:
+ *       500:
+ *         description: The intentionally thrown error
+ */
+app.get("/sentry-debug", () => {
+  throw new Error("Sentry test error - this is intentional");
+});
+
 // (the previous "/*path" only matched paths with at least one segment).
 app.use("/{*splat}", (req: express.Request, res: express.Response) => {
   const path = req.params.splat;
@@ -221,8 +236,10 @@ app.use("/{*splat}", (req: express.Request, res: express.Response) => {
 
 // Capture unhandled errors with Sentry before responding. Registered after all
 // controllers so route errors are reported; our custom error middleware below
-// still handles the response.
-Sentry.setupExpressErrorHandler(app);
+// still handles the response. Skipped when Sentry is disabled (no SENTRY_DSN).
+if (Sentry.getClient()) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err.message === "Not allowed by CORS") {

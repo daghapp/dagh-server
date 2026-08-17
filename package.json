@@ -7,6 +7,7 @@
     "build": "prisma generate && tsc && npm run build:views",
     "build:views": "node -e \"require('fs').cpSync('src/views','dist/src/views',{recursive:true})\"",
     "start": "prisma migrate deploy && node dist/src/index.js",
+    "sentry:sourcemaps": "test -n \"$SENTRY_AUTH_TOKEN\" && sentry-cli sourcemaps upload --org \"$SENTRY_ORG\" --project \"$SENTRY_PROJECT\" --release \"$SENTRY_RELEASE\" dist/src || echo 'Sentry sourcemap upload skipped (SENTRY_AUTH_TOKEN not set)'",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -58,6 +59,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@sentry/cli": "^3.6.2",
     "@types/bcrypt": "^6.0.0",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cors": "^2.8.19",

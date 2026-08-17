@@ -130,13 +130,12 @@ export class ProfileVerificationController {
         where: { userProfileId: profile.id },
         update: {
           phone_number_verified: true,
-          isVerified: true,
           validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
         create: {
           userProfileId: profile.id,
           phone_number_verified: true,
-          isVerified: true,
+          isVerified: false,
           validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
       });

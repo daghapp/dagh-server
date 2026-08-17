@@ -13,6 +13,20 @@ COPY . .
 
 RUN npm run build
 
+# Optional Sentry source-map upload (skipped when SENTRY_AUTH_TOKEN is absent).
+# Pass --build-arg SENTRY_AUTH_TOKEN etc. when building. Also set the matching
+# SENTRY_RELEASE at runtime so errors are symbolicated against these maps.
+ARG SENTRY_AUTH_TOKEN
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+ARG SENTRY_RELEASE
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN \
+    SENTRY_ORG=$SENTRY_ORG \
+    SENTRY_PROJECT=$SENTRY_PROJECT \
+    SENTRY_RELEASE=$SENTRY_RELEASE
+
+RUN npm run sentry:sourcemaps
+
 FROM node:20.19-alpine3.21 AS runner
 
 RUN apk upgrade --no-cache

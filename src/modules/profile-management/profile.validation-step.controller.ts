@@ -3,6 +3,7 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import {
   STEP_PHONE_NUMBER_VERIFICATION,
+  VERIFICATION_STEPS,
   buildVerificationSteps,
   getCompletedVerificationSteps,
   getRejectionReason,
@@ -71,9 +72,11 @@ export async function getVerificationStatus(req: Request, res: Response) {
 
     const completedSteps = getCompletedVerificationSteps(verification);
 
+    const isVerified = completedSteps.length === VERIFICATION_STEPS.length;
+
     const payload: VerificationStatusResponse = {
       profileExists: true,
-      isVerified: verification?.isVerified ?? false,
+      isVerified,
       currentStep,
       verificationMessage:
         verification?.verification_message ?? getRejectionReason(currentStep, verification) ?? null,
