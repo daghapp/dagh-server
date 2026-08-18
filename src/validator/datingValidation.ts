@@ -36,6 +36,19 @@ export const datingProfileSchema = z.object({
     .refine((date) => date.getTime() < Date.now(), {
       message: "Date of birth must be in the past",
     })
+    .refine(
+      (date) => {
+        // Use start-of-day in the user's perspective to avoid timezone edge cases.
+        // If someone is 18 today in their timezone, they should pass.
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const birthDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const diff = today.getTime() - birthDate.getTime();
+        const age = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+        return age >= 18;
+      },
+      { message: "You must be at least 18 years old" },
+    )
     .optional(),
   ethnicity: z
     .enum(

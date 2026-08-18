@@ -11,6 +11,7 @@ import {
   getMyDatingProfile,
   initDatingProfile,
   updateDatingProfile,
+  deactivateDatingProfile,
   getDatingProfileById,
   getDatingProfileStatus,
   getDiscoveryPreference,
@@ -221,6 +222,25 @@ router.post("/profile/init", validate(datingProfileSchema), initDatingProfile);
  *         description: Internal server error
  */
 router.patch("/profile", validate(datingProfileSchema), updateDatingProfile);
+
+/**
+ * @swagger
+ * /dating/profile/deactivate:
+ *   delete:
+ *     summary: Deactivate the authenticated user's dating profile
+ *     description: Removes the dating profile and discovery preferences. The user can re-initialize later.
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dating profile deactivated
+ *       404:
+ *         description: Dating profile not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete("/profile/deactivate", deactivateDatingProfile);
 
 /**
  * @swagger

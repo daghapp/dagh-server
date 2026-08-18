@@ -7,6 +7,26 @@ import { getDiscoveryCandidates } from "../../services/matching.service.js";
 import type { SwipeDirection } from "../../../generated/prisma/enums.js";
 
 // ─────────────────────────────────────────
+// Super-like daily limits by membership tier
+// ─────────────────────────────────────────
+const SUPER_LIKE_DAILY_LIMITS: Record<string, number> = {
+  FREE: 1,
+  BASELINE: 2,
+  SENIOR_PIONEER: 3,
+  SANKOFA_SETTLED: 3,
+  BASIC: 3,
+  SILVER: 5,
+  GOLD_INVESTOR: 10,
+  ELITE_AMBASSADOR: 20,
+  FAMILY_PLAN: 5,
+};
+
+function getSuperLikeDailyLimit(tierCode: string | null | undefined): number {
+  if (!tierCode) return SUPER_LIKE_DAILY_LIMITS.FREE;
+  return SUPER_LIKE_DAILY_LIMITS[tierCode] ?? SUPER_LIKE_DAILY_LIMITS.FREE;
+}
+
+// ─────────────────────────────────────────
 // Swipe / matches controller
 // ─────────────────────────────────────────
 
@@ -79,6 +99,46 @@ export const recordSwipe = async (req: Request, res: Response) => {
 
     if (existing) {
       return fail(res, 409, "You have already swiped on this user");
+    }
+
+    // Enforce daily super-like limit based on membership tier.
+    if (direction === "SUPER_LIKE") {
+      const swiper = await prisma.user.findUnique({
+        where: { id: swiperId },
+        select: {
+          subscription: { select: { tierCode: true } },
+        },
+      });
+
+      const dailyLimit = getSuperLikeDailyLimit(swiper?.subscription?.tierCode);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const superLikeCount = await prisma.userSwipe.count({
+        where: {
+          swiperId,
+          direction: "SUPER_LIKE",
+          createdAt: { gte: todayStart },
+        },
+      });
+
+      if (superLikeCount >= dailyLimit) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+
+        return fail(
+          res,
+          429,
+          "Daily super-like limit reached. Upgrade your plan for more.",
+          {
+            code: "SUPER_LIKE_LIMIT_EXCEEDED",
+            limit: dailyLimit,
+            used: superLikeCount,
+            resetAt: tomorrow.toISOString(),
+          },
+        );
+      }
     }
 
     const swipe = await prisma.userSwipe.create({
@@ -187,32 +247,46 @@ export const getMyMatches = async (req: Request, res: Response) => {
 
 /**
  * List users who liked the current user (potential matches awaiting a response).
+ * FREE tier users receive only a count; paid-tier users see the full list.
+ * Response shape is always { count: number, profiles: Profile[] } for consistency.
  */
 export const getLikesReceived = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscription: { select: { tierCode: true } } },
+    });
+
+    const tierCode = user?.subscription?.tierCode ?? "FREE";
+    const isPaidTier = tierCode !== "FREE";
 
     const likes = await prisma.userSwipe.findMany({
       where: {
         targetId: userId,
         direction: { in: ["LIKE", "SUPER_LIKE"] },
       },
-      select: {
-        swiper: {
-          select: {
-            id: true,
-            fullName: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-            datingProfile: { select: { headline: true, photos: true } },
-          },
-        },
-      },
+      select: isPaidTier
+        ? {
+            swiper: {
+              select: {
+                id: true,
+                fullName: true,
+                profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+                datingProfile: { select: { headline: true, photos: true } },
+              },
+            },
+          }
+        : { id: true },
     });
 
-    return ok(
-      res,
-      likes.map((l) => l.swiper),
-    );
+    return ok(res, {
+      count: likes.length,
+      profiles: isPaidTier
+        ? likes.map((l) => (l as { swiper: unknown }).swiper)
+        : [],
+    });
   } catch (error) {
     console.error("Get likes received error:", error);
     return fail(res, 500, "Failed to fetch likes received");

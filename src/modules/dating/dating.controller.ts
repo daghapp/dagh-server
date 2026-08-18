@@ -222,6 +222,30 @@ export const getDatingProfileById = async (req: Request, res: Response) => {
 };
 
 /**
+ * Deactivate (soft-delete) the current user's dating profile.
+ * Removes the profile and discovery preferences from discovery but keeps
+ * the user account intact. The user can re-initialize later.
+ */
+export const deactivateDatingProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const existing = await prisma.datingProfile.findUnique({ where: { userId } });
+    if (!existing) {
+      return fail(res, 404, "Dating profile not found.");
+    }
+
+    // Deleting the dating profile cascades to discovery preferences.
+    await prisma.datingProfile.delete({ where: { userId } });
+
+    return ok(res, null, "Dating profile deactivated successfully.");
+  } catch (error) {
+    console.error("Deactivate dating profile error:", error);
+    return fail(res, 500, "Failed to deactivate dating profile");
+  }
+};
+
+/**
  * Get or create the current user's discovery preferences.
  */
 export const getDiscoveryPreference = async (req: Request, res: Response) => {
