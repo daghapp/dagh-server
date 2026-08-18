@@ -23,6 +23,8 @@ import {
   getMyMatches,
   getLikesReceived,
   unmatchUser,
+  getLikesSent,
+  getRelationshipStatus,
 } from "../modules/dating/swipe.controller.js";
 
 const router = express.Router();
@@ -423,6 +425,7 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  * /dating/recommendations:
  *   get:
  *     summary: Get ranked discovery candidates for the current user
+ *     description: Returns candidates enriched with relationshipStatus and canSendInterest fields.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
@@ -432,6 +435,7 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *         schema:
  *           type: integer
  *           default: 20
+ *           maximum: 50
  *       - in: query
  *         name: offset
  *         schema:
@@ -439,7 +443,30 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *           default: 0
  *     responses:
  *       200:
- *         description: Ranked list of candidates
+ *         description: Ranked list of candidates with relationship state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       userId:
+ *                         type: string
+ *                       fullName:
+ *                         type: string
+ *                       profile:
+ *                         type: object
+ *                       relationshipStatus:
+ *                         type: string
+ *                         enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED]
+ *                       canSendInterest:
+ *                         type: boolean
  *       500:
  *         description: Internal server error
  */
@@ -476,6 +503,128 @@ router.get("/matches", getMyMatches);
  *         description: Internal server error
  */
 router.get("/likes-received", getLikesReceived);
+
+/**
+ * @swagger
+ * /dating/likes-sent:
+ *   get:
+ *     summary: List outgoing interests sent by the current user
+ *     description: Returns a cursor-paginated list of outgoing likes/super-likes with target user profiles and current status (PENDING or MATCHED).
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Cursor (ID of the last item) for pagination
+ *     responses:
+ *       200:
+ *         description: Sent interests retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             description: Interest/swipe ID
+ *                           targetUserId:
+ *                             type: string
+ *                           direction:
+ *                             type: string
+ *                             enum: [LIKE, SUPER_LIKE]
+ *                           status:
+ *                             type: string
+ *                             enum: [PENDING, MATCHED]
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           targetUser:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: string
+ *                               profile:
+ *                                 type: object
+ *                                 properties:
+ *                                   fullName:
+ *                                     type: string
+ *                                   photos:
+ *                                     type: array
+ *                                     items:
+ *                                       type: string
+ *                     nextCursor:
+ *                       type: string
+ *                       nullable: true
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/likes-sent", getLikesSent);
+
+/**
+ * @swagger
+ * /dating/relationship-status/{userId}:
+ *   get:
+ *     summary: Get relationship status with a specific user
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Relationship status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     userId:
+ *                       type: string
+ *                     relationshipStatus:
+ *                       type: string
+ *                       enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED]
+ *                     canSendInterest:
+ *                       type: boolean
+ *                     interestId:
+ *                       type: string
+ *                       nullable: true
+ *                       description: Swipe ID if interest was sent
+ *                     sentAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/relationship-status/:userId", getRelationshipStatus);
 
 /**
  * @swagger

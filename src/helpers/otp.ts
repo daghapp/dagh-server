@@ -14,7 +14,7 @@ export async function sendOtp({ email, subject, purpose }: OtpPayload) {
   const expirationTime = new Date(Date.now() + 10 * 60 * 1000);
   const hashedOtp = await bcrypt.hash(otp.toString(), 10);
 
-  await prisma.otp.create({
+  const otpRecord = await prisma.otp.create({
     data: {
       code: hashedOtp,
       expiresAt: expirationTime,
@@ -29,9 +29,30 @@ export async function sendOtp({ email, subject, purpose }: OtpPayload) {
     html: `<p>Your OTP code is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
   });
 
-  return otp;
+  return { otp, challengeId: otpRecord.id, expiresAt: expirationTime };
 }
 
 export async function verifyOtp(hashedCode: string, plainCode: string): Promise<boolean> {
   return bcrypt.compare(plainCode, hashedCode);
+}
+
+/**
+ * Normalize a phone number to a consistent digits-only format.
+ * Strips spaces, dashes, parentheses, and leading +.
+ * Returns null if the result is not a plausible phone number (10-15 digits).
+ */
+export function normalizePhone(phone: string): string | null {
+  const digits = phone.replace(/[\s\-()+]/g, "");
+  if (!/^\d{10,15}$/.test(digits)) return null;
+  return digits;
+}
+
+/**
+ * Mask a phone number for diagnostic logging.
+ * Shows first 3 and last 2 digits, masks the rest.
+ * e.g. "233501234567" -> "233***4567"
+ */
+export function maskPhone(phone: string): string {
+  if (phone.length <= 5) return "***";
+  return phone.slice(0, 3) + "*".repeat(phone.length - 5) + phone.slice(-2);
 }

@@ -19,7 +19,8 @@ type CurrentStepResponse = {
 };
 
 export type VerificationStatusResponse = {
-  profileExists: boolean;
+  verificationProfileExists: boolean;
+  datingProfileExists: boolean;
   isVerified: boolean;
   currentStep: string;
   verificationMessage: string | null;
@@ -44,11 +45,16 @@ export async function getVerificationStatus(req: Request, res: Response) {
       where: { userId },
     });
 
+    const datingProfile = await prisma.datingProfile.findUnique({
+      where: { userId },
+    });
+
     if (!userProfile) {
       return ok(
         res,
         {
-          profileExists: false,
+          verificationProfileExists: false,
+          datingProfileExists: !!datingProfile,
           isVerified: false,
           currentStep: STEP_PHONE_NUMBER_VERIFICATION,
           verificationMessage: null,
@@ -75,7 +81,8 @@ export async function getVerificationStatus(req: Request, res: Response) {
     const isVerified = completedSteps.length === VERIFICATION_STEPS.length;
 
     const payload: VerificationStatusResponse = {
-      profileExists: true,
+      verificationProfileExists: true,
+      datingProfileExists: !!datingProfile,
       isVerified,
       currentStep,
       verificationMessage:

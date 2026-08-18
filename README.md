@@ -298,12 +298,52 @@ All endpoints return responses in a standardized envelope:
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/verification/init` | Bearer | Initialize verification |
-| POST | `/verification/phone/send-otp` | Bearer | Send phone verification OTP |
-| POST | `/verification/phone/verify-otp` | Bearer | Verify phone OTP |
+| POST | `/verification/phone/send-otp` | Bearer | Send phone verification OTP (returns `challengeId`) |
+| POST | `/verification/phone/verify-otp` | Bearer | Verify phone OTP (requires `challengeId` + `code`) |
 | POST | `/verification/bio_profile_url` | Bearer | Submit bio profile URL |
 | POST | `/verification/bio_document_urls` | Bearer | Submit bio documents |
 | GET | `/verification/status` | Bearer | Full verification status (per-step status, current step, completed steps) |
 | GET | `/verification/validation-step/status` | Bearer | Get current verification step |
+
+#### Phone OTP contract
+
+The OTP flow uses a **challenge ID** pattern:
+
+1. `POST /verification/phone/send-otp` — sends a 6-digit code and returns a `challengeId` (UUID), `expiresAt` (10 min), and `resendAvailableAt` (1 min). Resending invalidates all older active codes.
+2. `POST /verification/phone/verify-otp` — requires `challengeId` and `code` (6 digits). Returns stable error codes: `OTP_INVALID`, `OTP_EXPIRED`, `OTP_CHALLENGE_NOT_FOUND`.
+
+Phone numbers are normalized to digits-only before storage (strips `+`, spaces, dashes, parentheses). A code sent to `+233501234567` works with `233501234567`.
+
+Rate limits: 10 OTP requests per 15 minutes per IP. Never logs raw OTP values.
+
+#### Verification status response
+
+`GET /verification/status` returns two existence flags to avoid routing confusion:
+
+```json
+{
+  "success": true,
+  "data": {
+    "verificationProfileExists": true,
+    "datingProfileExists": false,
+    "isVerified": false,
+    "currentStep": "DOCUMENT_VERIFICATION",
+    "verificationMessage": null,
+    "steps": {
+      "PHONE_NUMBER_VERIFICATION": { "status": "VERIFIED", "verificationMessage": null },
+      "PROFILE_IMAGE_VERIFICATION": { "status": "PENDING", "verificationMessage": null },
+      "DOCUMENT_VERIFICATION": { "status": "PENDING", "verificationMessage": null }
+    },
+    "completedSteps": ["PHONE_NUMBER_VERIFICATION"]
+  }
+}
+```
+
+- `verificationProfileExists` — whether a `UserProfile` record exists (required for verification)
+- `datingProfileExists` — whether a `DatingProfile` exists (separate from verification)
+- `isVerified` — `true` **only** when all required steps are verified (derived, not stored)
+- `currentStep` — the next actionable step; always agrees with individual step states
+- Rejected steps include `verificationMessage` with the admin's rejection reason
 
 `GET /verification/validation-step/status` returns the current step and its review state:
 
@@ -405,11 +445,64 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 | GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
 | GET | `/dating/preferences` | Bearer | Get your discovery preferences |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
-| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates (excludes passed/blocked/hidden; likes stay in the queue) |
+| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation. |
 | GET | `/dating/matches` | Bearer | List your active matches |
 | GET | `/dating/likes-received` | Bearer | List users who liked you |
+| GET | `/dating/likes-sent` | Bearer | List outgoing interests you sent (cursor-paginated, newest first) |
+| GET | `/dating/relationship-status/:userId` | Bearer | Get relationship status with a specific user |
 | DELETE | `/dating/matches/:matchId` | Bearer | Unmatch a user |
+
+#### Recommendations with relationship state
+
+Each recommendation includes `relationshipStatus` and `canSendInterest`:
+
+```json
+{
+  "userId": "user_id",
+  "profile": {},
+  "relationshipStatus": "INTEREST_SENT",
+  "canSendInterest": false
+}
+```
+
+Stable relationship states: `NONE`, `INTEREST_SENT`, `INTEREST_RECEIVED`, `MATCHED`, `PASSED`, `BLOCKED`.
+
+- `canSendInterest` is `true` only for `NONE` and `INTEREST_RECEIVED`
+- Blocked users are excluded from recommendations
+- Matched profiles are never presented as available to Like
+
+#### Outgoing interests (likes sent)
+
+`GET /dating/likes-sent` returns a cursor-paginated list of outgoing interests with target user profiles:
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "interest_id",
+        "targetUserId": "user_id",
+        "direction": "LIKE",
+        "status": "PENDING",
+        "createdAt": "2026-08-18T12:00:00.000Z",
+        "targetUser": {
+          "id": "user_id",
+          "profile": { "fullName": "Example User", "photos": ["..."] }
+        }
+      }
+    ],
+    "nextCursor": null
+  }
+}
+```
+
+Status enum: `PENDING`, `MATCHED`. A mutual Like transitions from `PENDING` to `MATCHED` atomically.
+
+#### Single-profile relationship status
+
+`GET /dating/relationship-status/:userId` returns the relationship with a specific user, including `interestId` and `sentAt` when an outgoing interest exists.
 
 Dating real-time events via Socket.IO: `match:mutual` (both users on mutual like), `match:incoming` (target received a like), plus existing `presence:status` / `presence:info`.
 
@@ -435,10 +528,65 @@ Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/membership/plans` | Public | List all active membership plans with pricing, intervals, and features |
-| POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free activates immediately, paid initializes Hubtel checkout) |
-| GET | `/membership/my-subscription` | Bearer | Get current user's subscription with plan details and member code |
+| POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free activates immediately, paid returns checkout URL) |
+| GET | `/membership/my-subscription` | Bearer | Get current user's subscription with plan details and status |
 | POST | `/membership/support` | Bearer | Create a priority support ticket (paid tiers only) |
-| POST | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments |
+| POST | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments (idempotent) |
+| GET | `/membership/payment/return` | Public | HTTPS redirect bridge for mobile deep links (return) |
+| GET | `/membership/payment/cancel` | Public | HTTPS redirect bridge for mobile deep links (cancel) |
+
+#### Subscribe response
+
+Free plans activate immediately:
+
+```json
+{
+  "success": true,
+  "data": {
+    "subscriptionId": "subscription_id",
+    "status": "ACTIVE",
+    "checkoutUrl": null
+  },
+  "message": "Free membership activated successfully."
+}
+```
+
+Paid plans return a validated HTTPS checkout URL:
+
+```json
+{
+  "success": true,
+  "data": {
+    "subscriptionId": "subscription_id",
+    "paymentReference": "provider_reference",
+    "status": "PAYMENT_PENDING",
+    "checkoutUrl": "https://checkout.hubtel.com/session/cs_123456",
+    "expiresAt": "2026-08-18T13:00:00.000Z"
+  },
+  "message": "Membership checkout initialized successfully."
+}
+```
+
+The `checkoutUrl` is validated before returning: must be absolute, HTTPS in production, valid hostname, no backticks/quotes/spaces. Mobile deep links are bridged through HTTPS redirect endpoints (`/membership/payment/return?appUrl=...`).
+
+#### Subscription status lifecycle
+
+```
+PAYMENT_PENDING → ACTIVE       (verified payment callback)
+PAYMENT_PENDING → PAYMENT_FAILED
+PAYMENT_PENDING → CANCELLED
+ACTIVE → EXPIRED
+```
+
+#### Stable error codes
+
+| HTTP | Code | Meaning |
+|------|------|---------|
+| 400 | `INVALID_PLAN_ID` | Plan does not exist or is inactive |
+| 400 | `INVALID_RETURN_URL` | Supplied return/cancellation URL is unsupported |
+| 409 | `SUBSCRIPTION_ALREADY_ACTIVE` | User already has the requested active plan |
+| 422 | `CHECKOUT_INITIALIZATION_FAILED` | Provider could not create checkout |
+| 502 | `PAYMENT_PROVIDER_ERROR` | Provider returned an invalid or failed response |
 
 Paid subscriptions initialize a Hubtel checkout and are activated on payment callback
 (idempotent — already-processed callbacks are skipped). Generated Hubtel client

@@ -92,13 +92,15 @@ export const recordSwipe = async (req: Request, res: Response) => {
       return fail(res, 404, "Target user has no dating profile");
     }
 
-    // Idempotent: do not allow a second swipe on the same target.
     const existing = await prisma.userSwipe.findUnique({
       where: { swiperId_targetId: { swiperId, targetId } },
     });
 
     if (existing) {
-      return fail(res, 409, "You have already swiped on this user");
+      if (existing.direction === direction) {
+        return ok(res, { swipe: existing, match: null }, "Swipe already recorded");
+      }
+      return fail(res, 409, { code: "ALREADY_SWIPED", message: "You have already swiped on this user" });
     }
 
     // Enforce daily super-like limit based on membership tier.
@@ -193,9 +195,6 @@ export const recordSwipe = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Get ranked discovery candidates for the current user.
- */
 export const getRecommendations = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -205,7 +204,73 @@ export const getRecommendations = async (req: Request, res: Response) => {
     const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
 
     const result = await getDiscoveryCandidates(userId, { limit, offset });
-    return ok(res, result.candidates);
+
+    const targetIds = result.candidates.map((c) => c.userId);
+
+    const [swipes, matches, blocks] = await Promise.all([
+      prisma.userSwipe.findMany({
+        where: {
+          OR: [
+            { swiperId: userId, targetId: { in: targetIds } },
+            { swiperId: { in: targetIds }, targetId: userId }
+          ]
+        }
+      }),
+      prisma.userMatch.findMany({
+        where: {
+          OR: [
+            { userId, matchedId: { in: targetIds } },
+            { userId: { in: targetIds }, matchedId: userId }
+          ],
+          status: "MATCHED"
+        }
+      }),
+      prisma.userBlock.findMany({
+        where: {
+          OR: [
+            { blockerId: userId, blockedId: { in: targetIds } },
+            { blockerId: { in: targetIds }, blockedId: userId }
+          ]
+        },
+        select: { blockerId: true, blockedId: true }
+      })
+    ]);
+
+    const blockedIds = new Set(
+      blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId))
+    );
+
+    const enriched = result.candidates
+      .filter((c) => !blockedIds.has(c.userId))
+      .map((c) => {
+        let relationshipStatus = "NONE";
+        let canSendInterest = true;
+
+        const isMatched = matches.some((m) => m.userId === c.userId || m.matchedId === c.userId);
+        if (isMatched) {
+          relationshipStatus = "MATCHED";
+          canSendInterest = false;
+        } else {
+          const outgoing = swipes.find((s) => s.swiperId === userId && s.targetId === c.userId);
+          const incoming = swipes.find((s) => s.swiperId === c.userId && s.targetId === userId);
+
+          if (outgoing && outgoing.direction !== "PASS") {
+            relationshipStatus = "INTEREST_SENT";
+            canSendInterest = false;
+          } else if (incoming && incoming.direction !== "PASS") {
+            relationshipStatus = "INTEREST_RECEIVED";
+          } else if (outgoing && outgoing.direction === "PASS") {
+            relationshipStatus = "PASSED";
+            canSendInterest = false;
+          } else if (incoming && incoming.direction === "PASS") {
+            relationshipStatus = "NONE";
+          }
+        }
+
+        return { ...c, relationshipStatus, canSendInterest };
+      });
+
+    return ok(res, enriched);
   } catch (error) {
     console.error("Get recommendations error:", error);
     return fail(res, 500, "Failed to fetch recommendations");
@@ -321,5 +386,151 @@ export const unmatchUser = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Unmatch error:", error);
     return fail(res, 500, "Failed to unmatch");
+  }
+};
+
+export const getLikesSent = async (req: Request, res: Response) => {
+  try {
+    const swiperId = req.user!.id;
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50) : 20;
+    const cursor = req.query.cursor as string | undefined;
+
+    const items = await prisma.userSwipe.findMany({
+      where: {
+        swiperId,
+        direction: { in: ["LIKE", "SUPER_LIKE"] },
+      },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        targetId: true,
+        direction: true,
+        createdAt: true,
+        target: {
+          select: {
+            id: true,
+            fullName: true,
+            datingProfile: { select: { photos: true } }
+          }
+        }
+      }
+    });
+
+    const hasNext = items.length > limit;
+    if (hasNext) items.pop();
+
+    const targetIds = items.map((i) => i.targetId);
+    const matches = await prisma.userMatch.findMany({
+      where: {
+        OR: [
+          { userId: swiperId, matchedId: { in: targetIds } },
+          { userId: { in: targetIds }, matchedId: swiperId }
+        ],
+        status: "MATCHED"
+      },
+      select: { userId: true, matchedId: true }
+    });
+
+    const matchSet = new Set(matches.map((m) => (m.userId === swiperId ? m.matchedId : m.userId)));
+
+    const formatted = items.map((i) => {
+      let status = "PENDING";
+      if (matchSet.has(i.targetId)) status = "MATCHED";
+
+      return {
+        id: i.id,
+        targetUserId: i.targetId,
+        direction: i.direction,
+        status,
+        createdAt: i.createdAt,
+        targetUser: {
+          id: i.targetId,
+          profile: {
+            fullName: i.target.fullName,
+            photos: i.target.datingProfile?.photos || []
+          }
+        }
+      };
+    });
+
+    return ok(
+      res,
+      {
+        items: formatted,
+        nextCursor: hasNext && items.length > 0 ? items[items.length - 1].id : null
+      },
+      "Sent interests retrieved successfully."
+    );
+  } catch (error) {
+    console.error("Get likes sent error:", error);
+    return fail(res, 500, "Failed to retrieve sent interests");
+  }
+};
+
+export const getRelationshipStatus = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const targetId = req.params.userId as string;
+
+    const [swipes, matches] = await Promise.all([
+      prisma.userSwipe.findMany({
+        where: {
+          OR: [
+            { swiperId: userId, targetId },
+            { swiperId: targetId, targetId: userId }
+          ]
+        }
+      }),
+      prisma.userMatch.findMany({
+        where: {
+          OR: [
+            { userId, matchedId: targetId },
+            { userId: targetId, matchedId: userId }
+          ],
+          status: "MATCHED"
+        }
+      })
+    ]);
+
+    let relationshipStatus = "NONE";
+    let canSendInterest = true;
+    let interestId: string | undefined;
+    let sentAt: Date | undefined;
+
+    if (matches.length > 0) {
+      relationshipStatus = "MATCHED";
+      canSendInterest = false;
+    } else {
+      const outgoing = swipes.find((s) => s.swiperId === userId && s.targetId === targetId);
+      const incoming = swipes.find((s) => s.swiperId === targetId && s.targetId === userId);
+
+      if (outgoing && outgoing.direction !== "PASS") {
+        relationshipStatus = "INTEREST_SENT";
+        canSendInterest = false;
+        interestId = outgoing.id;
+        sentAt = outgoing.createdAt;
+      } else if (incoming && incoming.direction !== "PASS") {
+        relationshipStatus = "INTEREST_RECEIVED";
+      } else if (outgoing && outgoing.direction === "PASS") {
+        relationshipStatus = "PASSED";
+        canSendInterest = false;
+      } else if (incoming && incoming.direction === "PASS") {
+        relationshipStatus = "NONE";
+      }
+    }
+
+    return ok(res, {
+      userId: targetId,
+      relationshipStatus,
+      canSendInterest,
+      ...(interestId && { interestId }),
+      ...(sentAt && { sentAt })
+    });
+  } catch (error) {
+    console.error("Get relationship status error:", error);
+    return fail(res, 500, "Failed to get relationship status");
   }
 };

@@ -74,22 +74,39 @@ export const VERIFICATION_STEPS = [
 
 /**
  * Infer the current verification step from stored progress.
- * Prefers the persisted `validationStep` when present.
+ * When a persisted `validationStep` is provided and still actionable, use it.
+ * When it is already verified, advance to the next step.
+ * Falls back to iterating through all steps when no stored step is set.
  */
 export function inferCurrentStep(
   state: VerificationStepState | null,
   storedValidationStep?: string | null,
 ): string {
-  return (
-    storedValidationStep ??
-    (!state?.phone_number_verified
-      ? STEP_PHONE_NUMBER_VERIFICATION
-      : !state?.bio_profile_verification
-        ? STEP_PROFILE_IMAGE_VERIFICATION
-        : !state?.document_verification
-          ? STEP_DOCUMENT_VERIFICATION
-          : STEP_DOCUMENT_VERIFICATION)
-  );
+  // If the admin/client explicitly set a step, check if it still needs action.
+    const validSteps = VERIFICATION_STEPS as readonly string[];
+    if (storedValidationStep && validSteps.includes(storedValidationStep)) {
+    const storedStatus = getStatusForStep(storedValidationStep, state);
+    if (storedStatus === "PENDING" || storedStatus === "REJECTED") {
+      return storedValidationStep;
+    }
+    // Stored step is already verified — find the next actionable step after it.
+    const storedIndex = (VERIFICATION_STEPS as readonly string[]).indexOf(storedValidationStep);
+    for (let i = storedIndex + 1; i < VERIFICATION_STEPS.length; i++) {
+      const status = getStatusForStep(VERIFICATION_STEPS[i], state);
+      if (status === "PENDING" || status === "REJECTED") {
+        return VERIFICATION_STEPS[i];
+      }
+    }
+  }
+
+  // Default: iterate from the beginning and find the first actionable step.
+  for (const step of VERIFICATION_STEPS) {
+    const status = getStatusForStep(step, state);
+    if (status === "PENDING" || status === "REJECTED") {
+      return step;
+    }
+  }
+  return STEP_DOCUMENT_VERIFICATION; // Default if all verified
 }
 
 export type StepVerificationStatus = {

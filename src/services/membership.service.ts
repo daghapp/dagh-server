@@ -47,12 +47,13 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
     where: { id: payload.planId },
   });
 
-  if (!plan) {
-    return { success: false, message: "Plan not found", paymentId: "", paymentStatus: "" };
+  if (!plan || !plan.isActive) {
+    return { success: false, code: "INVALID_PLAN_ID", message: "Plan does not exist or is inactive" };
   }
 
-  if (!plan.isActive) {
-    return { success: false, message: "Plan is not active", paymentId: "", paymentStatus: "" };
+  const existingSub = await prisma.userSubscription.findUnique({ where: { userId } });
+  if (existingSub && existingSub.planId === plan.id && existingSub.status === "ACTIVE") {
+    return { success: false, code: "SUBSCRIPTION_ALREADY_ACTIVE", message: "User already has the requested active plan" };
   }
 
   // Free plan — activate immediately without payment
@@ -76,7 +77,6 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       },
     });
 
-    // Ensure memberCode exists (covers migrations from pre-memberCode schema)
     if (!subscription.memberCode) {
       await prisma.userSubscription.update({
         where: { id: subscription.id },
@@ -86,11 +86,12 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
 
     return {
       success: true,
-      message: "Free plan activated successfully",
-      paymentId: "",
-      paymentStatus: "SUCCESS",
-      subscription,
-      paymentRequired: false,
+      message: "Free membership activated successfully.",
+      data: {
+        subscriptionId: subscription.id,
+        status: "ACTIVE",
+        checkoutUrl: null
+      }
     };
   }
 
@@ -107,9 +108,64 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
     cancellationUrl: payload.cancellationUrl || payload.returnUrl,
   });
 
+  if (!paymentResponse.success) {
+    return { success: false, code: "PAYMENT_PROVIDER_ERROR", message: paymentResponse.message };
+  }
+
+  const rawUrl = (paymentResponse.data as any)?.data?.checkoutUrl;
+  if (!rawUrl || typeof rawUrl !== "string") {
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider could not create checkout (missing URL)" };
+  }
+
+  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes(" ") || rawUrl.includes("{")) {
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider returned malformed URL" };
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch (e) {
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider returned invalid URL format" };
+  }
+
+  if (process.env.NODE_ENV === "production" && parsedUrl.protocol !== "https:") {
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL must use HTTPS" };
+  }
+
+  if (!parsedUrl.hostname || parsedUrl.hostname === "localhost") {
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL has invalid hostname" };
+  }
+
+  const subscription = await prisma.userSubscription.upsert({
+    where: { userId },
+    update: {
+      planId: plan.id,
+      tierCode: plan.code,
+      startDate: new Date(),
+      status: "PAYMENT_PENDING" as any, // using any since enum was just updated
+    },
+    create: {
+      userId,
+      planId: plan.id,
+      tierCode: plan.code,
+      memberCode: await generateUniqueMemberCode(),
+      startDate: new Date(),
+      status: "PAYMENT_PENDING" as any,
+    },
+  });
+
+  const payment = await prisma.payment.findUnique({ where: { id: paymentResponse.paymentId } });
+
   return {
-    ...paymentResponse,
-    paymentRequired: true,
+    success: true,
+    message: "Membership checkout initialized successfully.",
+    data: {
+      subscriptionId: subscription.id,
+      paymentReference: payment?.reference || "",
+      status: "PAYMENT_PENDING",
+      checkoutUrl: parsedUrl.toString(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    }
   };
 }
 
@@ -262,6 +318,11 @@ export async function handleSubscriptionPaymentCallback(
   await prisma.payment.update({
     where: { id: payment.id },
     data: { status: PaymentStatus.FAILED },
+  });
+
+  await prisma.userSubscription.updateMany({
+    where: { userId: payment.userId, status: "PAYMENT_PENDING" as any },
+    data: { status: "PAYMENT_FAILED" as any },
   });
 
   return { payment };

@@ -22,7 +22,7 @@ export interface SuccessResponse<T = unknown> {
 
 export interface ErrorResponse {
   success: false;
-  error: string;
+  error: any;
   details?: unknown;
 }
 
@@ -50,7 +50,7 @@ export function created<T>(res: Response, data: T, message?: string): Response {
   return res.status(201).json(body);
 }
 
-export function fail(res: Response, status: number, error: string, details?: unknown): Response {
+export function fail(res: Response, status: number, error: any, details?: unknown): Response {
   const body: ErrorResponse = { success: false, error };
   if (details !== undefined) body.details = details;
   return res.status(status).json(body);

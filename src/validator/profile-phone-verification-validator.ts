@@ -1,13 +1,12 @@
 import { z } from "zod";
 
 export const sendPhoneOtpSchema = z.object({
-  // If omitted, we use req.user.profile.phoneNumber
   phoneNumber: z.string().optional(),
+  deliveryMethod: z.enum(["EMAIL"]).default("EMAIL").optional(),
 });
 
 export const verifyPhoneOtpSchema = z.object({
-  // Optional override; if omitted we use profile.phoneNumber
-  phoneNumber: z.string().optional(),
+  challengeId: z.string().uuid({ message: "Invalid challenge ID" }),
   code: z
     .string()
     .length(6, { message: "OTP must be 6 digits" })
