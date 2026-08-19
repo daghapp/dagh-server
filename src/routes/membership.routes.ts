@@ -204,6 +204,7 @@ router.post(
  *                     paymentReference:
  *                       type: string
  *                       nullable: true
+ *                       description: Latest payment reference for this subscription
  *                     activatedAt:
  *                       type: string
  *                       format: date-time
@@ -308,7 +309,53 @@ router.post(
   controller.handlePaymentCallback.bind(controller),
 );
 
+/**
+ * @swagger
+ * /membership/payment/return:
+ *   get:
+ *     summary: Payment return bridge for mobile deep links
+ *     description: |
+ *       HTTPS bridge that receives the payment provider redirect and forwards
+ *       the user back to the mobile application via the configured deep link.
+ *       Used when the payment provider only accepts HTTPS redirect URLs.
+ *     tags: [Membership]
+ *     parameters:
+ *       - in: query
+ *         name: appUrl
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application deep link to redirect back to
+ *     responses:
+ *       302:
+ *         description: Redirect to the application deep link
+ *       200:
+ *         description: Payment complete (no appUrl provided)
+ */
 router.get("/payment/return", controller.paymentReturnBridge.bind(controller));
+
+/**
+ * @swagger
+ * /membership/payment/cancel:
+ *   get:
+ *     summary: Payment cancellation bridge for mobile deep links
+ *     description: |
+ *       HTTPS bridge that receives the payment provider redirect on cancellation
+ *       and forwards the user back to the mobile application via the configured deep link.
+ *     tags: [Membership]
+ *     parameters:
+ *       - in: query
+ *         name: appUrl
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application deep link to redirect back to on cancellation
+ *     responses:
+ *       302:
+ *         description: Redirect to the application deep link
+ *       200:
+ *         description: Payment cancelled (no appUrl provided)
+ */
 router.get("/payment/cancel", controller.paymentCancelBridge.bind(controller));
 
 export { router };

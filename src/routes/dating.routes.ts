@@ -464,7 +464,7 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *                         type: object
  *                       relationshipStatus:
  *                         type: string
- *                         enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED]
+ *                         enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED, BLOCKED]
  *                       canSendInterest:
  *                         type: boolean
  *       500:
@@ -553,7 +553,8 @@ router.get("/likes-received", getLikesReceived);
  *                             enum: [LIKE, SUPER_LIKE]
  *                           status:
  *                             type: string
- *                             enum: [PENDING, MATCHED]
+ *                             enum: [PENDING, MATCHED, DECLINED, EXPIRED, CANCELLED]
+ *                             description: "PENDING: awaiting response. MATCHED: mutual like. DECLINED/EXPIRED/CANCELLED: if supported."
  *                           createdAt:
  *                             type: string
  *                             format: date-time
@@ -610,7 +611,7 @@ router.get("/likes-sent", getLikesSent);
  *                       type: string
  *                     relationshipStatus:
  *                       type: string
- *                       enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED]
+ *                       enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED, BLOCKED]
  *                     canSendInterest:
  *                       type: boolean
  *                     interestId:

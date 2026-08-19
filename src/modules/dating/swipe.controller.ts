@@ -259,6 +259,7 @@ export const getRecommendations = async (req: Request, res: Response) => {
             canSendInterest = false;
           } else if (incoming && incoming.direction !== "PASS") {
             relationshipStatus = "INTEREST_RECEIVED";
+            canSendInterest = false;
           } else if (outgoing && outgoing.direction === "PASS") {
             relationshipStatus = "PASSED";
             canSendInterest = false;
@@ -475,6 +476,14 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const targetId = req.params.userId as string;
 
+    if (await isUserBlocked(userId, targetId)) {
+      return ok(res, {
+        userId: targetId,
+        relationshipStatus: "BLOCKED",
+        canSendInterest: false,
+      });
+    }
+
     const [swipes, matches] = await Promise.all([
       prisma.userSwipe.findMany({
         where: {
@@ -514,6 +523,7 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
         sentAt = outgoing.createdAt;
       } else if (incoming && incoming.direction !== "PASS") {
         relationshipStatus = "INTEREST_RECEIVED";
+        canSendInterest = false;
       } else if (outgoing && outgoing.direction === "PASS") {
         relationshipStatus = "PASSED";
         canSendInterest = false;

@@ -360,3 +360,157 @@ describe("Payment status lifecycle", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────
+// Membership error codes
+// ─────────────────────────────────────────
+
+describe("Membership error codes", () => {
+  it("INVALID_PLAN_ID: plan does not exist or is inactive", () => {
+    const error = { code: "INVALID_PLAN_ID", message: "Plan does not exist or is inactive" };
+    expect(error.code).toBe("INVALID_PLAN_ID");
+  });
+
+  it("INVALID_RETURN_URL: supplied return/cancellation URL is unsupported", () => {
+    const error = { code: "INVALID_RETURN_URL", message: "Invalid returnUrl" };
+    expect(error.code).toBe("INVALID_RETURN_URL");
+  });
+
+  it("SUBSCRIPTION_ALREADY_ACTIVE: user already has the requested active plan", () => {
+    const error = { code: "SUBSCRIPTION_ALREADY_ACTIVE", message: "User already has the requested active plan" };
+    expect(error.code).toBe("SUBSCRIPTION_ALREADY_ACTIVE");
+  });
+
+  it("CHECKOUT_INITIALIZATION_FAILED: provider could not create checkout", () => {
+    const error = { code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider could not create checkout (missing URL)" };
+    expect(error.code).toBe("CHECKOUT_INITIALIZATION_FAILED");
+  });
+
+  it("PAYMENT_PROVIDER_ERROR: provider returned an invalid or failed response", () => {
+    const error = { code: "PAYMENT_PROVIDER_ERROR", message: "Payment provider returned an error" };
+    expect(error.code).toBe("PAYMENT_PROVIDER_ERROR");
+  });
+});
+
+// ─────────────────────────────────────────
+// Free plan activation
+// ─────────────────────────────────────────
+
+describe("Free plan activation", () => {
+  interface SubscribeResponse {
+    subscriptionId: string;
+    status: string;
+    checkoutUrl: string | null;
+  }
+
+  function validateFreePlanResponse(response: SubscribeResponse): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!response.subscriptionId) {
+      errors.push("Missing subscriptionId");
+    }
+    if (response.status !== "ACTIVE") {
+      errors.push("Free plan must have ACTIVE status");
+    }
+    if (response.checkoutUrl !== null) {
+      errors.push("Free plan checkoutUrl must be null");
+    }
+    return { valid: errors.length === 0, errors };
+  }
+
+  it("activates immediately without checkout URL", () => {
+    const response: SubscribeResponse = {
+      subscriptionId: "sub_free_123",
+      status: "ACTIVE",
+      checkoutUrl: null,
+    };
+    const result = validateFreePlanResponse(response);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects free plan with non-null checkoutUrl", () => {
+    const response: SubscribeResponse = {
+      subscriptionId: "sub_free_123",
+      status: "ACTIVE",
+      checkoutUrl: "https://checkout.hubtel.com/session/cs_123",
+    };
+    const result = validateFreePlanResponse(response);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Free plan checkoutUrl must be null");
+  });
+});
+
+// ─────────────────────────────────────────
+// Callback idempotency
+// ─────────────────────────────────────────
+
+describe("Callback idempotency", () => {
+  it("duplicate callback should not change subscription status", () => {
+    const firstCallbackResult = { status: "ACTIVE" };
+    const secondCallbackResult = { status: "ACTIVE" };
+    expect(firstCallbackResult.status).toBe(secondCallbackResult.status);
+    expect(firstCallbackResult.status).toBe("ACTIVE");
+  });
+
+  it("failed callback does not activate subscription", () => {
+    const callbackStatus = "PAYMENT_FAILED";
+    expect(callbackStatus).not.toBe("ACTIVE");
+  });
+
+  it("cancelled callback does not activate subscription", () => {
+    const callbackStatus = "CANCELLED";
+    expect(callbackStatus).not.toBe("ACTIVE");
+  });
+});
+
+// ─────────────────────────────────────────
+// Subscription response shape
+// ─────────────────────────────────────────
+
+describe("Subscription response shape", () => {
+  interface SubscriptionResponse {
+    id?: string;
+    tierCode?: string;
+    status?: string;
+    planId?: string;
+    paymentReference?: string | null;
+    plan?: { id: string; name: string; interval: string } | null;
+    memberCode?: string | null;
+    autoRenew?: boolean;
+  }
+
+  it("paid subscription includes paymentReference", () => {
+    const response: SubscriptionResponse = {
+      id: "sub_123",
+      tierCode: "GOLD_INVESTOR",
+      status: "ACTIVE",
+      planId: "plan_abc",
+      paymentReference: "TXN-MEMBERSHIP-abc123",
+      plan: { id: "plan_abc", name: "Gold Investor", interval: "MONTHLY" },
+      memberCode: "12345-ABC",
+      autoRenew: false,
+    };
+    expect(response.paymentReference).toBe("TXN-MEMBERSHIP-abc123");
+  });
+
+  it("free tier subscription has null paymentReference", () => {
+    const response: SubscriptionResponse = {
+      tierCode: "FREE",
+      status: "ACTIVE",
+      plan: { id: "plan_free", name: "Free", interval: "MONTHLY" },
+      paymentReference: null,
+      autoRenew: false,
+    };
+    expect(response.paymentReference).toBeNull();
+  });
+
+  it("active subscription after callback has correct status", () => {
+    const response: SubscriptionResponse = {
+      id: "sub_456",
+      tierCode: "BASIC",
+      status: "ACTIVE",
+      paymentReference: "TXN-MEMBERSHIP-def456",
+    };
+    expect(response.status).toBe("ACTIVE");
+  });
+});

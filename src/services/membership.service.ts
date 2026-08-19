@@ -6,6 +6,7 @@
 
 import { prisma } from "../config/index.js";
 import * as paymentService from "./payment.service.js";
+import type { HubtelCheckoutResponse } from "./payment.service.js";
 import {
   PaymentStatus,
   PaymentTargetType,
@@ -96,45 +97,104 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
   }
 
   // Paid plan — initialize Hubtel checkout; subscription activated on callback
-  const paymentResponse = await paymentService.initializePayment({
-    userId,
-    targetType: PaymentTargetType.MEMBERSHIP_SUBSCRIPTION,
-    targetId: plan.id,
-    totalAmount: plan.price,
-    currency: plan.currency,
-    description: `Subscription to ${plan.name}`,
-    callbackUrl: payload.callbackUrl,
-    returnUrl: payload.returnUrl,
-    cancellationUrl: payload.cancellationUrl || payload.returnUrl,
-  });
-
-  if (!paymentResponse.success) {
-    return { success: false, code: "PAYMENT_PROVIDER_ERROR", message: paymentResponse.message };
+  let paymentResponse;
+  try {
+    paymentResponse = await paymentService.initializePayment({
+      userId,
+      targetType: PaymentTargetType.MEMBERSHIP_SUBSCRIPTION,
+      targetId: plan.id,
+      totalAmount: plan.price,
+      currency: plan.currency,
+      description: `Subscription to ${plan.name}`,
+      callbackUrl: payload.callbackUrl,
+      returnUrl: payload.returnUrl,
+      cancellationUrl: payload.cancellationUrl || payload.returnUrl,
+    });
+  } catch (error) {
+    console.error("[MEMBERSHIP_CHECKOUT_PROVIDER_ERROR]", {
+      userId,
+      planId: plan.id,
+      planPrice: plan.price,
+      planCurrency: plan.currency,
+      planInterval: plan.interval,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { success: false, code: "PAYMENT_PROVIDER_ERROR", message: "Payment provider returned an error" };
   }
 
-  const rawUrl = (paymentResponse.data as any)?.data?.checkoutUrl;
+  if (!paymentResponse.success) {
+    console.error("[MEMBERSHIP_CHECKOUT_FAILED]", {
+      userId,
+      planId: plan.id,
+      planPrice: plan.price,
+      planCurrency: plan.currency,
+      providerMessage: paymentResponse.message,
+    });
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: paymentResponse.message };
+  }
+
+  const hubtelData = (paymentResponse.data as HubtelCheckoutResponse | undefined);
+  const rawUrl = hubtelData?.data?.checkoutUrl;
+
+  // Checkout URL validation — reject anything that won't open in a browser
   if (!rawUrl || typeof rawUrl !== "string") {
+    console.error("[MEMBERSHIP_CHECKOUT_NO_URL]", {
+      userId,
+      planId: plan.id,
+      providerResponseCode: hubtelData?.responseCode,
+    });
     return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider could not create checkout (missing URL)" };
   }
 
-  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes(" ") || rawUrl.includes("{")) {
+  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes("'") ||
+      rawUrl.includes(" ") || rawUrl.includes("{") || rawUrl.includes("}") ||
+      rawUrl.includes("[") || rawUrl.includes("]")) {
+    console.error("[MEMBERSHIP_CHECKOUT_MALFORMED_URL]", {
+      userId,
+      planId: plan.id,
+      urlLength: rawUrl.length,
+    });
     return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider returned malformed URL" };
   }
 
-  let parsedUrl;
+  let parsedUrl: URL;
   try {
     parsedUrl = new URL(rawUrl);
-  } catch (e) {
+  } catch {
+    console.error("[MEMBERSHIP_CHECKOUT_INVALID_URL]", {
+      userId,
+      planId: plan.id,
+      rawUrlPrefix: rawUrl.substring(0, 50),
+    });
     return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider returned invalid URL format" };
   }
 
   if (process.env.NODE_ENV === "production" && parsedUrl.protocol !== "https:") {
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL must use HTTPS" };
+    console.error("[MEMBERSHIP_CHECKOUT_HTTP_URL]", {
+      userId,
+      planId: plan.id,
+      urlProtocol: parsedUrl.protocol,
+    });
+    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL must use HTTPS in production" };
   }
 
   if (!parsedUrl.hostname || parsedUrl.hostname === "localhost") {
+    console.error("[MEMBERSHIP_CHECKOUT_BAD_HOSTNAME]", {
+      userId,
+      planId: plan.id,
+      hostname: parsedUrl.hostname,
+    });
     return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL has invalid hostname" };
   }
+
+  console.log("[MEMBERSHIP_CHECKOUT_URL_VALIDATED]", {
+    userId,
+    planId: plan.id,
+    planPrice: plan.price,
+    planCurrency: plan.currency,
+    urlProtocol: parsedUrl.protocol,
+    urlHostname: parsedUrl.hostname,
+  });
 
   const subscription = await prisma.userSubscription.upsert({
     where: { userId },
@@ -142,7 +202,7 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planId: plan.id,
       tierCode: plan.code,
       startDate: new Date(),
-      status: "PAYMENT_PENDING" as any, // using any since enum was just updated
+      status: SubscriptionStatus.PAYMENT_PENDING,
     },
     create: {
       userId,
@@ -150,7 +210,7 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       tierCode: plan.code,
       memberCode: await generateUniqueMemberCode(),
       startDate: new Date(),
-      status: "PAYMENT_PENDING" as any,
+      status: SubscriptionStatus.PAYMENT_PENDING,
     },
   });
 
@@ -186,14 +246,31 @@ export async function getUserSubscription(userId: string) {
       tierCode: "FREE" as const,
       plan: freePlan || null,
       memberCode: null,
-      startDate: null,
+      activatedAt: null,
       endDate: null,
       status: "ACTIVE",
       autoRenew: false,
     };
   }
 
-  return subscription;
+  const latestPayment = subscription.planId
+    ? await prisma.payment.findFirst({
+        where: {
+          userId,
+          targetType: "MEMBERSHIP_SUBSCRIPTION",
+          targetId: subscription.planId,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { reference: true },
+      })
+    : null;
+
+  const { startDate: _startDate, ...rest } = subscription;
+  return {
+    ...rest,
+    activatedAt: subscription.startDate,
+    paymentReference: latestPayment?.reference ?? null,
+  };
 }
 
 // Creates a priority support ticket for active paid-tier members
@@ -321,8 +398,8 @@ export async function handleSubscriptionPaymentCallback(
   });
 
   await prisma.userSubscription.updateMany({
-    where: { userId: payment.userId, status: "PAYMENT_PENDING" as any },
-    data: { status: "PAYMENT_FAILED" as any },
+    where: { userId: payment.userId, status: SubscriptionStatus.PAYMENT_PENDING },
+    data: { status: SubscriptionStatus.PAYMENT_FAILED },
   });
 
   return { payment };

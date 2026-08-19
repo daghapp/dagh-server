@@ -10,7 +10,10 @@ import { postBioDocumentSchema } from "../validator/profile-bio-document-validat
 import { postBioProfileUrl } from "../modules/profile-management/profile.bio-url.controller.js";
 import { postBioDocument } from "../modules/profile-management/profile-bio-document.controller.js";
 import { initProfile } from "../modules/profile-management/profile.init.controller.js";
-import { getVerificationStatus } from "../modules/profile-management/profile.validation-step.controller.js";
+import {
+  getVerificationStatus,
+  getValidationStepStatus,
+} from "../modules/profile-management/profile.validation-step.controller.js";
 import rateLimit from "express-rate-limit";
 
 const router = express.Router();
@@ -36,7 +39,7 @@ const profileVerificationController = new ProfileVerificationController();
  * @swagger
  * /verification/phone/send-otp:
  *   post:
- *     summary: Send OTP to the authenticated user's email
+ *     summary: Send OTP to the authenticated user's email or phone
  *     tags: [Verification]
  *     security:
  *       - bearerAuth: []
@@ -52,9 +55,9 @@ const profileVerificationController = new ProfileVerificationController();
  *                 description: Optional phone number override (E.164 or digits). If omitted, uses phone from profile.
  *               deliveryMethod:
  *                 type: string
- *                 enum: [EMAIL]
+ *                 enum: [EMAIL, SMS]
  *                 default: EMAIL
- *                 description: Delivery channel for the OTP code.
+ *                 description: Delivery channel for the OTP code. Currently only EMAIL is implemented. SMS is reserved for future use.
  *     responses:
  *       200:
  *         description: OTP sent successfully
@@ -124,11 +127,63 @@ router.post(
  *       200:
  *         description: Phone number verified successfully
  *       400:
- *         description: Invalid, expired, or missing OTP
+ *         description: Invalid or expired OTP
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       enum: [OTP_INVALID, OTP_EXPIRED]
+ *                     message:
+ *                       type: string
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Challenge not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       enum: [OTP_CHALLENGE_NOT_FOUND]
+ *                     message:
+ *                       type: string
+ *       409:
+ *         description: Phone already verified
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       enum: [PHONE_ALREADY_VERIFIED]
+ *                     message:
+ *                       type: string
+ *       429:
+ *         description: Too many OTP attempts
  */
 router.post(
   "/phone/verify-otp",
@@ -277,5 +332,49 @@ router.post("/bio_document_urls", protectedRoute, validate(postBioDocumentSchema
  *         description: Unauthorized
  */
 router.post("/init", protectedRoute, async (req, res) => initProfile(req, res));
+
+/**
+ * @swagger
+ * /verification/validation-step/status:
+ *   get:
+ *     summary: Get the current validation step status
+ *     tags: [Verification]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: step
+ *         schema:
+ *           type: string
+ *           enum: [PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION]
+ *         description: Optional specific step to query. If omitted, returns the inferred current step.
+ *     responses:
+ *       200:
+ *         description: Current validation step retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     current_step:
+ *                       type: string
+ *                       enum: [PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION]
+ *                     status:
+ *                       type: string
+ *                       enum: [PENDING, VERIFIED, REJECTED]
+ *                     verification_message:
+ *                       type: string
+ *                       nullable: true
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Profile not found
+ */
+router.get("/validation-step/status", protectedRoute, getValidationStepStatus);
 
 export { router };

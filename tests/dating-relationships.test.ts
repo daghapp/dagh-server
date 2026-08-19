@@ -58,7 +58,7 @@ function deriveRelationship(
   }
 
   if (incoming && incoming.direction !== "PASS") {
-    return { relationshipStatus: "INTEREST_RECEIVED", canSendInterest: true };
+    return { relationshipStatus: "INTEREST_RECEIVED", canSendInterest: false };
   }
 
   if (outgoing && outgoing.direction === "PASS") {
@@ -101,7 +101,7 @@ describe("deriveRelationship", () => {
       { swiperId: "userB", targetId: "userA", direction: "LIKE" },
     ];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
-    expect(result).toEqual({ relationshipStatus: "INTEREST_RECEIVED", canSendInterest: true });
+    expect(result).toEqual({ relationshipStatus: "INTEREST_RECEIVED", canSendInterest: false });
   });
 
   it("returns INTEREST_RECEIVED after incoming SUPER_LIKE", () => {
@@ -109,7 +109,7 @@ describe("deriveRelationship", () => {
       { swiperId: "userB", targetId: "userA", direction: "SUPER_LIKE" },
     ];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
-    expect(result).toEqual({ relationshipStatus: "INTEREST_RECEIVED", canSendInterest: true });
+    expect(result).toEqual({ relationshipStatus: "INTEREST_RECEIVED", canSendInterest: false });
   });
 
   it("returns MATCHED when a match record exists (userId side)", () => {
@@ -230,33 +230,19 @@ describe("deriveLikeStatus (likes-sent)", () => {
 
 describe("canSendInterest consistency", () => {
   it("canSendInterest is true only for NONE status", () => {
-    const testCases: Array<{ status: string; expected: boolean }> = [
-      { status: "NONE", expected: true },
-      { status: "INTEREST_SENT", expected: false },
-      { status: "INTEREST_RECEIVED", expected: true },
-      { status: "MATCHED", expected: false },
-      { status: "PASSED", expected: false },
-      { status: "BLOCKED", expected: false },
-    ];
-
-    for (const { status } of testCases) {
-      // Verify canSendInterest rule: only NONE and INTEREST_RECEIVED allow sending
-      const result = deriveRelationship(
-        "userA",
-        "userB",
-        [],
-        [],
-        status === "BLOCKED" ? new Set(["userB"]) : new Set(),
-      );
-      // The actual assertion is done in separate tests below
-      void result;
-    }
-  });
-
-  it("NONE and INTEREST_RECEIVED allow sending interest", () => {
-    // NONE: no swipes at all
+    // NONE: no swipes
     const none = deriveRelationship("userA", "userB", [], [], emptyBlocked);
     expect(none.canSendInterest).toBe(true);
+
+    // INTEREST_SENT: outgoing non-PASS swipe
+    const sent = deriveRelationship(
+      "userA",
+      "userB",
+      [{ swiperId: "userA", targetId: "userB", direction: "LIKE" }],
+      [],
+      emptyBlocked,
+    );
+    expect(sent.canSendInterest).toBe(false);
 
     // INTEREST_RECEIVED: incoming non-PASS swipe
     const received = deriveRelationship(
@@ -266,7 +252,37 @@ describe("canSendInterest consistency", () => {
       [],
       emptyBlocked,
     );
-    expect(received.canSendInterest).toBe(true);
+    expect(received.canSendInterest).toBe(false);
+
+    // MATCHED: match record exists
+    const matched = deriveRelationship(
+      "userA",
+      "userB",
+      [],
+      [{ userId: "userA", matchedId: "userB", status: "MATCHED" }],
+      emptyBlocked,
+    );
+    expect(matched.canSendInterest).toBe(false);
+
+    // PASSED: outgoing PASS
+    const passed = deriveRelationship(
+      "userA",
+      "userB",
+      [{ swiperId: "userA", targetId: "userB", direction: "PASS" }],
+      [],
+      emptyBlocked,
+    );
+    expect(passed.canSendInterest).toBe(false);
+
+    // BLOCKED: blocked user
+    const blocked = deriveRelationship("userA", "userB", [], [], new Set(["userB"]));
+    expect(blocked.canSendInterest).toBe(false);
+  });
+
+  it("NONE allows sending interest", () => {
+    // NONE: no swipes at all
+    const none = deriveRelationship("userA", "userB", [], [], emptyBlocked);
+    expect(none.canSendInterest).toBe(true);
   });
 
   it("all other statuses disallow sending interest", () => {
@@ -279,6 +295,16 @@ describe("canSendInterest consistency", () => {
       emptyBlocked,
     );
     expect(sent.canSendInterest).toBe(false);
+
+    // INTEREST_RECEIVED — spec: canSendInterest only for NONE
+    const received = deriveRelationship(
+      "userA",
+      "userB",
+      [{ swiperId: "userB", targetId: "userA", direction: "LIKE" }],
+      [],
+      emptyBlocked,
+    );
+    expect(received.canSendInterest).toBe(false);
 
     // MATCHED
     const matched = deriveRelationship(

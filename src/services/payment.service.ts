@@ -35,22 +35,42 @@ type InitPaymentInput = InitializePaymentSchema & {
   currency: string;
 };
 
+export type HubtelCheckoutData = {
+  message: string;
+  clientReference: string;
+  checkoutId: string;
+  checkoutUrl?: string;
+};
+
+export type HubtelCheckoutResponse = {
+  responseCode: string;
+  data: HubtelCheckoutData;
+};
+
 type InitPaymentResult = {
   success: boolean;
   message: string;
   paymentId: string;
   paymentStatus: string;
-  data?: Record<string, unknown>;
+  data?: HubtelCheckoutResponse;
   error?: string;
 };
 
 export async function initializePayment(input: InitPaymentInput): Promise<InitPaymentResult> {
   const reference = generateClientReference_targetType(input.targetType);
 
+  const {
+    targetType: _targetType,
+    targetId: _targetId,
+    userId: _userId,
+    currency: _currency,
+    ...hubtelPayload
+  } = input;
+
   let hubtelResponse;
   try {
     hubtelResponse = await hubtelClient.post("/items/initiate", {
-      ...input,
+      ...hubtelPayload,
       merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
       clientReference: reference,
     });

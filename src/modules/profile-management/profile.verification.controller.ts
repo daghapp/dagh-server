@@ -105,10 +105,24 @@ export class ProfileVerificationController {
 
       const profile = await prisma.userProfile.findUnique({
         where: { userId },
+        include: { user: { select: { email: true } } },
       });
 
       if (!profile) {
         return fail(res, 404, "Profile not found");
+      }
+
+      const existingVerification = await prisma.profileVerification.findUnique({
+        where: { userProfileId: profile.id },
+      });
+
+      if (existingVerification?.phone_number_verified) {
+        console.log("[OTP_VERIFY_ALREADY_VERIFIED]", { userId });
+        return fail(
+          res,
+          409,
+          { code: "PHONE_ALREADY_VERIFIED", message: "Phone number is already verified" },
+        );
       }
 
       const challengeId = body.challengeId;
@@ -118,6 +132,16 @@ export class ProfileVerificationController {
       });
 
       if (!otpRecord) {
+        console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", { userId, challengeId });
+        return fail(
+          res,
+          404,
+          { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" },
+        );
+      }
+
+      // Scope OTP to the authenticated user — reject if the challenge belongs to a different account
+      if (otpRecord.email !== profile.user?.email) {
         console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", { userId, challengeId });
         return fail(
           res,

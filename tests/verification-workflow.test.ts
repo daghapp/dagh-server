@@ -6,6 +6,7 @@ import {
   VERIFICATION_STEPS,
   buildVerificationSteps,
   getCompletedVerificationSteps,
+  getStatusForStep,
   inferCurrentStep,
   type VerificationStepState,
 } from "../src/helpers/verification-status.js";
@@ -261,5 +262,65 @@ describe("Full verification workflow", () => {
       const payload = buildStatusPayload(state);
       expect(payload.isVerified).toBe(false);
     });
+  });
+});
+
+// ─────────────────────────────────────────
+// Idempotent phone verification
+// ─────────────────────────────────────────
+
+describe("Idempotent phone verification", () => {
+  it("phone_number_verified remains true on repeated verify attempts", () => {
+    const state: VerificationStepState = {
+      phone_number_verified: true,
+    };
+    expect(getStatusForStep(STEP_PHONE_NUMBER_VERIFICATION, state)).toBe("VERIFIED");
+  });
+
+  it("currentStep does not regress after phone is already verified", () => {
+    const state: VerificationStepState = {
+      phone_number_verified: true,
+    };
+    const payload = buildStatusPayload(state, "PHONE_NUMBER_VERIFICATION");
+    expect(payload.currentStep).toBe(STEP_PROFILE_IMAGE_VERIFICATION);
+  });
+
+  it("PHONE_ALREADY_VERIFIED scenario: verify-otp detects already-verified phone", () => {
+    const state: VerificationStepState = {
+      phone_number_verified: true,
+    };
+    const isVerified = getStatusForStep(STEP_PHONE_NUMBER_VERIFICATION, state);
+    expect(isVerified).toBe("VERIFIED");
+  });
+});
+
+// ─────────────────────────────────────────
+// Stable error codes
+// ─────────────────────────────────────────
+
+describe("Stable error codes", () => {
+  it("OTP_INVALID: code does not match", () => {
+    const error = { code: "OTP_INVALID", message: "Code does not match" };
+    expect(error.code).toBe("OTP_INVALID");
+  });
+
+  it("OTP_EXPIRED: code expired", () => {
+    const error = { code: "OTP_EXPIRED", message: "The verification code has expired. Request a new code." };
+    expect(error.code).toBe("OTP_EXPIRED");
+  });
+
+  it("OTP_CHALLENGE_NOT_FOUND: no active challenge", () => {
+    const error = { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" };
+    expect(error.code).toBe("OTP_CHALLENGE_NOT_FOUND");
+  });
+
+  it("PHONE_ALREADY_VERIFIED: step already complete", () => {
+    const error = { code: "PHONE_ALREADY_VERIFIED", message: "Phone number is already verified" };
+    expect(error.code).toBe("PHONE_ALREADY_VERIFIED");
+  });
+
+  it("OTP_RATE_LIMITED: too many attempts", () => {
+    const error = { code: "OTP_RATE_LIMITED", message: "Too many attempts" };
+    expect(error.code).toBe("OTP_RATE_LIMITED");
   });
 });

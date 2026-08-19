@@ -99,8 +99,13 @@ describe("sendPhoneOtpSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects invalid deliveryMethod", () => {
+  it("accepts deliveryMethod SMS", () => {
     const result = sendPhoneOtpSchema.safeParse({ deliveryMethod: "SMS" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid deliveryMethod", () => {
+    const result = sendPhoneOtpSchema.safeParse({ deliveryMethod: "VOICE" });
     expect(result.success).toBe(false);
   });
 

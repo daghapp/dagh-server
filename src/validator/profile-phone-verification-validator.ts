@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const sendPhoneOtpSchema = z.object({
   phoneNumber: z.string().optional(),
-  deliveryMethod: z.enum(["EMAIL"]).default("EMAIL").optional(),
+  deliveryMethod: z.enum(["EMAIL", "SMS"]).default("EMAIL").optional(),
 });
 
 export const verifyPhoneOtpSchema = z.object({

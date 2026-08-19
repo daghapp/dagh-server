@@ -29,7 +29,7 @@ export async function sendOtp({ email, subject, purpose }: OtpPayload) {
     html: `<p>Your OTP code is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
   });
 
-  return { otp, challengeId: otpRecord.id, expiresAt: expirationTime };
+  return { challengeId: otpRecord.id, expiresAt: expirationTime };
 }
 
 export async function verifyOtp(hashedCode: string, plainCode: string): Promise<boolean> {
