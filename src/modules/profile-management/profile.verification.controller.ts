@@ -118,11 +118,10 @@ export class ProfileVerificationController {
 
       if (existingVerification?.phone_number_verified) {
         console.log("[OTP_VERIFY_ALREADY_VERIFIED]", { userId });
-        return fail(
-          res,
-          409,
-          { code: "PHONE_ALREADY_VERIFIED", message: "Phone number is already verified" },
-        );
+        return fail(res, 409, {
+          code: "PHONE_ALREADY_VERIFIED",
+          message: "Phone number is already verified",
+        });
       }
 
       const challengeId = body.challengeId;
@@ -133,31 +132,22 @@ export class ProfileVerificationController {
 
       if (!otpRecord) {
         console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", { userId, challengeId });
-        return fail(
-          res,
-          404,
-          { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" },
-        );
+        return fail(res, 404, { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" });
       }
 
       // Scope OTP to the authenticated user — reject if the challenge belongs to a different account
       if (otpRecord.email !== profile.user?.email) {
         console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", { userId, challengeId });
-        return fail(
-          res,
-          404,
-          { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" },
-        );
+        return fail(res, 404, { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" });
       }
 
       if (new Date() > otpRecord.expiresAt) {
         await prisma.otp.delete({ where: { id: otpRecord.id } });
         console.log("[OTP_VERIFY_EXPIRED]", { userId, challengeId });
-        return fail(
-          res,
-          400,
-          { code: "OTP_EXPIRED", message: "The verification code has expired. Request a new code." },
-        );
+        return fail(res, 400, {
+          code: "OTP_EXPIRED",
+          message: "The verification code has expired. Request a new code.",
+        });
       }
 
       const isValid = await verifyOtp(otpRecord.code, body.code);

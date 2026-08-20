@@ -100,7 +100,10 @@ export const recordSwipe = async (req: Request, res: Response) => {
       if (existing.direction === direction) {
         return ok(res, { swipe: existing, match: null }, "Swipe already recorded");
       }
-      return fail(res, 409, { code: "ALREADY_SWIPED", message: "You have already swiped on this user" });
+      return fail(res, 409, {
+        code: "ALREADY_SWIPED",
+        message: "You have already swiped on this user",
+      });
     }
 
     // Enforce daily super-like limit based on membership tier.
@@ -129,17 +132,12 @@ export const recordSwipe = async (req: Request, res: Response) => {
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(0, 0, 0, 0);
 
-        return fail(
-          res,
-          429,
-          "Daily super-like limit reached. Upgrade your plan for more.",
-          {
-            code: "SUPER_LIKE_LIMIT_EXCEEDED",
-            limit: dailyLimit,
-            used: superLikeCount,
-            resetAt: tomorrow.toISOString(),
-          },
-        );
+        return fail(res, 429, "Daily super-like limit reached. Upgrade your plan for more.", {
+          code: "SUPER_LIKE_LIMIT_EXCEEDED",
+          limit: dailyLimit,
+          used: superLikeCount,
+          resetAt: tomorrow.toISOString(),
+        });
       }
     }
 
@@ -212,32 +210,32 @@ export const getRecommendations = async (req: Request, res: Response) => {
         where: {
           OR: [
             { swiperId: userId, targetId: { in: targetIds } },
-            { swiperId: { in: targetIds }, targetId: userId }
-          ]
-        }
+            { swiperId: { in: targetIds }, targetId: userId },
+          ],
+        },
       }),
       prisma.userMatch.findMany({
         where: {
           OR: [
             { userId, matchedId: { in: targetIds } },
-            { userId: { in: targetIds }, matchedId: userId }
+            { userId: { in: targetIds }, matchedId: userId },
           ],
-          status: "MATCHED"
-        }
+          status: "MATCHED",
+        },
       }),
       prisma.userBlock.findMany({
         where: {
           OR: [
             { blockerId: userId, blockedId: { in: targetIds } },
-            { blockerId: { in: targetIds }, blockedId: userId }
-          ]
+            { blockerId: { in: targetIds }, blockedId: userId },
+          ],
         },
-        select: { blockerId: true, blockedId: true }
-      })
+        select: { blockerId: true, blockedId: true },
+      }),
     ]);
 
     const blockedIds = new Set(
-      blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId))
+      blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId)),
     );
 
     const enriched = result.candidates
@@ -349,9 +347,7 @@ export const getLikesReceived = async (req: Request, res: Response) => {
 
     return ok(res, {
       count: likes.length,
-      profiles: isPaidTier
-        ? likes.map((l) => (l as { swiper: unknown }).swiper)
-        : [],
+      profiles: isPaidTier ? likes.map((l) => (l as { swiper: unknown }).swiper) : [],
     });
   } catch (error) {
     console.error("Get likes received error:", error);
@@ -414,10 +410,10 @@ export const getLikesSent = async (req: Request, res: Response) => {
           select: {
             id: true,
             fullName: true,
-            datingProfile: { select: { photos: true } }
-          }
-        }
-      }
+            datingProfile: { select: { photos: true } },
+          },
+        },
+      },
     });
 
     const hasNext = items.length > limit;
@@ -428,11 +424,11 @@ export const getLikesSent = async (req: Request, res: Response) => {
       where: {
         OR: [
           { userId: swiperId, matchedId: { in: targetIds } },
-          { userId: { in: targetIds }, matchedId: swiperId }
+          { userId: { in: targetIds }, matchedId: swiperId },
         ],
-        status: "MATCHED"
+        status: "MATCHED",
       },
-      select: { userId: true, matchedId: true }
+      select: { userId: true, matchedId: true },
     });
 
     const matchSet = new Set(matches.map((m) => (m.userId === swiperId ? m.matchedId : m.userId)));
@@ -451,9 +447,9 @@ export const getLikesSent = async (req: Request, res: Response) => {
           id: i.targetId,
           profile: {
             fullName: i.target.fullName,
-            photos: i.target.datingProfile?.photos || []
-          }
-        }
+            photos: i.target.datingProfile?.photos || [],
+          },
+        },
       };
     });
 
@@ -461,9 +457,9 @@ export const getLikesSent = async (req: Request, res: Response) => {
       res,
       {
         items: formatted,
-        nextCursor: hasNext && items.length > 0 ? items[items.length - 1].id : null
+        nextCursor: hasNext && items.length > 0 ? items[items.length - 1].id : null,
       },
-      "Sent interests retrieved successfully."
+      "Sent interests retrieved successfully.",
     );
   } catch (error) {
     console.error("Get likes sent error:", error);
@@ -489,19 +485,19 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
         where: {
           OR: [
             { swiperId: userId, targetId },
-            { swiperId: targetId, targetId: userId }
-          ]
-        }
+            { swiperId: targetId, targetId: userId },
+          ],
+        },
       }),
       prisma.userMatch.findMany({
         where: {
           OR: [
             { userId, matchedId: targetId },
-            { userId: targetId, matchedId: userId }
+            { userId: targetId, matchedId: userId },
           ],
-          status: "MATCHED"
-        }
-      })
+          status: "MATCHED",
+        },
+      }),
     ]);
 
     let relationshipStatus = "NONE";
@@ -537,7 +533,7 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
       relationshipStatus,
       canSendInterest,
       ...(interestId && { interestId }),
-      ...(sentAt && { sentAt })
+      ...(sentAt && { sentAt }),
     });
   } catch (error) {
     console.error("Get relationship status error:", error);

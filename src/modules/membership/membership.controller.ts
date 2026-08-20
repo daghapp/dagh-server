@@ -53,8 +53,10 @@ export class MembershipController {
         return fail(res, 400, { code: "INVALID_RETURN_URL", message: "Invalid cancellationUrl" });
       }
 
-      const isReturnBridgeable = returnParsed.protocol !== "https:" && returnParsed.protocol !== "http:";
-      const isCancelBridgeable = cancelParsed.protocol !== "https:" && cancelParsed.protocol !== "http:";
+      const isReturnBridgeable =
+        returnParsed.protocol !== "https:" && returnParsed.protocol !== "http:";
+      const isCancelBridgeable =
+        cancelParsed.protocol !== "https:" && cancelParsed.protocol !== "http:";
 
       if (isReturnBridgeable) {
         returnUrl = bridgeReturnUrl;
@@ -67,7 +69,10 @@ export class MembershipController {
       try {
         const cbParsed = new URL(payload.callbackUrl);
         if (cbParsed.hostname === "localhost" || cbParsed.hostname === "127.0.0.1") {
-          return fail(res, 400, { code: "INVALID_RETURN_URL", message: "callbackUrl must be a public HTTPS server endpoint" });
+          return fail(res, 400, {
+            code: "INVALID_RETURN_URL",
+            message: "callbackUrl must be a public HTTPS server endpoint",
+          });
         }
       } catch {
         return fail(res, 400, { code: "INVALID_RETURN_URL", message: "Invalid callbackUrl" });
@@ -85,7 +90,11 @@ export class MembershipController {
         callbackUrlHost: new URL(payload.callbackUrl).hostname,
       });
 
-      const result = await membershipService.subscribeToPlan(userId, { ...payload, returnUrl, cancellationUrl });
+      const result = await membershipService.subscribeToPlan(userId, {
+        ...payload,
+        returnUrl,
+        cancellationUrl,
+      });
 
       if (!result.success) {
         const code = result.code || "CHECKOUT_INITIALIZATION_FAILED";
@@ -93,8 +102,13 @@ export class MembershipController {
         if (code === "INVALID_PLAN_ID" || code === "INVALID_RETURN_URL") status = 400;
         else if (code === "SUBSCRIPTION_ALREADY_ACTIVE") status = 409;
         else if (code === "PAYMENT_PROVIDER_ERROR") status = 502;
-        
-        console.log("[MEMBERSHIP_SUBSCRIBE_FAIL]", { userId, planId: payload.planId, code, status });
+
+        console.log("[MEMBERSHIP_SUBSCRIBE_FAIL]", {
+          userId,
+          planId: payload.planId,
+          code,
+          status,
+        });
         return fail(res, status, { code, message: result.message });
       }
 
@@ -183,10 +197,7 @@ export class MembershipController {
 
       return ok(res, null, "Payment callback handled");
     } catch (error) {
-      console.error(
-        `[PAYMENT_CALLBACK_ERROR] ref: ${req.body?.Data?.ClientReference}`,
-        error,
-      );
+      console.error(`[PAYMENT_CALLBACK_ERROR] ref: ${req.body?.Data?.ClientReference}`, error);
       return fail(res, 500, "Failed to handle payment callback");
     }
   }

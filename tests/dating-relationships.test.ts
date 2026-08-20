@@ -38,20 +38,14 @@ function deriveRelationship(
     return { relationshipStatus: "BLOCKED", canSendInterest: false };
   }
 
-  const isMatched = matches.some(
-    (m) => m.userId === targetId || m.matchedId === targetId,
-  );
+  const isMatched = matches.some((m) => m.userId === targetId || m.matchedId === targetId);
 
   if (isMatched) {
     return { relationshipStatus: "MATCHED", canSendInterest: false };
   }
 
-  const outgoing = swipes.find(
-    (s) => s.swiperId === userId && s.targetId === targetId,
-  );
-  const incoming = swipes.find(
-    (s) => s.swiperId === targetId && s.targetId === userId,
-  );
+  const outgoing = swipes.find((s) => s.swiperId === userId && s.targetId === targetId);
+  const incoming = swipes.find((s) => s.swiperId === targetId && s.targetId === userId);
 
   if (outgoing && outgoing.direction !== "PASS") {
     return { relationshipStatus: "INTEREST_SENT", canSendInterest: false };
@@ -81,71 +75,51 @@ describe("deriveRelationship", () => {
   });
 
   it("returns INTEREST_SENT after outgoing LIKE", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userA", targetId: "userB", direction: "LIKE" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userA", targetId: "userB", direction: "LIKE" }];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "INTEREST_SENT", canSendInterest: false });
   });
 
   it("returns INTEREST_SENT after outgoing SUPER_LIKE", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userA", targetId: "userB", direction: "SUPER_LIKE" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userA", targetId: "userB", direction: "SUPER_LIKE" }];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "INTEREST_SENT", canSendInterest: false });
   });
 
   it("returns INTEREST_RECEIVED after incoming LIKE", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userB", targetId: "userA", direction: "LIKE" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userB", targetId: "userA", direction: "LIKE" }];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "INTEREST_RECEIVED", canSendInterest: false });
   });
 
   it("returns INTEREST_RECEIVED after incoming SUPER_LIKE", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userB", targetId: "userA", direction: "SUPER_LIKE" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userB", targetId: "userA", direction: "SUPER_LIKE" }];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "INTEREST_RECEIVED", canSendInterest: false });
   });
 
   it("returns MATCHED when a match record exists (userId side)", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userA", targetId: "userB", direction: "LIKE" },
-    ];
-    const matches: Match[] = [
-      { userId: "userA", matchedId: "userB", status: "MATCHED" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userA", targetId: "userB", direction: "LIKE" }];
+    const matches: Match[] = [{ userId: "userA", matchedId: "userB", status: "MATCHED" }];
     const result = deriveRelationship("userA", "userB", swipes, matches, emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "MATCHED", canSendInterest: false });
   });
 
   it("returns MATCHED when a match record exists (matchedId side)", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userB", targetId: "userA", direction: "LIKE" },
-    ];
-    const matches: Match[] = [
-      { userId: "userB", matchedId: "userA", status: "MATCHED" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userB", targetId: "userA", direction: "LIKE" }];
+    const matches: Match[] = [{ userId: "userB", matchedId: "userA", status: "MATCHED" }];
     const result = deriveRelationship("userA", "userB", swipes, matches, emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "MATCHED", canSendInterest: false });
   });
 
   it("returns PASSED after outgoing PASS", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userA", targetId: "userB", direction: "PASS" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userA", targetId: "userB", direction: "PASS" }];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "PASSED", canSendInterest: false });
   });
 
   it("returns NONE after incoming PASS (can still send interest)", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userB", targetId: "userA", direction: "PASS" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userB", targetId: "userA", direction: "PASS" }];
     const result = deriveRelationship("userA", "userB", swipes, [], emptyBlocked);
     expect(result).toEqual({ relationshipStatus: "NONE", canSendInterest: true });
   });
@@ -157,12 +131,8 @@ describe("deriveRelationship", () => {
   });
 
   it("MATCHED takes priority over INTEREST_SENT", () => {
-    const swipes: Swipe[] = [
-      { swiperId: "userA", targetId: "userB", direction: "LIKE" },
-    ];
-    const matches: Match[] = [
-      { userId: "userA", matchedId: "userB", status: "MATCHED" },
-    ];
+    const swipes: Swipe[] = [{ swiperId: "userA", targetId: "userB", direction: "LIKE" }];
+    const matches: Match[] = [{ userId: "userA", matchedId: "userB", status: "MATCHED" }];
     const result = deriveRelationship("userA", "userB", swipes, matches, emptyBlocked);
     expect(result.relationshipStatus).toBe("MATCHED");
   });
@@ -184,11 +154,7 @@ describe("deriveRelationship", () => {
 // Like status derivation (likes-sent endpoint)
 // ─────────────────────────────────────────
 
-function deriveLikeStatus(
-  swiperId: string,
-  targetId: string,
-  matches: Match[],
-): string {
+function deriveLikeStatus(swiperId: string, targetId: string, matches: Match[]): string {
   const isMatched = matches.some(
     (m) =>
       (m.userId === swiperId && m.matchedId === targetId) ||
@@ -203,23 +169,17 @@ describe("deriveLikeStatus (likes-sent)", () => {
   });
 
   it("returns MATCHED when match exists", () => {
-    const matches: Match[] = [
-      { userId: "userA", matchedId: "userB", status: "MATCHED" },
-    ];
+    const matches: Match[] = [{ userId: "userA", matchedId: "userB", status: "MATCHED" }];
     expect(deriveLikeStatus("userA", "userB", matches)).toBe("MATCHED");
   });
 
   it("returns MATCHED regardless of match direction", () => {
-    const matches: Match[] = [
-      { userId: "userB", matchedId: "userA", status: "MATCHED" },
-    ];
+    const matches: Match[] = [{ userId: "userB", matchedId: "userA", status: "MATCHED" }];
     expect(deriveLikeStatus("userA", "userB", matches)).toBe("MATCHED");
   });
 
   it("returns PENDING for unrelated matches", () => {
-    const matches: Match[] = [
-      { userId: "userA", matchedId: "userC", status: "MATCHED" },
-    ];
+    const matches: Match[] = [{ userId: "userA", matchedId: "userC", status: "MATCHED" }];
     expect(deriveLikeStatus("userA", "userB", matches)).toBe("PENDING");
   });
 });

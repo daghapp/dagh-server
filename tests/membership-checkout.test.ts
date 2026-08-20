@@ -12,18 +12,25 @@ interface CheckoutValidationResult {
   error?: string;
 }
 
-function validateCheckoutUrl(
-  rawUrl: unknown,
-  isProduction: boolean,
-): CheckoutValidationResult {
+function validateCheckoutUrl(rawUrl: unknown, isProduction: boolean): CheckoutValidationResult {
   if (!rawUrl || typeof rawUrl !== "string") {
     return { valid: false, error: "Missing checkout URL" };
   }
 
-  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes("'") ||
-      rawUrl.includes(" ") || rawUrl.includes("{") || rawUrl.includes("}") ||
-      rawUrl.includes("[") || rawUrl.includes("]") || rawUrl.includes("\\") ||
-      rawUrl.includes("\n") || rawUrl.includes("\r") || rawUrl.includes("\t")) {
+  if (
+    rawUrl.includes("`") ||
+    rawUrl.includes('"') ||
+    rawUrl.includes("'") ||
+    rawUrl.includes(" ") ||
+    rawUrl.includes("{") ||
+    rawUrl.includes("}") ||
+    rawUrl.includes("[") ||
+    rawUrl.includes("]") ||
+    rawUrl.includes("\\") ||
+    rawUrl.includes("\n") ||
+    rawUrl.includes("\r") ||
+    rawUrl.includes("\t")
+  ) {
     return { valid: false, error: "Provider returned malformed URL" };
   }
 
@@ -50,26 +57,17 @@ describe("validateCheckoutUrl", () => {
   const DEV = false;
 
   it("accepts a valid HTTPS URL", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/session/cs_123456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/session/cs_123456", PROD);
     expect(result.valid).toBe(true);
   });
 
   it("accepts HTTP in non-production", () => {
-    const result = validateCheckoutUrl(
-      "http://checkout.hubtel.com/session/cs_123456",
-      DEV,
-    );
+    const result = validateCheckoutUrl("http://checkout.hubtel.com/session/cs_123456", DEV);
     expect(result.valid).toBe(true);
   });
 
   it("rejects HTTP in production", () => {
-    const result = validateCheckoutUrl(
-      "http://checkout.hubtel.com/session/cs_123456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("http://checkout.hubtel.com/session/cs_123456", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Checkout URL must use HTTPS");
   });
@@ -97,37 +95,25 @@ describe("validateCheckoutUrl", () => {
   });
 
   it("rejects URL with backticks", () => {
-    const result = validateCheckoutUrl(
-      "`https://checkout.hubtel.com/session/cs_123456`",
-      PROD,
-    );
+    const result = validateCheckoutUrl("`https://checkout.hubtel.com/session/cs_123456`", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with surrounding quotes", () => {
-    const result = validateCheckoutUrl(
-      '"https://checkout.hubtel.com/session/cs_123456"',
-      PROD,
-    );
+    const result = validateCheckoutUrl('"https://checkout.hubtel.com/session/cs_123456"', PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with spaces", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/session/cs 123456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/session/cs 123456", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with JSON characters", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/{session}",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/{session}", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
@@ -138,18 +124,12 @@ describe("validateCheckoutUrl", () => {
   });
 
   it("rejects hostname-only URL", () => {
-    const result = validateCheckoutUrl(
-      "checkout.hubtel.com/session/cs_123456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("checkout.hubtel.com/session/cs_123456", PROD);
     expect(result.valid).toBe(false);
   });
 
   it("rejects localhost", () => {
-    const result = validateCheckoutUrl(
-      "http://localhost:3000/checkout/cs_123456",
-      DEV,
-    );
+    const result = validateCheckoutUrl("http://localhost:3000/checkout/cs_123456", DEV);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Checkout URL has invalid hostname");
   });
@@ -165,55 +145,37 @@ describe("validateCheckoutUrl", () => {
   });
 
   it("rejects URL with backslash", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com\\session/cs_123456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com\\session/cs_123456", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with newline", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/session/cs_123\n456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/session/cs_123\n456", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with tab character", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/session/cs_123\t456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/session/cs_123\t456", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with single quotes", () => {
-    const result = validateCheckoutUrl(
-      "'https://checkout.hubtel.com/session/cs_123456'",
-      PROD,
-    );
+    const result = validateCheckoutUrl("'https://checkout.hubtel.com/session/cs_123456'", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with square brackets", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/[session]/cs_123456",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/[session]/cs_123456", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
 
   it("rejects URL with closing brace", () => {
-    const result = validateCheckoutUrl(
-      "https://checkout.hubtel.com/session/cs_123456}",
-      PROD,
-    );
+    const result = validateCheckoutUrl("https://checkout.hubtel.com/session/cs_123456}", PROD);
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider returned malformed URL");
   });
@@ -435,12 +397,18 @@ describe("Membership error codes", () => {
   });
 
   it("SUBSCRIPTION_ALREADY_ACTIVE: user already has the requested active plan", () => {
-    const error = { code: "SUBSCRIPTION_ALREADY_ACTIVE", message: "User already has the requested active plan" };
+    const error = {
+      code: "SUBSCRIPTION_ALREADY_ACTIVE",
+      message: "User already has the requested active plan",
+    };
     expect(error.code).toBe("SUBSCRIPTION_ALREADY_ACTIVE");
   });
 
   it("CHECKOUT_INITIALIZATION_FAILED: provider could not create checkout", () => {
-    const error = { code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider could not create checkout (missing URL)" };
+    const error = {
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: "Provider could not create checkout (missing URL)",
+    };
     expect(error.code).toBe("CHECKOUT_INITIALIZATION_FAILED");
   });
 
@@ -474,7 +442,11 @@ describe("Mobile deep link bridging", () => {
   }
 
   it("bridges Expo deep link for return URL", () => {
-    const result = bridgeDeepLink("daghapp://payment-complete", "https://api.example.com", "return");
+    const result = bridgeDeepLink(
+      "daghapp://payment-complete",
+      "https://api.example.com",
+      "return",
+    );
     expect(result.bridged).toBe(true);
     expect(result.result).toContain("/membership/payment/return?appUrl=");
     expect(result.result).toContain(encodeURIComponent("daghapp://payment-complete"));
@@ -487,13 +459,21 @@ describe("Mobile deep link bridging", () => {
   });
 
   it("does not bridge HTTPS URLs", () => {
-    const result = bridgeDeepLink("https://example.com/return", "https://api.example.com", "return");
+    const result = bridgeDeepLink(
+      "https://example.com/return",
+      "https://api.example.com",
+      "return",
+    );
     expect(result.bridged).toBe(false);
     expect(result.result).toBe("https://example.com/return");
   });
 
   it("does not bridge HTTP URLs", () => {
-    const result = bridgeDeepLink("http://localhost:3000/return", "https://api.example.com", "return");
+    const result = bridgeDeepLink(
+      "http://localhost:3000/return",
+      "https://api.example.com",
+      "return",
+    );
     expect(result.bridged).toBe(false);
     expect(result.result).toBe("http://localhost:3000/return");
   });
@@ -517,7 +497,9 @@ describe("Callback URL validation", () => {
   }
 
   it("accepts a public HTTPS callback URL", () => {
-    const result = validateCallbackUrl("https://dagh-server-fo64.onrender.com/membership/payment-callback");
+    const result = validateCallbackUrl(
+      "https://dagh-server-fo64.onrender.com/membership/payment-callback",
+    );
     expect(result.valid).toBe(true);
   });
 
@@ -548,7 +530,10 @@ describe("Free plan activation", () => {
     checkoutUrl: string | null;
   }
 
-  function validateFreePlanResponse(response: SubscribeResponse): { valid: boolean; errors: string[] } {
+  function validateFreePlanResponse(response: SubscribeResponse): {
+    valid: boolean;
+    errors: string[];
+  } {
     const errors: string[] = [];
 
     if (!response.subscriptionId) {

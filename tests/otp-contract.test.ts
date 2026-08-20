@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { normalizePhone, maskPhone } from "../src/helpers/otp.js";
-import { sendPhoneOtpSchema, verifyPhoneOtpSchema } from "../src/validator/profile-phone-verification-validator.js";
+import {
+  sendPhoneOtpSchema,
+  verifyPhoneOtpSchema,
+} from "../src/validator/profile-phone-verification-validator.js";
 
 // ─────────────────────────────────────────
 // Phone normalization
@@ -72,9 +75,7 @@ describe("maskPhone", () => {
     const masked = maskPhone(phone);
     expect(masked).not.toBe(phone);
     // Stars replace middle digits; at least 2 chars differ
-    const differences = phone
-      .split("")
-      .filter((c, i) => c !== masked[i]).length;
+    const differences = phone.split("").filter((c, i) => c !== masked[i]).length;
     expect(differences).toBeGreaterThanOrEqual(2);
   });
 });

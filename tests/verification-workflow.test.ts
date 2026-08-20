@@ -305,7 +305,10 @@ describe("Stable error codes", () => {
   });
 
   it("OTP_EXPIRED: code expired", () => {
-    const error = { code: "OTP_EXPIRED", message: "The verification code has expired. Request a new code." };
+    const error = {
+      code: "OTP_EXPIRED",
+      message: "The verification code has expired. Request a new code.",
+    };
     expect(error.code).toBe("OTP_EXPIRED");
   });
 

@@ -49,12 +49,20 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
   });
 
   if (!plan || !plan.isActive) {
-    return { success: false, code: "INVALID_PLAN_ID", message: "Plan does not exist or is inactive" };
+    return {
+      success: false,
+      code: "INVALID_PLAN_ID",
+      message: "Plan does not exist or is inactive",
+    };
   }
 
   const existingSub = await prisma.userSubscription.findUnique({ where: { userId } });
   if (existingSub && existingSub.planId === plan.id && existingSub.status === "ACTIVE") {
-    return { success: false, code: "SUBSCRIPTION_ALREADY_ACTIVE", message: "User already has the requested active plan" };
+    return {
+      success: false,
+      code: "SUBSCRIPTION_ALREADY_ACTIVE",
+      message: "User already has the requested active plan",
+    };
   }
 
   // Free plan — activate immediately without payment
@@ -91,8 +99,8 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       data: {
         subscriptionId: subscription.id,
         status: "ACTIVE",
-        checkoutUrl: null
-      }
+        checkoutUrl: null,
+      },
     };
   }
 
@@ -119,7 +127,11 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planInterval: plan.interval,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { success: false, code: "PAYMENT_PROVIDER_ERROR", message: "Payment provider returned an error" };
+    return {
+      success: false,
+      code: "PAYMENT_PROVIDER_ERROR",
+      message: "Payment provider returned an error",
+    };
   }
 
   if (!paymentResponse.success) {
@@ -130,10 +142,14 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planCurrency: plan.currency,
       providerMessage: paymentResponse.message,
     });
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: paymentResponse.message };
+    return {
+      success: false,
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: paymentResponse.message,
+    };
   }
 
-  const hubtelData = (paymentResponse.data as HubtelCheckoutResponse | undefined);
+  const hubtelData = paymentResponse.data as HubtelCheckoutResponse | undefined;
   const rawUrl = hubtelData?.data?.checkoutUrl;
 
   // Checkout URL validation — reject anything that won't open in a browser
@@ -143,19 +159,37 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planId: plan.id,
       providerResponseCode: hubtelData?.responseCode,
     });
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider could not create checkout (missing URL)" };
+    return {
+      success: false,
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: "Provider could not create checkout (missing URL)",
+    };
   }
 
-  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes("'") ||
-      rawUrl.includes(" ") || rawUrl.includes("{") || rawUrl.includes("}") ||
-      rawUrl.includes("[") || rawUrl.includes("]") || rawUrl.includes("\\") ||
-      rawUrl.includes("\n") || rawUrl.includes("\r") || rawUrl.includes("\t")) {
+  if (
+    rawUrl.includes("`") ||
+    rawUrl.includes('"') ||
+    rawUrl.includes("'") ||
+    rawUrl.includes(" ") ||
+    rawUrl.includes("{") ||
+    rawUrl.includes("}") ||
+    rawUrl.includes("[") ||
+    rawUrl.includes("]") ||
+    rawUrl.includes("\\") ||
+    rawUrl.includes("\n") ||
+    rawUrl.includes("\r") ||
+    rawUrl.includes("\t")
+  ) {
     console.error("[MEMBERSHIP_CHECKOUT_MALFORMED_URL]", {
       userId,
       planId: plan.id,
       urlLength: rawUrl.length,
     });
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider returned malformed URL" };
+    return {
+      success: false,
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: "Provider returned malformed URL",
+    };
   }
 
   let parsedUrl: URL;
@@ -167,7 +201,11 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planId: plan.id,
       rawUrlPrefix: rawUrl.substring(0, 50),
     });
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Provider returned invalid URL format" };
+    return {
+      success: false,
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: "Provider returned invalid URL format",
+    };
   }
 
   if (process.env.NODE_ENV === "production" && parsedUrl.protocol !== "https:") {
@@ -176,7 +214,11 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planId: plan.id,
       urlProtocol: parsedUrl.protocol,
     });
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL must use HTTPS in production" };
+    return {
+      success: false,
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: "Checkout URL must use HTTPS in production",
+    };
   }
 
   if (!parsedUrl.hostname || parsedUrl.hostname === "localhost") {
@@ -185,7 +227,11 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       planId: plan.id,
       hostname: parsedUrl.hostname,
     });
-    return { success: false, code: "CHECKOUT_INITIALIZATION_FAILED", message: "Checkout URL has invalid hostname" };
+    return {
+      success: false,
+      code: "CHECKOUT_INITIALIZATION_FAILED",
+      message: "Checkout URL has invalid hostname",
+    };
   }
 
   console.log("[MEMBERSHIP_CHECKOUT_URL_VALIDATED]", {
@@ -225,8 +271,8 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       paymentReference: payment?.reference || "",
       status: "PAYMENT_PENDING",
       checkoutUrl: parsedUrl.toString(),
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
-    }
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    },
   };
 }
 

@@ -83,8 +83,8 @@ export function inferCurrentStep(
   storedValidationStep?: string | null,
 ): string {
   // If the admin/client explicitly set a step, check if it still needs action.
-    const validSteps = VERIFICATION_STEPS as readonly string[];
-    if (storedValidationStep && validSteps.includes(storedValidationStep)) {
+  const validSteps = VERIFICATION_STEPS as readonly string[];
+  if (storedValidationStep && validSteps.includes(storedValidationStep)) {
     const storedStatus = getStatusForStep(storedValidationStep, state);
     if (storedStatus === "PENDING" || storedStatus === "REJECTED") {
       return storedValidationStep;
