@@ -330,7 +330,7 @@ export class PasswordAuthController {
 
       // Generate new OTP — non-fatal if email fails (record is still created)
       try {
-        await sendOtp({ email, subject: "Verify Your Email" });
+        await sendOtp({ email, subject: "Verify Your Email", purpose: "EMAIL_VERIFICATION" });
       } catch (otpError) {
         console.error("Failed to resend verification email:", otpError);
       }

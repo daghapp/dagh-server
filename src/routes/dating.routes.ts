@@ -493,12 +493,88 @@ router.get("/matches", getMyMatches);
  * /dating/likes-received:
  *   get:
  *     summary: List users who liked the current user
+ *     description: Returns the count of likes received. Paid-tier users also receive full swiper profiles.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: List of users who liked the current user
+ *         description: Likes received
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     count:
+ *                       type: integer
+ *                     profiles:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           fullName:
+ *                             type: string
+ *                           gender:
+ *                             type: string
+ *                           dateOfBirth:
+ *                             type: string
+ *                             format: date-time
+ *                           ethnicity:
+ *                             type: string
+ *                           profile:
+ *                             type: object
+ *                             properties:
+ *                               bio_profile_image_url:
+ *                                 type: string
+ *                               profileUrl:
+ *                                 type: string
+ *                           datingProfile:
+ *                             type: object
+ *                             properties:
+ *                               headline:
+ *                                 type: string
+ *                               photos:
+ *                                 type: array
+ *                                 items:
+ *                                   type: string
+ *                               about:
+ *                                 type: string
+ *                               heightCm:
+ *                                 type: integer
+ *                               interests:
+ *                                 type: array
+ *                                 items:
+ *                                   type: string
+ *                               lookingFor:
+ *                                 type: string
+ *                                 enum: [LONG_TERM_PARTNER, SHORT_TERM, FRIENDSHIP, NOT_SURE]
+ *                               location:
+ *                                 type: string
+ *                               degree:
+ *                                 type: string
+ *                               university:
+ *                                 type: string
+ *                               profession:
+ *                                 type: string
+ *                               industry:
+ *                                 type: string
+ *                               workLocation:
+ *                                 type: string
+ *                               languages:
+ *                                 type: array
+ *                                 items:
+ *                                   type: string
+ *                               religion:
+ *                                 type: string
+ *                               hometown:
+ *                                 type: string
  *       500:
  *         description: Internal server error
  */
