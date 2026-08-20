@@ -75,7 +75,7 @@ export class ProfileVerificationController {
         expiresAt: otpResult.expiresAt.toISOString(),
         resendAvailableAt: resendAvailableAt.toISOString(),
         previousChallengesInvalidated: deleted.count,
-        deliveryMethod: "EMAIL",
+        deliveryChannel: "EMAIL",
       });
 
       return ok(

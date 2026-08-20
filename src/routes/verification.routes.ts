@@ -39,7 +39,11 @@ const profileVerificationController = new ProfileVerificationController();
  * @swagger
  * /verification/phone/send-otp:
  *   post:
- *     summary: Send OTP to the authenticated user's email or phone
+ *     summary: Send OTP to the authenticated user's email
+ *     description: |
+ *       Sends a 6-digit OTP code to the user's registered email address.
+ *       The code expires in 10 minutes. Resending invalidates all previous active codes.
+ *       The phone number is normalized and stored on the user's profile for verification records.
  *     tags: [Verification]
  *     security:
  *       - bearerAuth: []
@@ -52,12 +56,7 @@ const profileVerificationController = new ProfileVerificationController();
  *             properties:
  *               phoneNumber:
  *                 type: string
- *                 description: Optional phone number override (E.164 or digits). If omitted, uses phone from profile.
- *               deliveryMethod:
- *                 type: string
- *                 enum: [EMAIL, SMS]
- *                 default: EMAIL
- *                 description: Delivery channel for the OTP code. Currently only EMAIL is implemented. SMS is reserved for future use.
+ *                 description: Optional phone number to store on the profile (E.164 or digits). If omitted, uses phone already on the profile.
  *     responses:
  *       200:
  *         description: OTP sent successfully

@@ -85,7 +85,7 @@ describe("maskPhone", () => {
 // ─────────────────────────────────────────
 
 describe("sendPhoneOtpSchema", () => {
-  it("accepts empty body (optional fields)", () => {
+  it("accepts empty body (all fields optional)", () => {
     const result = sendPhoneOtpSchema.safeParse({});
     expect(result.success).toBe(true);
   });
@@ -95,26 +95,22 @@ describe("sendPhoneOtpSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts deliveryMethod EMAIL", () => {
-    const result = sendPhoneOtpSchema.safeParse({ deliveryMethod: "EMAIL" });
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts deliveryMethod SMS", () => {
-    const result = sendPhoneOtpSchema.safeParse({ deliveryMethod: "SMS" });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects invalid deliveryMethod", () => {
-    const result = sendPhoneOtpSchema.safeParse({ deliveryMethod: "VOICE" });
-    expect(result.success).toBe(false);
-  });
-
-  it("defaults deliveryMethod to EMAIL when omitted", () => {
-    const result = sendPhoneOtpSchema.safeParse({});
+  it("defaults to empty object when input is undefined", () => {
+    const result = sendPhoneOtpSchema.safeParse(undefined);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.deliveryMethod).toBe("EMAIL");
+      expect(result.data).toEqual({});
+    }
+  });
+
+  it("strips unknown fields", () => {
+    const result = sendPhoneOtpSchema.safeParse({
+      phoneNumber: "+233501234567",
+      deliveryMethod: "SMS",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ phoneNumber: "+233501234567" });
     }
   });
 });
