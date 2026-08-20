@@ -87,16 +87,19 @@ router.get("/plans", controller.getPlans.bind(controller));
  *                 description: Membership plan ID
  *               returnUrl:
  *                 type: string
- *                 format: uri
- *                 description: URL to redirect after payment (app deep link or HTTPS)
+ *                 description: |
+ *                   URL to redirect after payment. Accepts HTTPS URLs or mobile deep links
+ *                   (e.g. "daghapp://payment-complete"). Non-HTTP schemes are automatically
+ *                   bridged to a public HTTPS redirect endpoint.
  *               callbackUrl:
  *                 type: string
  *                 format: uri
  *                 description: Public HTTPS server endpoint for payment callback
  *               cancellationUrl:
  *                 type: string
- *                 format: uri
- *                 description: URL to redirect if user cancels
+ *                 description: |
+ *                   URL to redirect if user cancels. Accepts HTTPS URLs or mobile deep links.
+ *                   Optional — defaults to returnUrl when omitted.
  *     responses:
  *       200:
  *         description: Plan activated (free) or checkout initialized (paid)

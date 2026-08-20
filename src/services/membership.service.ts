@@ -148,7 +148,8 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
 
   if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes("'") ||
       rawUrl.includes(" ") || rawUrl.includes("{") || rawUrl.includes("}") ||
-      rawUrl.includes("[") || rawUrl.includes("]")) {
+      rawUrl.includes("[") || rawUrl.includes("]") || rawUrl.includes("\\") ||
+      rawUrl.includes("\n") || rawUrl.includes("\r") || rawUrl.includes("\t")) {
     console.error("[MEMBERSHIP_CHECKOUT_MALFORMED_URL]", {
       userId,
       planId: plan.id,

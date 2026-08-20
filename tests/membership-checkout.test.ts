@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { subscribeMembershipSchema } from "../src/validator/membership-validator.js";
 
 // ─────────────────────────────────────────
 // Checkout URL validation
@@ -19,7 +20,10 @@ function validateCheckoutUrl(
     return { valid: false, error: "Missing checkout URL" };
   }
 
-  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes(" ") || rawUrl.includes("{")) {
+  if (rawUrl.includes("`") || rawUrl.includes('"') || rawUrl.includes("'") ||
+      rawUrl.includes(" ") || rawUrl.includes("{") || rawUrl.includes("}") ||
+      rawUrl.includes("[") || rawUrl.includes("]") || rawUrl.includes("\\") ||
+      rawUrl.includes("\n") || rawUrl.includes("\r") || rawUrl.includes("\t")) {
     return { valid: false, error: "Provider returned malformed URL" };
   }
 
@@ -158,6 +162,60 @@ describe("validateCheckoutUrl", () => {
   it("rejects string 'null'", () => {
     const result = validateCheckoutUrl("null", PROD);
     expect(result.valid).toBe(false);
+  });
+
+  it("rejects URL with backslash", () => {
+    const result = validateCheckoutUrl(
+      "https://checkout.hubtel.com\\session/cs_123456",
+      PROD,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Provider returned malformed URL");
+  });
+
+  it("rejects URL with newline", () => {
+    const result = validateCheckoutUrl(
+      "https://checkout.hubtel.com/session/cs_123\n456",
+      PROD,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Provider returned malformed URL");
+  });
+
+  it("rejects URL with tab character", () => {
+    const result = validateCheckoutUrl(
+      "https://checkout.hubtel.com/session/cs_123\t456",
+      PROD,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Provider returned malformed URL");
+  });
+
+  it("rejects URL with single quotes", () => {
+    const result = validateCheckoutUrl(
+      "'https://checkout.hubtel.com/session/cs_123456'",
+      PROD,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Provider returned malformed URL");
+  });
+
+  it("rejects URL with square brackets", () => {
+    const result = validateCheckoutUrl(
+      "https://checkout.hubtel.com/[session]/cs_123456",
+      PROD,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Provider returned malformed URL");
+  });
+
+  it("rejects URL with closing brace", () => {
+    const result = validateCheckoutUrl(
+      "https://checkout.hubtel.com/session/cs_123456}",
+      PROD,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("Provider returned malformed URL");
   });
 });
 
@@ -393,6 +451,93 @@ describe("Membership error codes", () => {
 });
 
 // ─────────────────────────────────────────
+// Mobile deep link bridging
+// ─────────────────────────────────────────
+
+describe("Mobile deep link bridging", () => {
+  function bridgeDeepLink(
+    originalUrl: string,
+    apiUrl: string,
+    type: "return" | "cancel",
+  ): { bridged: boolean; result: string } {
+    try {
+      const parsed = new URL(originalUrl);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+        return { bridged: false, result: originalUrl };
+      }
+      const path = type === "return" ? "payment/return" : "payment/cancel";
+      const bridged = `${apiUrl}/membership/${path}?appUrl=${encodeURIComponent(originalUrl)}`;
+      return { bridged: true, result: bridged };
+    } catch {
+      return { bridged: false, result: originalUrl };
+    }
+  }
+
+  it("bridges Expo deep link for return URL", () => {
+    const result = bridgeDeepLink("daghapp://payment-complete", "https://api.example.com", "return");
+    expect(result.bridged).toBe(true);
+    expect(result.result).toContain("/membership/payment/return?appUrl=");
+    expect(result.result).toContain(encodeURIComponent("daghapp://payment-complete"));
+  });
+
+  it("bridges custom scheme for cancel URL", () => {
+    const result = bridgeDeepLink("myapp://cancel", "https://api.example.com", "cancel");
+    expect(result.bridged).toBe(true);
+    expect(result.result).toContain("/membership/payment/cancel?appUrl=");
+  });
+
+  it("does not bridge HTTPS URLs", () => {
+    const result = bridgeDeepLink("https://example.com/return", "https://api.example.com", "return");
+    expect(result.bridged).toBe(false);
+    expect(result.result).toBe("https://example.com/return");
+  });
+
+  it("does not bridge HTTP URLs", () => {
+    const result = bridgeDeepLink("http://localhost:3000/return", "https://api.example.com", "return");
+    expect(result.bridged).toBe(false);
+    expect(result.result).toBe("http://localhost:3000/return");
+  });
+});
+
+// ─────────────────────────────────────────
+// Callback URL validation
+// ─────────────────────────────────────────
+
+describe("Callback URL validation", () => {
+  function validateCallbackUrl(url: string): { valid: boolean; error?: string } {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+        return { valid: false, error: "callbackUrl must be a public HTTPS server endpoint" };
+      }
+      return { valid: true };
+    } catch {
+      return { valid: false, error: "Invalid callbackUrl" };
+    }
+  }
+
+  it("accepts a public HTTPS callback URL", () => {
+    const result = validateCallbackUrl("https://dagh-server-fo64.onrender.com/membership/payment-callback");
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects localhost callback URL", () => {
+    const result = validateCallbackUrl("http://localhost:3000/membership/payment-callback");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects 127.0.0.1 callback URL", () => {
+    const result = validateCallbackUrl("http://127.0.0.1:3000/membership/payment-callback");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects malformed callback URL", () => {
+    const result = validateCallbackUrl("not-a-url");
+    expect(result.valid).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────
 // Free plan activation
 // ─────────────────────────────────────────
 
@@ -512,5 +657,95 @@ describe("Subscription response shape", () => {
       paymentReference: "TXN-MEMBERSHIP-def456",
     };
     expect(response.status).toBe("ACTIVE");
+  });
+});
+
+// ─────────────────────────────────────────
+// Subscribe schema validation (deep links)
+// ─────────────────────────────────────────
+
+describe("subscribeMembershipSchema", () => {
+  const validUuid = "40b788b5-e4ff-411f-b37d-ee8522f035c3";
+
+  it("accepts HTTPS return and cancellation URLs", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "https://example.com/return",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+      cancellationUrl: "https://example.com/cancel",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts mobile deep link as returnUrl", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "daghapp://payment-complete",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts mobile deep link as cancellationUrl", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "https://example.com/return",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+      cancellationUrl: "myapp://cancel",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts Expo scheme deep link", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "exp://192.168.1.100:8081/--/payment",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts body without cancellationUrl (optional)", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "https://example.com/return",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects empty returnUrl", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid planId", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: "not-a-uuid",
+      returnUrl: "https://example.com/return",
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid callbackUrl", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      returnUrl: "https://example.com/return",
+      callbackUrl: "not-a-url",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing returnUrl", () => {
+    const result = subscribeMembershipSchema.safeParse({
+      planId: validUuid,
+      callbackUrl: "https://api.example.com/membership/payment-callback",
+    });
+    expect(result.success).toBe(false);
   });
 });

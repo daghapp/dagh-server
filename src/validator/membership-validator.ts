@@ -7,11 +7,14 @@ import { z } from "zod";
 // Schema for subscribing to a membership plan
 // Hubtel checkout handles the payment method selection on its hosted page,
 // so only Hubtel return/callback URLs and the plan ID are needed.
+// returnUrl and cancellationUrl accept any non-empty string because mobile apps
+// send Expo/application deep links (e.g. "daghapp://payment") which are not
+// standard HTTP URLs. The controller bridges unsupported schemes to HTTPS.
 export const subscribeMembershipSchema = z.object({
   planId: z.string().uuid("Invalid plan ID"),
-  returnUrl: z.string().url("Invalid return URL"),
+  returnUrl: z.string().min(1, "Return URL is required"),
   callbackUrl: z.string().url("Invalid callback URL"),
-  cancellationUrl: z.string().url("Invalid cancellation URL").optional(),
+  cancellationUrl: z.string().min(1, "Cancellation URL must not be empty").optional(),
 });
 
 // Schema for creating a priority support ticket (paid tier members only)

@@ -33,30 +33,56 @@ export class MembershipController {
       let returnUrl = payload.returnUrl;
       let cancellationUrl = payload.cancellationUrl || payload.returnUrl;
 
+      // Bridge mobile deep links (non-HTTP schemes) to public HTTPS redirect endpoints.
+      // Payment providers typically only accept HTTPS redirect URLs, so deep links
+      // like "daghapp://payment" are wrapped in an HTTPS bridge that redirects back.
+      const bridgeReturnUrl = `${apiUrl}/membership/payment/return?appUrl=${encodeURIComponent(returnUrl)}`;
+      const bridgeCancelUrl = `${apiUrl}/membership/payment/cancel?appUrl=${encodeURIComponent(cancellationUrl)}`;
+
+      let returnParsed: URL;
       try {
-        const returnUrlObj = new URL(returnUrl);
-        if (returnUrlObj.protocol !== "https:" && returnUrlObj.protocol !== "http:") {
-           returnUrl = `${apiUrl}/api/membership/payment/return?appUrl=${encodeURIComponent(returnUrl)}`;
-        }
-      } catch (_e) {
+        returnParsed = new URL(returnUrl);
+      } catch {
         return fail(res, 400, { code: "INVALID_RETURN_URL", message: "Invalid returnUrl" });
       }
 
+      let cancelParsed: URL;
       try {
-        const cancelUrlObj = new URL(cancellationUrl);
-        if (cancelUrlObj.protocol !== "https:" && cancelUrlObj.protocol !== "http:") {
-           cancellationUrl = `${apiUrl}/api/membership/payment/cancel?appUrl=${encodeURIComponent(cancellationUrl)}`;
-        }
-      } catch (_e) {
+        cancelParsed = new URL(cancellationUrl);
+      } catch {
         return fail(res, 400, { code: "INVALID_RETURN_URL", message: "Invalid cancellationUrl" });
+      }
+
+      const isReturnBridgeable = returnParsed.protocol !== "https:" && returnParsed.protocol !== "http:";
+      const isCancelBridgeable = cancelParsed.protocol !== "https:" && cancelParsed.protocol !== "http:";
+
+      if (isReturnBridgeable) {
+        returnUrl = bridgeReturnUrl;
+      }
+      if (isCancelBridgeable) {
+        cancellationUrl = bridgeCancelUrl;
+      }
+
+      // Validate callback URL is a public HTTPS server endpoint
+      try {
+        const cbParsed = new URL(payload.callbackUrl);
+        if (cbParsed.hostname === "localhost" || cbParsed.hostname === "127.0.0.1") {
+          return fail(res, 400, { code: "INVALID_RETURN_URL", message: "callbackUrl must be a public HTTPS server endpoint" });
+        }
+      } catch {
+        return fail(res, 400, { code: "INVALID_RETURN_URL", message: "Invalid callbackUrl" });
       }
 
       console.log("[MEMBERSHIP_SUBSCRIBE]", {
         userId,
         planId: payload.planId,
-        returnUrlScheme: new URL(returnUrl).protocol,
-        cancellationUrlScheme: new URL(cancellationUrl).protocol,
-        callbackUrl: payload.callbackUrl,
+        returnUrlScheme: returnParsed.protocol,
+        returnUrlHost: returnParsed.hostname,
+        isReturnBridged: isReturnBridgeable,
+        cancellationUrlScheme: cancelParsed.protocol,
+        cancellationUrlHost: cancelParsed.hostname,
+        isCancelBridged: isCancelBridgeable,
+        callbackUrlHost: new URL(payload.callbackUrl).hostname,
       });
 
       const result = await membershipService.subscribeToPlan(userId, { ...payload, returnUrl, cancellationUrl });
@@ -73,12 +99,27 @@ export class MembershipController {
       }
 
       const data = result.data as Record<string, unknown> | undefined;
+      const checkoutUrl = data?.checkoutUrl as string | null | undefined;
+      let checkoutUrlHostname: string | undefined;
+      let checkoutUrlProtocol: string | undefined;
+      if (checkoutUrl && typeof checkoutUrl === "string") {
+        try {
+          const parsed = new URL(checkoutUrl);
+          checkoutUrlHostname = parsed.hostname;
+          checkoutUrlProtocol = parsed.protocol;
+        } catch {
+          checkoutUrlHostname = "INVALID";
+        }
+      }
+
       console.log("[MEMBERSHIP_SUBSCRIBE_OK]", {
         userId,
         planId: payload.planId,
         subscriptionId: data?.subscriptionId,
         status: data?.status,
-        hasCheckoutUrl: Boolean(data?.checkoutUrl),
+        hasCheckoutUrl: Boolean(checkoutUrl),
+        checkoutUrlProtocol,
+        checkoutUrlHostname,
       });
 
       return ok(res, result.data, result.message);
