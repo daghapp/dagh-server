@@ -1,16 +1,24 @@
+/**
+ * Hubtel API client configuration (Phase 1.5).
+ *
+ * Fails fast on startup if required env vars are missing, instead of
+ * crashing mid-request with a cryptic undefined error.
+ */
 import axios from "axios";
 
-// Log credentials for debugging (remove in production)
-// console.log("Hubtel Config:", {
-//   baseURL: process.env.HUBTEL_BASE_URL,
-//   clientId: process.env.HUBTEL_CLIENT_ID,
-//   hasSecret: !!process.env.HUBTEL_CLIENT_SECRET,
-//   secretLength: process.env.HUBTEL_CLIENT_SECRET?.length,
-// });
+// Phase 1.5 — validate required env vars at boot time
 
-// Validate required env vars
-if (!process.env.HUBTEL_CLIENT_ID || !process.env.HUBTEL_CLIENT_SECRET || !process.env.HUBTEL_MERCHANT_NUMBER ) {
-  console.error("❌ Missing Hubtel credentials in environment variables!");
+const requiredEnvVars = [
+  "HUBTEL_CLIENT_ID",
+  "HUBTEL_CLIENT_SECRET",
+  "HUBTEL_MERCHANT_NUMBER",
+  "HUBTEL_BASE_URL",
+] as const;
+const missing = requiredEnvVars.filter((key) => !process.env[key]);
+// Skip boot-time validation in tests (NODE_ENV=test): the client is never
+// called there, and CI has no .env file with Hubtel credentials.
+if (missing.length && process.env.NODE_ENV !== "test") {
+  throw new Error(`Missing required Hubtel env vars: ${missing.join(", ")}`);
 }
 
 const hubtelClient = axios.create({
@@ -18,7 +26,7 @@ const hubtelClient = axios.create({
   headers: {
     "Content-Type": "application/json",
     Authorization: `Basic ${Buffer.from(
-      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`,
     ).toString("base64")}`,
   },
   timeout: 15000,
@@ -26,25 +34,31 @@ const hubtelClient = axios.create({
 
 // Separate client for transaction status API
 const hubtelStatusClient = axios.create({
-  baseURL: "https://api-txnstatus.hubtel.com/transactions/"+process.env.HUBTEL_MERCHANT_NUMBER+"/status",
+  baseURL:
+    "https://api-txnstatus.hubtel.com/transactions/" +
+    process.env.HUBTEL_MERCHANT_NUMBER +
+    "/status",
   headers: {
     "Content-Type": "application/json",
     Authorization: `Basic ${Buffer.from(
-      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`,
     ).toString("base64")}`,
   },
   timeout: 15000,
 });
 
 const hubtelDirectMoneyReceive = axios.create({
-baseURL: "https://rmp.hubtel.com/merchantaccount/merchants/"+process.env.HUBTEL_MERCHANT_NUMBER+"/receive/mobilemoney",
-headers: {
-  "Content-Type": "application/json",
-  Authorization: `Basic ${Buffer.from(
-    `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
-  ).toString("base64")}`,
-},
-timeout: 15000,
-})
+  baseURL:
+    "https://rmp.hubtel.com/merchantaccount/merchants/" +
+    process.env.HUBTEL_MERCHANT_NUMBER +
+    "/receive/mobilemoney",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Basic ${Buffer.from(
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`,
+    ).toString("base64")}`,
+  },
+  timeout: 15000,
+});
 
 export { hubtelClient, hubtelStatusClient, hubtelDirectMoneyReceive };

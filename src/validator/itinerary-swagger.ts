@@ -24,15 +24,7 @@ export const itinerarySchemas = {
       imageUrl: { type: "string", nullable: true },
       category: {
         type: "string",
-        enum: [
-          "NATURE",
-          "CULTURAL",
-          "HISTORICAL",
-          "BEACH",
-          "WILDLIFE",
-          "RELIGIOUS",
-          "SCENIC",
-        ],
+        enum: ["NATURE", "CULTURAL", "HISTORICAL", "BEACH", "WILDLIFE", "RELIGIOUS", "SCENIC"],
       },
     },
   },
@@ -50,7 +42,6 @@ export const itinerarySchemas = {
       tourType: { type: "string", enum: ["GROUP", "SINGLE"] },
       durationDays: { type: "integer", minimum: 1, maximum: 30 },
       relocationInterest: { type: "boolean", default: false },
-
     },
   },
 
@@ -101,4 +92,3 @@ export const itinerarySchemas = {
     },
   },
 };
-

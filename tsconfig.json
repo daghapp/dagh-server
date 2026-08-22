@@ -7,10 +7,8 @@
     "strict": true,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
-    "paths": {
-      "@prisma/client": ["./generated/prisma/client.js"]
-    }
+    "sourceMap": true
   },
-  "include": ["src/**/*.ts", "src/routes/payment.routes.ts"],
+  "include": ["src/**/*.ts", "generated/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules"]
 }

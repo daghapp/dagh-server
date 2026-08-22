@@ -22,8 +22,7 @@ export function haversineDistance(a: Coordinate, b: Coordinate): number {
   const sinDLat = Math.sin(dLat / 2);
   const sinDLon = Math.sin(dLon / 2);
 
-  const haversine =
-    sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  const haversine = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
 
   const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 

@@ -1,6 +1,7 @@
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
 import { prisma } from "../config/index.js";
+import { fail } from "../helpers/response.js"; // Phase 3.4 — standardized error responses
 
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
 
@@ -13,16 +14,12 @@ interface AuthPayload extends JwtPayload {
   email: string;
 }
 
-export default async function protectedRoute(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
+export default async function protectedRoute(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Not authenticated" });
+      return fail(res, 401, "Not authenticated");
     }
 
     const token = authHeader.split(" ")[1];
@@ -36,18 +33,17 @@ export default async function protectedRoute(
         email: true,
         accountType: true,
         fullName: true,
-        
       },
     });
 
     if (!user) {
-      return res.status(401).json({ message: "User no longer exists" });
+      return fail(res, 401, "User no longer exists");
     }
 
     req.user = user;
     next();
   } catch {
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return fail(res, 401, "Invalid or expired token");
   }
 }
 

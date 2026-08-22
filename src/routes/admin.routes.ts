@@ -1,12 +1,17 @@
 import express from "express";
-import { AuthAdminController } from "../Modules/authentication/auth-admin.controller.js";
+import { AuthAdminController } from "../modules/authentication/auth-admin.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import { AdminVisaController } from "../Modules/visa-management/admin-visa.controller.js";
+import requireAdmin from "../middleware/admin.js";
+import { AdminVisaController } from "../modules/visa-management/admin-visa.controller.js";
+import {
+  listReports,
+  resolveReport,
+  suspendReportedUser,
+} from "../modules/dating/admin-moderation.controller.js";
 
 const router = express.Router();
 const authAdminController = new AuthAdminController();
 const adminVisaController = new AdminVisaController();
-
 
 /**
  * @swagger
@@ -99,6 +104,7 @@ const adminVisaController = new AdminVisaController();
 router.get(
   "/users",
   protectedRoute,
+  requireAdmin,
   authAdminController.getAllUsers.bind(authAdminController),
 );
 
@@ -173,6 +179,7 @@ router.get(
 router.patch(
   "/users/:userId/promote",
   protectedRoute,
+  requireAdmin,
   authAdminController.promoteToAdmin.bind(authAdminController),
 );
 
@@ -247,6 +254,7 @@ router.patch(
 router.patch(
   "/users/:userId/demote",
   protectedRoute,
+  requireAdmin,
   authAdminController.demoteToUser.bind(authAdminController),
 );
 
@@ -321,6 +329,7 @@ router.patch(
 router.patch(
   "/users/:userId/suspend",
   protectedRoute,
+  requireAdmin,
   authAdminController.suspendUser.bind(authAdminController),
 );
 
@@ -395,6 +404,7 @@ router.patch(
 router.patch(
   "/users/:userId/reactivate",
   protectedRoute,
+  requireAdmin,
   authAdminController.reactivateUser.bind(authAdminController),
 );
 
@@ -473,6 +483,7 @@ router.patch(
 router.delete(
   "/users/:userId",
   protectedRoute,
+  requireAdmin,
   authAdminController.deleteUser.bind(authAdminController),
 );
 
@@ -491,6 +502,7 @@ router.delete(
 router.get(
   "/visa-requests/paid",
   protectedRoute,
+  requireAdmin,
   adminVisaController.getPaidVisaRequests.bind(adminVisaController),
 );
 
@@ -500,6 +512,8 @@ router.get(
  *   post:
  *     summary: Approve a visa request
  *     tags: [Admin - Visa]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -518,8 +532,159 @@ router.get(
 router.post(
   "/visa-requests/approve",
   protectedRoute,
+  requireAdmin,
   adminVisaController.approveVisaRequest.bind(adminVisaController),
 );
 
-export { router };
+/**
+ * @swagger
+ * /admin/reports:
+ *   get:
+ *     summary: List user reports (moderation queue)
+ *     tags: [Admin - Moderation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [PENDING, REVIEWING, RESOLVED, DISMISSED, ALL]
+ *           default: ALL
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Paginated list of reports with reporter/target details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       reporter:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           fullName:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                       target:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           fullName:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                           accountStatus:
+ *                             type: string
+ *                       status:
+ *                         type: string
+ *                         enum: [PENDING, REVIEWING, RESOLVED, DISMISSED]
+ *                       resolutionNote:
+ *                         type: string
+ *                         nullable: true
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *       403:
+ *         description: Admin privileges required
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/reports", protectedRoute, requireAdmin, listReports);
 
+/**
+ * @swagger
+ * /admin/reports/{reportId}:
+ *   patch:
+ *     summary: Update a report's status (REVIEWING / RESOLVED / DISMISSED)
+ *     tags: [Admin - Moderation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reportId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [REVIEWING, RESOLVED, DISMISSED]
+ *               resolutionNote:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Report updated
+ *       404:
+ *         description: Report not found
+ *       500:
+ *         description: Internal server error
+ */
+router.patch("/reports/:reportId", protectedRoute, requireAdmin, resolveReport);
+
+/**
+ * @swagger
+ * /admin/reports/{reportId}/suspend:
+ *   post:
+ *     summary: Suspend the reported user and resolve the report
+ *     tags: [Admin - Moderation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reportId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User suspended and report resolved
+ *       404:
+ *         description: Report not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/reports/:reportId/suspend", protectedRoute, requireAdmin, suspendReportedUser);
+
+export { router };

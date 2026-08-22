@@ -4,10 +4,11 @@ import {
   postTourRequest,
   getItinerary,
   getUserTourRequests,
-} from "../Modules/itinerary/itinerary.controller.js";
-import { ItineraryPaymentController } from "../Modules/itinerary/itinerary.payment.controller.js";
+} from "../modules/itinerary/itinerary.controller.js";
+import { ItineraryPaymentController } from "../modules/itinerary/itinerary.payment.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import { getUserItineraries } from "../Modules/itinerary/user-itineraries.controller.js";
+import verifyHubtelCallback from "../middleware/hubtel-callback.js";
+import { getUserItineraries } from "../modules/itinerary/user-itineraries.controller.js";
 
 const router = Router();
 const itineraryPaymentController = new ItineraryPaymentController();
@@ -80,7 +81,6 @@ router.get("/sites", getTourSites);
  */
 router.post("/request", protectedRoute, postTourRequest);
 
-
 /**
  * @swagger
  * /itinerary/my-itineraries:
@@ -96,8 +96,6 @@ router.post("/request", protectedRoute, postTourRequest);
  *         description: Unauthorized
  */
 router.get("/my-itineraries", protectedRoute, getUserItineraries);
-
-
 
 /**
  * @swagger
@@ -125,7 +123,7 @@ router.get("/my-itineraries", protectedRoute, getUserItineraries);
 router.post(
   "/:tourRequestId/payment",
   protectedRoute,
-  itineraryPaymentController.initiateItineraryPayment.bind(itineraryPaymentController)
+  itineraryPaymentController.initiateItineraryPayment.bind(itineraryPaymentController),
 );
 
 /**
@@ -147,8 +145,25 @@ router.post(
  */
 router.post(
   "/payment-callback",
-  itineraryPaymentController.handleHubtelPaymentCallback.bind(itineraryPaymentController)
+  verifyHubtelCallback,
+  itineraryPaymentController.handleHubtelPaymentCallback.bind(itineraryPaymentController),
 );
+
+/**
+ * @swagger
+ * /itinerary/requests:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get all itinerary requests for the authenticated user
+ *     tags: [Itinerary]
+ *     responses:
+ *       200:
+ *         description: Tour requests retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/requests", protectedRoute, getUserTourRequests);
 
 /**
  * @swagger
@@ -190,28 +205,11 @@ router.post(
  *                 error:
  *                   type: string
  *               required: [success, message, data, price]
- *               
+ *
  *       403:
  *         description: PAYMENT_REQUIRED (initiate and complete payment first)
  *       404:
  *         description: Tour request not found or itinerary not available
  */
-/**
- * @swagger
- * /itinerary/requests:
- *   get:
- *     security:
- *       - bearerAuth: []
- *     summary: Get all itinerary requests for the authenticated user
- *     tags: [Itinerary]
- *     responses:
- *       200:
- *         description: Tour requests retrieved successfully
- *       401:
- *         description: Unauthorized
- */
-router.get("/requests", protectedRoute, getUserTourRequests);
-
 router.get("/:tourRequestId", protectedRoute, getItinerary);
 export { router };
-

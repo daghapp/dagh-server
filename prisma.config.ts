@@ -1,5 +1,13 @@
 import 'dotenv/config'
-import { defineConfig, env } from 'prisma/config'
+import { defineConfig } from 'prisma/config'
+
+const DATABASE_URL = process.env.DATABASE_URL
+
+function migrationUrl(): string {
+  if (process.env.DIRECT_URL) return process.env.DIRECT_URL
+  if (DATABASE_URL) return DATABASE_URL.replace('-pooler', '')
+  return 'postgresql://prisma:prisma@localhost:5432/dagh'
+}
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
@@ -7,6 +15,6 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    url: migrationUrl(),
   },
 })

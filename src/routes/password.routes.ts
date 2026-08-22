@@ -1,17 +1,17 @@
 import express from "express";
 const router = express.Router();
 
-import { PasswordAuthController } from "../Modules/authentication/password-auth.controller.js";
+import { PasswordAuthController } from "../modules/authentication/password-auth.controller.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import {
   loginSchema,
   registrationSchema,
   requestResetPasswordSchema,
+  resetPasswordSchema,
 } from "../validator/password-auth-validator.js";
 import { verifyOtpSchema, resendOtpSchema } from "../validator/otp-validator.js";
 import { refreshTokenSchema } from "../validator/token-validator.js";
-
 
 const passwordAuthController = new PasswordAuthController();
 
@@ -310,11 +310,7 @@ router.post(
  *       401:
  *         description: Not authenticated
  */
-router.post(
-  "/logout",
-  protectedRoute,
-  passwordAuthController.logout.bind(passwordAuthController),
-);
+router.post("/logout", protectedRoute, passwordAuthController.logout.bind(passwordAuthController));
 
 /**
  * @swagger
@@ -478,6 +474,7 @@ router.post(
  */
 router.post(
   "/reset-password",
+  validate(resetPasswordSchema),
   passwordAuthController.resetPassword.bind(passwordAuthController),
 );
 export { router };

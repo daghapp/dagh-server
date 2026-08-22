@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { TourType, DayType, SiteCategory } from '../../generated/prisma/client.js';
-
+import { TourType, DayType, SiteCategory } from "../../generated/prisma/client.js";
 
 export const createTourRequestSchema = z.object({
   tourSiteIds: z
@@ -20,20 +19,12 @@ export const createTourRequestSchema = z.object({
 
   relocationInterest: z.boolean().optional().default(false),
 
-  apartmentType: z
-    .enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"])
-    .optional(),
+  apartmentType: z.enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"]).optional(),
 
-  transportType: z
-    .enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"])
-    .optional(),
+  transportType: z.enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"]).optional(),
 
   companionInterest: z.boolean().optional().default(false),
-
 });
-
-
-
 
 // ─────────────────────────────────────────
 // LOCAL ENUMS (mirror Prisma enums)
@@ -42,7 +33,6 @@ export const createTourRequestSchema = z.object({
 // Once generated, you can import directly from @prisma/client.
 // ─────────────────────────────────────────
 
-
 // ─────────────────────────────────────────
 // REQUEST TYPES (incoming from frontend)
 // ─────────────────────────────────────────
@@ -50,10 +40,8 @@ export const createTourRequestSchema = z.object({
 export interface CreateTourRequestBody {
   tourSiteIds: string[];
   tourType: TourType;
-  durationDays: number;            // touring days only
+  durationDays: number; // touring days only
   relocationInterest?: boolean;
-
-
 }
 
 // ─────────────────────────────────────────
@@ -106,8 +94,6 @@ export interface ItineraryResponse {
   available_transports: ItineraryLocationRecommendation[];
 }
 
-
-
 export interface CreateTourResponse {
   success: boolean;
   message: string;
@@ -153,14 +139,10 @@ export interface FeasibilityResult {
 //   relocationInterest: boolean;
 // };
 
-export type ItineraryDayInput = 
-{
-     dayNumber: number; 
-     dayType: DayType;
-      relocationRequired: boolean; 
+export type ItineraryDayInput = {
+  dayNumber: number;
+  dayType: DayType;
+  relocationRequired: boolean;
+};
 
-    }
-
-
-
-export type CreateTourRequestInput = z.infer<typeof createTourRequestSchema>&{userId: string};
+export type CreateTourRequestInput = z.infer<typeof createTourRequestSchema> & { userId: string };

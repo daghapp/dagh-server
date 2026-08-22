@@ -1,13 +1,13 @@
 import jwt from "jsonwebtoken";
 import { prisma } from "../config/index.js";
 
-if (!process.env.JWT_ACCESS_SECRET) {
-  throw new Error(
-    "Missing JWT_SECRET environment variable. Please set it in your environment.",
-  );
+// Boot-time validation is skipped in tests (NODE_ENV=test): CI has no .env,
+// and the JWT helpers are never called there.
+if (!process.env.JWT_ACCESS_SECRET && process.env.NODE_ENV !== "test") {
+  throw new Error("Missing JWT_SECRET environment variable. Please set it in your environment.");
 }
 
-if (!process.env.JWT_REFRESH_SECRET) {
+if (!process.env.JWT_REFRESH_SECRET && process.env.NODE_ENV !== "test") {
   throw new Error(
     "Missing JWT_REFRESH_SECRET environment variable. Please set it in your environment.",
   );
@@ -39,8 +39,7 @@ export async function generateRefreshToken(user: JwtPayload) {
     where: { userId: user.id },
   });
 
-  if (existingToken && existingToken.expiredAt! > new Date())
-    return existingToken.token;
+  if (existingToken && existingToken.expiredAt! > new Date()) return existingToken.token;
   const refreshToken = jwt.sign(
     { id: user.id, email: user.email, accountType: user.accountType },
     RefreshTokenSecret,

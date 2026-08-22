@@ -1,0 +1,10 @@
+src/modules/dating/swipe.controller.ts(467,33): error TS2322: Type 'string | string[]' is not assignable to type 'Exact<string | StringFilter<"UserSwipe"> | undefined, string | StringFilter<"UserSwipe"> | undefined>'.
+  Type 'string[]' is not assignable to type 'Exact<string | StringFilter<"UserSwipe"> | undefined, string | StringFilter<"UserSwipe"> | undefined>'.
+src/modules/dating/swipe.controller.ts(468,15): error TS2322: Type 'string | string[]' is not assignable to type 'Exact<string | StringFilter<"UserSwipe"> | undefined, string | StringFilter<"UserSwipe"> | undefined>'.
+  Type 'string[]' is not assignable to type 'Exact<string | StringFilter<"UserSwipe"> | undefined, string | StringFilter<"UserSwipe"> | undefined>'.
+src/modules/dating/swipe.controller.ts(475,23): error TS2322: Type 'string | string[]' is not assignable to type 'Exact<string | StringFilter<"UserMatch"> | undefined, string | StringFilter<"UserMatch"> | undefined>'.
+  Type 'string[]' is not assignable to type 'Exact<string | StringFilter<"UserMatch"> | undefined, string | StringFilter<"UserMatch"> | undefined>'.
+src/modules/dating/swipe.controller.ts(476,15): error TS2322: Type 'string | string[]' is not assignable to type 'Exact<string | StringFilter<"UserMatch"> | undefined, string | StringFilter<"UserMatch"> | undefined>'.
+  Type 'string[]' is not assignable to type 'Exact<string | StringFilter<"UserMatch"> | undefined, string | StringFilter<"UserMatch"> | undefined>'.
+src/modules/profile-management/profile.verification.controller.ts(107,32): error TS2339: Property 'challengeId' does not exist on type '{ code: string; phoneNumber?: string | undefined; }'.
+src/services/membership.service.ts(115,46): error TS2339: Property 'checkoutUrl' does not exist on type '{}'.

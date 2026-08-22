@@ -1,27 +1,29 @@
-//generate random strings for payment api
+import crypto from "crypto";
 
-export const generateClientReference = (length: number = 3, target: string = ""): string => {
-    const year = new Date().getFullYear();
-    const randomNum = Math.floor(Math.random() * Math.pow(10, length));
-    const paddedNum = randomNum.toString().padStart(length, '0');
-    return `TXN-${year}-${paddedNum}`;
-}
+export const generateClientReference = (length: number = 3, _target: string = ""): string => {
+  const year = new Date().getFullYear();
+  const randomPart = crypto
+    .randomBytes(Math.ceil(length / 2))
+    .toString("hex")
+    .slice(0, length);
+  return `TXN-${year}-${randomPart}`;
+};
 
 export const generateClientReference_targetType = (
   targetType: string,
-  length: number = 6
+  length: number = 6,
 ): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const randomPart = crypto
+    .randomBytes(Math.ceil(length / 2))
+    .toString("hex")
+    .slice(0, length);
+  const randomPart2 = crypto.randomBytes(2).toString("hex").slice(0, 4);
 
-  const randomNum = Math.floor(Math.random() * Math.pow(10, length));
-  const paddedNum = randomNum.toString().padStart(length, "0");
-  const randomNum2 = Math.floor(Math.random() * Math.pow(10, 4));
-  const paddedNum2 = randomNum2.toString().padStart(4, "0");
-
+  // Hubtel rejects client references longer than 36 characters, so the
+  // target type portion is truncated to keep the full reference within limit.
   const normalizedTarget = targetType.toUpperCase();
+  const fixedOverhead = 4 + 1 + length + 1 + 4; // "TXN-" + "-" + random + "-" + randomPart2
+  const trimmedTarget = normalizedTarget.slice(0, 36 - fixedOverhead);
 
-  // Example: TXN-2026-05-TOUR-123-4821
-  return `TXN-${normalizedTarget}-${paddedNum}-${paddedNum2}`;
+  return `TXN-${trimmedTarget}-${randomPart}-${randomPart2}`;
 };
