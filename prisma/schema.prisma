@@ -14,49 +14,49 @@ model User {
   // Optional user preference used for itinerary personalization
   ethnicity    Ethnicity?
 
-  email               String                  @unique
-  passwordHash        String?
-  passwordLastChanged DateTime?
-  accountStatus       AccountStatus           @default(PENDING_VERIFICATION)
-  accountType         AccountType             @default(USER)
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @default(now())
-  lastLoginAt         DateTime?
-  lastActiveAt        DateTime?
-  fullName            String
-  dateOfBirth         DateTime?
-  gender              String?
-  phoneNumber         String?                 @unique
-  deviceTokens        DeviceToken[]
-  payments            Payment[]
-  profile             UserProfile?
+  email                   String                   @unique
+  passwordHash            String?
+  passwordLastChanged     DateTime?
+  accountStatus           AccountStatus            @default(PENDING_VERIFICATION)
+  accountType             AccountType              @default(USER)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @default(now())
+  lastLoginAt             DateTime?
+  lastActiveAt            DateTime?
+  fullName                String
+  dateOfBirth             DateTime?
+  gender                  String?
+  phoneNumber             String?                  @unique
+  deviceTokens            DeviceToken[]
+  payments                Payment[]
+  profile                 UserProfile?
   subscription            UserSubscription?
   // Phase 3.1 — Support tickets created by paid-tier members
   prioritySupportRequests PrioritySupportRequest[]
   verification            UserVerification?
-  tourBookings          tour_bookings[]
-  sentMessages        Message[]               @relation("SentMessages")
-  receivedMessages    Message[]               @relation("ReceivedMessages")
-  userMatches         UserMatch[]             @relation("UserMatches")
-  targetMatches       UserMatch[]             @relation("TargetMatches")
-  blockedUsers        UserBlock[]             @relation("Blocker")
-  blockedBy           UserBlock[]             @relation("Blocked")
-  sentReports         UserReport[]            @relation("Reporter")
-  receivedReports     UserReport[]            @relation("ReportedUser")
-  outgoingCalls       CallLog[]               @relation("OutgoingCalls")
-  incomingCalls       CallLog[]               @relation("IncomingCalls")
-  userTourItineraries user_tour_itineraries[]
-  visaRequests        VisaOnArrivalRequest[]
+  tourBookings            tour_bookings[]
+  sentMessages            Message[]                @relation("SentMessages")
+  receivedMessages        Message[]                @relation("ReceivedMessages")
+  userMatches             UserMatch[]              @relation("UserMatches")
+  targetMatches           UserMatch[]              @relation("TargetMatches")
+  blockedUsers            UserBlock[]              @relation("Blocker")
+  blockedBy               UserBlock[]              @relation("Blocked")
+  sentReports             UserReport[]             @relation("Reporter")
+  receivedReports         UserReport[]             @relation("ReportedUser")
+  outgoingCalls           CallLog[]                @relation("OutgoingCalls")
+  incomingCalls           CallLog[]                @relation("IncomingCalls")
+  userTourItineraries     user_tour_itineraries[]
+  visaRequests            VisaOnArrivalRequest[]
 
   tourRequests TourRequest[]
 
   adminActivityLogs AdminActivityLog[]
   adminProfile      AdminProfile?
 
-  datingProfile         DatingProfile?
-  swipesMade            UserSwipe[]   @relation("Swiper")
-  swipesReceived        UserSwipe[]   @relation("SwipeTarget")
-  discoveryPreference   DiscoveryPreference?
+  datingProfile       DatingProfile?
+  swipesMade          UserSwipe[]          @relation("Swiper")
+  swipesReceived      UserSwipe[]          @relation("SwipeTarget")
+  discoveryPreference DiscoveryPreference?
 
   @@map("users")
 }
@@ -127,21 +127,21 @@ model DeviceToken {
 
 // Phase 3.1 — Enhanced with planId, tierCode, and memberCode for the membership tiers system
 model UserSubscription {
-  id              String                 @id @default(uuid())
-  userId          String                 @unique
-  planId          String?                // FK to the selected MembershipPlan (nullable for legacy records)
-  tierCode        MembershipTierCode     @default(FREE) // Current tier level
-  memberCode      String?                @unique         // Human-readable ID like "89345-SGF"
-  autoRenew       Boolean                @default(false)
+  id              String                   @id @default(uuid())
+  userId          String                   @unique
+  planId          String? // FK to the selected MembershipPlan (nullable for legacy records)
+  tierCode        MembershipTierCode       @default(FREE) // Current tier level
+  memberCode      String?                  @unique // Human-readable ID like "89345-SGF"
+  autoRenew       Boolean                  @default(false)
   startDate       DateTime
   endDate         DateTime?
-  status          SubscriptionStatus     @default(ACTIVE)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  status          SubscriptionStatus       @default(ACTIVE)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
   billingHistory  BillingHistory[]
   supportRequests PrioritySupportRequest[]
-  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan            MembershipPlan?        @relation(fields: [planId], references: [id])
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            MembershipPlan?          @relation(fields: [planId], references: [id])
 
   @@map("user_subscriptions")
 }
@@ -305,21 +305,21 @@ model tour_bookings {
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String      @id @default(uuid())
   conversationId String?
   senderId       String
   receiverId     String
-  type           MessageType  @default(TEXT)
+  type           MessageType @default(TEXT)
   content        String?
   mediaUrl       String?
   mediaDuration  Int?
-  isRead         Boolean      @default(false)
+  isRead         Boolean     @default(false)
   readAt         DateTime?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime    @default(now())
 
-  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         User          @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver       User          @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User          @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User          @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
   @@index([senderId])
@@ -357,34 +357,34 @@ model UserMatch {
 // DATING MODULE — profile, swipes, discovery
 // ─────────────────────────────────────────
 model DatingProfile {
-  id                 String                @id @default(uuid())
-  userId             String                @unique
-  headline           String?
-  about              String?               @db.Text
-  photos             String[]
-  heightCm           Int?
-  interests          String[]
-  lookingFor         LookingFor?
+  id         String      @id @default(uuid())
+  userId     String      @unique
+  headline   String?
+  about      String?     @db.Text
+  photos     String[]
+  heightCm   Int?
+  interests  String[]
+  lookingFor LookingFor?
 
   // --- Profile settings: Basic Info ---
-  location           String?
+  location String?
 
   // --- Profile settings: Education & Career ---
-  degree             String?
-  university         String?
-  profession         String?
-  industry           String?
-  workLocation       String?
+  degree       String?
+  university   String?
+  profession   String?
+  industry     String?
+  workLocation String?
 
   // --- Profile settings: Cultural Background ---
-  languages          String[]
-  religion           String?
-  hometown           String?
+  languages String[]
+  religion  String?
+  hometown  String?
 
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   discoveryPreference DiscoveryPreference?
 
   @@map("dating_profiles")
@@ -419,25 +419,25 @@ model UserSwipe {
 }
 
 model DiscoveryPreference {
-  id               String  @id @default(uuid())
-  userId           String  @unique
+  id               String      @id @default(uuid())
+  userId           String      @unique
   lookingFor       LookingFor?
   genderPreference Gender[]
-  minAge           Int     @default(18)
-  maxAge           Int     @default(60)
-  maxDistanceKm    Int     @default(50)
+  minAge           Int         @default(18)
+  maxAge           Int         @default(60)
+  maxDistanceKm    Int         @default(50)
   locationLat      Float?
   locationLng      Float?
   locationName     String?
-  showProfile      Boolean @default(true)
-  showOnlineStatus Boolean @default(true)
+  showProfile      Boolean     @default(true)
+  showOnlineStatus Boolean     @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  datingProfile DatingProfile  @relation(fields: [datingProfileId], references: [id], onDelete: Cascade)
-  datingProfileId String       @unique
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  datingProfile   DatingProfile @relation(fields: [datingProfileId], references: [id], onDelete: Cascade)
+  datingProfileId String        @unique
 
   @@map("discovery_preferences")
 }
@@ -456,17 +456,17 @@ model UserBlock {
 }
 
 model UserReport {
-  id             String        @id @default(uuid())
+  id             String       @id @default(uuid())
   reporterId     String
   targetId       String
   reason         String
   details        String?
-  status         ReportStatus  @default(PENDING)
+  status         ReportStatus @default(PENDING)
   resolutionNote String?
   resolvedAt     DateTime?
   resolvedById   String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
 
   reporter User @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
   target   User @relation("ReportedUser", fields: [targetId], references: [id], onDelete: Cascade)
@@ -582,16 +582,16 @@ model VisaOnArrivalRequest {
 }
 
 model VisaOnArrivalData {
-  id                       String               @id @default(uuid())
-  requestId                String               @unique
-  passport_image_url       String
-  bio_page_image_url       String
+  id                         String               @id @default(uuid())
+  requestId                  String               @unique
+  passport_image_url         String
+  bio_page_image_url         String
   flight_itinerary_image_url String
-  passport_number          String
-  purpose_of_trip          String
-  date_of_departure        DateTime
-  date_of_arrival          DateTime
-  request                  VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  passport_number            String
+  purpose_of_trip            String
+  date_of_departure          DateTime
+  date_of_arrival            DateTime
+  request                    VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@map("visa_on_arrival_data")
 }
@@ -714,13 +714,13 @@ model AdminActivityLog {
 // One per admin `User`; created on admin registration (or seed).
 // ─────────────────────────────────────────
 model AdminProfile {
-  id         String           @id @default(uuid())
-  userId     String           @unique
+  id         String          @id @default(uuid())
+  userId     String          @unique
   department AdminDepartment
   role       AdminRole
   createdBy  String? // userId of the account that registered this admin (null for self-registration/seed)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -969,7 +969,7 @@ model ProfileVerification {
   userProfileId String      @unique
   userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
 
-  isVerified   Boolean  @default(false)
+  isVerified    Boolean  @default(false)
   createdAt     DateTime @default(now())
   lastUpdatedAt DateTime @updatedAt
 
@@ -1219,12 +1219,12 @@ model AuditLog {
 model MembershipPlan {
   id            String             @id @default(uuid())
   code          MembershipTierCode @unique // Maps to MembershipTierCode enum
-  name          String                    // Display name shown on the plans UI
+  name          String // Display name shown on the plans UI
   description   String?
-  price         Float                     // Price in the specified currency
+  price         Float // Price in the specified currency
   currency      String             @default("GHS")
-  interval      BillingInterval           // How often the plan is billed
-  features      String[]                  // Array of feature descriptions rendered as a bullet list
+  interval      BillingInterval // How often the plan is billed
+  features      String[] // Array of feature descriptions rendered as a bullet list
   isMostPopular Boolean            @default(false) // Highlighted as "Most Popular" on the frontend
   isActive      Boolean            @default(true)
   createdAt     DateTime           @default(now())
@@ -1238,7 +1238,7 @@ model MembershipPlan {
 // Only users with a non-FREE, active subscription may create tickets
 model PrioritySupportRequest {
   id             String              @id @default(uuid())
-  subscriptionId String                    // FK to the user's subscription at time of creation
+  subscriptionId String // FK to the user's subscription at time of creation
   userId         String
   subject        String
   message        String
@@ -1249,4 +1249,17 @@ model PrioritySupportRequest {
   user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("priority_support_requests")
+}
+
+// ─────────────────────────────────────────
+// STATIC LOOKUP TABLE — Americas & Caribbean jurisdiction allow-list
+// Seeded once from static ISO-3166-1 alpha-2 codes via src/seed.ts. Read-only.
+// ─────────────────────────────────────────
+model AllowedCountry {
+  id        String   @id @default(uuid())
+  code      String   @unique // ISO-3166-1 alpha-2, e.g. "US"
+  name      String
+  createdAt DateTime @default(now())
+
+  @@map("allowed_countries")
 }

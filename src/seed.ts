@@ -295,6 +295,44 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
   },
 ];
 
+const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = [
+  { code: "US", name: "United States" },
+  { code: "CA", name: "Canada" },
+  { code: "MX", name: "Mexico" },
+  { code: "GT", name: "Guatemala" },
+  { code: "BZ", name: "Belize" },
+  { code: "HN", name: "Honduras" },
+  { code: "SV", name: "El Salvador" },
+  { code: "NI", name: "Nicaragua" },
+  { code: "CR", name: "Costa Rica" },
+  { code: "PA", name: "Panama" },
+  { code: "CO", name: "Colombia" },
+  { code: "VE", name: "Venezuela" },
+  { code: "GY", name: "Guyana" },
+  { code: "SR", name: "Suriname" },
+  { code: "BR", name: "Brazil" },
+  { code: "EC", name: "Ecuador" },
+  { code: "PE", name: "Peru" },
+  { code: "BO", name: "Bolivia" },
+  { code: "PY", name: "Paraguay" },
+  { code: "CL", name: "Chile" },
+  { code: "AR", name: "Argentina" },
+  { code: "UY", name: "Uruguay" },
+  { code: "CU", name: "Cuba" },
+  { code: "JM", name: "Jamaica" },
+  { code: "HT", name: "Haiti" },
+  { code: "DO", name: "Dominican Republic" },
+  { code: "BS", name: "Bahamas" },
+  { code: "BB", name: "Barbados" },
+  { code: "TT", name: "Trinidad and Tobago" },
+  { code: "GD", name: "Grenada" },
+  { code: "LC", name: "Saint Lucia" },
+  { code: "VC", name: "Saint Vincent and the Grenadines" },
+  { code: "AG", name: "Antigua and Barbuda" },
+  { code: "DM", name: "Dominica" },
+  { code: "KN", name: "Saint Kitts and Nevis" },
+];
+
 // ── Dating module demo data ──────────────────────────────────────────────
 // Idempotent: re-running refreshes the demo dating profiles with the values
 // below (upserts), so frontend devs can always reset their test data.
@@ -2086,6 +2124,13 @@ async function main() {
   });
 
   console.log("Ledger accounts seeded successfully");
+
+  // Seed Allowed Countries (jurisdiction allow-list)
+  await prisma.allowedCountry.createMany({
+    data: allowedCountries,
+    skipDuplicates: true,
+  });
+  console.log(`Seeded ${allowedCountries.length} allowed countries (or already present).`);
 
   // Seed Membership Plans
   console.log("Seeding membership plans...");

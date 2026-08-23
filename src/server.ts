@@ -37,6 +37,7 @@ import { router as CallsRoutes } from "./routes/calls.routes.js";
 import { router as MembershipRoutes } from "./routes/membership.routes.js";
 // Dating module
 import { router as DatingRoutes } from "./routes/dating.routes.js";
+import { router as GeoRoutes } from "./routes/geo.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
@@ -199,6 +200,8 @@ app.use("/calls", CallsRoutes);
 app.use("/membership", MembershipRoutes);
 // Dating module
 app.use("/dating", DatingRoutes);
+// Jurisdiction / geo-IP check
+app.use("/geo", GeoRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({
