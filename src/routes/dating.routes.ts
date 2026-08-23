@@ -493,7 +493,7 @@ router.get("/matches", getMyMatches);
  * /dating/likes-received:
  *   get:
  *     summary: List users who liked the current user
- *     description: Returns the count of likes received along with the full swiper profiles.
+ *     description: Returns the count of likes received. Paid-tier users also receive full swiper profiles.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
