@@ -311,64 +311,54 @@ export const getMyMatches = async (req: Request, res: Response) => {
 
 /**
  * List users who liked the current user (potential matches awaiting a response).
- * FREE tier users receive only a count; paid-tier users see the full list.
- * Response shape is always { count: number, profiles: Profile[] } for consistency.
+ * Always returns the full swiper profiles alongside the count.
+ * Response shape is { count: number, profiles: Profile[] }.
  */
 export const getLikesReceived = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { subscription: { select: { tierCode: true } } },
-    });
-
-    const tierCode = user?.subscription?.tierCode ?? "FREE";
-    const isPaidTier = tierCode !== "FREE";
 
     const likes = await prisma.userSwipe.findMany({
       where: {
         targetId: userId,
         direction: { in: ["LIKE", "SUPER_LIKE"] },
       },
-      select: isPaidTier
-        ? {
-            swiper: {
+      select: {
+        swiper: {
+          select: {
+            id: true,
+            fullName: true,
+            gender: true,
+            dateOfBirth: true,
+            ethnicity: true,
+            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            datingProfile: {
               select: {
-                id: true,
-                fullName: true,
-                gender: true,
-                dateOfBirth: true,
-                ethnicity: true,
-                profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-                datingProfile: {
-                  select: {
-                    headline: true,
-                    photos: true,
-                    about: true,
-                    heightCm: true,
-                    interests: true,
-                    lookingFor: true,
-                    location: true,
-                    degree: true,
-                    university: true,
-                    profession: true,
-                    industry: true,
-                    workLocation: true,
-                    languages: true,
-                    religion: true,
-                    hometown: true,
-                  },
-                },
+                headline: true,
+                photos: true,
+                about: true,
+                heightCm: true,
+                interests: true,
+                lookingFor: true,
+                location: true,
+                degree: true,
+                university: true,
+                profession: true,
+                industry: true,
+                workLocation: true,
+                languages: true,
+                religion: true,
+                hometown: true,
               },
             },
-          }
-        : { id: true },
+          },
+        },
+      },
     });
 
     return ok(res, {
       count: likes.length,
-      profiles: isPaidTier ? likes.map((l) => (l as { swiper: unknown }).swiper) : [],
+      profiles: likes.map((l) => (l as { swiper: unknown }).swiper),
     });
   } catch (error) {
     console.error("Get likes received error:", error);
