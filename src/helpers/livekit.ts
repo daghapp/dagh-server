@@ -54,3 +54,15 @@ export const generateLiveKitRoomToken = async (params: {
   const token = await accessToken.toJwt();
   return { token, serviceUrl: url, expiresIn };
 };
+
+/**
+ * Issue a short-lived LiveKit token scoped to a specific call room.
+ * Used by the secure /calls/:callId/token endpoint. Default TTL is 120 seconds.
+ */
+export const generateSecureCallToken = async (params: {
+  roomId: string;
+  identity: string;
+  name?: string;
+}): Promise<LiveKitRoomToken | null> => {
+  return generateLiveKitRoomToken({ ...params, ttlSec: 120 });
+};

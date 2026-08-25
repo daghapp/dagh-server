@@ -1,55 +1,731 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
-import { ok, fail } from "../../helpers/response.js";
+import { ok, created, fail } from "../../helpers/response.js";
 import { getCallServiceUrl } from "../../helpers/call-service.js";
-import { generateLiveKitRoomToken } from "../../helpers/livekit.js";
+import { generateLiveKitRoomToken, generateSecureCallToken } from "../../helpers/livekit.js";
+import { transitionCall } from "../../helpers/callStateMachine.js";
+import { sendIncomingCallPush } from "../../helpers/pushNotifications.js";
+import {
+  logCallInitiated,
+  logCallAnswerTime,
+  logCallDuration,
+  logCallSocketDelivered,
+  logCallTokenGenerated,
+} from "../../helpers/callLogger.js";
+import { isUserBlocked } from "../../helpers/safety.js";
+import { getRedisClient } from "../../config/redis.js";
 import crypto from "crypto";
+import type { Server } from "socket.io";
+import type { CallStatus } from "../../../generated/prisma/client.js";
 
-/**
- * Get user call history logs
- */
-export const getCallHistory = async (req: Request, res: Response) => {
+let io: Server;
+
+export const setIoInstance = (ioInstance: Server) => {
+  io = ioInstance;
+};
+
+export const getIoInstance = (): Server | undefined => {
+  return io;
+};
+
+const USER_PROFILE_SELECT = {
+  id: true,
+  fullName: true,
+  profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+};
+
+const CALL_INCLUDE = {
+  caller: { select: USER_PROFILE_SELECT },
+  receiver: { select: USER_PROFILE_SELECT },
+};
+
+function isTerminalStatus(status: string): boolean {
+  return ["DECLINED", "CANCELLED", "MISSED", "ENDED", "FAILED"].includes(status);
+}
+
+// ---------------------------------------------------------------------------
+// POST /calls — Initiate a call
+// ---------------------------------------------------------------------------
+export const initiateCall = async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const callerId = req.user!.id;
+    const { receiverId, conversationId, callType = "VOICE" } = req.body;
+    const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
 
-    const callLogs = await prisma.callLog.findMany({
+    // 1. Idempotency check
+    if (idempotencyKey) {
+      const redis = getRedisClient();
+      if (redis) {
+        const cached = await redis.get(`idempotency:call:${idempotencyKey}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return ok(res, parsed);
+        }
+      }
+    }
+
+    // 2. Validate receiver is not self
+    if (receiverId === callerId) {
+      return fail(res, 422, { code: "INVALID_INPUT", message: "You cannot call yourself" });
+    }
+
+    // 3. Verify receiver exists
+    const receiver = await prisma.user.findUnique({
+      where: { id: receiverId },
+      select: { id: true, accountStatus: true },
+    });
+    if (!receiver || receiver.accountStatus !== "ACTIVE") {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Recipient not found" });
+    }
+
+    // 4. Verify users are matched
+    const match = await prisma.userMatch.findFirst({
       where: {
-        OR: [{ callerId: userId }, { receiverId: userId }],
+        OR: [
+          { userId: callerId, matchedId: receiverId, status: "MATCHED" },
+          { userId: receiverId, matchedId: callerId, status: "MATCHED" },
+        ],
       },
-      orderBy: { startedAt: "desc" },
-      take: 50,
-      include: {
-        caller: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-          },
+    });
+    if (!match) {
+      return fail(res, 403, { code: "NOT_MATCHED", message: "You must be matched to call this user" });
+    }
+
+    // 5. Verify conversation belongs to both users (if provided)
+    if (conversationId) {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { participants: true },
+      });
+      if (!conversation || !conversation.participants.includes(callerId) || !conversation.participants.includes(receiverId)) {
+        return fail(res, 403, { code: "NOT_MATCHED", message: "Invalid conversation" });
+      }
+    }
+
+    // 6. Check block status
+    if (await isUserBlocked(callerId, receiverId)) {
+      return fail(res, 403, { code: "USER_BLOCKED", message: "Cannot place call" });
+    }
+
+    // 7. Check both users don't already have active calls
+    const activeStatuses: CallStatus[] = ["INITIATING", "RINGING", "ANSWERED"];
+    const [callerActive, receiverActive] = await Promise.all([
+      prisma.call.findFirst({
+        where: {
+          OR: [{ callerId }, { receiverId: callerId }],
+          status: { in: activeStatuses },
         },
-        receiver: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-          },
+      }),
+      prisma.call.findFirst({
+        where: {
+          OR: [{ callerId: receiverId }, { receiverId }],
+          status: { in: activeStatuses },
         },
+      }),
+    ]);
+
+    if (callerActive) {
+      return fail(res, 409, { code: "CALL_ALREADY_ACTIVE", message: "You are already in or initiating a call" });
+    }
+    if (receiverActive) {
+      return fail(res, 409, { code: "RECIPIENT_BUSY", message: "This user is currently in another call" });
+    }
+
+    // 8. Create call as INITIATING
+    const callId = crypto.randomUUID();
+    const roomId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 40_000);
+
+    await prisma.call.create({
+      data: {
+        id: callId,
+        roomId,
+        callerId,
+        receiverId,
+        conversationId: conversationId ?? null,
+        callType,
+        status: "INITIATING",
+        expiresAt,
       },
     });
 
-    return ok(res, callLogs);
+    // 9. Atomically transition INITIATING → RINGING
+    const ringing = await transitionCall(
+      callId,
+      "INITIATING",
+      "RINGING",
+      { ringingAt: new Date() },
+      callerId,
+    );
+
+    if (!ringing) {
+      return fail(res, 500, { code: "CALL_FAILED", message: "Failed to start call" });
+    }
+
+    // 10. Generate caller LiveKit token (short-lived)
+    const liveKitToken = await generateSecureCallToken({
+      roomId,
+      identity: callerId,
+      name: req.user!.fullName,
+    });
+
+    const serviceUrl = getCallServiceUrl();
+
+    logCallInitiated({ callId, callerId, receiverId, callType, idempotencyKey });
+
+    // 11. Emit socket events
+    const callerProfile = await prisma.user.findUnique({
+      where: { id: callerId },
+      select: USER_PROFILE_SELECT,
+    });
+
+    const incomingPayload = {
+      callId: ringing.id,
+      callType: ringing.callType,
+      conversationId: ringing.conversationId,
+      caller: callerProfile
+        ? {
+            id: callerProfile.id,
+            fullName: callerProfile.fullName,
+            profileImageUrl: callerProfile.profile?.bio_profile_image_url || callerProfile.profile?.profileUrl || null,
+          }
+        : null,
+      status: ringing.status,
+      expiresAt: ringing.expiresAt.toISOString(),
+      sequence: ringing.version,
+      occurredAt: new Date().toISOString(),
+    };
+
+    io.to(`user:${receiverId}`).emit("call.incoming", incomingPayload);
+    logCallSocketDelivered({ callId, event: "call.incoming", recipientOnline: true });
+
+    const ringingPayload = {
+      callId: ringing.id,
+      callType: ringing.callType,
+      conversationId: ringing.conversationId,
+      status: ringing.status,
+      expiresAt: ringing.expiresAt.toISOString(),
+      sequence: ringing.version,
+      occurredAt: new Date().toISOString(),
+    };
+    io.to(`user:${callerId}`).emit("call.ringing", ringingPayload);
+
+    // 12. Send push notifications (fire-and-forget)
+    if (callerProfile) {
+      sendIncomingCallPush(ringing, callerProfile).catch(() => {});
+    }
+
+    // 13. Cache idempotency response
+    const responseData = {
+      call: {
+        id: ringing.id,
+        roomId: ringing.roomId,
+        callerId: ringing.callerId,
+        receiverId: ringing.receiverId,
+        conversationId: ringing.conversationId,
+        callType: ringing.callType,
+        status: ringing.status,
+        expiresAt: ringing.expiresAt.toISOString(),
+      },
+      token: liveKitToken?.token ?? null,
+      serviceUrl: liveKitToken?.serviceUrl ?? serviceUrl,
+    };
+
+    if (idempotencyKey) {
+      const redis = getRedisClient();
+      if (redis) {
+        await redis.set(`idempotency:call:${idempotencyKey}`, JSON.stringify(responseData), { EX: 300 });
+      }
+    }
+
+    return created(res, responseData);
   } catch (error) {
-    console.error("Get call history error:", error);
+    console.error("[Calls] initiateCall error:", error);
+    return fail(res, 500, { code: "CALL_FAILED", message: "Failed to initiate call" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /calls/history — Call history with cursor pagination
+// ---------------------------------------------------------------------------
+export const getCallHistory = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const cursor = req.query.cursor as string | undefined;
+
+    const where = {
+      OR: [{ callerId: userId }, { receiverId: userId }],
+      ...(cursor
+        ? {
+            createdAt: {
+              lt: (
+                await prisma.call.findUnique({
+                  where: { id: cursor },
+                  select: { createdAt: true },
+                })
+              )?.createdAt ?? new Date(),
+            },
+          }
+        : {}),
+    };
+
+    const calls = await prisma.call.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      include: {
+        caller: { select: USER_PROFILE_SELECT },
+        receiver: { select: USER_PROFILE_SELECT },
+      },
+    });
+
+    const hasMore = calls.length > limit;
+    const data = hasMore ? calls.slice(0, limit) : calls;
+
+    const historyEntries = data.map((call) => ({
+      id: call.id,
+      direction: call.callerId === userId ? "OUTGOING" : "INCOMING",
+      callType: call.callType,
+      status: call.status,
+      otherUser:
+        call.callerId === userId
+          ? {
+              id: call.receiver.id,
+              fullName: call.receiver.fullName,
+              profileImageUrl: call.receiver.profile?.bio_profile_image_url || call.receiver.profile?.profileUrl || null,
+            }
+          : {
+              id: call.caller.id,
+              fullName: call.caller.fullName,
+              profileImageUrl: call.caller.profile?.bio_profile_image_url || call.caller.profile?.profileUrl || null,
+            },
+      startedAt: call.ringingAt?.toISOString() ?? call.createdAt.toISOString(),
+      answeredAt: call.answeredAt?.toISOString() ?? null,
+      endedAt: call.endedAt?.toISOString() ?? null,
+      durationSec: call.durationSec ?? 0,
+    }));
+
+    return ok(res, {
+      calls: historyEntries,
+      nextCursor: hasMore ? data[data.length - 1].id : null,
+    });
+  } catch (error) {
+    console.error("[Calls] getCallHistory error:", error);
     return fail(res, 500, "Failed to fetch call history");
   }
 };
 
-/**
- * Generate a LiveKit AccessToken for a call room. When LiveKit is not
- * configured (no LIVEKIT_* env vars), falls back to a placeholder HMAC
- * token for local development.
- */
+// ---------------------------------------------------------------------------
+// GET /calls/:callId — Get current call state
+// ---------------------------------------------------------------------------
+export const getCallState = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const callId = String(req.params.callId);
+
+    const call = await prisma.call.findUnique({
+      where: { id: callId },
+      include: CALL_INCLUDE,
+    });
+
+    if (!call) {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
+    }
+
+    if (call.callerId !== userId && call.receiverId !== userId) {
+      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Not a participant" });
+    }
+
+    return ok(res, {
+      id: call.id,
+      roomId: call.roomId,
+      callerId: call.callerId,
+      receiverId: call.receiverId,
+      conversationId: call.conversationId,
+      callType: call.callType,
+      status: call.status,
+      createdAt: call.createdAt.toISOString(),
+      ringingAt: call.ringingAt?.toISOString() ?? null,
+      answeredAt: call.answeredAt?.toISOString() ?? null,
+      endedAt: call.endedAt?.toISOString() ?? null,
+      expiresAt: call.expiresAt.toISOString(),
+      endedBy: call.endedBy,
+      durationSec: call.durationSec,
+      sequence: call.version,
+      caller: {
+        id: call.caller.id,
+        fullName: call.caller.fullName,
+        profileImageUrl: call.caller.profile?.bio_profile_image_url || call.caller.profile?.profileUrl || null,
+      },
+      receiver: {
+        id: call.receiver.id,
+        fullName: call.receiver.fullName,
+        profileImageUrl: call.receiver.profile?.bio_profile_image_url || call.receiver.profile?.profileUrl || null,
+      },
+    });
+  } catch (error) {
+    console.error("[Calls] getCallState error:", error);
+    return fail(res, 500, "Failed to fetch call state");
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /calls/:callId/answer — Answer an incoming call
+// ---------------------------------------------------------------------------
+export const answerCall = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const callId = String(req.params.callId);
+
+    const existing = await prisma.call.findUnique({ where: { id: callId } });
+    if (!existing) {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
+    }
+    if (existing.receiverId !== userId) {
+      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Only the receiver can answer" });
+    }
+    if (isTerminalStatus(existing.status)) {
+      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${existing.status}` });
+    }
+    if (existing.expiresAt <= new Date()) {
+      return fail(res, 409, { code: "CALL_EXPIRED", message: "Call has expired" });
+    }
+
+    const now = new Date();
+    const answered = await transitionCall(
+      callId,
+      "RINGING",
+      "ANSWERED",
+      { answeredAt: now },
+      userId,
+    );
+
+    if (!answered) {
+      // Might have been answered by another device simultaneously
+      const fresh = await prisma.call.findUnique({ where: { id: callId } });
+      return fail(res, 409, {
+        code: "CALL_ALREADY_ANSWERED",
+        message: "Call was already answered",
+        details: { currentStatus: fresh?.status },
+      });
+    }
+
+    // Generate receiver LiveKit token
+    const liveKitToken = await generateSecureCallToken({
+      roomId: answered.roomId,
+      identity: userId,
+      name: req.user!.fullName,
+    });
+
+    logCallAnswerTime({
+      callId,
+      ringDurationMs: answered.ringingAt ? now.getTime() - answered.ringingAt.getTime() : 0,
+    });
+
+    // Emit events
+    io.to(`user:${answered.callerId}`).emit("call.answered", {
+      callId: answered.id,
+      roomId: answered.roomId,
+      status: "ANSWERED",
+      sequence: answered.version,
+      occurredAt: now.toISOString(),
+    });
+
+    // Notify receiver's other devices
+    const receiverSockets = io.sockets.adapter.rooms.get(`user:${userId}`);
+    if (receiverSockets && receiverSockets.size > 1) {
+      io.to(`user:${userId}`).emit("call.answered_elsewhere", {
+        callId: answered.id,
+        roomId: answered.roomId,
+        status: "ANSWERED",
+        sequence: answered.version,
+        occurredAt: now.toISOString(),
+      });
+    }
+
+    return ok(res, {
+      callId: answered.id,
+      roomId: answered.roomId,
+      status: "ANSWERED",
+      token: liveKitToken?.token ?? null,
+      serviceUrl: liveKitToken?.serviceUrl ?? getCallServiceUrl(),
+    });
+  } catch (error) {
+    console.error("[Calls] answerCall error:", error);
+    return fail(res, 500, "Failed to answer call");
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /calls/:callId/decline — Decline an incoming call
+// ---------------------------------------------------------------------------
+export const declineCall = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const callId = String(req.params.callId);
+
+    const existing = await prisma.call.findUnique({ where: { id: callId } });
+    if (!existing) {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
+    }
+    if (existing.receiverId !== userId) {
+      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Only the receiver can decline" });
+    }
+    if (isTerminalStatus(existing.status)) {
+      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${existing.status}` });
+    }
+
+    const now = new Date();
+    const declined = await transitionCall(
+      callId,
+      "RINGING",
+      "DECLINED",
+      { endedAt: now },
+      userId,
+    );
+
+    if (!declined) {
+      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot decline in current state" });
+    }
+
+    const payload = {
+      callId: declined.id,
+      callType: declined.callType,
+      status: "DECLINED",
+      sequence: declined.version,
+      occurredAt: now.toISOString(),
+    };
+
+    io.to(`user:${declined.callerId}`).emit("call.declined", payload);
+    io.to(`user:${declined.receiverId}`).emit("call.declined", payload);
+
+    return ok(res, { callId: declined.id, status: "DECLINED" });
+  } catch (error) {
+    console.error("[Calls] declineCall error:", error);
+    return fail(res, 500, "Failed to decline call");
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /calls/:callId/cancel — Cancel an outgoing call
+// ---------------------------------------------------------------------------
+export const cancelCall = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const callId = String(req.params.callId);
+
+    const existing = await prisma.call.findUnique({ where: { id: callId } });
+    if (!existing) {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
+    }
+    if (existing.callerId !== userId) {
+      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Only the caller can cancel" });
+    }
+    if (isTerminalStatus(existing.status)) {
+      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${existing.status}` });
+    }
+
+    const now = new Date();
+    const cancelled = await transitionCall(
+      callId,
+      ["INITIATING", "RINGING"],
+      "CANCELLED",
+      { endedAt: now },
+      userId,
+    );
+
+    if (!cancelled) {
+      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot cancel in current state" });
+    }
+
+    const payload = {
+      callId: cancelled.id,
+      callType: cancelled.callType,
+      status: "CANCELLED",
+      sequence: cancelled.version,
+      occurredAt: now.toISOString(),
+    };
+
+    io.to(`user:${cancelled.receiverId}`).emit("call.cancelled", payload);
+    io.to(`user:${cancelled.callerId}`).emit("call.cancelled", payload);
+
+    return ok(res, { callId: cancelled.id, status: "CANCELLED" });
+  } catch (error) {
+    console.error("[Calls] cancelCall error:", error);
+    return fail(res, 500, "Failed to cancel call");
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /calls/:callId/end — End an active call
+// ---------------------------------------------------------------------------
+export const endCall = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const callId = String(req.params.callId);
+
+    const existing = await prisma.call.findUnique({ where: { id: callId } });
+    if (!existing) {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
+    }
+    if (existing.callerId !== userId && existing.receiverId !== userId) {
+      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Not a participant" });
+    }
+
+    // Idempotent: already ended — return the ended call
+    if (existing.status === "ENDED") {
+      return ok(res, {
+        callId: existing.id,
+        roomId: existing.roomId,
+        status: "ENDED",
+        durationSec: existing.durationSec,
+        endedBy: existing.endedBy,
+      });
+    }
+
+    if (!["RINGING", "ANSWERED"].includes(existing.status)) {
+      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot end in current state" });
+    }
+
+    const now = new Date();
+    const durationSec = existing.answeredAt
+      ? Math.round((now.getTime() - existing.answeredAt.getTime()) / 1000)
+      : 0;
+
+    const ended = await transitionCall(
+      callId,
+      ["RINGING", "ANSWERED"],
+      "ENDED",
+      { endedAt: now, endedBy: userId, durationSec },
+      userId,
+    );
+
+    if (!ended) {
+      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot end in current state" });
+    }
+
+    logCallDuration({ callId, durationSec, endedBy: userId, endReason: "hangup" });
+
+    const payload = {
+      callId: ended.id,
+      roomId: ended.roomId,
+      callType: ended.callType,
+      status: "ENDED",
+      durationSec: ended.durationSec,
+      endedBy: userId,
+      sequence: ended.version,
+      occurredAt: now.toISOString(),
+    };
+
+    io.to(`user:${ended.callerId}`).emit("call.ended", payload);
+    io.to(`user:${ended.receiverId}`).emit("call.ended", payload);
+
+    // Create a CALL_LOG message in the conversation
+    if (existing.conversationId) {
+      const mins = Math.floor(durationSec / 60);
+      const secs = durationSec % 60;
+      const durationText = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+      const logContent =
+        existing.status === "ANSWERED" ? `Call ended - ${durationText}` : "Call ended";
+
+      try {
+        const callMessage = await prisma.message.create({
+          data: {
+            conversationId: existing.conversationId,
+            senderId: existing.callerId,
+            receiverId: existing.receiverId,
+            type: "CALL_LOG",
+            content: logContent,
+            mediaDuration: durationSec,
+          },
+        });
+
+        io.to(`user:${existing.callerId}`).emit("new_message", callMessage);
+        io.to(`user:${existing.receiverId}`).emit("new_message", callMessage);
+      } catch (err) {
+        console.error("[Calls] Failed to create call log message:", err);
+      }
+    }
+
+    return ok(res, {
+      callId: ended.id,
+      roomId: ended.roomId,
+      status: "ENDED",
+      durationSec: ended.durationSec,
+      endedBy: userId,
+    });
+  } catch (error) {
+    console.error("[Calls] endCall error:", error);
+    return fail(res, 500, "Failed to end call");
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /calls/:callId/token — Secure LiveKit token scoped to a call
+// ---------------------------------------------------------------------------
+export const generateCallToken = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const callId = String(req.params.callId);
+
+    const call = await prisma.call.findUnique({ where: { id: callId } });
+    if (!call) {
+      return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
+    }
+
+    if (call.callerId !== userId && call.receiverId !== userId) {
+      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Not a participant" });
+    }
+
+    // Check call is not expired or terminal
+    if (isTerminalStatus(call.status)) {
+      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${call.status}` });
+    }
+    if (call.expiresAt <= new Date()) {
+      return fail(res, 409, { code: "CALL_EXPIRED", message: "Call has expired" });
+    }
+
+    // Caller: allowed while RINGING or ANSWERED
+    // Receiver: allowed only after ANSWERED
+    const isCaller = call.callerId === userId;
+    if (!isCaller && call.status !== "ANSWERED") {
+      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Receiver can only join after call is answered" });
+    }
+
+    const liveKitToken = await generateSecureCallToken({
+      roomId: call.roomId,
+      identity: userId,
+      name: req.user!.fullName,
+    });
+
+    if (!liveKitToken) {
+      return fail(res, 500, { code: "LIVEKIT_TOKEN_FAILED", message: "Failed to generate media token" });
+    }
+
+    logCallTokenGenerated({
+      callId,
+      userId,
+      role: isCaller ? "caller" : "receiver",
+      ttlSec: liveKitToken.expiresIn,
+    });
+
+    return ok(res, {
+      callId: call.id,
+      roomId: call.roomId,
+      token: liveKitToken.token,
+      serviceUrl: liveKitToken.serviceUrl,
+      expiresIn: liveKitToken.expiresIn,
+    });
+  } catch (error) {
+    console.error("[Calls] generateCallToken error:", error);
+    return fail(res, 500, { code: "LIVEKIT_TOKEN_FAILED", message: "Failed to generate token" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /calls/token — DEPRECATED: backward-compatible legacy endpoint
+// ---------------------------------------------------------------------------
 export const generateRtcToken = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -58,6 +734,8 @@ export const generateRtcToken = async (req: Request, res: Response) => {
     if (!roomId) {
       return fail(res, 400, "Room ID is required");
     }
+
+    console.warn("[Calls] /calls/token is deprecated — use /calls/:callId/token instead");
 
     const liveKitToken = await generateLiveKitRoomToken({
       roomId,
@@ -76,7 +754,6 @@ export const generateRtcToken = async (req: Request, res: Response) => {
       });
     }
 
-    // Placeholder HMAC token for dev environments without LiveKit
     const tokenSecret = process.env.JWT_ACCESS_SECRET || "default_call_secret";
     const tokenPayload = `${userId}:${roomId}:${Date.now()}`;
     const token = crypto.createHmac("sha256", tokenSecret).update(tokenPayload).digest("hex");
@@ -89,10 +766,10 @@ export const generateRtcToken = async (req: Request, res: Response) => {
       callType,
       token,
       serviceUrl,
-      expiresIn: 3600, // 1 hour token expiry
+      expiresIn: 3600,
     });
   } catch (error) {
-    console.error("Generate RTC token error:", error);
+    console.error("[Calls] generateRtcToken error:", error);
     return fail(res, 500, "Failed to generate RTC token");
   }
 };

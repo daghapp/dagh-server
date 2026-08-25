@@ -33,6 +33,7 @@ import { router as ProfileValidationStepRoutes } from "./routes/profile-validati
 import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
 import { router as MessageRoutes } from "./routes/message.routes.js";
 import { router as CallsRoutes } from "./routes/calls.routes.js";
+import { router as DevicesRoutes } from "./routes/devices.routes.js";
 // Phase 3.1 — Membership Plans & Tiers
 import { router as MembershipRoutes } from "./routes/membership.routes.js";
 // Dating module
@@ -40,10 +41,13 @@ import { router as DatingRoutes } from "./routes/dating.routes.js";
 import { router as GeoRoutes } from "./routes/geo.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
+import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
 import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
+import { setIoInstance as setCallIoInstance } from "./modules/messages/calls.controller.js";
 import { setIoInstance as setDatingIoInstance } from "./modules/dating/swipe.controller.js";
+import { initFirebase } from "./config/firebase.js";
 import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
 
 dotenv.config();
@@ -196,6 +200,7 @@ app.use("/providers", ProviderRoutes);
 // Phase 2.1 — Message routes wired up (previously registered but never connected to Socket.IO)
 app.use("/messages", MessageRoutes);
 app.use("/calls", CallsRoutes);
+app.use("/devices", DevicesRoutes);
 // Phase 3.1 — Membership Plans & Tiers
 app.use("/membership", MembershipRoutes);
 // Dating module
@@ -265,8 +270,16 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 setupSocketHandlers(io);
 // Phase 2.1 — Inject Socket.IO instance into messages controller so it can emit real-time events
 setIoInstance(io);
+// Calls module — inject Socket.IO for call lifecycle events
+setCallIoInstance(io);
 // Dating module — inject Socket.IO instance for match events
 setDatingIoInstance(io);
+
+// Initialize Firebase Admin for push notifications (no-op when not configured)
+initFirebase();
+// Durable missed-call expiry worker (runs every 10s)
+setCallExpiryIo(io);
+callExpiryJob();
 
 export { server };
 export default app;

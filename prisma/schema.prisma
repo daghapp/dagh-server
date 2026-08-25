@@ -43,8 +43,9 @@ model User {
   blockedBy               UserBlock[]              @relation("Blocked")
   sentReports             UserReport[]             @relation("Reporter")
   receivedReports         UserReport[]             @relation("ReportedUser")
-  outgoingCalls           CallLog[]                @relation("OutgoingCalls")
-  incomingCalls           CallLog[]                @relation("IncomingCalls")
+  outgoingCalls           Call[]                   @relation("OutgoingCalls")
+  incomingCalls           Call[]                   @relation("IncomingCalls")
+  devices                 UserDevice[]
   userTourItineraries     user_tour_itineraries[]
   visaRequests            VisaOnArrivalRequest[]
 
@@ -123,6 +124,28 @@ model DeviceToken {
 
   @@index([userId])
   @@map("device_tokens")
+}
+
+model UserDevice {
+  id             String    @id @default(uuid())
+  userId         String
+  deviceId       String
+  platform       Platform
+  expoPushToken  String?
+  fcmToken       String?
+  apnsToken      String?
+  voipPushToken  String?
+  enabled        Boolean   @default(true)
+  lastSeenAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([userId, enabled])
+  @@map("user_devices")
 }
 
 // Phase 3.1 — Enhanced with planId, tierCode, and memberCode for the membership tiers system
@@ -333,6 +356,7 @@ model Conversation {
   lastMessage   String?
   lastMessageAt DateTime?
   messages      Message[]
+  calls         Call[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @default(now()) @updatedAt
 
@@ -483,23 +507,49 @@ enum ReportStatus {
   DISMISSED
 }
 
-model CallLog {
-  id          String     @id @default(uuid())
-  callerId    String
-  receiverId  String
-  callType    CallType
-  status      CallStatus @default(MISSED)
-  roomId      String
-  startedAt   DateTime   @default(now())
-  endedAt     DateTime?
-  durationSec Int?       @default(0)
+model Call {
+  id             String     @id @default(uuid())
+  roomId         String     @unique
+  callerId       String
+  receiverId     String
+  conversationId String?
+  callType       CallType
+  status         CallStatus @default(INITIATING)
+  createdAt      DateTime   @default(now())
+  ringingAt      DateTime?
+  answeredAt     DateTime?
+  endedAt        DateTime?
+  expiresAt      DateTime
+  endedBy        String?
+  failureReason  String?
+  version        Int        @default(1)
+  durationSec    Int?
 
-  caller   User @relation("OutgoingCalls", fields: [callerId], references: [id], onDelete: Cascade)
-  receiver User @relation("IncomingCalls", fields: [receiverId], references: [id], onDelete: Cascade)
+  caller       User          @relation("OutgoingCalls", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver     User          @relation("IncomingCalls", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  auditLogs    CallAuditLog[]
 
-  @@index([callerId])
-  @@index([receiverId])
-  @@map("call_logs")
+  @@index([receiverId, status])
+  @@index([callerId, status])
+  @@index([conversationId, createdAt])
+  @@index([status, expiresAt])
+  @@map("calls")
+}
+
+model CallAuditLog {
+  id         String     @id @default(uuid())
+  callId     String
+  actorId    String
+  priorState CallStatus
+  newState   CallStatus
+  requestId  String?
+  createdAt  DateTime   @default(now())
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+  @@map("call_audit_logs")
 }
 
 enum MessageType {
@@ -516,11 +566,19 @@ enum CallType {
 }
 
 enum CallStatus {
-  MISSED
-  COMPLETED
+  INITIATING
+  RINGING
+  ANSWERED
   DECLINED
-  BUSY
   CANCELLED
+  MISSED
+  ENDED
+  FAILED
+}
+
+enum Platform {
+  IOS
+  ANDROID
 }
 
 enum MatchStatus {
