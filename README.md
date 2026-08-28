@@ -1,991 +1,800 @@
-# Diaspora Affairs Ghana (DAGH) App - Backend API
+# Diaspora Affairs Ghana (DAGH) — Backend API
 
-## Introduction
-
-The Diaspora Affairs Ghana App backend provides comprehensive services including authentication, tour management, visa processing, user profiles, dating features, and payment infrastructure for diaspora users visiting or connecting to Ghana.
-
----
-
-## Table of Contents
-
-- [Modules](#modules)
-- [Authentication](#1-authentication-module)
-- [Profile Management](#2-profile-management-module)
-- [Tour Management](#3-tour-management-module)
-- [Visa Application](#4-visa-application-module)
-- [Payment Management](#5-payment-management-module)
-- [Dating Module](#6-dating-module)
-- [Reports & Safety](#7-reports--safety-module)
-- [Reviews & Ratings](#8-reviews--ratings-module)
-- [Notifications](#9-notifications-module)
-- [Admin & Settings](#10-admin--settings-module)
-- [Database Schema](#database-schema)
-
----
-
-## Modules
-
-### 1. Authentication Module
-
-**Supported Methods:**
-- Email & Password
-- Google Authentication
-- iCloud Authentication
-- Facebook Authentication
-
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/register` | Register a new user |
-| POST | `/auth/login` | Login user |
-| POST | `/auth/logout` | Logout user |
-| DELETE | `/auth/admin/delete-user/:id` | Delete user (Admin only) |
-
----
-
-### 2. Profile Management Module
-
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/profile` | Create a user profile |
-| PATCH | `/profile/:id` | Update existing profile |
-| GET | `/profile/:id` | Retrieve a user profile |
-
----
-
-### 3. Tour Management Module
-
-**Features:**
-- Add/view/edit/delete tours
-- Book tours
-- Rate & review tours
-- Report service providers
-
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/tours` | Add a new tour (Provider only) |
-| PUT | `/tours/:id` | Edit an existing tour |
-| DELETE | `/tours/:id` | Delete a tour |
-| GET | `/tours` | Get all tours |
-| GET | `/tours/:id` | Get tour details |
-| POST | `/tours/:id/book` | Book a tour |
-| POST | `/tours/:id/review` | Post a review & rating |
-| POST | `/tours/:id/report` | Report a service provider |
-
----
-
-### 4. Visa Application Module
-
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/visa/request` | Submit a Visa-on-Arrival request |
-| POST | `/visa/approve/:id` | Approve visa request (Admin only) |
-| POST | `/visa/reject/:id` | Reject visa request (Admin only) |
-| GET | `/visa` | Admin: All visa requests |
-
----
-
-### 5. Payment Management Module
-
-**Supported Payment Methods:**
-- Mobile Money (MTN, Telecel Cash, AirtelTigo Money)
-- Card Payments (Visa, Mastercard)
-- Paystack
-- Stripe
-- PayPal
-
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/payments/init` | Initialize a payment |
-| GET | `/payments/status/:id` | Check payment status |
-
----
-
-### 6. Dating Module
-
-**Features:**
-- Core dating profiles
-- Photos & verification
-- Demographics & preferences
-- Heritage profiles
-- Matching algorithms
-- Likes, passes, superlikes, blocks
-- Safety & moderation
-
----
-
-### 7. Reports & Safety Module
-
-**Report Categories:**
-- Romance scam
-- Fake profile
-- Harassment
-- Inappropriate content
-- Financial fraud
-
----
-
-### 8. Reviews & Ratings Module
-
-**Features:**
-- Tour reviews
-- Guide ratings
-- Accommodation reviews
-- Value for money ratings
-- Heritage experience ratings
-
----
-
-### 9. Notifications Module
-
-**Notification Types:**
-- Match notifications
-- Message alerts
-- Booking confirmations
-- Payment updates
-- Security alerts
-- Visa updates
-
-**Channels:**
-- Push notifications
-- Email
-- SMS
-- In-app notifications
-
----
-
-### 10. Admin & Settings Module
-
-**Admin Roles:**
-- Super Admin
-- Moderator
-- Tour Manager
-
----
-
-## Database Schema
-
-### User Tables
-
-#### Users Table
-
-```prisma
-model User {
-  id                   String    @id @default(uuid()) @map("user_id")
-  authProvider         String    @map("auth_provider") @db.VarChar(20) // google || icloud || facebook || email
-  email                String    @unique @db.VarChar(255)
-  passwordHash         String?   @map("password_hash") @db.Text
-  passwordLastChanged  DateTime? @map("password_last_changed")
-  accountStatus        String?   @map("account_status") @db.VarChar(20)
-  accountType          String?   @map("account_type") @db.VarChar(20)
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
-  lastLoginAt          DateTime? @map("last_login_at")
-  lastActiveAt         DateTime? @map("last_active_at")
-
-  profile              UserProfile?
-  verification         UserVerification?
-  security             UserSecurity?
-  subscription         UserSubscription?
-  preferences          UserPreferences?
-  deviceTokens         DeviceToken[]
-  suspiciousActivities SuspiciousActivity[]
-  scamAlerts           ScamAlert[]
-  paymentMethods       PaymentMethod[]
-
-  @@map("users")
-}
-```
-
-#### User Profile Table
-
-```prisma
-model UserProfile {
-  id                    String    @id @default(uuid()) @map("profile_id")
-  userId                String    @unique @map("user_id")
-  username              String?   @db.VarChar(50)
-  firstName             String?   @map("first_name") @db.VarChar(100)
-  lastName              String?   @map("last_name") @db.VarChar(100)
-  dateOfBirth           DateTime? @map("date_of_birth") @db.Date
-  gender                String?   @db.VarChar(20)
-  nationality           String?   @db.VarChar(5)
-  residenceCountry      String?   @map("residence_country") @db.VarChar(100)
-  residenceCity         String?   @map("residence_city") @db.VarChar(100)
-  residenceState        String?   @map("residence_state") @db.VarChar(100)
-  profilePhotoUrl       String?   @map("profile_photo_url") @db.Text
-  profilePhotoUploadedAt DateTime? @map("profile_photo_uploaded_at")
-  bio                   String?   @db.Text
-  languages             String[]  // postgres supports arrays
-
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_profiles")
-}
-```
-
-#### User Verification Table
-
-```prisma
-model UserVerification {
-  id                String   @id @default(uuid()) @map("verification_id")
-  userId            String   @unique @map("user_id")
-  isVerified        Boolean  @default(false) @map("is_verified")
-  verificationLevel String?  @map("verification_level") @db.VarChar(20)
-
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  governmentId      GovernmentId?
-  selfieVerification SelfieVerification?
-  backgroundCheck   BackgroundCheck?
-
-  @@map("user_verifications")
-}
-```
-
-#### Government ID Table
-
-```prisma
-model GovernmentId {
-  id               String    @id @default(uuid()) @map("gov_id")
-  verificationId   String    @unique @map("verification_id")
-  idType           String?   @map("id_type") @db.VarChar(50)
-  number           String?   @db.Text // encrypted
-  country          String?   @db.VarChar(50)
-  expiryDate       DateTime? @map("expiry_date") @db.Date
-  frontImageUrl    String?   @map("front_image_url") @db.Text
-  backImageUrl     String?   @map("back_image_url") @db.Text
-  uploadedAt       DateTime? @map("uploaded_at")
-  verifiedAt       DateTime? @map("verified_at")
-  verifiedBy       String?   @map("verified_by")
-
-  verification     UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-
-  @@map("government_ids")
-}
-```
-
-#### Selfie Verification Table
-
-```prisma
-model SelfieVerification {
-  id             String    @id @default(uuid()) @map("selfie_id")
-  verificationId String    @unique @map("verification_id")
-  imageUrl       String?   @map("image_url") @db.Text
-  matchScore     Int?      @map("match_score")
-  verifiedAt     DateTime? @map("verified_at")
-  aiProvider     String?   @map("ai_provider") @db.VarChar(50)
-
-  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-
-  @@map("selfie_verifications")
-}
-```
-
-#### Background Check Table
-
-```prisma
-model BackgroundCheck {
-  id             String    @id @default(uuid()) @map("check_id")
-  verificationId String    @unique @map("verification_id")
-  status         String?   @db.VarChar(20)
-  provider       String?   @db.VarChar(100)
-  completedAt    DateTime? @map("completed_at")
-  reportUrl      String?   @map("report_url") @db.Text
-
-  verification   UserVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
-
-  @@map("background_checks")
-}
-```
-
-#### User Security Table
-
-```prisma
-model UserSecurity {
-  id                 String    @id @default(uuid()) @map("security_id")
-  userId             String    @unique @map("user_id")
-  twoFactorEnabled   Boolean?  @map("two_factor_enabled")
-  twoFactorSecret    String?   @map("two_factor_secret") @db.Text
-  loginAttempts      Int       @default(0) @map("login_attempts")
-  lockedUntil        DateTime? @map("locked_until")
-
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_security")
-}
-```
-
-#### Suspicious Activity Table
-
-```prisma
-model SuspiciousActivity {
-  id            String    @id @default(uuid()) @map("activity_id")
-  userId        String    @map("user_id")
-  flagType      String?   @map("flag_type") @db.VarChar(50)
-  description   String?   @db.Text
-  severity      String?   @db.VarChar(20)
-  detectedAt    DateTime? @map("detected_at")
-  resolvedAt    DateTime? @map("resolved_at")
-  aiConfidence  Int?      @map("ai_confidence")
-
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("suspicious_activities")
-}
-```
-
-#### Scam Alert Table
-
-```prisma
-model ScamAlert {
-  id          String    @id @default(uuid()) @map("alert_id")
-  userId      String    @map("user_id")
-  alertType   String?   @map("alert_type") @db.VarChar(50)
-  description String?   @db.Text
-  triggeredAt DateTime? @map("triggered_at")
-  reviewed    Boolean   @default(false)
-
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("scam_alerts")
-}
-```
-
-#### Payment Method Table
-
-```prisma
-model PaymentMethod {
-  id              String   @id @default(uuid()) @map("payment_method_id")
-  userId          String   @map("user_id")
-  methodType      String?  @map("method_type") @db.VarChar(50)
-  provider        String?  @db.VarChar(50)
-  last4           String?  @db.VarChar(4)
-  expired         Boolean  @default(false)
-
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subscriptions   UserSubscription[]
-
-  @@map("payment_methods")
-}
-```
-
-#### User Subscription Table
-
-```prisma
-model UserSubscription {
-  id              String    @id @default(uuid()) @map("subscription_id")
-  userId          String    @unique @map("user_id")
-  tier            String?   @db.VarChar(20)
-  tourApp         Boolean   @default(false) @map("tour_app")
-  eliteDating     Boolean   @default(false) @map("elite_dating")
-  startDate       DateTime? @map("start_date")
-  endDate         DateTime? @map("end_date")
-  autoRenew       Boolean   @default(true) @map("auto_renew")
-  paymentMethodId String?   @map("payment_method_id")
-
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
-  billingHistory  BillingHistory[]
-
-  @@map("user_subscriptions")
-}
-```
-
-#### Billing History Table
-
-```prisma
-model BillingHistory {
-  id              String    @id @default(uuid()) @map("billing_id")
-  subscriptionId  String    @map("subscription_id")
-  amount          Decimal   @db.Decimal(10, 2)
-  currency        String?   @db.VarChar(10)
-  paidAt          DateTime? @map("paid_at")
-  paymentReference String?  @map("payment_reference") @db.Text
-
-  subscription    UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  @@map("billing_history")
-}
-```
-
-#### User Preferences Table
-
-```prisma
-model UserPreferences {
-  id                      String   @id @default(uuid()) @map("preference_id")
-  userId                  String   @unique @map("user_id")
-  language                String?  @db.VarChar(10)
-  currency                String?  @db.VarChar(10)
-  emailNotifications      Boolean? @map("email_notifications")
-  pushNotifications       Boolean? @map("push_notifications")
-  smsNotifications        Boolean? @map("sms_notifications")
-  marketingNotifications  Boolean? @map("marketing_notifications")
-  showProfile             Boolean? @map("show_profile")
-  showLocation            Boolean? @map("show_location")
-  allowSearch             Boolean? @map("allow_search")
-
-  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_preferences")
-}
-```
-
-#### Device Token Table
-
-```prisma
-model DeviceToken {
-  id       String    @id @default(uuid()) @map("device_id")
-  userId   String    @map("user_id")
-  token    String?   @db.Text
-  platform String?   @db.VarChar(20)
-  addedAt  DateTime? @map("added_at")
-
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("device_tokens")
-}
-```
-
----
-
-### Tour Tables
-
-#### Tour Package Table
-
-```prisma
-model TourPackage {
-  id                  String    @id @default(uuid())
-  title               String?   @db.VarChar(255)
-  slug                String?   @unique @db.VarChar(255)
-  description         String?   @db.Text
-  shortDescription    String?   @map("short_description") @db.Text
-  category            String?   @db.VarChar(100)
-  subcategory         String?   @db.VarChar(100)
-  durationDays        Int?      @map("duration_days")
-  durationNights      Int?      @map("duration_nights")
-  basePrice           Decimal?  @map("base_price") @db.Decimal
-  currency            String?   @db.VarChar(10)
-  status              String?   @db.VarChar(50)
-  featured            Boolean   @default(false)
-  trending            Boolean   @default(false)
-  cancellationPolicy  String?   @map("cancellation_policy") @db.Text
-  bookingDeadline     Int?      @map("booking_deadline")
-  minimumBooking      Int?      @map("minimum_booking")
-  accessibility       String?   @db.Text
-  coverImage          String?   @map("cover_image") @db.Text
-  heritageDnaTesting  Boolean   @default(false) @map("heritage_dna_testing")
-  overallRating       Decimal?  @map("overall_rating") @db.Decimal(3, 2)
-  ratingCount         Int       @default(0) @map("rating_count")
-  viewCount           Int       @default(0) @map("view_count")
-  bookingCount        Int       @default(0) @map("booking_count")
-  wishlistCount       Int       @default(0) @map("wishlist_count")
-  shareCount          Int       @default(0) @map("share_count")
-  conversionRate      Decimal?  @map("conversion_rate") @db.Decimal(5, 2)
-  createdBy           String?   @map("created_by")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime? @updatedAt @map("updated_at")
-  publishedAt         DateTime? @map("published_at")
-
-  itineraries         TourItinerary[]
-  locations           TourLocation[]
-  media               TourMedia[]
-  heritageElements    HeritageElement[]
-  pricingIncludes     PricingInclude[]
-  pricingExcludes     PricingExclude[]
-  groupDiscounts      GroupDiscount[]
-  seasonalPricing     SeasonalPricing[]
-  guides              TourGuide[]
-
-  @@map("tour_packages")
-}
-```
-
-#### Tour Itinerary Table
-
-```prisma
-model TourItinerary {
-  id                  String  @id @default(uuid())
-  tourId              String  @map("tour_id")
-  dayNumber           Int?    @map("day_number")
-  title               String? @db.VarChar(255)
-  description         String? @db.Text
-  breakfast           Boolean?
-  lunch               Boolean?
-  dinner              Boolean?
-  accommodationName   String? @map("accommodation_name") @db.VarChar(255)
-  accommodationType   String? @map("accommodation_type") @db.VarChar(100)
-  accommodationRating Decimal? @map("accommodation_rating") @db.Decimal(2, 1)
-
-  tour                TourPackage        @relation(fields: [tourId], references: [id], onDelete: Cascade)
-  activities          ItineraryActivity[]
-
-  @@map("tour_itineraries")
-}
-```
-
-#### Itinerary Activity Table
-
-```prisma
-model ItineraryActivity {
-  id              String  @id @default(uuid())
-  itineraryId     String  @map("itinerary_id")
-  activityTime    String? @map("activity_time") @db.VarChar(20)
-  activity        String? @db.VarChar(255)
-  durationMinutes Int?    @map("duration_minutes")
-  included        Boolean?
-  cost            Decimal? @db.Decimal(10, 2)
-  locationName    String? @map("location_name") @db.VarChar(255)
-  locationAddress String? @map("location_address") @db.Text
-  // locationPoint (PostGIS geography type) needs special handling
-
-  itinerary       TourItinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-
-  @@map("itinerary_activities")
-}
-```
-
-#### Tour Location Table
-
-```prisma
-model TourLocation {
-  id             String  @id @default(uuid())
-  tourId         String  @map("tour_id")
-  name           String? @db.VarChar(255)
-  city           String? @db.VarChar(100)
-  region         String? @db.VarChar(100)
-  description    String? @db.Text
-  visitDuration  Int?    @map("visit_duration")
-  // locationPoint (PostGIS geography type) needs special handling
-  photos         String[] // postgres supports arrays
-
-  tour           TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("tour_locations")
-}
-```
-
-#### Tour Media Table
-
-```prisma
-model TourMedia {
-  id        String  @id @default(uuid())
-  tourId    String  @map("tour_id")
-  mediaType String? @map("media_type") @db.VarChar(20) // image, video
-  url       String? @db.Text
-
-  tour      TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("tour_media")
-}
-```
-
-#### Heritage Element Table
-
-```prisma
-model HeritageElement {
-  id     String  @id @default(uuid())
-  tourId String  @map("tour_id")
-  type   String? @db.VarChar(50) // ancestral, historical, cultural, tribal
-  value  String? @db.Text
-
-  tour   TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("heritage_elements")
-}
-```
-
-#### Pricing Include Table
-
-```prisma
-model PricingInclude {
-  id     String  @id @default(uuid())
-  tourId String  @map("tour_id")
-  item   String? @db.Text
-
-  tour   TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("pricing_includes")
-}
-```
-
-#### Pricing Exclude Table
-
-```prisma
-model PricingExclude {
-  id     String  @id @default(uuid())
-  tourId String  @map("tour_id")
-  item   String? @db.Text
-
-  tour   TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("pricing_excludes")
-}
-```
-
-#### Group Discount Table
-
-```prisma
-model GroupDiscount {
-  id                 String  @id @default(uuid())
-  tourId             String  @map("tour_id")
-  minSize            Int?    @map("min_size")
-  discountPercentage Decimal? @map("discount_percentage") @db.Decimal(4, 1)
-
-  tour               TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("group_discounts")
-}
-```
-
-#### Seasonal Pricing Table
-
-```prisma
-model SeasonalPricing {
-  id            String   @id @default(uuid())
-  tourId        String   @map("tour_id")
-  season        String?  @db.VarChar(100)
-  startDate     DateTime? @map("start_date") @db.Date
-  endDate       DateTime? @map("end_date") @db.Date
-  priceModifier Decimal? @map("price_modifier") @db.Decimal(4, 1)
-
-  tour          TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("seasonal_pricing")
-}
-```
-
-#### Tour Guide Table
-
-```prisma
-model TourGuide {
-  id      String  @id @default(uuid())
-  tourId  String  @map("tour_id")
-  guideId String? @map("guide_id")
-  name    String? @db.VarChar(255)
-  photo   String? @db.Text
-  bio     String? @db.Text
-
-  tour    TourPackage @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@map("tour_guides")
-}
-```
-
----
-
-### Transaction Tables
-
-#### Transaction Table
-
-```prisma
-model Transaction {
-  id                    String    @id @default(uuid()) @map("_id")
-  transactionReference  String    @unique @map("transaction_reference")
-  userId                String    @map("user_id")
-  relatedEntityType     String?   @map("related_entity_type") // booking, subscription, dating_feature
-  relatedEntityId       String?   @map("related_entity_id")
-  amount                Decimal   @db.Decimal(10, 2)
-  currency              String    @db.VarChar(10)
-  type                  String    // payment, refund, payout
-  category              String    // tour_booking, premium_subscription, search_credit
-  paymentMethodType     String?   @map("payment_method_type") // momo, card, bank_transfer, paystack
-  paymentProvider       String?   @map("payment_provider") // mtn_momo, vodafone_cash, paystack, stripe, paypal
-  status                String    // pending, processing, completed, failed, refunded, cancelled
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  completedAt           DateTime? @map("completed_at")
-
-  @@map("transactions")
-}
-```
-
----
-
-### Review Tables
-
-#### Review Table
-
-```prisma
-model Review {
-  id                 String    @id @default(uuid()) @map("_id")
-  targetEntityType   String    @map("target_entity_type") // tour_package, guide, accommodation
-  targetEntityId     String    @map("target_entity_id")
-  userId             String    @map("user_id")
-  bookingId          String?   @map("booking_id")
-  verified           Boolean   @default(false)
-  overallRating      Decimal   @map("overall_rating") @db.Decimal(2, 1)
-  experienceRating   Decimal?  @map("experience_rating") @db.Decimal(2, 1)
-  guideRating        Decimal?  @map("guide_rating") @db.Decimal(2, 1)
-  valueForMoneyRating Decimal? @map("value_for_money_rating") @db.Decimal(2, 1)
-  organizationRating Decimal?  @map("organization_rating") @db.Decimal(2, 1)
-  heritageRating     Decimal?  @map("heritage_rating") @db.Decimal(2, 1)
-  title              String?   @db.VarChar(255)
-  review             String?   @db.Text
-  status             String    @default("pending") // pending, approved, rejected, flagged
-  featured           Boolean   @default(false)
-  helpfulCount       Int       @default(0) @map("helpful_count")
-  notHelpfulCount    Int       @default(0) @map("not_helpful_count")
-  reportCount        Int       @default(0) @map("report_count")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-
-  @@map("reviews")
-}
-```
-
----
-
-### Authentication Tables
-
-#### Refresh Token Table
-
-```prisma
-model RefreshToken {
-  id                String    @id @default(uuid()) @map("_id")
-  userId            String    @map("user_id")
-  token             String    @unique @db.Text // hashed refresh token
-  tokenFamily       String?   @map("token_family") // for rotation detection
-  isRevoked         Boolean   @default(false) @map("is_revoked")
-  revokedAt         DateTime? @map("revoked_at")
-  revokedReason     String?   @map("revoked_reason") @db.VarChar(50)
-  deviceId          String?   @map("device_id")
-  deviceName        String?   @map("device_name")
-  platform          String?   @db.VarChar(20) // ios, android, web
-  ipAddress         String?   @map("ip_address")
-  issuedAt          DateTime  @default(now()) @map("issued_at")
-  expiresAt         DateTime  @map("expires_at")
-  lastUsedAt        DateTime? @map("last_used_at")
-  usageCount        Int       @default(0) @map("usage_count")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-
-  @@index([userId])
-  @@index([tokenFamily])
-  @@index([isRevoked])
-  @@index([expiresAt])
-  @@map("refresh_tokens")
-}
-```
-
-#### Blacklisted Token Table
-
-```prisma
-model BlacklistedToken {
-  id              String    @id @default(uuid()) @map("_id")
-  jti             String    @unique // JWT ID
-  userId          String    @map("user_id")
-  token           String    @db.Text
-  tokenType       String    @map("token_type") // access, refresh
-  reason          String    @db.VarChar(100) // logout, password_change, account_deletion, security_breach
-  blacklistedAt   DateTime  @default(now()) @map("blacklisted_at")
-  expiresAt       DateTime  @map("expires_at")
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("blacklisted_tokens")
-}
-```
-
-#### Password Reset Token Table
-
-```prisma
-model PasswordResetToken {
-  id        String    @id @default(uuid()) @map("_id")
-  userId    String    @map("user_id")
-  token     String    @unique @db.Text // hashed token
-  isUsed    Boolean   @default(false) @map("is_used")
-  usedAt    DateTime? @map("used_at")
-  ipAddress String?   @map("ip_address")
-  createdAt DateTime  @default(now()) @map("created_at")
-  expiresAt DateTime  @map("expires_at") // typically 1 hour
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("password_reset_tokens")
-}
-```
-
-#### Email Verification Token Table
-
-```prisma
-model EmailVerificationToken {
-  id             String    @id @default(uuid()) @map("_id")
-  userId         String    @map("user_id")
-  email          String    @db.VarChar(255)
-  token          String    @unique @db.Text // hashed token
-  isVerified     Boolean   @default(false) @map("is_verified")
-  verifiedAt     DateTime? @map("verified_at")
-  attempts       Int       @default(0)
-  lastAttemptAt  DateTime? @map("last_attempt_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  expiresAt      DateTime  @map("expires_at") // typically 24 hours
-
-  @@index([userId])
-  @@index([email])
-  @@index([expiresAt])
-  @@map("email_verification_tokens")
-}
-```
-
----
-
-### Notification Table
-
-```prisma
-model Notification {
-  id                String    @id @default(uuid()) @map("_id")
-  userId            String    @map("user_id")
-  type              String    // match, message, booking_confirmation, payment, security_alert, visa_update
-  category          String    // dating, tour, account, security
-  title             String
-  message           String    @db.Text
-  actionUrl         String?   @map("action_url")
-  actionLabel       String?   @map("action_label")
-  relatedEntityType String?   @map("related_entity_type")
-  relatedEntityId   String?   @map("related_entity_id")
-  pushSent          Boolean   @default(false) @map("push_sent")
-  pushSentAt        DateTime? @map("push_sent_at")
-  emailSent         Boolean   @default(false) @map("email_sent")
-  emailSentAt       DateTime? @map("email_sent_at")
-  smsSent           Boolean   @default(false) @map("sms_sent")
-  smsSentAt         DateTime? @map("sms_sent_at")
-  inAppRead         Boolean   @default(false) @map("in_app_read")
-  inAppReadAt       DateTime? @map("in_app_read_at")
-  priority          String    @default("medium") // low, medium, high, urgent
-  status            String    @default("pending") // pending, sent, failed, read, archived
-  createdAt         DateTime  @default(now()) @map("created_at")
-  expiresAt         DateTime? @map("expires_at")
-
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("notifications")
-}
-```
-
----
-
-### Admin Table
-
-```prisma
-model AdminUser {
-  id          String    @id @default(uuid()) @map("_id")
-  email       String    @unique
-  password    String
-  firstName   String?   @map("first_name")
-  lastName    String?   @map("last_name")
-  photo       String?
-  role        String    // super_admin, moderator, tour_manager
-  permissions String[]  // granular permissions
-  status      String    @default("active") // active, suspended
-  lastLoginAt DateTime? @map("last_login_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  @@index([email])
-  @@index([role])
-  @@index([status])
-  @@map("admin_users")
-}
-```
-
----
-
-## Module Summary
-
-| Table | Purpose |
-|-------|---------|
-| `users` | Core authentication + account data |
-| `user_profiles` | Personal profile data |
-| `user_verifications` | Verification levels & statuses |
-| `government_ids` | Passport/ID verification docs |
-| `selfie_verifications` | Face/selfie verification |
-| `background_checks` | Background check results |
-| `user_security` | Security, login attempts, 2FA |
-| `suspicious_activities` | Logs of suspicious activity |
-| `scam_alerts` | Scam alert logs |
-| `user_subscriptions` | Subscription tier + module access |
-| `billing_history` | List of payments |
-| `payment_methods` | Saved payment methods |
-| `user_preferences` | Notification & privacy settings |
-| `device_tokens` | Mobile FCM tokens |
-| `tour_packages` | Tour details and information |
-| `tour_itineraries` | Daily tour plans |
-| `itinerary_activities` | Activities within itinerary |
-| `tour_locations` | Tour locations |
-| `tour_media` | Tour images and videos |
-| `heritage_elements` | Heritage information |
-| `tour_guides` | Guide information |
-| `transactions` | Payment transactions |
-| `reviews` | User reviews and ratings |
-| `refresh_tokens` | JWT refresh tokens |
-| `blacklisted_tokens` | Revoked tokens |
-| `password_reset_tokens` | Password reset tokens |
-| `email_verification_tokens` | Email verification tokens |
-| `notifications` | User notifications |
-| `admin_users` | Admin user accounts |
+REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, and payments via Hubtel.
 
 ---
 
 ## Tech Stack
 
-- **Backend Framework:** Node.js / Express.js
-- **Database:** PostgreSQL with PostGIS
-- **ORM:** Prisma
-- **Authentication:** JWT (Access & Refresh Tokens)
-- **Payment Processing:** Paystack, Stripe, PayPal, Mobile Money
-- **File Storage:** Cloud storage (AWS S3 / Cloudinary)
-- **Push Notifications:** FCM (Firebase Cloud Messaging)
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js 20 |
+| Framework | Express 5 + Helmet |
+| Language | TypeScript 5.9 (strict) |
+| Database | PostgreSQL + Prisma 7.4 ORM (driver adapter: `@prisma/adapter-pg`, config in `prisma.config.ts`) |
+| Payments | Hubtel (Mobile Money: MTN, Telecel, AT + Cards) |
+| File Storage | Cloudinary |
+| Real-time | Socket.IO 4.8 |
+| Auth | JWT (access + refresh tokens), Passport (Google, Facebook, Apple) |
+| Validation | Zod 4 |
+| Email | Resend |
+| API Docs | Swagger (swagger-jsdoc + swagger-ui-express) at `/api-docs` |
+| Linting | ESLint 10 + Prettier |
 
 ---
 
-## Installation
+## Getting Started
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
-# Setup database
+# Set up environment
+cp .env.example .env   # then fill in values
+
+# Run migrations (Prisma 7 reads DATABASE_URL from .env via prisma.config.ts)
 npx prisma migrate dev
 
-# Generate Prisma Client
+# Generate Prisma client (output: generated/prisma, importFileExtension = "js")
 npx prisma generate
 
-# Start development server
-npm run dev
+# Seed database (25 tour sites + ledger accounts + 9 membership plans + demo users/tours)
+npm run db:seed
+
+# Build (runs `prisma generate && tsc`; the Prisma client is compiled into dist/generated)
+npm run build
+
+# Start
+npm start              # production (port 5000, or $PORT)
+npm run dev            # development (nodemon + tsx hot reload)
+```
+
+## Demo accounts
+
+`npm run db:seed` populates the database with test data for frontend development.
+All demo users are `ACTIVE` and ready to log in via `POST /auth/login`:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@dagh.app` | `Admin@12345` |
+| Demo user (bookings, visa, paid subscription) | `demo@dagh.app` | `Demo@12345` |
+| Demo user 2 | `demotwo@dagh.app` | `Demo@12345` |
+| Dating profile (Ama Serwaa) | `dating.demo@dagh.app` | `Demo@12345` |
+| Dating profile (Kwame Boateng) | `dating.demo2@dagh.app` | `Demo@12345` |
+| Dating profile (Nana Yaa) | `dating.demo3@dagh.app` | `Demo@12345` |
+
+The seed also adds 4 tour packages (with locations, itineraries and pricing),
+2 sample bookings, dating matches/conversations/messages, 6 visa-on-arrival
+requests across all statuses (with linked payments, approvals and admin
+activity logs), an itinerary-tour-booking payment, and providers (hotels, a
+tour guide, car rental). The seed is idempotent — re-running it never
+duplicates existing rows.
+
+**Docker:** the build does not require a live database — `prisma.config.ts` resolves
+`DATABASE_URL` with a placeholder fallback so `prisma generate` succeeds without a
+build arg. The running container still needs `DATABASE_URL` (and the other env vars)
+set in its environment.
+
+```bash
+docker build -t dagh-server .
+docker run -p 5000:5000 dagh-server
 ```
 
 ---
 
 ## Environment Variables
 
+See `.env.example` for the full template. Key categories (all read directly from `process.env`):
+
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/dagh_db
-JWT_ACCESS_SECRET=your_access_secret
-JWT_REFRESH_SECRET=your_refresh_secret
-PAYSTACK_SECRET_KEY=your_paystack_key
-STRIPE_SECRET_KEY=your_stripe_key
-AWS_ACCESS_KEY_ID=your_aws_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret
-FCM_SERVER_KEY=your_fcm_key
+# Server
+PORT=5000
+NODE_ENV=production
+API_URL=https://dagh-server-fo64.onrender.com
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/dagh
+DATABASE_POOL_MAX=10            # pg pool per instance (optional, default 10)
+
+# Redis — REQUIRED for running more than one instance behind a load balancer.
+# Enables a shared Socket.IO adapter (realtime fan-out across instances),
+# cross-instance presence, a shared rate-limit store, and distributed locks so
+# the cron jobs run on exactly one replica. Leave unset for single-instance mode.
+REDIS_URL=redis://localhost:6379
+
+# Auth
+JWT_ACCESS_SECRET=
+JWT_REFRESH_SECRET=
+JWT_SECRET=            # call/token signaling (optional, has a default)
+SESSIONSECRET=
+
+# Call / WebRTC media (LiveKit preferred; see https://cloud.livekit.io)
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+CALL_SERVICE_URL=      # fallback serviceUrl when LiveKit is not configured
+
+# Hubtel (required)
+HUBTEL_CLIENT_ID=
+HUBTEL_CLIENT_SECRET=
+HUBTEL_MERCHANT_NUMBER=
+HUBTEL_BASE_URL=
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+
+# Email (Resend)
+RESEND_API_KEY=
+
+# CORS (comma-separated origins, required)
+ALLOWED_ORIGINS=http://localhost:3000
+
+# OAuth
+CLIENTID=              # Google OAuth client ID
+CLIENTSECRETE=         # Google OAuth client secret
+REDIRECTURI=           # Google OAuth callback URL
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+FACEBOOK_CALLBACK_URL=
+APPLE_CLIENT_ID=
+APPLE_TEAM_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY_PATH=
+APPLE_CALLBACK_URL=
+
+# Currency
+USD_TO_GHS_RATE=15.5
+
+# Visa pricing (optional, defaults shown)
+VISA_STANDARD_FEE_GHS=464
+VISA_EXPEDITED_FEE_GHS=1450
+VISA_STATUTORY_FEE_USD=200
 ```
+
+---
+
+## Scaling
+
+The app runs as a single Node process per instance. To run multiple replicas
+behind a load balancer:
+
+1. **Set `REDIS_URL`** on every instance. Without it, Socket.IO messages,
+   presence, and call signaling only reach sockets on the same process,
+   rate-limit counters are per-instance, and each replica runs the cron jobs
+   (causing duplicate payment checks / emails).
+2. **Session store** is Postgres-backed (`connect-pg-simple`, `session` table
+   auto-created), so OAuth/passport sessions survive restarts and are shared
+   across instances.
+3. **Cron jobs** (`check-pending-payments`, `user-cleanup`) run under a Redis
+   distributed lock and per-item claims, so exactly one replica executes them
+   and crashed runs can't double-credit the ledger.
+4. **Presence** fan-out is scoped to conversation partners & matches instead of
+   broadcasting to every connected client.
+5. Keep the pg connection pool per instance proportional to replica count
+   (`DATABASE_POOL_MAX`). Add a Postgres read replica when read-heavy endpoints
+   (tours, discovery) become hot.
+
+> Single instance, no `REDIS_URL`: everything still works — in-memory presence,
+> default per-instance rate limiting, unlocked cron jobs.
+
+---
+
+## Project Structure
+
+```
+prisma.config.ts                # Prisma 7 config (datasource URL from env, migration path)
+prisma/                         # schema.prisma + migrations
+generated/prisma/               # Generated Prisma client (compiled into dist/generated on build)
+src/
+├── index.ts                    # Server start + graceful shutdown
+├── server.ts                   # Express app setup, middleware, route mounting
+├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts + 9 membership plans)
+├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
+├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety
+├── jobs/                       # Cron jobs (pending payments, user cleanup)
+├── middleware/                  # Auth, admin, validation, Cloudinary upload, audio upload, Hubtel callback
+├── modules/
+│   ├── admin/                  # Admin console (dashboard, visa console, payments console)
+│   ├── authentication/         # Register, login, OAuth, password reset
+│   ├── common/                 # Image upload
+│   ├── dating/                 # Dating profiles, discovery, swiping, matches
+│   ├── itinerary/              # Itinerary generation + payment
+│   ├── messages/               # Messaging, voice notes, calls, block/report (REST + Socket.IO)
+│   ├── payment-management/     # Payment processing
+│   ├── profile-management/     # Profile CRUD, verification, ethnicity
+│   ├── membership/             # Membership plans, subscriptions, priority support
+│   ├── provider-management/    # Nearby hotels
+│   ├── tour-management/        # Tour CRUD, booking, admin
+│   └── visa-management/        # Visa-on-arrival requests + approval
+├── routes/                     # Express route definitions (21 files)
+├── services/                   # Business logic (membership, payment, matching)
+├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
+├── types/                      # TypeScript type augmentations (Express.User)
+├── validator/                  # Zod schemas (18 files)
+└── views/                      # HTML/CSS for OAuth/payment callback pages
+```
+
+---
+
+## API Endpoints
+
+> **Detailed developer reference:** see `docs/api-reference.md` for every
+> endpoint with payloads and examples, `docs/admin-console-api.md` for the admin
+> console surface + frontend wiring patterns, `docs/admin-gateway-registration.md`
+> for the Admin Gateway registration flow, and `docs/verification-flow.md` for
+> the identity-verification integration guide.
+
+All endpoints return responses in a standardized envelope:
+
+**Success (single item):**
+```json
+{
+  "success": true,
+  "data": { ... },
+  "message": "Optional success message"
+}
+```
+
+**Success (paginated):**
+```json
+{
+  "success": true,
+  "data": [ ... ],
+  "pagination": {
+    "total": 42,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 3
+  }
+}
+```
+
+**Error:**
+```json
+{
+  "success": false,
+  "error": "Human-readable error message",
+  "details": "Optional additional context (dev only)"
+}
+```
+
+### Authentication
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/auth/register` | Public | Register with email/password |
+| POST | `/auth/login` | Public | Login (returns access + refresh tokens) |
+| POST | `/auth/logout` | Bearer | Logout (revokes all refresh tokens) |
+| POST | `/auth/verify-otp` | Public | Verify email OTP |
+| POST | `/auth/resend-otp` | Public | Resend verification OTP |
+| POST | `/auth/refresh-token` | Public | Get new access token |
+| POST | `/auth/request-reset-password` | Public | Request password reset OTP |
+| POST | `/auth/reset-password` | Public | Reset password with OTP |
+| GET | `/auth/google` | Public | Google OAuth redirect |
+| GET | `/auth/google/callback` | Public | Google OAuth callback |
+| GET | `/auth/google/failed` | Public | Google OAuth failure page |
+| GET | `/auth/google/success` | Public | Google OAuth success page |
+| GET | `/auth/facebook` | Public | Facebook OAuth redirect |
+| GET | `/auth/facebook/callback` | Public | Facebook OAuth callback |
+| GET | `/auth/facebook/failed` | Public | Facebook OAuth failure page |
+| GET | `/auth/facebook/success` | Public | Facebook OAuth success page |
+| GET | `/auth/apple` | Public | Apple Sign In redirect |
+| POST | `/auth/apple/callback` | Public | Apple Sign In callback |
+| GET | `/auth/apple/failed` | Public | Apple OAuth failure page |
+| GET | `/auth/apple/success` | Public | Apple OAuth success page |
+
+### Profile Management
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/profile/init` | Bearer | Initialize profile |
+| PATCH | `/profile` | Bearer | Update own `fullName`, `gender`, `dateOfBirth`, `ethnicity` |
+| PATCH | `/profile/ethnicity` | Bearer | Set ethnicity |
+
+### Profile Verification
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/verification/init` | Bearer | Initialize verification |
+| POST | `/verification/phone/send-otp` | Bearer | Send phone verification OTP (returns `challengeId`) |
+| POST | `/verification/phone/verify-otp` | Bearer | Verify phone OTP (requires `challengeId` + `code`) |
+| POST | `/verification/bio_profile_url` | Bearer | Submit bio profile URL |
+| POST | `/verification/bio_document_urls` | Bearer | Submit bio documents |
+| GET | `/verification/status` | Bearer | Full verification status (per-step status, current step, completed steps) |
+| GET | `/verification/validation-step/status` | Bearer | Get current verification step |
+
+#### Phone OTP contract
+
+The OTP flow uses a **challenge ID** pattern:
+
+1. `POST /verification/phone/send-otp` — sends a 6-digit code and returns a `challengeId` (UUID), `expiresAt` (10 min), and `resendAvailableAt` (1 min). Resending invalidates all older active codes.
+2. `POST /verification/phone/verify-otp` — requires `challengeId` and `code` (6 digits). Returns stable error codes: `OTP_INVALID`, `OTP_EXPIRED`, `OTP_CHALLENGE_NOT_FOUND`.
+
+Phone numbers are normalized to digits-only before storage (strips `+`, spaces, dashes, parentheses). A code sent to `+233501234567` works with `233501234567`.
+
+Rate limits: 10 OTP requests per 15 minutes per IP. Never logs raw OTP values.
+
+#### Verification status response
+
+`GET /verification/status` returns two existence flags to avoid routing confusion:
+
+```json
+{
+  "success": true,
+  "data": {
+    "verificationProfileExists": true,
+    "datingProfileExists": false,
+    "isVerified": false,
+    "currentStep": "DOCUMENT_VERIFICATION",
+    "verificationMessage": null,
+    "steps": {
+      "PHONE_NUMBER_VERIFICATION": { "status": "VERIFIED", "verificationMessage": null },
+      "PROFILE_IMAGE_VERIFICATION": { "status": "PENDING", "verificationMessage": null },
+      "DOCUMENT_VERIFICATION": { "status": "PENDING", "verificationMessage": null }
+    },
+    "completedSteps": ["PHONE_NUMBER_VERIFICATION"]
+  }
+}
+```
+
+- `verificationProfileExists` — whether a `UserProfile` record exists (required for verification)
+- `datingProfileExists` — whether a `DatingProfile` exists (separate from verification)
+- `isVerified` — `true` **only** when all required steps are verified (derived, not stored)
+- `currentStep` — the next actionable step; always agrees with individual step states
+- Rejected steps include `verificationMessage` with the admin's rejection reason
+
+`GET /verification/validation-step/status` returns the current step and its review state:
+
+```json
+{
+  "success": true,
+  "data": {
+    "current_step": "DOCUMENT_VERIFICATION",
+    "status": "REJECTED",
+    "verification_message": "Expired document"
+  }
+}
+```
+
+- `current_step` is one of `PHONE_NUMBER_VERIFICATION`, `PROFILE_IMAGE_VERIFICATION`, `DOCUMENT_VERIFICATION` (an optional `?step=` query overrides inference).
+- `status` is `PENDING` (awaiting review), `VERIFIED` (step completed/approved), or `REJECTED` (an admin rejected the step). `verification_message` is included only when `status` is `REJECTED` and contains the admin's rejection reason.
+
+Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_document_urls` (passport/Ghana card).
+
+### Tour Management
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/tours` | Public | List tours (filterable, paginated) |
+| GET | `/tours/:tourId` | Public | Get tour details |
+| POST | `/tours` | Admin | Create tour |
+| PUT | `/tours/:id` | Admin | Update tour |
+| DELETE | `/tours/:id` | Admin | Delete tour |
+| POST | `/tours/:id/itinerary` | Admin | Create tour itinerary |
+| PUT | `/tours/itinerary/:id` | Admin | Update tour itinerary |
+| DELETE | `/tours/itinerary/:id` | Admin | Delete tour itinerary |
+| POST | `/tours/bookings` | Bearer | Book a tour (Hubtel checkout) |
+| POST | `/tours/initiate-booking-momo` | Bearer | Book a tour (Mobile Money) |
+| POST | `/tours/hubtel-callback` | Hubtel | Hubtel payment callback |
+| GET | `/tours/bookings/my` | Bearer | Get user's bookings |
+| PATCH | `/tours/user-itineraries/:itineraryId` | Bearer | Update user itinerary |
+| DELETE | `/tours/bookings/:bookingId` | Bearer | Cancel booking |
+
+### Itinerary Generation
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/itinerary/sites` | Public | List all Ghana tour sites |
+| POST | `/itinerary/request` | Bearer | Submit tour request with site selections |
+| GET | `/itinerary/requests` | Bearer | Get user's tour requests |
+| GET | `/itinerary/my-itineraries` | Bearer | Get user's generated itineraries |
+| GET | `/itinerary/:tourRequestId` | Bearer | Get generated itinerary by request ID |
+| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate itinerary payment |
+| POST | `/itinerary/payment-callback` | Hubtel | Hubtel payment callback |
+
+### Visa-on-Arrival
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/visa-requests` | Bearer | Create visa request |
+| GET | `/visa-requests` | Bearer | Get user's visa requests |
+| GET | `/visa-requests/:requestId/status` | Bearer | Get visa status |
+| POST | `/visa-requests/:requestId/payment` | Bearer | Initiate visa payment |
+| POST | `/visa-requests/payment-callback` | Hubtel | Hubtel payment callback |
+| GET | `/visa-requests/pricing/:visaType` | Public | Get visa pricing breakdown |
+
+### Payments
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/payment/initialize` | Bearer | Initialize a payment |
+| GET | `/payment/verify/:reference` | Bearer | Verify payment status |
+| GET | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status |
+| GET | `/payment/processing` | Public | Payment processing page |
+| GET | `/payment/p.js` | Public | Payment redirect script |
+
+### Messaging & Chat
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/messages` | Bearer | Send a text or media message (`receiverId`, `content`, `type`, `mediaUrl`, `mediaDuration`) |
+| POST | `/messages/voice-note` | Bearer | Upload and send a voice note (multipart: `audio` file, `receiverId`, `mediaDuration`). Max 15MB. |
+| GET | `/messages/matches` | Bearer | Get active user matches ("New Matches" carousel) |
+| GET | `/messages/conversations` | Bearer | List conversations with unread counts, partner profiles, and `lastActiveAt` |
+| GET | `/messages/conversations/:conversationId` | Bearer | Get messages in a conversation (marks unread as read) |
+| PATCH | `/messages/:messageId/read` | Bearer | Mark a specific message as read |
+
+### Safety (Block & Report)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/messages/block` | Bearer | Block a user — prevents messages and calls both ways |
+| DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user |
+| POST | `/messages/report` | Bearer | Report a user (`targetId`, `reason`, `details`) |
+
+### Dating
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/dating/profile` | Bearer | Get your dating profile + discovery preferences |
+| POST | `/dating/profile/init` | Bearer | Initialize your dating profile (accepts the full creation payload) |
+| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) + account fields |
+| GET | `/dating/profile/status` | Bearer | Profile existence + completion status (skip onboarding for returning users) |
+| GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
+| GET | `/dating/preferences` | Bearer | Get your discovery preferences |
+| PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
+| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` |
+| POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation. |
+| GET | `/dating/matches` | Bearer | List your active matches |
+| GET | `/dating/likes-received` | Bearer | List users who liked you |
+| GET | `/dating/likes-sent` | Bearer | List outgoing interests you sent (cursor-paginated, newest first) |
+| GET | `/dating/relationship-status/:userId` | Bearer | Get relationship status with a specific user |
+| DELETE | `/dating/matches/:matchId` | Bearer | Unmatch a user |
+
+#### Recommendations with relationship state
+
+Each recommendation includes `relationshipStatus` and `canSendInterest`:
+
+```json
+{
+  "userId": "user_id",
+  "profile": {},
+  "relationshipStatus": "INTEREST_SENT",
+  "canSendInterest": false
+}
+```
+
+Stable relationship states: `NONE`, `INTEREST_SENT`, `INTEREST_RECEIVED`, `MATCHED`, `PASSED`, `BLOCKED`.
+
+- `canSendInterest` is `true` only for `NONE` and `INTEREST_RECEIVED`
+- Blocked users are excluded from recommendations
+- Matched profiles are never presented as available to Like
+
+#### Outgoing interests (likes sent)
+
+`GET /dating/likes-sent` returns a cursor-paginated list of outgoing interests with target user profiles:
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "interest_id",
+        "targetUserId": "user_id",
+        "direction": "LIKE",
+        "status": "PENDING",
+        "createdAt": "2026-08-18T12:00:00.000Z",
+        "targetUser": {
+          "id": "user_id",
+          "profile": { "fullName": "Example User", "photos": ["..."] }
+        }
+      }
+    ],
+    "nextCursor": null
+  }
+}
+```
+
+Status enum: `PENDING`, `MATCHED`. A mutual Like transitions from `PENDING` to `MATCHED` atomically.
+
+#### Single-profile relationship status
+
+`GET /dating/relationship-status/:userId` returns the relationship with a specific user, including `interestId` and `sentAt` when an outgoing interest exists.
+
+Dating real-time events via Socket.IO: `match:mutual` (both users on mutual like), `match:incoming` (target received a like), plus existing `presence:status` / `presence:info`.
+
+Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
+
+### Calls
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/calls/history` | Bearer | Get incoming/outgoing call history (last 50) |
+| POST | `/calls/token` | Bearer | Generate a LiveKit AccessToken + `serviceUrl` for a call (`roomId`, `callType: VOICE|VIDEO`). Valid 1 hour. |
+
+Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`, `call:initiate`, `call:accept`, `call:decline`, `call:end`, `call:signal`, `call:busy`, `call:timeout`, `call:switch_video_request`, `call:switch_video_respond`, `presence:status`.
+
+**Call behavior:**
+- Media: `POST /calls/token` issues a room-scoped **LiveKit AccessToken** (`LIVEKIT_URL` is returned as `serviceUrl`, used by the client to connect to the media server). Without LiveKit env vars it falls back to a placeholder HMAC token for dev only.
+- Busy check: prevents calls if either party is already in an active call (`call:busy`)
+- Ringing timeout: unanswered calls auto-expire after 30 seconds (`call:timeout`)
+- Mid-call video upgrade: voice calls can be switched to video via `call:switch_video_request` / `call:switch_video_respond`
+
+### Membership Plans & Tiers
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/membership/plans` | Public | List all active membership plans with pricing, intervals, and features |
+| POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free activates immediately, paid returns checkout URL) |
+| GET | `/membership/my-subscription` | Bearer | Get current user's subscription with plan details and status |
+| POST | `/membership/support` | Bearer | Create a priority support ticket (paid tiers only) |
+| POST | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments (idempotent) |
+| GET | `/membership/payment/return` | Public | HTTPS redirect bridge for mobile deep links (return) |
+| GET | `/membership/payment/cancel` | Public | HTTPS redirect bridge for mobile deep links (cancel) |
+
+#### Subscribe response
+
+Free plans activate immediately:
+
+```json
+{
+  "success": true,
+  "data": {
+    "subscriptionId": "subscription_id",
+    "status": "ACTIVE",
+    "checkoutUrl": null
+  },
+  "message": "Free membership activated successfully."
+}
+```
+
+Paid plans return a validated HTTPS checkout URL:
+
+```json
+{
+  "success": true,
+  "data": {
+    "subscriptionId": "subscription_id",
+    "paymentReference": "provider_reference",
+    "status": "PAYMENT_PENDING",
+    "checkoutUrl": "https://checkout.hubtel.com/session/cs_123456",
+    "expiresAt": "2026-08-18T13:00:00.000Z"
+  },
+  "message": "Membership checkout initialized successfully."
+}
+```
+
+The `checkoutUrl` is validated before returning: must be absolute, HTTPS in production, valid hostname, no backticks/quotes/spaces. Mobile deep links are bridged through HTTPS redirect endpoints (`/membership/payment/return?appUrl=...`).
+
+#### Subscription status lifecycle
+
+```
+PAYMENT_PENDING → ACTIVE       (verified payment callback)
+PAYMENT_PENDING → PAYMENT_FAILED
+PAYMENT_PENDING → CANCELLED
+ACTIVE → EXPIRED
+```
+
+#### Stable error codes
+
+| HTTP | Code | Meaning |
+|------|------|---------|
+| 400 | `INVALID_PLAN_ID` | Plan does not exist or is inactive |
+| 400 | `INVALID_RETURN_URL` | Supplied return/cancellation URL is unsupported |
+| 409 | `SUBSCRIPTION_ALREADY_ACTIVE` | User already has the requested active plan |
+| 422 | `CHECKOUT_INITIALIZATION_FAILED` | Provider could not create checkout |
+| 502 | `PAYMENT_PROVIDER_ERROR` | Provider returned an invalid or failed response |
+
+Paid subscriptions initialize a Hubtel checkout and are activated on payment callback
+(idempotent — already-processed callbacks are skipped). Generated Hubtel client
+references are capped at 36 characters to satisfy Hubtel's validation.
+
+### Image Upload
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/upload` | Bearer | Upload image to Cloudinary |
+
+### Providers
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/providers/nearby-hotels` | Bearer | Find nearby hotels for itinerary |
+
+### Admin — Dashboard
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/dashboard/summary` | Admin | KPI summary: tours (bulk/custom), pending visa queue, successful payments + MoM %, alerts (pending reports / verifications / failed payments) |
+
+### Admin — User Management
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/users` | Admin | List all users (paginated) |
+| PATCH | `/admin/users/:userId/promote` | Admin | Promote to admin |
+| PATCH | `/admin/users/:userId/demote` | Admin | Demote to user |
+| PATCH | `/admin/users/:userId/suspend` | Admin | Suspend user |
+| PATCH | `/admin/users/:userId/reactivate` | Admin | Reactivate user |
+| DELETE | `/admin/users/:userId` | Admin | Delete user |
+
+### Admin — Visa Console
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/visa-requests` | Admin | Visa queue (paginated; filters: `status`, `q` passport/purpose/name/email, `from`/`to`) |
+| GET | `/admin/visa-requests/stats` | Admin | Visa KPIs (total, pending review, rejected, approved today, rejection rate) |
+| GET | `/admin/visa-requests/:id` | Admin | Visa detail with user, documents, payment, approval + activity log |
+| POST | `/admin/visa-requests/:id/approve` | Admin | Approve visa (idempotent; optional `note`) — writes approval + activity log |
+| POST | `/admin/visa-requests/:id/reject` | Admin | Reject visa (idempotent; optional `note`) |
+| GET | `/admin/visa-requests/paid` | Admin | List paid visa requests (legacy) |
+| POST | `/admin/visa-requests/approve` | Admin | Approve visa request (legacy, body `{ requestId }`) |
+
+### Admin — Payments
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/payments` | Admin | Transaction list (paginated; filters: `status`, `targetType`, `q` reference/user, `from`/`to`) |
+| GET | `/admin/payments/stats` | Admin | Payment KPIs (total revenue, success/pending/failed counts + amounts, success rate) |
+
+### Admin — Profile Verification
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/profile-verifications` | Admin | List verification requests |
+| PATCH | `/admin/profile-verifications/:id/bio-data` | Admin | Approve/reject bio data |
+| PATCH | `/admin/profile-verifications/:id/face` | Admin | Approve/reject face verification |
+| PATCH | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents |
+| POST | `/admin/profile-verifications/:id/verify` | Admin | Fully verify user |
+
+Admin decisions drive the user-facing status endpoint: approving face or documents
+also flips the corresponding `bio_profile_verification`/`document_verification`
+flag (making the step report `VERIFIED`), rejecting a step clears `isVerified` and
+surfaces `REJECTED` with the supplied reason in `verification_message`.
+`POST .../verify` marks every step approved and sets `isVerified` to `true`.
+
+### Admin — Moderation
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/admin/reports` | Admin | List user reports (filter by `?status=PENDING\|REVIEWING\|RESOLVED\|DISMISSED`) |
+| PATCH | `/admin/reports/:reportId` | Admin | Update report status (`REVIEWING` / `RESOLVED` / `DISMISSED`) with optional note |
+| POST | `/admin/reports/:reportId/suspend` | Admin | Suspend the reported user and resolve the report |
+
+### System
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | Public | Health check (uptime, timestamp) |
+| GET | `/api-docs` | Public | Swagger UI |
+
+The root path `/` returns API information (name, version, health and docs links).
+Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`.
+
+---
+
+## Database Schema (Summary)
+
+| Model | Purpose |
+|-------|---------|
+| `User` | Core user account (auth, status, type) |
+| `UserProfile` | Profile URL, phone, bio images, documents |
+| `UserVerification` | Verification level tracking |
+| `ProfileVerification` | Step-by-step verification with admin approval |
+| `otp` | Hashed OTP codes for email/phone verification |
+| `DeviceToken` | Refresh tokens + device info |
+| `UserSubscription` | Subscription status |
+| `BillingHistory` | Subscription payment records |
+| `tour_packages` | Tour catalog |
+| `tour_itineraries` | Default tour itineraries |
+| `itinerary_activities` | Activities per itinerary day |
+| `tour_locations` | Tour locations |
+| `tour_media` | Tour images/videos |
+| `tour_bookings` | User tour bookings |
+| `user_tour_itineraries` | User-customized itineraries |
+| `TourRequest` | Custom itinerary requests |
+| `TourRequestSite` | Selected sites per request |
+| `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries |
+| `TourSite` | Ghana tourism sites (seeded: 25 sites) |
+| `MembershipPlan` | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador) |
+| `PrioritySupportRequest` | Priority support tickets from paid-tier members |
+| `VisaOnArrivalRequest` | Visa-on-arrival applications |
+| `VisaOnArrivalData` | Visa applicant data |
+| `VisaApproval` | Admin visa approval |
+| `AdminActivityLog` | Admin console audit trail (who did what, on what entity) |
+| `Payment` | Polymorphic payment records (tour, visa, itinerary) |
+| `HubtelDirectReceiveLog` | Hubtel API response logs |
+| `LedgerAccount` / `LedgerTransaction` | Double-entry ledger |
+| `Message` / `Conversation` | Direct messaging (text, voice notes, images, videos, call logs) |
+| `DatingProfile` | 1:1 dating profile (headline, bio, photos, height, interests, looking-for, location, education/career, cultural background) |
+| `UserSwipe` | Dating swipes (LIKE / SUPER_LIKE / PASS) |
+| `DiscoveryPreference` | Dating discovery filters + profile/online visibility |
+| `UserMatch` | User matching/swiping |
+| `UserBlock` | User blocking (prevents messaging and calls) |
+| `UserReport` | User safety reports |
+| `CallLog` | Voice/video call history with duration and status |
+| `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
+| `ServiceRequest` / `AuditLog` | Provider service tracking |
+
+See `prisma/schema.prisma` for the full schema with all fields and relations.
+
+---
+
+## Cron Jobs
+
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| Pending payments check | Every 5 minutes | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries |
+| Unverified user cleanup | Hourly | Deletes `PENDING_VERIFICATION` users older than 24 hours |
+
+---
+
+## Development
+
+```bash
+npm run dev            # Start dev server with hot reload
+npm run lint           # Check for lint errors
+npm run lint:fix       # Auto-fix lint errors
+npm run format         # Format code with Prettier
+npm run format:check   # Check formatting without writing
+npm run db:studio      # Open Prisma Studio GUI
+npm test               # Run unit tests once (Vitest)
+npm run test:watch     # Run tests in watch mode
+```
+
+---
+
+## API Documentation
+
+Swagger UI available at `/api-docs` when the server is running. 117 documented
+operations across 21 route files (source of truth: JSDoc annotations in
+`src/routes/*.ts` — update the annotation, not the spec).
+
+---
+
+## Security Features
+
+- Rate limiting on auth routes (20 req/15 min) and payment routes (50 req/15 min)
+- OTP codes hashed with bcrypt before storage
+- Password minimum 8 characters with complexity requirements
+- Hubtel callback verification middleware (validates transaction with Hubtel API)
+- Admin routes protected with `requireAdmin` middleware (chained after `protectedRoute`)
+- CORS restricted to `ALLOWED_ORIGINS` (no wildcard fallback)
+- OAuth tokens delivered via HTTP-only cookies (web) or app deep links (mobile)
+- File uploads require authentication
+- Audio uploads restricted to specific MIME types, 15MB max size
+- `passwordHash` never returned in API responses
+- Hubtel config validated at boot time (fails fast if env vars missing)
+- Payment flows wrapped in Prisma transactions (atomic write + API call)
+- Visa pricing driven by env vars (not hardcoded)
+- User blocking prevents messaging and calling both directions
+- Blocked users filtered from conversation lists
+- Socket.IO authenticated via JWT handshake
+
+---
+
+## Deployment
+
+The app is containerized with a multi-stage Docker build (Node 20 Alpine). The build
+stage runs `prisma generate && tsc` and compiles the Prisma client into
+`dist/generated`; the runner stage keeps only production dependencies and `dist`.
+The build does not require `DATABASE_URL` (see [Getting Started](#getting-started)).
+
+```bash
+docker build -t dagh-server .
+docker run -p 5000:5000 dagh-server
+```
+
+Deployed on Render via `render.yaml` (native Node). Build command:
+`npm ci && npm run build`; a `preDeployCommand` (`npx prisma migrate deploy`) applies
+pending database migrations before each deploy. Current live instance: <https://dagh-server-fo64.onrender.com>
+(`/health` for a status check, `/api-docs` for Swagger).
 
 ---
 
 ## License
 
-Proprietary - Diaspora Affairs Ghana
-
----
-
-## Contact
-
-For support or inquiries, contact the development team.
+Proprietary — Diaspora Affairs Ghana

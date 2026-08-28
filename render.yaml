@@ -1,11 +1,13 @@
 services:
   - type: web
     name: dagh-server
-    env: node
-    buildCommand: npm install && npm run build
+    runtime: node
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: API_URL
-        value: https://dagh-server-3.onrender.com
+        value: https://dagh-server-fo64.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://dagh-server-fo64.onrender.com

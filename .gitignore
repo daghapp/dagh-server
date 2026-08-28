@@ -1,5 +1,16 @@
 node_modules
+# Phase 2 — ignore compiled output
+dist
 # Keep environment variables out of version control
 .env
+.env.*
+# Phase 3.3 — un-ignore .env.example so it's tracked in git
+!.env.example
 
 /generated/prisma
+.continue
+endpoints.txt
+hollali.md
+REMEDIATION-PLAN.md
+AGENTS.md
+*.docx

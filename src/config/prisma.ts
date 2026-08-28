@@ -1,12 +1,62 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
+import pg from "pg";
 
 const connectionString = process.env.DATABASE_URL!;
 
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg({
+  connectionString,
+  // Force IPv4: some hosts advertise AAAA records but their IPv6 path is
+  // blackholed, and Node's Happy Eyeballs fallback can hang before switching.
+  // `family` is a valid pg runtime option but is not declared in @types/pg,
+  // so it requires the cast below.
+  family: 4,
+  // Bound the pg pool so a slow/paused database fails fast instead of hanging
+  // the request queue (previously defaulted to 10 connections, no timeouts).
+  max: Number(process.env.DATABASE_POOL_MAX) || 10,
+  connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS) || 5000,
+  idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS) || 30000,
+  query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 10000,
+  statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS) || 10000,
+} as pg.PoolConfig);
 
-const prisma = new PrismaClient({ adapter });
+const basePrisma = new PrismaClient({ adapter });
+
+const RETRYABLE_CODES = new Set(["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "P1001"]);
+
+// Only reads are retried — retrying writes could double-commit.
+const READ_OPERATIONS = new Set([
+  "findMany",
+  "findFirst",
+  "findUnique",
+  "count",
+  "aggregate",
+  "groupBy",
+]);
+
+const prisma = basePrisma.$extends({
+  query: {
+    $allModels: {
+      async $allOperations({ operation, args, query }) {
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            return await query(args);
+          } catch (error) {
+            const code = (error as { code?: string })?.code;
+            const isTransient = code !== undefined && RETRYABLE_CODES.has(code);
+            const isRead = READ_OPERATIONS.has(operation);
+
+            if (!isTransient || !isRead || attempt === maxRetries) throw error;
+
+            await new Promise((resolve) => setTimeout(resolve, 150 * 2 ** attempt));
+          }
+        }
+        throw new Error("unreachable");
+      },
+    },
+  },
+});
 
 export { prisma };
-

@@ -1,9 +1,10 @@
 import express from "express";
-import { UserTourController } from "../Modules/tour-management/user-tour.controller.js";
-import { AdminTourController } from "../Modules/tour-management/admin-tour.controller.js";
+import { UserTourController } from "../modules/tour-management/user-tour.controller.js";
+import { AdminTourController } from "../modules/tour-management/admin-tour.controller.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import requireAdmin from "../middleware/admin.js";
+import verifyHubtelCallback from "../middleware/hubtel-callback.js";
 import {
   tourSchema,
   updateTourSchema,
@@ -123,10 +124,7 @@ const adminTourController = new AdminTourController();
  *       500:
  *         description: Failed to fetch tours
  */
-router.get(
-  "/",
-  userTourController.getAllTours.bind(userTourController)
-);
+router.get("/", userTourController.getAllTours.bind(userTourController));
 
 /**
  * @swagger
@@ -190,9 +188,8 @@ router.get(
 router.get(
   "/bookings/my",
   protectedRoute,
-  userTourController.getUserBookings.bind(userTourController)
+  userTourController.getUserBookings.bind(userTourController),
 );
-
 
 /**
  * @swagger
@@ -280,24 +277,170 @@ router.post(
   "/initiate-booking-momo",
   protectedRoute,
   validate(tourBookingSchema_momo),
-  userTourController.initiateTourBookingMoMo.bind(userTourController)
+  userTourController.initiateTourBookingMoMo.bind(userTourController),
 );
 
+/**
+ * @swagger
+ * /tours/hubtel-callback:
+ *   post:
+ *     summary: Handle Hubtel payment callback for tour bookings
+ *     description: Receives payment confirmation callback from Hubtel after a tour booking payment
+ *     tags: [Tours - User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Hubtel callback payload containing payment status and transaction details
+ *     responses:
+ *       200:
+ *         description: Callback processed successfully
+ *       400:
+ *         description: Invalid callback payload
+ *       500:
+ *         description: Failed to process callback
+ */
 router.post(
   "/hubtel-callback",
-  userTourController.hubtelCallbackController.bind(userTourController)
+  verifyHubtelCallback,
+  userTourController.hubtelCallbackController.bind(userTourController),
 );
 
+/**
+ * @swagger
+ * /tours/bookings:
+ *   post:
+ *     summary: Book a tour
+ *     description: Initiate a tour booking with Hubtel payment checkout
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tourId
+ *               - numberOfPeople
+ *               - bookingDate
+ *               - tourStartDate
+ *             properties:
+ *               tourId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the tour to book
+ *               numberOfPeople:
+ *                 type: number
+ *                 minimum: 1
+ *                 description: Number of people booking
+ *               bookingDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Date of booking (ISO 8601)
+ *               tourStartDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Tour start date (ISO 8601)
+ *               specialRequests:
+ *                 type: string
+ *                 description: Any special requests
+ *     responses:
+ *       201:
+ *         description: Tour booked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     paymentData:
+ *                       type: object
+ *                       description: Hubtel checkout data
+ *                     booking:
+ *                       type: object
+ *                       description: Created booking record
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Tour not found or price not available
+ *       500:
+ *         description: Failed to book tour
+ */
 router.post(
   "/bookings",
   protectedRoute,
   validate(tourBookingSchema),
-  userTourController.bookTour.bind(userTourController)
+  userTourController.bookTour.bind(userTourController),
 );
+/**
+ * @swagger
+ * /tours/user-itineraries/{itineraryId}:
+ *   patch:
+ *     summary: Update user itinerary for a tour
+ *     description: Update the user's personalized itinerary for a booked tour
+ *     tags: [Tours - User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itineraryId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the user itinerary to update
+ *         example: 123e4567-e89b-12d3-a456-426614174000
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes:
+ *                 type: string
+ *                 description: Additional notes or preferences for the itinerary
+ *                 example: Prefer vegetarian meals
+ *     responses:
+ *       200:
+ *         description: User itinerary updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: User itinerary updated successfully
+ *       400:
+ *         description: Invalid request data
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       403:
+ *         description: Forbidden - User doesn't own this itinerary
+ *       404:
+ *         description: Itinerary not found
+ *       500:
+ *         description: Failed to update user itinerary
+ */
 router.patch(
   "/user-itineraries/:itineraryId",
   protectedRoute,
-  userTourController.updateUserItinerary.bind(userTourController)
+  userTourController.updateUserItinerary.bind(userTourController),
 );
 
 /**
@@ -355,7 +498,7 @@ router.patch(
 router.delete(
   "/bookings/:bookingId",
   protectedRoute,
-  userTourController.cancelBooking.bind(userTourController)
+  userTourController.cancelBooking.bind(userTourController),
 );
 
 /**
@@ -644,7 +787,7 @@ router.post(
   protectedRoute,
   requireAdmin,
   validate(tourSchema),
-  adminTourController.createTour.bind(adminTourController)
+  adminTourController.createTour.bind(adminTourController),
 );
 
 /**
@@ -733,7 +876,7 @@ router.put(
   protectedRoute,
   requireAdmin,
   validate(updateTourSchema),
-  adminTourController.updateTour.bind(adminTourController)
+  adminTourController.updateTour.bind(adminTourController),
 );
 
 /**
@@ -778,7 +921,7 @@ router.delete(
   "/:id",
   protectedRoute,
   requireAdmin,
-  adminTourController.deleteTour.bind(adminTourController)
+  adminTourController.deleteTour.bind(adminTourController),
 );
 
 /**
@@ -1005,7 +1148,7 @@ router.post(
   protectedRoute,
   requireAdmin,
   validate(tourItinerarySchema),
-  adminTourController.addTourItinerary.bind(adminTourController)
+  adminTourController.addTourItinerary.bind(adminTourController),
 );
 
 /**
@@ -1205,7 +1348,7 @@ router.put(
   protectedRoute,
   requireAdmin,
   validate(tourItinerarySchema),
-  adminTourController.updateTourItinerary.bind(adminTourController)
+  adminTourController.updateTourItinerary.bind(adminTourController),
 );
 
 /**
@@ -1250,7 +1393,129 @@ router.delete(
   "/itinerary/:id",
   protectedRoute,
   requireAdmin,
-  adminTourController.deleteTourItinerary.bind(adminTourController)
+  adminTourController.deleteTourItinerary.bind(adminTourController),
 );
 
-export {router};
+/**
+ * @swagger
+ * /tours/{tourId}:
+ *   get:
+ *     summary: Get full tour details
+ *     description: Retrieve a complete tour package with all related data including itineraries, activities, locations, media, pricing, and bookings.
+ *     tags:
+ *       - Tours
+ *     parameters:
+ *       - in: path
+ *         name: tourId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The unique ID of the tour package
+ *     responses:
+ *       200:
+ *         description: Tour details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Tour details retrieved successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: "uuid-of-tour"
+ *                     title:
+ *                       type: string
+ *                       example: "Cape Coast Heritage Tour"
+ *                     description:
+ *                       type: string
+ *                       example: "Explore the historic Cape Coast Castle and surrounding heritage sites."
+ *                     tour_itineraries:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           dayNumber:
+ *                             type: integer
+ *                             example: 1
+ *                           title:
+ *                             type: string
+ *                             example: "Arrival and Orientation"
+ *                           itinerary_activities:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 activityTime:
+ *                                   type: string
+ *                                   example: "10:00 AM"
+ *                                 activity:
+ *                                   type: string
+ *                                   example: "Visit Cape Coast Castle"
+ *                     tour_locations:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "Cape Coast Castle"
+ *                           city:
+ *                             type: string
+ *                             example: "Cape Coast"
+ *                     tour_media:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           media_type:
+ *                             type: string
+ *                             example: "image"
+ *                           url:
+ *                             type: string
+ *                             example: "https://example.com/photo.jpg"
+ *                     pricing_includes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           item:
+ *                             type: string
+ *                             example: "Breakfast included"
+ *                     pricing_excludes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           item:
+ *                             type: string
+ *                             example: "Flights not included"
+ *                     bookings:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           bookingReference:
+ *                             type: string
+ *                             example: "BOOK12345"
+ *                           numberOfPeople:
+ *                             type: integer
+ *                             example: 2
+ *                           status:
+ *                             type: string
+ *                             example: "PENDING"
+ *       404:
+ *         description: Tour not found
+ *       500:
+ *         description: Failed to fetch tour details
+ */
+router.get("/:tourId", userTourController.getTourDetails.bind(userTourController));
+
+export { router };

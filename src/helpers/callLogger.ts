@@ -1,0 +1,91 @@
+interface LogContext {
+  [key: string]: unknown;
+}
+
+function log(event: string, data: LogContext = {}) {
+  console.log(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      event,
+      ...data,
+    }),
+  );
+}
+
+export function logCallInitiated(data: {
+  callId: string;
+  callerId: string;
+  receiverId: string;
+  callType: string;
+  idempotencyKey?: string;
+}) {
+  log("call.initiated", data);
+}
+
+export function logCallTransition(data: {
+  callId: string;
+  priorState: string;
+  newState: string;
+  actorId: string;
+  requestId?: string;
+  durationMs?: number;
+}) {
+  log("call.transition", data);
+}
+
+export function logCallPushSent(data: {
+  callId: string;
+  deviceCount: number;
+  platformBreakdown: Record<string, number>;
+}) {
+  log("call.push_sent", data);
+}
+
+export function logCallPushFailed(data: {
+  callId: string;
+  deviceId: string;
+  errorCode: string;
+  tokenInvalidated: boolean;
+}) {
+  log("call.push_failed", data);
+}
+
+export function logCallSocketDelivered(data: {
+  callId: string;
+  event: string;
+  recipientOnline: boolean;
+}) {
+  log("call.socket_delivered", data);
+}
+
+export function logCallTokenGenerated(data: {
+  callId: string;
+  userId: string;
+  role: "caller" | "receiver";
+  ttlSec: number;
+}) {
+  log("call.token_generated", data);
+}
+
+export function logCallExpired(data: {
+  callId: string;
+  ringDurationMs: number;
+}) {
+  log("call.expired", data);
+}
+
+export function logCallAnswerTime(data: {
+  callId: string;
+  ringDurationMs: number;
+}) {
+  log("call.answer_time", data);
+}
+
+export function logCallDuration(data: {
+  callId: string;
+  durationSec: number;
+  endedBy: string;
+  endReason: string;
+}) {
+  log("call.total_duration", data);
+}
