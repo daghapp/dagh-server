@@ -425,7 +425,10 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  * /dating/recommendations:
  *   get:
  *     summary: Get ranked discovery candidates for the current user
- *     description: Returns candidates enriched with relationshipStatus and canSendInterest fields.
+ *     description: |
+ *       Returns candidates enriched with relationshipStatus and canSendInterest fields.
+ *       Requires completed KYC verification. Optionally pass `tourRequestId` to filter
+ *       candidates by schedule overlap and proximity to the trip's geofence.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
@@ -441,6 +444,12 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *         schema:
  *           type: integer
  *           default: 0
+ *       - in: query
+ *         name: tourRequestId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Tour request id to derive the trip geofence and date window
  *     responses:
  *       200:
  *         description: Ranked list of candidates with relationship state
@@ -467,6 +476,12 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *                         enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED, BLOCKED]
  *                       canSendInterest:
  *                         type: boolean
+ *                       scheduleOverlapDays:
+ *                         type: integer
+ *                       withinGeofence:
+ *                         type: boolean
+ *       403:
+ *         description: KYC verification required to use dating
  *       500:
  *         description: Internal server error
  */

@@ -32,6 +32,7 @@ import type {
   ItineraryResponse,
   CreateTourRequestInput,
   ItineraryDayInput,
+  DatingSocialBlock,
 } from "../../validator/itinerary-validator.js";
 
 const MAX_SITES_PER_DAY = 3;
@@ -61,6 +62,7 @@ export async function createTourRequest(
     apartmentType,
     transportType,
     companionInterest,
+    casualDatingInterest,
   } = input;
 
   // ── Step 1: Fetch all selected tour sites from DB ──────────────────────────
@@ -117,6 +119,7 @@ export async function createTourRequest(
 
       transportType: transportType ?? undefined,
       companionInterest: companionInterest ?? false,
+      casualDatingInterest: casualDatingInterest ?? false,
 
       status: feasibility.feasible ? "CONFIRMED" : "FAILED",
 
@@ -326,6 +329,87 @@ export async function getTourRequestsByUserId(userId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TOUR → DATING: select recommended dating profiles to merge into the itinerary
+// as social / leisure blocks. Passing candidate *user* ids resolves each user's
+// dating profile and persists the selection against the tour request.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function selectDatingProfilesForTour(
+  tourRequestId: string,
+  requesterId: string,
+  candidateUserIds: string[],
+): Promise<
+  Array<{ userId: string; datingProfileId: string; selectedAt: Date }>
+> {
+  const tourRequest = await prisma.tourRequest.findUnique({
+    where: { id: tourRequestId },
+    select: { userId: true },
+  });
+
+  if (!tourRequest) throw new Error("TOUR_REQUEST_NOT_FOUND");
+  if (tourRequest.userId !== requesterId) throw new Error("FORBIDDEN");
+
+  const ids = Array.from(new Set(candidateUserIds.filter(Boolean)));
+
+  const profiles = await prisma.datingProfile.findMany({
+    where: { userId: { in: ids } },
+    select: { id: true, userId: true },
+  });
+
+  if (!profiles.length) {
+    throw new Error("NO_VALID_DATING_PROFILES");
+  }
+
+  const created = await prisma.$transaction(
+    profiles.map((p) =>
+      prisma.tourRequestDatingSelection.upsert({
+        where: {
+          tourRequestId_datingProfileId: {
+            tourRequestId,
+            datingProfileId: p.id,
+          },
+        },
+        create: { tourRequestId, datingProfileId: p.id },
+        update: {},
+      }),
+    ),
+  );
+
+  // Keep output ordered to match the requested ids.
+  const byUser = new Map(profiles.map((p) => [p.userId, p.id]));
+  const createdByProfile = new Map(created.map((c) => [c.datingProfileId, c.createdAt]));
+
+  const selections = ids
+    .filter((uid) => byUser.has(uid))
+    .map((uid) => ({
+      userId: uid,
+      datingProfileId: byUser.get(uid)!,
+      selectedAt: createdByProfile.get(byUser.get(uid)!)!,
+    }));
+
+  return selections;
+}
+
+export async function getDatingSelectionsForTour(tourRequestId: string) {
+  return prisma.tourRequestDatingSelection.findMany({
+    where: { tourRequestId },
+    orderBy: { createdAt: "asc" },
+    include: {
+      datingProfile: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL: Feasibility checks
 // ─────────────────────────────────────────────────────────────────────────────
 function checkFeasibility(sites: SiteWithCoords[], durationDays: number): FeasibilityResult {
@@ -506,6 +590,35 @@ async function mapItineraryToResponseWithRecommendations(
     }
   }
 
+  // Tour → dating: merge the user's selected dating profiles into the itinerary
+  // as social / leisure blocks, one per touring day (cycled if more than the
+  // number of touring days).
+  const datingSelections = await getDatingSelectionsForTour(itinerary.tourRequestId);
+  const touringDays = (itinerary.days ?? []).filter((d) => d.dayType === DayType.TOURING);
+
+  const daySocialBlocks: Record<number, DatingSocialBlock[]> = {};
+  datingSelections.forEach((sel, index) => {
+    const targetDay = touringDays[index % Math.max(touringDays.length, 1)];
+    if (!targetDay) return;
+    const socialBlock = {
+      type: "SOCIAL" as const,
+      profile: {
+        datingProfileId: sel.datingProfileId,
+        userId: sel.datingProfile.user.id,
+        fullName: sel.datingProfile.user.fullName,
+        headline: sel.datingProfile.headline,
+        photos: sel.datingProfile.photos,
+        about: sel.datingProfile.about,
+        interests: sel.datingProfile.interests,
+        profileImage: sel.datingProfile.user.profile?.bio_profile_image_url ?? null,
+      },
+    };
+    daySocialBlocks[targetDay.dayNumber] = [
+      ...(daySocialBlocks[targetDay.dayNumber] ?? []),
+      socialBlock,
+    ];
+  });
+
   return {
     id: itinerary.id,
     tourRequestId: itinerary.tourRequestId,
@@ -538,10 +651,25 @@ async function mapItineraryToResponseWithRecommendations(
           availableAccomodation,
         };
       }),
+      // Dating selections merged as social / leisure blocks for this day.
+      socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
     })),
 
     available_hotels,
     available_transports,
+
+    // Flat list of selected dating profiles for convenient UI rendering.
+    datingSelections: datingSelections.map((sel) => ({
+      datingProfileId: sel.datingProfileId,
+      userId: sel.datingProfile.user.id,
+      fullName: sel.datingProfile.user.fullName,
+      headline: sel.datingProfile.headline,
+      photos: sel.datingProfile.photos,
+      about: sel.datingProfile.about,
+      interests: sel.datingProfile.interests,
+      profileImage: sel.datingProfile.user.profile?.bio_profile_image_url ?? null,
+      selectedAt: sel.createdAt,
+    })),
   };
 }
 

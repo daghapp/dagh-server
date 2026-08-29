@@ -4,6 +4,8 @@ import {
   postTourRequest,
   getItinerary,
   getUserTourRequests,
+  selectDatingProfiles,
+  getItineraryDatingSelections,
 } from "../modules/itinerary/itinerary.controller.js";
 import { ItineraryPaymentController } from "../modules/itinerary/itinerary.payment.controller.js";
 import protectedRoute from "../middleware/protected.js";
@@ -164,6 +166,66 @@ router.post(
  *         description: Unauthorized
  */
 router.get("/requests", protectedRoute, getUserTourRequests);
+
+/**
+ * @swagger
+ * /itinerary/{tourRequestId}/dating-selections:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: List dating profiles merged into a tour's itinerary
+ *     tags: [Itinerary]
+ *     parameters:
+ *       - in: path
+ *         name: tourRequestId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Dating selections retrieved successfully
+ *       403:
+ *         description: Not allowed
+ *       404:
+ *         description: Tour request not found
+ */
+router.get("/:tourRequestId/dating-selections", protectedRoute, getItineraryDatingSelections);
+
+/**
+ * @swagger
+ * /itinerary/{tourRequestId}/dating-selections:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Select dating profiles to merge into the tour itinerary as social/leisure blocks
+ *     tags: [Itinerary]
+ *     parameters:
+ *       - in: path
+ *         name: tourRequestId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userIds]
+ *             properties:
+ *               userIds:
+ *                 type: array
+ *                 items: { type: string, format: uuid }
+ *                 description: Candidate user ids selected from /dating/recommendations
+ *     responses:
+ *       200:
+ *         description: Dating selections saved
+ *       400:
+ *         description: No valid dating profiles selected
+ *       403:
+ *         description: KYC verification required or not allowed
+ *       404:
+ *         description: Tour request not found
+ */
+router.post("/:tourRequestId/dating-selections", protectedRoute, selectDatingProfiles);
 
 /**
  * @swagger

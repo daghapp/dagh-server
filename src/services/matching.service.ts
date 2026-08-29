@@ -1,5 +1,9 @@
 import { prisma } from "../config/index.js";
 import type { Gender, LookingFor } from "../../generated/prisma/enums.js";
+import {
+  haversineDistance,
+  maxPairwiseDistance,
+} from "../helpers/haversine.js";
 
 // ─────────────────────────────────────────
 // Matching engine — candidate discovery, filtering & scoring
@@ -31,6 +35,103 @@ export interface MatchCandidate {
   score: number;
   tierBoost: number;
   profileImage?: string | null;
+  // Tour → dating travel fields (populated only when a travel context is supplied)
+  scheduleOverlapDays?: number;
+  withinGeofence?: boolean;
+  availableFrom?: Date | null;
+  availableTo?: Date | null;
+  travelDistanceKm?: number | null;
+}
+
+// ─────────────────────────────────────────
+// Tour → dating travel context
+// Derives the geofence (centroid + radius of the selected tour sites) and the
+// schedule window (trip start → start + total days) from a tour request, so the
+// matching engine can filter candidates by proximity and schedule overlap.
+// ─────────────────────────────────────────
+export interface TravelContext {
+  tourRequestId: string;
+  start: Date;
+  end: Date;
+  centerLat: number;
+  centerLng: number;
+  radiusKm: number;
+}
+
+const DEFAULT_GEOFENCE_RADIUS_KM = 50;
+
+export async function resolveTourTravelContext(
+  tourRequestId: string,
+  requesterId: string,
+): Promise<TravelContext> {
+  const tourRequest = await prisma.tourRequest.findUnique({
+    where: { id: tourRequestId },
+    select: {
+      userId: true,
+      durationDays: true,
+      createdAt: true,
+      selectedSites: { include: { tourSite: true } },
+    },
+  });
+
+  if (!tourRequest) throw new Error("TOUR_REQUEST_NOT_FOUND");
+  if (tourRequest.userId !== requesterId) throw new Error("FORBIDDEN");
+
+  const sites = tourRequest.selectedSites.map((s) => s.tourSite);
+
+  let centerLat = 0;
+  let centerLng = 0;
+  if (sites.length > 0) {
+    centerLat = sites.reduce((acc, s) => acc + s.latitude, 0) / sites.length;
+    centerLng = sites.reduce((acc, s) => acc + s.longitude, 0) / sites.length;
+  }
+
+  // Geofence radius is the max spread of the selected sites, with a sensible
+  // floor so a single-site trip still yields nearby matches.
+  const spreadKm =
+    sites.length > 1
+      ? maxPairwiseDistance(sites.map((s) => ({ latitude: s.latitude, longitude: s.longitude })))
+      : 0;
+  const radiusKm = Math.max(spreadKm, DEFAULT_GEOFENCE_RADIUS_KM);
+
+  // Trip window: prep day + touring days + departure day, anchored on creation.
+  const totalDays = tourRequest.durationDays + 2;
+  const start = tourRequest.createdAt;
+  const end = new Date(start.getTime() + totalDays * 24 * 60 * 60 * 1000);
+
+  return {
+    tourRequestId,
+    start,
+    end,
+    centerLat,
+    centerLng,
+    radiusKm,
+  };
+}
+
+// True when the candidate's availability window overlaps the tour trip window.
+export function schedulesOverlap(
+  availableFrom: Date | null | undefined,
+  availableTo: Date | null | undefined,
+  tripStart: Date,
+  tripEnd: Date,
+): boolean {
+  // No stated availability → assume open (best-effort inclusion).
+  if (!availableFrom || !availableTo) return true;
+  return availableFrom <= tripEnd && availableTo >= tripStart;
+}
+
+export function dateRangeOverlapDays(
+  availableFrom: Date | null | undefined,
+  availableTo: Date | null | undefined,
+  tripStart: Date,
+  tripEnd: Date,
+): number {
+  if (!availableFrom || !availableTo) return 0;
+  const overlapStart = availableFrom < tripStart ? tripStart : availableFrom;
+  const overlapEnd = availableTo > tripEnd ? tripEnd : availableTo;
+  if (overlapEnd < overlapStart) return 0;
+  return Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 // Membership tier → discovery boost multiplier (paid tiers rank higher).
@@ -84,6 +185,7 @@ export function scoreCandidate(
   candidate: MatchCandidate,
   filters: DiscoveryFilters,
   myInterests: string[],
+  travel?: TravelContext | null,
 ): number {
   let score = 0;
 
@@ -108,8 +210,21 @@ export function scoreCandidate(
   score += completeness;
 
   // Distance (closer is better) when both have coordinates
-  if (filters.locationLat && filters.locationLng && candidate.distanceKm !== null) {
+  if (travel && candidate.distanceKm !== null && candidate.distanceKm !== undefined) {
+    score += Math.max(0, 15 - candidate.distanceKm / 20);
+  } else if (filters.locationLat && filters.locationLng && candidate.distanceKm !== null) {
     score += Math.max(0, 10 - candidate.distanceKm / 100);
+  }
+
+  // Schedule overlap — bonus proportional to days the candidate is available
+  // during the trip window. Candidates inside the geofence get a further bump.
+  if (travel) {
+    if ((candidate.scheduleOverlapDays ?? 0) > 0) {
+      score += Math.min(candidate.scheduleOverlapDays ?? 0, 10);
+    }
+    if (candidate.withinGeofence) {
+      score += 10;
+    }
   }
 
   // Membership boost
@@ -160,9 +275,9 @@ async function loadMyFilters(userId: string): Promise<{
  */
 export async function getDiscoveryCandidates(
   userId: string,
-  options: { limit?: number; offset?: number } = {},
+  options: { limit?: number; offset?: number; travel?: TravelContext | null } = {},
 ): Promise<{ candidates: MatchCandidate[]; total: number }> {
-  const { limit = 20, offset = 0 } = options;
+  const { limit = 20, offset = 0, travel = null } = options;
   const { filters, myInterests } = await loadMyFilters(userId);
 
   const [swipes, blocks] = await Promise.all([
@@ -235,6 +350,10 @@ export async function getDiscoveryCandidates(
           heightCm: true,
           interests: true,
           lookingFor: true,
+          travelLocationLat: true,
+          travelLocationLng: true,
+          availableFrom: true,
+          availableTo: true,
         },
       },
       subscription: { select: { tierCode: true } },
@@ -245,9 +364,31 @@ export async function getDiscoveryCandidates(
   const ranked = users.map((u) => {
     const profile = u.datingProfile!;
     const age = calculateAge(u.dateOfBirth);
-    // Candidates do not currently expose a location, so distance-based scoring
-    // only applies once a candidate location source is added.
-    const distanceKm = null;
+
+    // Candidate proximity to the trip geofence (when a travel context is given).
+    let travelDistanceKm: number | null = null;
+    let withinGeofence = false;
+    if (
+      travel &&
+      profile.travelLocationLat != null &&
+      profile.travelLocationLng != null &&
+      travel.centerLat != null
+    ) {
+      travelDistanceKm = haversineDistance(
+        { latitude: travel.centerLat, longitude: travel.centerLng },
+        { latitude: profile.travelLocationLat, longitude: profile.travelLocationLng },
+      );
+      withinGeofence = travelDistanceKm <= travel.radiusKm;
+    }
+
+    // Schedule overlap with the trip window.
+    const scheduleOverlapDays = travel
+      ? dateRangeOverlapDays(profile.availableFrom, profile.availableTo, travel.start, travel.end)
+      : 0;
+    const overlaps = travel
+      ? schedulesOverlap(profile.availableFrom, profile.availableTo, travel.start, travel.end)
+      : true;
+
     const baseCandidate: MatchCandidate = {
       userId: u.id,
       fullName: u.fullName,
@@ -259,24 +400,32 @@ export async function getDiscoveryCandidates(
       lookingFor: profile.lookingFor,
       age,
       gender: u.gender,
-      distanceKm,
+      // In global discovery the candidate's static location is not computed;
+      // the travel context supplies the distance used for proximity scoring.
+      distanceKm: travel ? travelDistanceKm : null,
       interestsOverlap: profile.interests.filter((i) => myInterests.includes(i)).length,
       score: 0,
       tierBoost: resolveTierBoost(u.subscription?.tierCode),
       profileImage: u.profile?.bio_profile_image_url ?? null,
+      scheduleOverlapDays,
+      withinGeofence,
+      availableFrom: profile.availableFrom,
+      availableTo: profile.availableTo,
+      travelDistanceKm,
     };
 
-    // Candidate tier boost is applied via scoring; the viewer's own membership
-    // is reserved for future boost-budget features (e.g. "see who liked you").
-    baseCandidate.score = scoreCandidate(baseCandidate, filters, myInterests);
+    baseCandidate.score = scoreCandidate(baseCandidate, filters, myInterests, travel);
 
-    return baseCandidate;
+    return { baseCandidate, overlaps };
   });
 
-  ranked.sort((a, b) => b.score - a.score);
+  // Keep only candidates whose schedules overlap the trip (when travel context given).
+  const filtered = travel ? ranked.filter((r) => r.overlaps).map((r) => r.baseCandidate) : ranked.map((r) => r.baseCandidate);
 
-  const total = ranked.length;
-  const candidates = ranked.slice(offset, offset + limit);
+  filtered.sort((a, b) => b.score - a.score);
+
+  const total = filtered.length;
+  const candidates = filtered.slice(offset, offset + limit);
 
   return { candidates, total };
 }

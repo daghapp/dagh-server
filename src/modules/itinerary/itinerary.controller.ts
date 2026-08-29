@@ -4,8 +4,11 @@ import {
   getAllTourSites,
   getItineraryByRequestId,
   getTourRequestsByUserId,
+  selectDatingProfilesForTour,
+  getDatingSelectionsForTour,
 } from "./itinerary.service.js";
 import { createTourRequestSchema } from "../../validator/itinerary-validator.js";
+import { requireKYCVerification, KYCVerificationError } from "../../services/kyc-verification.service.js";
 
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
@@ -40,6 +43,35 @@ export async function postTourRequest(req: Request, res: Response) {
         error: "Validation failed. Please check your request.",
         details: errors,
       });
+    }
+
+    // Step 2 — Verification gate: casual-dating unlocks only for KYC-verified users.
+    // If the user opted into casual dating but is not fully verified, block with 403
+    // and prompt them to complete verification before the dating module can proceed.
+    if (parsed.data.casualDatingInterest) {
+      try {
+        await requireKYCVerification(req.user?.id as string);
+      } catch (error) {
+        if (error instanceof KYCVerificationError) {
+          return fail(
+            res,
+            error.statusCode,
+            {
+              code: error.code,
+              message: error.message,
+              nextStep: error.currentStep,
+              completedSteps: error.details?.completedSteps,
+              requiredSteps: error.details?.requiredSteps,
+            },
+            {
+              action: "COMPLETE_VERIFICATION",
+              redirect: "/verification",
+            },
+          );
+        }
+        console.error("[postTourRequest][KYC]", error);
+        return fail(res, 500, "Failed to verify identity for casual dating.");
+      }
     }
 
     const result = await createTourRequest({ ...parsed.data, userId: req.user?.id as string });
@@ -152,5 +184,79 @@ export async function getUserTourRequests(req: Request, res: Response) {
   } catch (error) {
     console.error("[getUserTourRequests]", error);
     return fail(res, 500, "Failed to retrieve tour requests.");
+  }
+}
+
+// ─────────────────────────────────────────
+// POST /itinerary/{tourRequestId}/dating-selections
+// Select recommended dating profiles to merge into the itinerary as social blocks.
+// ─────────────────────────────────────────
+export async function selectDatingProfiles(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id as string;
+    const tourRequestId = req.params["tourRequestId"] as string;
+
+    const body = req.body as { userIds?: string[] };
+    const userIds = Array.isArray(body.userIds) ? body.userIds : [];
+
+    if (!tourRequestId) return fail(res, 400, "Tour request ID is required.");
+    if (!userIds.length) return fail(res, 400, "Select at least one dating profile.");
+
+    // Dating features are gated behind KYC verification.
+    try {
+      await requireKYCVerification(userId);
+    } catch (error) {
+      if (error instanceof KYCVerificationError) {
+        return fail(
+          res,
+          error.statusCode,
+          {
+            code: error.code,
+            message: error.message,
+            nextStep: error.currentStep,
+            completedSteps: error.details.completedSteps,
+            requiredSteps: error.details.requiredSteps,
+          },
+          { action: "COMPLETE_VERIFICATION", redirect: "/verification" },
+        );
+      }
+      console.error("[selectDatingProfiles][KYC]", error);
+      return fail(res, 500, "Failed to verify identity for casual dating.");
+    }
+
+    const selections = await selectDatingProfilesForTour(tourRequestId, userId, userIds);
+    return ok(res, { selections }, "Dating selections saved to your itinerary.");
+  } catch (error) {
+    console.error("[selectDatingProfiles]", error);
+    const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+    if (code === "TOUR_REQUEST_NOT_FOUND") return fail(res, 404, "Tour request not found.");
+    if (code === "FORBIDDEN") return fail(res, 403, "Not allowed.");
+    if (code === "NO_VALID_DATING_PROFILES")
+      return fail(res, 400, "None of the selected profiles have a dating profile.");
+    return fail(res, 500, "Failed to save dating selections.");
+  }
+}
+
+// ─────────────────────────────────────────
+// GET /itinerary/{tourRequestId}/dating-selections
+// List the dating profiles already merged into a tour's itinerary.
+// ─────────────────────────────────────────
+export async function getItineraryDatingSelections(req: Request, res: Response) {
+  try {
+    const tourRequestId = req.params["tourRequestId"] as string;
+    if (!tourRequestId) return fail(res, 400, "Tour request ID is required.");
+
+    const request = await prisma.tourRequest.findUnique({
+      where: { id: tourRequestId },
+      select: { userId: true },
+    });
+    if (!request) return fail(res, 404, "Tour request not found.");
+    if (request.userId !== req.user?.id) return fail(res, 403, "Not allowed.");
+
+    const selections = await getDatingSelectionsForTour(tourRequestId);
+    return ok(res, { selections }, "Dating selections retrieved successfully.");
+  } catch (error) {
+    console.error("[getItineraryDatingSelections]", error);
+    return fail(res, 500, "Failed to retrieve dating selections.");
   }
 }

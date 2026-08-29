@@ -24,6 +24,10 @@ export const createTourRequestSchema = z.object({
   transportType: z.enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"]).optional(),
 
   companionInterest: z.boolean().optional().default(false),
+
+  // Tour-to-dating integration: opt-in to casual-dating recommendations during
+  // the trip. When true, the request is gated behind full KYC verification.
+  casualDatingInterest: z.boolean().optional().default(false),
 });
 
 // ─────────────────────────────────────────
@@ -64,10 +68,27 @@ export interface ItineraryDaySiteResponse {
   site: TourSiteResponse;
 }
 
+export interface DatingSocialBlockProfile {
+  datingProfileId: string;
+  userId: string;
+  fullName: string;
+  headline?: string | null;
+  photos: string[];
+  about?: string | null;
+  interests: string[];
+  profileImage?: string | null;
+}
+
+export interface DatingSocialBlock {
+  type: "SOCIAL";
+  profile: DatingSocialBlockProfile;
+}
+
 export interface ItineraryDayResponse {
   dayNumber: number;
   dayType: DayType;
   sites: ItineraryDaySiteResponse[];
+  socialBlocks: DatingSocialBlock[];
 }
 
 export interface ItineraryLocationRecommendation {
@@ -92,6 +113,9 @@ export interface ItineraryResponse {
   // Recommendations derived from the user's selected accommodation/transport preferences
   available_hotels: ItineraryLocationRecommendation[];
   available_transports: ItineraryLocationRecommendation[];
+
+  // Tour → dating: selected dating profiles merged into the itinerary timeline.
+  datingSelections: (DatingSocialBlockProfile & { selectedAt: Date })[];
 }
 
 export interface CreateTourResponse {

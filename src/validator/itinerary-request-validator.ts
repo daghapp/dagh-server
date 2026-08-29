@@ -22,6 +22,8 @@ export const itineraryRequestSchema = z.object({
   transportType: z.enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"]).optional(),
 
   companionInterest: z.boolean().optional().default(false),
+
+  casualDatingInterest: z.boolean().optional().default(false),
 });
 
 export type ItineraryRequestInput = z.infer<typeof itineraryRequestSchema>;

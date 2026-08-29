@@ -3,7 +3,14 @@ import { Server } from "socket.io";
 import { prisma } from "../../config/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
-import { getDiscoveryCandidates } from "../../services/matching.service.js";
+import {
+  getDiscoveryCandidates,
+  resolveTourTravelContext,
+} from "../../services/matching.service.js";
+import {
+  requireKYCVerification,
+  KYCVerificationError,
+} from "../../services/kyc-verification.service.js";
 import type { SwipeDirection } from "../../../generated/prisma/enums.js";
 
 // ─────────────────────────────────────────
@@ -196,12 +203,52 @@ export const recordSwipe = async (req: Request, res: Response) => {
 export const getRecommendations = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+
+    // Step 2 — KYC gate: the dating module is only available to verified users.
+    try {
+      await requireKYCVerification(userId);
+    } catch (error) {
+      if (error instanceof KYCVerificationError) {
+        return fail(
+          res,
+          error.statusCode,
+          {
+            code: error.code,
+            message: error.message,
+            nextStep: error.currentStep,
+            completedSteps: error.details.completedSteps,
+            requiredSteps: error.details.requiredSteps,
+          },
+          { action: "COMPLETE_VERIFICATION", redirect: "/verification" },
+        );
+      }
+      throw error;
+    }
+
     const limitRaw = Number(req.query.limit);
     const limit = Number.isFinite(limitRaw) ? Math.min(limitRaw, 50) : 20;
     const offsetRaw = Number(req.query.offset);
     const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
 
-    const result = await getDiscoveryCandidates(userId, { limit, offset });
+    // Step 3 — Travel context: derive the trip geofence + schedule window from a
+    // tour request when provided, so recommendations are filtered to compatible
+    // travelers overlapping the same location and window.
+    let travel: Awaited<ReturnType<typeof resolveTourTravelContext>> | null = null;
+    const tourRequestId = typeof req.query.tourRequestId === "string" ? req.query.tourRequestId : "";
+    if (tourRequestId) {
+      try {
+        travel = await resolveTourTravelContext(tourRequestId, userId);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+        if (code === "TOUR_REQUEST_NOT_FOUND") return fail(res, 404, "Tour request not found.");
+        if (code === "FORBIDDEN")
+          return fail(res, 403, "This tour request does not belong to you.");
+        console.error("Get recommendations travel context error:", error);
+        return fail(res, 400, "Invalid tour request.");
+      }
+    }
+
+    const result = await getDiscoveryCandidates(userId, { limit, offset, travel });
 
     const targetIds = result.candidates.map((c) => c.userId);
 

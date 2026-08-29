@@ -48,6 +48,25 @@ export class ItineraryPaymentController {
 
       const paymentId = payment.paymentId;
 
+      // Hubtel checkout data lives two levels deep in the raw response, so lift
+      // the checkout URL (and its identifiers) to the top level of the response —
+      // consistent with the membership checkout flow — so the frontend can
+      // immediately redirect the user to the payment page.
+      const checkoutData = payment.data?.data;
+      const checkoutUrl = checkoutData?.checkoutUrl;
+
+      if (!checkoutUrl || typeof checkoutUrl !== "string" || checkoutUrl.trim() === "") {
+        console.error("[initiateItineraryPayment] Hubtel did not return a checkout URL", {
+          responseCode: payment.data?.responseCode,
+          checkoutId: checkoutData?.checkoutId,
+        });
+        return fail(
+          res,
+          502,
+          "Payment provider could not create a checkout. Please try again.",
+        );
+      }
+
       await prisma.tourRequest.update({
         where: { id: tourRequest.id },
         data: {
@@ -61,6 +80,9 @@ export class ItineraryPaymentController {
         {
           tourRequestId: tourRequest.id,
           paymentId,
+          checkoutUrl,
+          checkoutId: checkoutData?.checkoutId ?? null,
+          clientReference: checkoutData?.clientReference ?? null,
           paymentData: payment.data,
         },
         "Payment initiated. Proceed to complete payment to view itinerary.",

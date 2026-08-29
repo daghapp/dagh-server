@@ -228,12 +228,14 @@ Returns `bookingId`, `paymentId`, and the raw `hubtelResponse`. Final status arr
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
 | GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker). |
-| POST | `/itinerary/request` | Bearer | Create a custom tour request (site + preferences). |
+| POST | `/itinerary/request` | Bearer | Create a custom tour request (site + preferences; `casualDatingInterest` opts into dating recommendations and requires KYC). |
 | GET | `/itinerary/my-itineraries` | Bearer | List the user's generated itineraries. |
 | GET | `/itinerary/requests` | Bearer | List the user's tour requests. |
-| GET | `/itinerary/:tourRequestId` | Bearer | Fetch a generated itinerary (only after payment). |
-| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate Hubtel payment for a tour request. |
+| GET | `/itinerary/:tourRequestId` | Bearer | Fetch a generated itinerary (only after payment; includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected). |
+| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate Hubtel payment for a tour request; returns top-level `checkoutUrl`. |
 | POST | `/itinerary/payment-callback` | Hubtel | Hubtel callback; marks the request paid. |
+| POST | `/itinerary/:tourRequestId/dating-selections` | Bearer | Select recommended dating profiles to merge into the itinerary (KYC-gated). |
+| GET | `/itinerary/:tourRequestId/dating-selections` | Bearer | List dating profiles merged into a tour's itinerary. |
 
 ### POST /itinerary/request
 
@@ -245,15 +247,62 @@ Returns `bookingId`, `paymentId`, and the raw `hubtelResponse`. Final status arr
   "relocationInterest": false,
   "apartmentType": "HOTEL",
   "transportType": "UBER",
-  "companionInterest": false
+  "companionInterest": false,
+  "casualDatingInterest": true
 }
 ```
 
 `201` = request created; **`422`** = created but not feasible (an itinerary can't be generated — show the feasibility error).
 
+`casualDatingInterest` (optional, default `false`) opts the trip into casual-dating
+recommendations and is gated behind **full KYC verification**. If the user has not completed
+all verification steps, the request returns **`403`** with:
+
+```json
+{
+  "success": false,
+  "error": "KYC verification required",
+  "details": { "action": "COMPLETE_VERIFICATION", "redirect": "/verification" }
+}
+```
+
+### POST /itinerary/:tourRequestId/payment
+
+Returns the Hubtel checkout URL at the top level so the frontend can redirect immediately:
+
+```json
+{
+  "success": true,
+  "data": {
+    "tourRequestId": "uuid",
+    "paymentId": "uuid",
+    "checkoutUrl": "https://checkout.hubtel.com/session/cs_123456",
+    "checkoutId": "checkout_id",
+    "clientReference": "ref",
+    "paymentData": { "responseCode": "0000", "data": { "checkoutUrl": "https://..." } }
+  },
+  "message": "Payment initiated. Proceed to complete payment to view itinerary."
+}
+```
+
+If the provider does not return a checkout URL, the endpoint fails with `502`.
+
+### POST /itinerary/:tourRequestId/dating-selections
+
+Body:
+
+```json
+{ "datingProfileIds": ["uuid", "uuid"] }
+```
+
+Persists the selected dating profiles against the tour request (KYC-gated) and returns the updated selection list.
+
 ### GET /itinerary/:tourRequestId
 
 Returns the generated itinerary + price. **`403` with `PAYMENT_REQUIRED`** until the request is paid.
+When dating profiles are selected, the response includes a flat `datingSelections` array and,
+per touring day, `socialBlocks`. See the dating module for recommendation filtering via
+`GET /dating/recommendations?tourRequestId=<uuid>`.
 
 ---
 
@@ -363,7 +412,7 @@ Query: `tourSiteId` (required), `radiusKm` (default 30), `limit` (default 10).
 | GET | `/dating/preferences` | Bearer | Get own discovery preferences. |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences. |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |
-| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). |
+| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window. |
 | GET | `/dating/matches` | Bearer | List active matches. |
 | GET | `/dating/likes-received` | Bearer | List users who liked you. |
 | DELETE | `/dating/matches/:matchId` | Bearer | Unmatch (soft-remove). |

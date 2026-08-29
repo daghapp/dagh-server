@@ -405,13 +405,40 @@ model DatingProfile {
   religion  String?
   hometown  String?
 
+  // ── Tour-to-dating integration ─────────────────────────────────────────────
+  // Where the user plans to travel / be available for casual dating, plus the
+  // window during which their dating profile should surface for schedule overlap.
+  travelLocationLat  Float?
+  travelLocationLng  Float?
+  availableFrom      DateTime?
+  availableTo        DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   discoveryPreference DiscoveryPreference?
+  tourSelections      TourRequestDatingSelection[]
 
   @@map("dating_profiles")
+}
+
+// ─────────────────────────────────────────
+// JUNCTION — dating profiles the user selects to merge into a tour itinerary
+// as social / leisure blocks after reviewing recommendations.
+// ─────────────────────────────────────────
+model TourRequestDatingSelection {
+  id              String        @id @default(uuid())
+  tourRequestId   String
+  datingProfileId String
+  createdAt       DateTime      @default(now())
+
+  tourRequest   TourRequest   @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
+  datingProfile DatingProfile @relation(fields: [datingProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([tourRequestId, datingProfileId])
+  @@index([tourRequestId])
+  @@map("tour_request_dating_selections")
 }
 
 enum LookingFor {
@@ -857,6 +884,9 @@ model TourRequest {
   apartmentType     ApartmentType?
   transportType     TransportType?
   companionInterest Boolean        @default(false)
+  // Tour-to-dating integration: user asked for casual-dating recommendations
+  // during this trip. Gated behind full KYC verification.
+  casualDatingInterest Boolean      @default(false)
   ethnicity         Ethnicity?
 
   paymentId     String?       @unique
@@ -864,9 +894,10 @@ model TourRequest {
 
   createdAt DateTime @default(now())
 
-  selectedSites TourRequestSite[]
-  itinerary     Itinerary?
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedSites    TourRequestSite[]
+  itinerary        Itinerary?
+  datingSelections TourRequestDatingSelection[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([paymentStatus])

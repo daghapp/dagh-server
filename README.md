@@ -393,12 +393,51 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/itinerary/sites` | Public | List all Ghana tour sites |
-| POST | `/itinerary/request` | Bearer | Submit tour request with site selections |
+| POST | `/itinerary/request` | Bearer | Submit tour request with site selections (`casualDatingInterest=true` requires KYC verification) |
 | GET | `/itinerary/requests` | Bearer | Get user's tour requests |
 | GET | `/itinerary/my-itineraries` | Bearer | Get user's generated itineraries |
-| GET | `/itinerary/:tourRequestId` | Bearer | Get generated itinerary by request ID |
-| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate itinerary payment |
+| GET | `/itinerary/:tourRequestId` | Bearer | Get generated itinerary by request ID (includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected) |
+| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate itinerary payment (returns top-level `checkoutUrl`) |
 | POST | `/itinerary/payment-callback` | Hubtel | Hubtel payment callback |
+| POST | `/itinerary/:tourRequestId/dating-selections` | Bearer | Select recommended dating profiles to merge into the itinerary (KYC-gated) |
+| GET | `/itinerary/:tourRequestId/dating-selections` | Bearer | List dating profiles merged into a tour's itinerary |
+
+#### Payment response
+
+`POST /itinerary/:tourRequestId/payment` returns the Hubtel checkout URL at the top level so the frontend can redirect immediately:
+
+```json
+{
+  "success": true,
+  "data": {
+    "tourRequestId": "tour_request_id",
+    "paymentId": "payment_id",
+    "checkoutUrl": "https://checkout.hubtel.com/session/cs_123456",
+    "checkoutId": "checkout_id",
+    "clientReference": "ref",
+    "paymentData": { "responseCode": "0000", "data": { "checkoutUrl": "https://..." } }
+  },
+  "message": "Payment initiated. Proceed to complete payment to view itinerary."
+}
+```
+
+If the provider does not return a checkout URL, the endpoint fails with `502`.
+
+#### Tour-to-dating integration
+
+Setting `casualDatingInterest: true` on `POST /itinerary/request` opts the trip into casual-dating
+recommendations. This is gated behind **full KYC verification** (phone + profile image + documents):
+
+- Unverified users get `403` with an `action: "COMPLETE_VERIFICATION"` payload prompting them to verify.
+- The dating module (`/dating/recommendations`, dating-profile selection) is gated by the same KYC check.
+
+`GET /dating/recommendations?tourRequestId=<uuid>` filters ranked candidates by the trip's **geofence**
+(centroid + spread of the selected tour sites) and **schedule overlap** (availability window vs. the trip
+window). Candidates expose `scheduleOverlapDays` and `withinGeofence`, and those with non-overlapping
+availability windows are filtered out.
+
+Selected profiles are saved via `POST /itinerary/:tourRequestId/dating-selections` and merged into the
+generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSelections` list.
 
 ### Visa-on-Arrival
 
@@ -458,7 +497,7 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 | GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
 | GET | `/dating/preferences` | Bearer | Get your discovery preferences |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
-| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` |
+| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` (KYC-gated; `?tourRequestId=` restricts to a tour's geofence + schedule window) |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation. |
 | GET | `/dating/matches` | Bearer | List your active matches |
 | GET | `/dating/likes-received` | Bearer | List users who liked you |
@@ -520,6 +559,8 @@ Status enum: `PENDING`, `MATCHED`. A mutual Like transitions from `PENDING` to `
 Dating real-time events via Socket.IO: `match:mutual` (both users on mutual like), `match:incoming` (target received a like), plus existing `presence:status` / `presence:info`.
 
 Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
+Dating discovery and profile selection are gated behind full KYC verification (see
+[Tour-to-dating integration](#itinerary-generation)).
 
 ### Calls
 
@@ -727,8 +768,9 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `tour_media` | Tour images/videos |
 | `tour_bookings` | User tour bookings |
 | `user_tour_itineraries` | User-customized itineraries |
-| `TourRequest` | Custom itinerary requests |
+| `TourRequest` | Custom itinerary requests (`casualDatingInterest` opts into dating recommendations) |
 | `TourRequestSite` | Selected sites per request |
+| `TourRequestDatingSelection` | Dating profiles merged into a tour's itinerary |
 | `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries |
 | `TourSite` | Ghana tourism sites (seeded: 25 sites) |
 | `MembershipPlan` | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador) |
