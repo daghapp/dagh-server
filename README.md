@@ -114,6 +114,11 @@ LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
 CALL_SERVICE_URL=      # fallback serviceUrl when LiveKit is not configured
 
+# Firebase Cloud Messaging (required for push notifications)
+FIREBASE_PROJECT_ID=
+FIREBASE_PRIVATE_KEY=
+FIREBASE_CLIENT_EMAIL=
+
 # Hubtel (required)
 HUBTEL_CLIENT_ID=
 HUBTEL_CLIENT_SECRET=
@@ -192,7 +197,7 @@ src/
 ├── server.ts                   # Express app setup, middleware, route mounting
 ├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts + 9 membership plans)
 ├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
-├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety
+├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety, call state machine, call logger, push notifications
 ├── jobs/                       # Cron jobs (pending payments, user cleanup)
 ├── middleware/                  # Auth, admin, validation, Cloudinary upload, audio upload, Hubtel callback
 ├── modules/
@@ -223,8 +228,9 @@ src/
 > **Detailed developer reference:** see `docs/api-reference.md` for every
 > endpoint with payloads and examples, `docs/admin-console-api.md` for the admin
 > console surface + frontend wiring patterns, `docs/admin-gateway-registration.md`
-> for the Admin Gateway registration flow, and `docs/verification-flow.md` for
-> the identity-verification integration guide.
+> for the Admin Gateway registration flow, `docs/verification-flow.md` for
+> the identity-verification integration guide, and `docs/call-integration-guide.md`
+> for the voice/video calling frontend integration guide.
 
 All endpoints return responses in a standardized envelope:
 
@@ -434,6 +440,13 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 | DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user |
 | POST | `/messages/report` | Bearer | Report a user (`targetId`, `reason`, `details`) |
 
+### Devices
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/devices/register` | Bearer | Register or update a device for push notifications |
+| DELETE | `/devices/:deviceId` | Bearer | Unregister a device |
+
 ### Dating
 
 | Method | Endpoint | Auth | Description |
@@ -512,16 +525,35 @@ Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/calls/history` | Bearer | Get incoming/outgoing call history (last 50) |
-| POST | `/calls/token` | Bearer | Generate a LiveKit AccessToken + `serviceUrl` for a call (`roomId`, `callType: VOICE|VIDEO`). Valid 1 hour. |
+| POST | `/calls` | Bearer | Initiate a voice/video call (rate-limited: 5/recipient/10min, 20/caller/hour) |
+| GET | `/calls/history` | Bearer | Get call history (cursor-paginated, last 50) |
+| GET | `/calls/:callId` | Bearer | Get current call state |
+| POST | `/calls/:callId/answer` | Bearer | Answer an incoming call (returns LiveKit token) |
+| POST | `/calls/:callId/decline` | Bearer | Decline an incoming call |
+| POST | `/calls/:callId/cancel` | Bearer | Cancel an outgoing call |
+| POST | `/calls/:callId/end` | Bearer | End an active call |
+| POST | `/calls/:callId/token` | Bearer | Generate a short-lived LiveKit token (120s TTL) |
+| POST | `/calls/token` | Bearer | **[DEPRECATED]** Legacy token generation |
 
-Real-time events via Socket.IO: `new_message`, `message_sent`, `message_read`, `user_typing`, `call:initiate`, `call:accept`, `call:decline`, `call:end`, `call:signal`, `call:busy`, `call:timeout`, `call:switch_video_request`, `call:switch_video_respond`, `presence:status`.
+**Call state machine:**
+```
+INITIATING → RINGING → ANSWERED → ENDED
+                      ↘ DECLINED
+                      ↘ CANCELLED
+                      ↘ MISSED (auto-expired, cron)
+                      ↘ FAILED
+```
 
-**Call behavior:**
-- Media: `POST /calls/token` issues a room-scoped **LiveKit AccessToken** (`LIVEKIT_URL` is returned as `serviceUrl`, used by the client to connect to the media server). Without LiveKit env vars it falls back to a placeholder HMAC token for dev only.
-- Busy check: prevents calls if either party is already in an active call (`call:busy`)
-- Ringing timeout: unanswered calls auto-expire after 30 seconds (`call:timeout`)
-- Mid-call video upgrade: voice calls can be switched to video via `call:switch_video_request` / `call:switch_video_respond`
+**Behavior:**
+- Two-step initiation: caller creates `INITIATING` → server upgrades to `RINGING`
+- Atomic transitions via `SELECT FOR UPDATE` row locking + audit trail (`CallAuditLog`)
+- Busy check: prevents calls if either party is already in an active call
+- Ringing timeout: unanswered calls auto-expire after `expiresAt` (cron every 10s)
+- Rate limiting: 5 calls per recipient per 10min, 20 per caller per hour
+- Idempotency: `idempotencyKey` in request body prevents duplicate call creation (5min TTL)
+- Push notifications: FCM for Android, Expo Push for iOS (missed call alerts)
+- LiveKit: short-lived tokens (120s) for media server access
+- Blocking: blocked users cannot initiate calls to each other
 
 ### Membership Plans & Tiers
 
@@ -715,7 +747,9 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `UserMatch` | User matching/swiping |
 | `UserBlock` | User blocking (prevents messaging and calls) |
 | `UserReport` | User safety reports |
-| `CallLog` | Voice/video call history with duration and status |
+| `Call` | Voice/video call records with state machine (INITIATING → RINGING → ANSWERED → ENDED) |
+| `CallAuditLog` | Audit trail for all call state transitions |
+| `UserDevice` | Device push notification tokens (FCM, Expo, APNs, VoIP) |
 | `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
 | `ServiceRequest` / `AuditLog` | Provider service tracking |
 
@@ -729,6 +763,7 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 |-----|----------|-------------|
 | Pending payments check | Every 5 minutes | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries |
 | Unverified user cleanup | Hourly | Deletes `PENDING_VERIFICATION` users older than 24 hours |
+| Call expiry | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, sends missed-call push notifications |
 
 ---
 
@@ -749,15 +784,15 @@ npm run test:watch     # Run tests in watch mode
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 117 documented
-operations across 21 route files (source of truth: JSDoc annotations in
+Swagger UI available at `/api-docs` when the server is running. 130+ documented
+operations across 22 route files (source of truth: JSDoc annotations in
 `src/routes/*.ts` — update the annotation, not the spec).
 
 ---
 
 ## Security Features
 
-- Rate limiting on auth routes (20 req/15 min) and payment routes (50 req/15 min)
+- Rate limiting on auth routes (20 req/15 min), payment routes (50 req/15 min), and call routes (5/recipient/10min, 20/caller/hour)
 - OTP codes hashed with bcrypt before storage
 - Password minimum 8 characters with complexity requirements
 - Hubtel callback verification middleware (validates transaction with Hubtel API)
