@@ -1,9 +1,6 @@
 import { prisma } from "../config/index.js";
 import type { Gender, LookingFor } from "../../generated/prisma/enums.js";
-import {
-  haversineDistance,
-  maxPairwiseDistance,
-} from "../helpers/haversine.js";
+import { haversineDistance, maxPairwiseDistance } from "../helpers/haversine.js";
 
 // ─────────────────────────────────────────
 // Matching engine — candidate discovery, filtering & scoring
@@ -420,7 +417,9 @@ export async function getDiscoveryCandidates(
   });
 
   // Keep only candidates whose schedules overlap the trip (when travel context given).
-  const filtered = travel ? ranked.filter((r) => r.overlaps).map((r) => r.baseCandidate) : ranked.map((r) => r.baseCandidate);
+  const filtered = travel
+    ? ranked.filter((r) => r.overlaps).map((r) => r.baseCandidate)
+    : ranked.map((r) => r.baseCandidate);
 
   filtered.sort((a, b) => b.score - a.score);
 

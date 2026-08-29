@@ -58,7 +58,7 @@ export const callExpiryJob = () => {
         io.to(`user:${call.receiverId}`).emit("call.missed", payload);
 
         // Send missed call push to caller (fire-and-forget)
-        sendMissedCallPush(call).catch(() => { });
+        sendMissedCallPush(call).catch(() => {});
       }
     });
   });

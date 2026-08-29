@@ -67,17 +67,11 @@ export function logCallTokenGenerated(data: {
   log("call.token_generated", data);
 }
 
-export function logCallExpired(data: {
-  callId: string;
-  ringDurationMs: number;
-}) {
+export function logCallExpired(data: { callId: string; ringDurationMs: number }) {
   log("call.expired", data);
 }
 
-export function logCallAnswerTime(data: {
-  callId: string;
-  ringDurationMs: number;
-}) {
+export function logCallAnswerTime(data: { callId: string; ringDurationMs: number }) {
   log("call.answer_time", data);
 }
 

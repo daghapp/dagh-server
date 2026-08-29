@@ -60,11 +60,7 @@ export class ItineraryPaymentController {
           responseCode: payment.data?.responseCode,
           checkoutId: checkoutData?.checkoutId,
         });
-        return fail(
-          res,
-          502,
-          "Payment provider could not create a checkout. Please try again.",
-        );
+        return fail(res, 502, "Payment provider could not create a checkout. Please try again.");
       }
 
       await prisma.tourRequest.update({

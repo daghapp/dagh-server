@@ -18,7 +18,9 @@ interface PushPayload {
   expiresAt?: string;
 }
 
-function getPublicProfileImage(user: { profile?: { bio_profile_image_url?: string | null; profileUrl?: string | null } | null }): string | null {
+function getPublicProfileImage(user: {
+  profile?: { bio_profile_image_url?: string | null; profileUrl?: string | null } | null;
+}): string | null {
   return user.profile?.bio_profile_image_url || user.profile?.profileUrl || null;
 }
 
@@ -69,7 +71,11 @@ async function sendToDevice(
  */
 export async function sendIncomingCallPush(
   call: Call,
-  caller: { id: string; fullName: string; profile?: { bio_profile_image_url?: string | null; profileUrl?: string | null } | null },
+  caller: {
+    id: string;
+    fullName: string;
+    profile?: { bio_profile_image_url?: string | null; profileUrl?: string | null } | null;
+  },
 ): Promise<void> {
   const devices = await prisma.userDevice.findMany({
     where: { userId: call.receiverId, enabled: true },
@@ -88,9 +94,7 @@ export async function sendIncomingCallPush(
     expiresAt: call.expiresAt.toISOString(),
   };
 
-  const results = await Promise.allSettled(
-    devices.map((device) => sendToDevice(device, payload)),
-  );
+  const results = await Promise.allSettled(devices.map((device) => sendToDevice(device, payload)));
 
   const platformBreakdown: Record<string, number> = {};
   for (const d of devices) {
@@ -135,9 +139,7 @@ export async function sendMissedCallPush(call: Call): Promise<void> {
     callType: call.callType,
   };
 
-  const results = await Promise.allSettled(
-    devices.map((device) => sendToDevice(device, payload)),
-  );
+  const results = await Promise.allSettled(devices.map((device) => sendToDevice(device, payload)));
 
   for (let i = 0; i < results.length; i++) {
     const result = results[i];

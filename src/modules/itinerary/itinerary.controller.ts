@@ -8,7 +8,10 @@ import {
   getDatingSelectionsForTour,
 } from "./itinerary.service.js";
 import { createTourRequestSchema } from "../../validator/itinerary-validator.js";
-import { requireKYCVerification, KYCVerificationError } from "../../services/kyc-verification.service.js";
+import {
+  requireKYCVerification,
+  KYCVerificationError,
+} from "../../services/kyc-verification.service.js";
 
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";

@@ -47,7 +47,6 @@ export default async function protectedRoute(req: Request, res: Response, next: 
   }
 }
 
-
 // Code from William
 
 // export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
@@ -62,9 +61,9 @@ export default async function protectedRoute(req: Request, res: Response, next: 
 
 //   try {
 //     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
-    
+
 //     req.user = { id: decoded.id };
-    
+
 //     next();
 //   } catch (error) {
 //     res.status(403).json({ success: false, error: 'Invalid or expired token.' });

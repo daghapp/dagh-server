@@ -88,7 +88,10 @@ export const initiateCall = async (req: Request, res: Response) => {
       },
     });
     if (!match) {
-      return fail(res, 403, { code: "NOT_MATCHED", message: "You must be matched to call this user" });
+      return fail(res, 403, {
+        code: "NOT_MATCHED",
+        message: "You must be matched to call this user",
+      });
     }
 
     // 5. Verify conversation belongs to both users (if provided)
@@ -97,7 +100,11 @@ export const initiateCall = async (req: Request, res: Response) => {
         where: { id: conversationId },
         select: { participants: true },
       });
-      if (!conversation || !conversation.participants.includes(callerId) || !conversation.participants.includes(receiverId)) {
+      if (
+        !conversation ||
+        !conversation.participants.includes(callerId) ||
+        !conversation.participants.includes(receiverId)
+      ) {
         return fail(res, 403, { code: "NOT_MATCHED", message: "Invalid conversation" });
       }
     }
@@ -125,10 +132,16 @@ export const initiateCall = async (req: Request, res: Response) => {
     ]);
 
     if (callerActive) {
-      return fail(res, 409, { code: "CALL_ALREADY_ACTIVE", message: "You are already in or initiating a call" });
+      return fail(res, 409, {
+        code: "CALL_ALREADY_ACTIVE",
+        message: "You are already in or initiating a call",
+      });
     }
     if (receiverActive) {
-      return fail(res, 409, { code: "RECIPIENT_BUSY", message: "This user is currently in another call" });
+      return fail(res, 409, {
+        code: "RECIPIENT_BUSY",
+        message: "This user is currently in another call",
+      });
     }
 
     // 8. Create call as INITIATING
@@ -187,7 +200,10 @@ export const initiateCall = async (req: Request, res: Response) => {
         ? {
             id: callerProfile.id,
             fullName: callerProfile.fullName,
-            profileImageUrl: callerProfile.profile?.bio_profile_image_url || callerProfile.profile?.profileUrl || null,
+            profileImageUrl:
+              callerProfile.profile?.bio_profile_image_url ||
+              callerProfile.profile?.profileUrl ||
+              null,
           }
         : null,
       status: ringing.status,
@@ -234,7 +250,9 @@ export const initiateCall = async (req: Request, res: Response) => {
     if (idempotencyKey) {
       const redis = getRedisClient();
       if (redis) {
-        await redis.set(`idempotency:call:${idempotencyKey}`, JSON.stringify(responseData), { EX: 300 });
+        await redis.set(`idempotency:call:${idempotencyKey}`, JSON.stringify(responseData), {
+          EX: 300,
+        });
       }
     }
 
@@ -259,12 +277,13 @@ export const getCallHistory = async (req: Request, res: Response) => {
       ...(cursor
         ? {
             createdAt: {
-              lt: (
-                await prisma.call.findUnique({
-                  where: { id: cursor },
-                  select: { createdAt: true },
-                })
-              )?.createdAt ?? new Date(),
+              lt:
+                (
+                  await prisma.call.findUnique({
+                    where: { id: cursor },
+                    select: { createdAt: true },
+                  })
+                )?.createdAt ?? new Date(),
             },
           }
         : {}),
@@ -293,12 +312,18 @@ export const getCallHistory = async (req: Request, res: Response) => {
           ? {
               id: call.receiver.id,
               fullName: call.receiver.fullName,
-              profileImageUrl: call.receiver.profile?.bio_profile_image_url || call.receiver.profile?.profileUrl || null,
+              profileImageUrl:
+                call.receiver.profile?.bio_profile_image_url ||
+                call.receiver.profile?.profileUrl ||
+                null,
             }
           : {
               id: call.caller.id,
               fullName: call.caller.fullName,
-              profileImageUrl: call.caller.profile?.bio_profile_image_url || call.caller.profile?.profileUrl || null,
+              profileImageUrl:
+                call.caller.profile?.bio_profile_image_url ||
+                call.caller.profile?.profileUrl ||
+                null,
             },
       startedAt: call.ringingAt?.toISOString() ?? call.createdAt.toISOString(),
       answeredAt: call.answeredAt?.toISOString() ?? null,
@@ -356,12 +381,14 @@ export const getCallState = async (req: Request, res: Response) => {
       caller: {
         id: call.caller.id,
         fullName: call.caller.fullName,
-        profileImageUrl: call.caller.profile?.bio_profile_image_url || call.caller.profile?.profileUrl || null,
+        profileImageUrl:
+          call.caller.profile?.bio_profile_image_url || call.caller.profile?.profileUrl || null,
       },
       receiver: {
         id: call.receiver.id,
         fullName: call.receiver.fullName,
-        profileImageUrl: call.receiver.profile?.bio_profile_image_url || call.receiver.profile?.profileUrl || null,
+        profileImageUrl:
+          call.receiver.profile?.bio_profile_image_url || call.receiver.profile?.profileUrl || null,
       },
     });
   } catch (error) {
@@ -383,10 +410,16 @@ export const answerCall = async (req: Request, res: Response) => {
       return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
     }
     if (existing.receiverId !== userId) {
-      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Only the receiver can answer" });
+      return fail(res, 403, {
+        code: "NOT_CALL_PARTICIPANT",
+        message: "Only the receiver can answer",
+      });
     }
     if (isTerminalStatus(existing.status)) {
-      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${existing.status}` });
+      return fail(res, 409, {
+        code: "CALL_ALREADY_ENDED",
+        message: `Call is already ${existing.status}`,
+      });
     }
     if (existing.expiresAt <= new Date()) {
       return fail(res, 409, { code: "CALL_EXPIRED", message: "Call has expired" });
@@ -470,23 +503,26 @@ export const declineCall = async (req: Request, res: Response) => {
       return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
     }
     if (existing.receiverId !== userId) {
-      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Only the receiver can decline" });
+      return fail(res, 403, {
+        code: "NOT_CALL_PARTICIPANT",
+        message: "Only the receiver can decline",
+      });
     }
     if (isTerminalStatus(existing.status)) {
-      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${existing.status}` });
+      return fail(res, 409, {
+        code: "CALL_ALREADY_ENDED",
+        message: `Call is already ${existing.status}`,
+      });
     }
 
     const now = new Date();
-    const declined = await transitionCall(
-      callId,
-      "RINGING",
-      "DECLINED",
-      { endedAt: now },
-      userId,
-    );
+    const declined = await transitionCall(callId, "RINGING", "DECLINED", { endedAt: now }, userId);
 
     if (!declined) {
-      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot decline in current state" });
+      return fail(res, 409, {
+        code: "INVALID_CALL_STATE",
+        message: "Cannot decline in current state",
+      });
     }
 
     const payload = {
@@ -520,10 +556,16 @@ export const cancelCall = async (req: Request, res: Response) => {
       return fail(res, 404, { code: "CALL_NOT_FOUND", message: "Call not found" });
     }
     if (existing.callerId !== userId) {
-      return fail(res, 403, { code: "NOT_CALL_PARTICIPANT", message: "Only the caller can cancel" });
+      return fail(res, 403, {
+        code: "NOT_CALL_PARTICIPANT",
+        message: "Only the caller can cancel",
+      });
     }
     if (isTerminalStatus(existing.status)) {
-      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${existing.status}` });
+      return fail(res, 409, {
+        code: "CALL_ALREADY_ENDED",
+        message: `Call is already ${existing.status}`,
+      });
     }
 
     const now = new Date();
@@ -536,7 +578,10 @@ export const cancelCall = async (req: Request, res: Response) => {
     );
 
     if (!cancelled) {
-      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot cancel in current state" });
+      return fail(res, 409, {
+        code: "INVALID_CALL_STATE",
+        message: "Cannot cancel in current state",
+      });
     }
 
     const payload = {
@@ -680,7 +725,10 @@ export const generateCallToken = async (req: Request, res: Response) => {
 
     // Check call is not expired or terminal
     if (isTerminalStatus(call.status)) {
-      return fail(res, 409, { code: "CALL_ALREADY_ENDED", message: `Call is already ${call.status}` });
+      return fail(res, 409, {
+        code: "CALL_ALREADY_ENDED",
+        message: `Call is already ${call.status}`,
+      });
     }
     if (call.expiresAt <= new Date()) {
       return fail(res, 409, { code: "CALL_EXPIRED", message: "Call has expired" });
@@ -690,7 +738,10 @@ export const generateCallToken = async (req: Request, res: Response) => {
     // Receiver: allowed only after ANSWERED
     const isCaller = call.callerId === userId;
     if (!isCaller && call.status !== "ANSWERED") {
-      return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Receiver can only join after call is answered" });
+      return fail(res, 409, {
+        code: "INVALID_CALL_STATE",
+        message: "Receiver can only join after call is answered",
+      });
     }
 
     const liveKitToken = await generateSecureCallToken({
@@ -700,7 +751,10 @@ export const generateCallToken = async (req: Request, res: Response) => {
     });
 
     if (!liveKitToken) {
-      return fail(res, 500, { code: "LIVEKIT_TOKEN_FAILED", message: "Failed to generate media token" });
+      return fail(res, 500, {
+        code: "LIVEKIT_TOKEN_FAILED",
+        message: "Failed to generate media token",
+      });
     }
 
     logCallTokenGenerated({

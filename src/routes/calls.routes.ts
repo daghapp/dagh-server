@@ -24,7 +24,10 @@ const callPerRecipientLimiter = createRateLimiter("call-recipient", 10 * 60 * 10
   windowMs: 10 * 60 * 1000,
   max: 5,
   keyGenerator: (req) => `call-recipient:${req.user!.id}:${req.body?.receiverId ?? "unknown"}`,
-  message: { success: false, error: { code: "RATE_LIMITED", message: "Too many calls to this user. Try again later." } },
+  message: {
+    success: false,
+    error: { code: "RATE_LIMITED", message: "Too many calls to this user. Try again later." },
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -33,7 +36,10 @@ const callPerCallerLimiter = createRateLimiter("call-caller", 60 * 60 * 1000, {
   windowMs: 60 * 60 * 1000,
   max: 20,
   keyGenerator: (req) => `call-caller:${req.user!.id}`,
-  message: { success: false, error: { code: "RATE_LIMITED", message: "Call limit reached. Try again later." } },
+  message: {
+    success: false,
+    error: { code: "RATE_LIMITED", message: "Call limit reached. Try again later." },
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -76,7 +82,13 @@ const callPerCallerLimiter = createRateLimiter("call-caller", 60 * 60 * 1000, {
  *       422:
  *         description: Invalid input
  */
-router.post("/", callPerCallerLimiter, callPerRecipientLimiter, validate(initiateCallSchema), initiateCall);
+router.post(
+  "/",
+  callPerCallerLimiter,
+  callPerRecipientLimiter,
+  validate(initiateCallSchema),
+  initiateCall,
+);
 
 /**
  * @swagger

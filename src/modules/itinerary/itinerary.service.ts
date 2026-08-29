@@ -337,9 +337,7 @@ export async function selectDatingProfilesForTour(
   tourRequestId: string,
   requesterId: string,
   candidateUserIds: string[],
-): Promise<
-  Array<{ userId: string; datingProfileId: string; selectedAt: Date }>
-> {
+): Promise<Array<{ userId: string; datingProfileId: string; selectedAt: Date }>> {
   const tourRequest = await prisma.tourRequest.findUnique({
     where: { id: tourRequestId },
     select: { userId: true },

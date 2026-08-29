@@ -234,7 +234,8 @@ export const getRecommendations = async (req: Request, res: Response) => {
     // tour request when provided, so recommendations are filtered to compatible
     // travelers overlapping the same location and window.
     let travel: Awaited<ReturnType<typeof resolveTourTravelContext>> | null = null;
-    const tourRequestId = typeof req.query.tourRequestId === "string" ? req.query.tourRequestId : "";
+    const tourRequestId =
+      typeof req.query.tourRequestId === "string" ? req.query.tourRequestId : "";
     if (tourRequestId) {
       try {
         travel = await resolveTourTravelContext(tourRequestId, userId);

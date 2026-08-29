@@ -40,4 +40,9 @@ export const router = express.Router();
  *       500:
  *         description: Internal server error
  */
-router.post("/verify-jurisdiction", protectedRoute, validate(verifyJurisdictionSchema), verifyJurisdiction);
+router.post(
+  "/verify-jurisdiction",
+  protectedRoute,
+  validate(verifyJurisdictionSchema),
+  verifyJurisdiction,
+);

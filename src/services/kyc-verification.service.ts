@@ -22,7 +22,11 @@ export class KYCVerificationError extends Error {
   constructor(
     message: string,
     currentStep: string | null = null,
-    details: { completedSteps: string[]; requiredSteps: readonly string[]; nextStep: string | null } = {
+    details: {
+      completedSteps: string[];
+      requiredSteps: readonly string[];
+      nextStep: string | null;
+    } = {
       completedSteps: [],
       requiredSteps: VERIFICATION_STEPS,
       nextStep: currentStep,
