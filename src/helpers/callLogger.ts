@@ -35,8 +35,10 @@ export function logCallTransition(data: {
 
 export function logCallPushSent(data: {
   callId: string;
-  deviceCount: number;
-  platformBreakdown: Record<string, number>;
+  deviceCount?: number;
+  deviceId?: string;
+  provider?: string;
+  providerMessageId?: string | null;
 }) {
   log("call.push_sent", data);
 }
@@ -44,10 +46,25 @@ export function logCallPushSent(data: {
 export function logCallPushFailed(data: {
   callId: string;
   deviceId: string;
+  provider?: string;
   errorCode: string;
   tokenInvalidated: boolean;
 }) {
   log("call.push_failed", data);
+}
+
+export function logCallPushEnqueued(data: { callId: string; userId: string; deviceCount: number }) {
+  log("call.push_enqueued", data);
+}
+
+export function logCallPushReceipt(data: {
+  callId: string;
+  deviceId: string;
+  provider: string;
+  status: string;
+  errorCode?: string;
+}) {
+  log("call.push_receipt", data);
 }
 
 export function logCallSocketDelivered(data: {

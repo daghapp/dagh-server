@@ -483,8 +483,8 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/devices/register` | Bearer | Register or update a device for push notifications |
-| DELETE | `/devices/:deviceId` | Bearer | Unregister a device |
+| POST | `/devices/register` | Bearer | Register or update a device for push notifications (upsert on `userId` + `deviceId`; stores Expo/FCM/APNs/VoIP tokens, updates `lastSeenAt` every launch) |
+| DELETE | `/devices/:deviceId` | Bearer | Unregister a device (also disabled server-side on logout) |
 
 ### Dating
 
@@ -569,10 +569,10 @@ Dating discovery and profile selection are gated behind full KYC verification (s
 | POST | `/calls` | Bearer | Initiate a voice/video call (rate-limited: 5/recipient/10min, 20/caller/hour) |
 | GET | `/calls/history` | Bearer | Get call history (cursor-paginated, last 50) |
 | GET | `/calls/:callId` | Bearer | Get current call state |
-| POST | `/calls/:callId/answer` | Bearer | Answer an incoming call (returns LiveKit token) |
-| POST | `/calls/:callId/decline` | Bearer | Decline an incoming call |
-| POST | `/calls/:callId/cancel` | Bearer | Cancel an outgoing call |
-| POST | `/calls/:callId/end` | Bearer | End an active call |
+| POST | `/calls/:callId/answer` | Bearer | Answer an incoming call (returns LiveKit token) — receiver only |
+| POST | `/calls/:callId/decline` | Bearer | Decline an incoming call — receiver only |
+| POST | `/calls/:callId/cancel` | Bearer | Cancel an outgoing call — caller only |
+| POST | `/calls/:callId/end` | Bearer | End an active call — either participant |
 | POST | `/calls/:callId/token` | Bearer | Generate a short-lived LiveKit token (120s TTL) |
 | POST | `/calls/token` | Bearer | **[DEPRECATED]** Legacy token generation |
 
@@ -584,16 +584,18 @@ INITIATING → RINGING → ANSWERED → ENDED
                       ↘ MISSED (auto-expired, cron)
                       ↘ FAILED
 ```
+`RINGING` and `ANSWERED` may also transition to `FAILED`. All transitions are enforced server-side with a compare-and-set update; terminal states are final.
 
 **Behavior:**
-- Two-step initiation: caller creates `INITIATING` → server upgrades to `RINGING`
+- Atomic creation: `POST /calls` locks both user rows, rejects duplicate active calls for either user, and commits a single `RINGING` call (`CallAuditLog` transition records answer/decline/cancel/end/expire)
 - Atomic transitions via `SELECT FOR UPDATE` row locking + audit trail (`CallAuditLog`)
-- Busy check: prevents calls if either party is already in an active call
-- Ringing timeout: unanswered calls auto-expire after `expiresAt` (cron every 10s)
+- Busy check: prevents calls if either party is already in an active call (checked inside the creation transaction, so Answer cannot race Cancel/Decline/timeout)
+- Ringing timeout: unanswered calls auto-expire after `expiresAt` (durable cron every 10s, `SELECT ... FOR UPDATE`)
 - Rate limiting: 5 calls per recipient per 10min, 20 per caller per hour
 - Idempotency: `idempotencyKey` in request body prevents duplicate call creation (5min TTL)
-- Push notifications: FCM for Android, Expo Push for iOS (missed call alerts)
-- LiveKit: short-lived tokens (120s) for media server access
+- **Push delivery:** `POST /calls` enqueues a durable outbox row per enabled receiver device and responds immediately. A worker (every 10s) delivers them — FCM high-priority data-only message on Android, Expo Push elsewhere — fetches Expo receipts, stores accepted/rejected status, retries transient failures with bounded exponential backoff, and disables + removes tokens the provider rejects (`DeviceNotRegistered`). No incoming-call push is ever sent to the caller's devices.
+- **State-change pushes:** `DECLINED`, `CANCELLED`, `MISSED`, `ENDED`, and `FAILED` push a `CALL_STATE_CHANGED` notification to both participants so obsolete incoming-call screens are dismissed
+- LiveKit: short-lived tokens (120s) for media server access, generated backend-only for the same room
 - Blocking: blocked users cannot initiate calls to each other
 
 ### Membership Plans & Tiers
@@ -789,9 +791,10 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `UserMatch` | User matching/swiping |
 | `UserBlock` | User blocking (prevents messaging and calls) |
 | `UserReport` | User safety reports |
-| `Call` | Voice/video call records with state machine (INITIATING → RINGING → ANSWERED → ENDED) |
+| `Call` | Voice/video call records with state machine (INITIATING → RINGING → ANSWERED → ENDED / DECLINED / CANCELLED / MISSED / FAILED) |
 | `CallAuditLog` | Audit trail for all call state transitions |
-| `UserDevice` | Device push notification tokens (FCM, Expo, APNs, VoIP) |
+| `CallPushDelivery` | Durable push outbox + delivery records: per (call, device, provider) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp |
+| `UserDevice` | Device push notification tokens (FCM, Expo, APNs, VoIP), upserted per installation with `lastSeenAt`, `enabled` |
 | `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
 | `ServiceRequest` / `AuditLog` | Provider service tracking |
 
@@ -805,7 +808,8 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 |-----|----------|-------------|
 | Pending payments check | Every 5 minutes | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries |
 | Unverified user cleanup | Hourly | Deletes `PENDING_VERIFICATION` users older than 24 hours |
-| Call expiry | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, sends missed-call push notifications |
+| Call expiry | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants |
+| Push delivery | Every 10 seconds | Sends PENDING `CallPushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
 
 ---
 

@@ -4,7 +4,7 @@ import { ok, created, fail } from "../../helpers/response.js";
 import { getCallServiceUrl } from "../../helpers/call-service.js";
 import { generateLiveKitRoomToken, generateSecureCallToken } from "../../helpers/livekit.js";
 import { transitionCall } from "../../helpers/callStateMachine.js";
-import { sendIncomingCallPush } from "../../helpers/pushNotifications.js";
+import { sendIncomingCallPush, enqueueCallStatePush } from "../../helpers/pushNotifications.js";
 import {
   logCallInitiated,
   logCallAnswerTime,
@@ -41,6 +41,14 @@ const CALL_INCLUDE = {
 
 function isTerminalStatus(status: string): boolean {
   return ["DECLINED", "CANCELLED", "MISSED", "ENDED", "FAILED"].includes(status);
+}
+
+class CallBusyError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -114,65 +122,62 @@ export const initiateCall = async (req: Request, res: Response) => {
       return fail(res, 403, { code: "USER_BLOCKED", message: "Cannot place call" });
     }
 
-    // 7. Check both users don't already have active calls
-    const activeStatuses: CallStatus[] = ["INITIATING", "RINGING", "ANSWERED"];
-    const [callerActive, receiverActive] = await Promise.all([
-      prisma.call.findFirst({
-        where: {
-          OR: [{ callerId }, { receiverId: callerId }],
-          status: { in: activeStatuses },
-        },
-      }),
-      prisma.call.findFirst({
-        where: {
-          OR: [{ callerId: receiverId }, { receiverId }],
-          status: { in: activeStatuses },
-        },
-      }),
-    ]);
-
-    if (callerActive) {
-      return fail(res, 409, {
-        code: "CALL_ALREADY_ACTIVE",
-        message: "You are already in or initiating a call",
-      });
-    }
-    if (receiverActive) {
-      return fail(res, 409, {
-        code: "RECIPIENT_BUSY",
-        message: "This user is currently in another call",
-      });
-    }
-
-    // 8. Create call as INITIATING
+    // 7. Atomically reject duplicate active calls and create the RINGING call.
+    //    Both user rows are locked (in stable sorted order) so two concurrent
+    //    call attempts can never both pass the busy check.
     const callId = crypto.randomUUID();
     const roomId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 40_000);
+    const ringingAt = new Date();
 
-    await prisma.call.create({
-      data: {
-        id: callId,
-        roomId,
-        callerId,
-        receiverId,
-        conversationId: conversationId ?? null,
-        callType,
-        status: "INITIATING",
-        expiresAt,
-      },
-    });
+    let ringing: Awaited<ReturnType<typeof prisma.call.create>>;
+    try {
+      ringing = await prisma.$transaction(async (tx) => {
+        const lockIds = [callerId, receiverId].sort();
+        await tx.$queryRaw`SELECT id FROM users WHERE id IN (${lockIds[0]}, ${lockIds[1]}) FOR UPDATE`;
 
-    // 9. Atomically transition INITIATING → RINGING
-    const ringing = await transitionCall(
-      callId,
-      "INITIATING",
-      "RINGING",
-      { ringingAt: new Date() },
-      callerId,
-    );
+        const activeStatuses: CallStatus[] = ["INITIATING", "RINGING", "ANSWERED"];
+        const [callerActive, receiverActive] = await Promise.all([
+          tx.call.findFirst({
+            where: {
+              OR: [{ callerId }, { receiverId: callerId }],
+              status: { in: activeStatuses },
+            },
+          }),
+          tx.call.findFirst({
+            where: {
+              OR: [{ callerId: receiverId }, { receiverId }],
+              status: { in: activeStatuses },
+            },
+          }),
+        ]);
 
-    if (!ringing) {
-      return fail(res, 500, { code: "CALL_FAILED", message: "Failed to start call" });
+        if (callerActive) {
+          throw new CallBusyError("CALL_ALREADY_ACTIVE", "You are already in or initiating a call");
+        }
+        if (receiverActive) {
+          throw new CallBusyError("RECIPIENT_BUSY", "This user is currently in another call");
+        }
+
+        return tx.call.create({
+          data: {
+            id: callId,
+            roomId,
+            callerId,
+            receiverId,
+            conversationId: conversationId ?? null,
+            callType,
+            status: "RINGING",
+            ringingAt,
+            expiresAt,
+          },
+        });
+      });
+    } catch (error) {
+      if (error instanceof CallBusyError) {
+        return fail(res, 409, { code: error.code, message: error.message });
+      }
+      throw error;
     }
 
     // 10. Generate caller LiveKit token (short-lived)
@@ -536,6 +541,9 @@ export const declineCall = async (req: Request, res: Response) => {
     io.to(`user:${declined.callerId}`).emit("call.declined", payload);
     io.to(`user:${declined.receiverId}`).emit("call.declined", payload);
 
+    // Push state change to both participants (fire-and-forget)
+    enqueueCallStatePush(declined).catch(() => {});
+
     return ok(res, { callId: declined.id, status: "DECLINED" });
   } catch (error) {
     console.error("[Calls] declineCall error:", error);
@@ -594,6 +602,9 @@ export const cancelCall = async (req: Request, res: Response) => {
 
     io.to(`user:${cancelled.receiverId}`).emit("call.cancelled", payload);
     io.to(`user:${cancelled.callerId}`).emit("call.cancelled", payload);
+
+    // Push state change to both participants (fire-and-forget)
+    enqueueCallStatePush(cancelled).catch(() => {});
 
     return ok(res, { callId: cancelled.id, status: "CANCELLED" });
   } catch (error) {
@@ -665,6 +676,9 @@ export const endCall = async (req: Request, res: Response) => {
 
     io.to(`user:${ended.callerId}`).emit("call.ended", payload);
     io.to(`user:${ended.receiverId}`).emit("call.ended", payload);
+
+    // Push state change to both participants (fire-and-forget)
+    enqueueCallStatePush(ended).catch(() => {});
 
     // Create a CALL_LOG message in the conversation
     if (existing.conversationId) {

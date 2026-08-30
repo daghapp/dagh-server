@@ -1,8 +1,8 @@
 # Voice & Video Calling — Project Status & What's Needed
 
-**Date:** August 25, 2026
+**Date:** August 29, 2026
 **Author:** Backend Team
-**Subject:** Backend complete — frontend implementation required
+**Subject:** Backend complete (incl. hardened push pipeline) — frontend implementation required
 
 ---
 
@@ -14,11 +14,16 @@ The server-side implementation for WhatsApp-style voice and video calling is **c
 
 | Item | Status |
 |------|--------|
-| Database schema (calls, audit logs, device registration) | Deployed |
+| Database schema (calls, audit logs, call push delivery, device registration) | Deployed |
 | Call lifecycle API (initiate, answer, decline, cancel, end) | Deployed |
+| Atomic call creation (`POST /calls` locks both user rows, rejects duplicate active calls, commits `RINGING`) | Deployed |
 | Secure LiveKit token generation | Deployed |
-| Device registration API | Deployed |
-| Push notification delivery (FCM + Expo) | Deployed |
+| Device registration API (upsert per installation, Expo/FCM/APNs/VoIP tokens, `lastSeenAt` refresh) | Deployed |
+| Durable push outbox + delivery worker (every 10s) | Deployed |
+| Push notification delivery (FCM high-priority data-only + Expo within-push-group) | Deployed |
+| Expo receipt processing (`DELIVERED`/`FAILED`, bounded backoff, token invalidation) | Deployed |
+| Terminal-state change pushes (`CALL_STATE_CHANGED` to both participants) | Deployed |
+| Disable devices on logout and on provider rejection | Deployed |
 | Missed call auto-expiry worker | Deployed |
 | Rate limiting (5 calls/recipient/10min, 20 calls/caller/hour) | Deployed |
 | Call history with pagination | Deployed |
@@ -29,11 +34,13 @@ The server-side implementation for WhatsApp-style voice and video calling is **c
 
 - Validates that users are matched before allowing calls
 - Prevents blocked users from calling each other
-- Ensures only one active call per user at a time
-- Atomically transitions call states (no race conditions)
-- Sends push notifications to all recipient devices when app is backgrounded
+- Ensures only one active call per user at a time (checked inside the creation transaction)
+- Atomically transitions call states (compare-and-set `RINGING`/`ANSWERED` only; no race conditions)
+- Enqueues a durable `INCOMING_CALL` outbox row per receiver device **before** responding, and delivers it in the background (works even if the call is answered immediately)
+- Sends high-priority FCM data-only pushes to all recipient devices on Android and same-group Expo pushes elsewhere; never pushes to the caller's devices
+- Verifies delivery via Expo receipts; retries transient failures with bounded exponential backoff; disables and removes tokens the provider rejects (`DeviceNotRegistered`)
 - Automatically marks unanswered calls as missed after 40 seconds
-- Cleans up invalid push tokens when providers reject them
+- Pushes `CALL_STATE_CHANGED` on DECLINED / CANCELLED / MISSED / ENDED / FAILED so the app always dismisses stale ringing screens
 - Logs every state transition for debugging and analytics
 
 ---

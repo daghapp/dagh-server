@@ -376,11 +376,39 @@ Swipe (LIKE) → Check mutual → If target already liked you → Create Match +
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/calls/history` | Yes | Get call history |
-| POST | `/calls/token` | Yes | Generate LiveKit RTC token |
+| POST | `/calls` | Yes | Initiate a voice/video call — creates a `RINGING` call atomically (locks both user rows, rejects duplicate active calls). Returns `callId`, `expiresAt`, LiveKit info |
+| GET | `/calls/history` | Yes | Call history (cursor-paginated, last 50) |
+| GET | `/calls/:callId` | Yes | Get current call state |
+| POST | `/calls/:callId/answer` | Yes | Answer an incoming call (receiver only) — returns a short-lived LiveKit token (120s) |
+| POST | `/calls/:callId/decline` | Yes | Decline an incoming call (receiver only) |
+| POST | `/calls/:callId/cancel` | Yes | Cancel an outgoing call (caller only) |
+| POST | `/calls/:callId/end` | Yes | End an active call (either participant) |
+| POST | `/calls/:callId/token` | Yes | Generate a short-lived LiveKit token (120s TTL) |
+| POST | `/calls/token` | Yes | **[DEPRECATED]** Legacy token generation |
 
-**Call types:** VOICE, VIDEO  
-**Call statuses:** MISSED, COMPLETED, DECLINED, BUSY, CANCELLED
+**Call types:** VOICE, VIDEO
+
+**Call statuses:** `INITIATING → RINGING → ANSWERED → ENDED`, or from
+`RINGING`/`ANSWERED` to `DECLINED`, `CANCELLED`, `MISSED` (auto-expired), or
+`FAILED`. Transitions are enforced server-side via `SELECT FOR UPDATE` locks
++ a `CallAuditLog` audit trail; terminal states are final. Call state is
+persisted in Postgres (not in-memory), so in-flight calls survive restarts and
+the expiry cron (`call-expiry`) is durable.
+
+**Push delivery:** kickoff (`POST /calls`) enqueues a `INCOMING_CALL` payload
+into the `CallPushDelivery` outbox for each enabled receiver device and returns
+immediately. The `push-delivery` cron worker (every 10s) sends high-priority FCM
+data-only messages on Android and Expo pushes elsewhere within the same push
+group (not just last), fetches Expo receipts to record `DELIVERED`/`FAILED`,
+retries transient failures with bounded exponential backoff, and disables +
+nulls tokens the provider flags invalid. Terminal transitions push a
+`CALL_STATE_CHANGED` payload to both participants so the app dismisses stale
+incoming-call screens.
+
+**Device tokens:** stored per installation in `UserDevice`
+(`(userId, deviceId)` unique) with Expo/FCM/APNs/VoIP tokens, upserted on every
+`POST /devices/register`, refreshed `lastSeenAt`, and disabled on logout or
+provider rejection.
 
 ### Frontend Implementation
 1. **Conversations list:** `GET /messages/conversations` — shows last message preview
@@ -388,13 +416,17 @@ Swipe (LIKE) → Check mutual → If target already liked you → Create Match +
 3. **Voice notes:** Upload audio to Cloudinary first, then `POST /messages/voice-note`
 4. **Read receipts:** Emit `mark_read` socket event with `messageId`
 5. **Typing indicators:** Emit `typing` socket event with `receiverId` + `isTyping`
-6. **Calls:** Use socket events (see Section 16), not REST endpoints
+6. **Calls:** Use the REST endpoints to drive the call lifecycle (`POST /calls`,
+   `/answer`, `/decline`, `/cancel`, `/end`); socket events (`call.incoming`,
+   `call.answered`, `call.cancelled`, `call.declined`, `call.missed`, `call.ended`)
+   and push notifications are real-time notifications of state changes
 7. **Block/Report:** Show confirmation dialog; blocking removes user from all lists
 
 ### Potential Problems
 - **Conversation auto-creation:** Messaging conversations are auto-created on dating match — don't create them manually
 - **Voice note upload:** Must upload audio file to Cloudinary first, get URL, then send
-- **Call state:** Active call sessions are in-memory on server — lost on server restart
+- **Call races:** Answer/cancel/decline/expiry are compared-and-set — a competing request returns `409 CALL_EXPIRED`/`CALL_ALREADY_ACTIVE`/`RECIPIENT_BUSY`; always re-fetch state on `409`
+- **Push nuance:** A `POST /calls` 2xx only guarantees the outbox row was enqueued. Delivery is confirmed asynchronously: Expo receipts determine true APNs/FCM acceptance, and short-lived Android background delivery relies on a high-priority data-only message
 - **Message ordering:** Messages don't have sequence numbers; rely on `createdAt` for ordering
 
 ---
@@ -827,9 +859,9 @@ Client connects with: io(url, { auth: { token: "<JWT>" } })
 ### Potential Problems
 - **Socket auth:** Same JWT as REST — must be valid; handle `invalid token` error
 - **Multiple tabs:** Each tab creates a new socket; presence tracks multiple socket IDs per user
-- **Call state loss:** Active calls are in-memory on server — lost on restart (TODO in codebase)
+- **Call state:** Call records are durable in Postgres (not in-memory) — RINGING calls past `expiresAt` are expired by the cron, and restarts never lose state
 - **WebRTC signaling:** `call:signal` is just relay — actual WebRTC peer connection is client-side
-- **30-second timeout:** Calls auto-mark as MISSED after 30 seconds if not answered
+- **30-second timeout:** Calls auto-mark as MISSED after 40 seconds if not answered
 
 ---
 

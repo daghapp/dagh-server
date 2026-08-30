@@ -17,6 +17,7 @@ import {
   generateRefreshToken,
 } from "../../helpers/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
+import { disableAllUserDevices } from "../devices/devices.controller.js";
 
 export class PasswordAuthController {
   async register(req: Request, res: Response) {
@@ -152,6 +153,9 @@ export class PasswordAuthController {
       await prisma.deviceToken.deleteMany({
         where: { userId },
       });
+
+      // Disable push-enabled devices so no incoming-call pushes target them
+      await disableAllUserDevices(userId);
 
       return ok(res, null as never, "Logged out successfully");
     } catch (error) {

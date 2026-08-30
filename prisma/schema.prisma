@@ -552,16 +552,56 @@ model Call {
   version        Int        @default(1)
   durationSec    Int?
 
-  caller       User          @relation("OutgoingCalls", fields: [callerId], references: [id], onDelete: Cascade)
-  receiver     User          @relation("IncomingCalls", fields: [receiverId], references: [id], onDelete: Cascade)
-  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  auditLogs    CallAuditLog[]
+  caller         User               @relation("OutgoingCalls", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver       User               @relation("IncomingCalls", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation   Conversation?      @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  auditLogs      CallAuditLog[]
+  pushDeliveries CallPushDelivery[]
 
   @@index([receiverId, status])
   @@index([callerId, status])
   @@index([conversationId, createdAt])
   @@index([status, expiresAt])
   @@map("calls")
+}
+
+enum PushProvider {
+  FCM
+  EXPO
+}
+
+enum PushDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model CallPushDelivery {
+  id                String             @id @default(uuid())
+  callId            String
+  targetUserId      String
+  deviceId          String
+  provider          PushProvider
+  payload           Json
+  token             String
+  status            PushDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  errorCode         String?
+  attemptCount      Int                @default(0)
+  acceptedAt        DateTime?
+  receiptsFetchedAt DateTime?
+  lastAttemptAt     DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, deviceId, provider])
+  @@index([status, lastAttemptAt])
+  @@index([callId])
+  @@index([deviceId])
+  @@map("call_push_deliveries")
 }
 
 model CallAuditLog {

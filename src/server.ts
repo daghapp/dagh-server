@@ -42,6 +42,7 @@ import { router as GeoRoutes } from "./routes/geo.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
+import { pushDeliveryJob } from "./jobs/push-delivery.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
 import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
@@ -280,6 +281,8 @@ initFirebase();
 // Durable missed-call expiry worker (runs every 10s)
 setCallExpiryIo(io);
 callExpiryJob();
+// Durable call-push delivery worker (sends outbox rows + fetches Expo receipts)
+pushDeliveryJob();
 
 export { server };
 export default app;

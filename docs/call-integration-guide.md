@@ -64,7 +64,7 @@ npx expo install react-native-callkit  # iOS CallKit (via expo module)
 
 ## Device Registration
 
-Register the device for push notifications on every app launch (after login).
+Register the device for push notifications on **every app launch (after login)**. The server upserts on `(userId, deviceId)` and refreshes the tokens and `lastSeenAt` each time, so a re-registered installation is always preferred. Never identify an installation only by its push token — tokens rotate, so always send the stable `deviceId`.
 
 ### Register Device
 
@@ -77,10 +77,12 @@ interface RegisterDeviceParams {
   platform: "IOS" | "ANDROID";
   expoPushToken?: string;
   fcmToken?: string;
+  apnsToken?: string;
+  voipPushToken?: string;
 }
 
-async function registerDevice({ platform, expoPushToken, fcmToken }: RegisterDeviceParams) {
-  const deviceId = await getOrCreateDeviceId(); // persist in AsyncStorage
+async function registerDevice(params: RegisterDeviceParams) {
+  const deviceId = await getOrCreateDeviceId(); // persist in AsyncStorage, stable per install
 
   const response = await fetch(`${API_URL}/devices/register`, {
     method: "POST",
@@ -93,6 +95,8 @@ async function registerDevice({ platform, expoPushToken, fcmToken }: RegisterDev
       platform,
       expoPushToken,
       fcmToken,
+      apnsToken,
+      voipPushToken,
     }),
   });
 
@@ -103,24 +107,36 @@ async function registerDevice({ platform, expoPushToken, fcmToken }: RegisterDev
 ### Get Push Token
 
 ```typescript
-async function getPushToken(): Promise<{ expoToken?: string; fcmToken?: string }> {
+async function getPushToken(): Promise<{ expoToken?: string; fcmToken?: string; voipToken?: string }> {
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== "granted") return {};
+
   if (Platform.OS === "android") {
-    // FCM for Android (native builds only)
+    // Installed APK (production or EAS dev client): native FCM device token.
+    // The server uses this for a high-priority data-only message so background
+    // delivery works.
     const token = await Notifications.getDevicePushTokenAsync();
     return { fcmToken: token.data };
   }
 
-  // Expo push token for iOS (or FCM if using native build)
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== "granted") return {};
-
+  // iOS: Expo push token (delivered via APNs).
   const expoToken = await Notifications.getExpoPushTokenAsync({
     projectId: Constants.expoConfig?.extra?.eas?.projectId,
   });
-
   return { expoToken: expoToken.data };
 }
 ```
+
+> **Expo Go vs installed APK:** Expo Go produces a different push token than a
+> production/EAS build for the same phone. Both are separate installations with
+> separate `deviceId`s — the backend targets whatever the APK registered. If
+> calls only arrive in Expo Go, the APK is not registering its own FCM/Expo
+> token (or that token is being rejected by FCM).
+>
+> **iOS VoIP (true lock-screen calling):** register the PushKit VoIP token via a
+> native module during startup and include it as `voipPushToken` (see
+> [Native Platform Integration](#native-platform-integration)). Report VoIP
+> pushes to CallKit immediately.
 
 ### Unregister Device
 
@@ -133,6 +149,9 @@ async function unregisterDevice(deviceId: string) {
   });
 }
 ```
+The server also disables every device for the user during `POST /auth/logout`, and
+automatically disables + removes any push token a provider later rejects
+(`DeviceNotRegistered`).
 
 ---
 
@@ -512,6 +531,12 @@ Notifications.setNotificationHandler({
 Notifications.addNotificationReceivedListener((notification) => {
   const data = notification.request.content.data;
 
+  if (data.type === "CALL_STATE_CHANGED") {
+    // Call no longer ringing — dismiss any incoming-call UI for this callId
+    dismissIncomingCall(data.callId);
+    return;
+  }
+
   if (data.type === "INCOMING_CALL") {
     // Show incoming call UI overlay
     showIncomingCallScreen({
@@ -539,20 +564,44 @@ Notifications.addNotificationResponseReceivedListener((response) => {
 
 ### Notification Payload Structure
 
-The server sends these payloads. The app should NOT include any secrets or tokens.
+All notification metadata lives **inside `data`**, never only in the visible title/body. The `callId` is always the ID returned by `POST /calls` and is used to fetch the authoritative state via `GET /calls/:callId`.
+
+**`INCOMING_CALL`** — delivered to every enabled device registered to the **receiver** (never the caller):
 
 ```json
 {
   "type": "INCOMING_CALL",
   "callId": "call-uuid",
-  "callType": "VIDEO",
-  "callerId": "caller-id",
+  "callType": "VOICE",
+  "callerId": "caller-user-id",
   "callerName": "Ama Mensah",
-  "callerImageUrl": "https://public-dating-photo",
-  "conversationId": "conversation-id",
-  "expiresAt": "2026-08-24T15:01:00.000Z"
+  "callerImageUrl": "https://example.com/public-photo.jpg",
+  "conversationId": "conversation-uuid",
+  "expiresAt": "2026-08-29T12:01:00.000Z"
 }
 ```
+
+**`CALL_STATE_CHANGED`** — pushed to **both participants** when a call becomes `DECLINED`, `CANCELLED`, `MISSED`, `ENDED`, or `FAILED`, so the app can dismiss the ringing overlay/notification and cancel any countdown:
+
+```json
+{
+  "type": "CALL_STATE_CHANGED",
+  "callId": "call-uuid",
+  "callType": "VOICE",
+  "status": "CANCELLED",
+  "conversationId": "conversation-uuid",
+  "sequence": 3,
+  "occurredAt": "2026-08-29T12:01:30.000Z"
+}
+```
+
+### Delivery channels
+
+- **Android (installed APK):** the server sends a **high-priority FCM data-only message** (`data` + `android.priority: "high"`, no `notification` block) so it wakes the app in the background. The app is responsible for building a call-screen notification from `data` using your calls channel (see [Native Platform Integration](#native-platform-integration)).
+- **iOS + Android-in-Expo-Go:** an Expo push message with `channelId: "calls"`, `priority: "high"`, and `sound: "call_ringtone.wav"`.
+- **True iOS lock-screen calling:** delivered as an APNs VoIP push via PushKit instead (see [Native Platform Integration](#native-platform-integration)).
+
+The backend records a delivery row per (call, device, provider), processes Expo delivery receipts, retries transient failures with backoff, and removes tokens the provider flags as invalid (`DeviceNotRegistered`). A successful HTTP request to Expo only means the message was accepted — the receipt determines whether it reached APNs/FCM.
 
 ---
 
@@ -566,7 +615,9 @@ The full flow for receiving a call:
 // 3. Start a countdown timer to expiresAt (auto-dismiss when expired)
 // 4. On Answer: call POST /calls/:callId/answer, then join LiveKit room
 // 5. On Decline: call POST /calls/:callId/decline
-// 6. On timeout: dismiss UI (server will emit call.missed)
+// 6. On timeout: dismiss UI (server will emit call.missed / send CALL_STATE_CHANGED)
+// 7. Dismiss the incoming screen whenever a CALL_STATE_CHANGED push or
+//    call.cancelled / call.declined / call.missed / call.ended socket event arrives
 
 interface IncomingCallState {
   callId: string;
@@ -775,12 +826,13 @@ Requires a **native build** (not Expo Go). Use `expo-module` or expo notificatio
 // Pseudocode — handled by expo-notifications + native module
 import * as Notifications from "expo-notifications";
 
-// Configure notification channel for calls (Android)
+// Configure the calls notification channel (Android).
+// The server targets channelId "calls" for incoming call pushes.
 async function setupCallChannel() {
-  await Notifications.setNotificationChannelAsync("incoming-calls", {
-    name: "Incoming Calls",
+  await Notifications.setNotificationChannelAsync("calls", {
+    name: "Calls",
     importance: Notifications.AndroidImportance.MAX,
-    sound: "ringtone.wav",
+    sound: "call_ringtone.wav",
     vibrationPattern: [0, 250, 250, 250],
     lightColor: "#FF0000",
   });
@@ -797,10 +849,23 @@ Notifications.setNotificationHandler({
         shouldSetBadge: false,
       };
     }
+    if (notification.request.content.data?.type === "CALL_STATE_CHANGED") {
+      // Nothing visual to show — used only to dismiss the incoming screen
+      return { shouldShowAlert: false, shouldPlaySound: false, shouldSetBadge: false };
+    }
     return { shouldShowAlert: false, shouldPlaySound: false, shouldSetBadge: false };
   },
 });
 ```
+
+> **Background data messages:** because the server sends a **data-only** FCM
+> message on Android (no visible `notification` payload), a killed/backgrounded
+> app must build the call-screen notification itself from `data`. With
+> `expo-notifications`, configure a headless background task
+> (`expo-notifications.handleBackgroundNotificationAsync`) or a native
+> `onBackgroundMessage` handler that constructs a high-importance "calls"
+> notification (with `call_ringtone.wav` and a full-screen intent) from the
+> incoming payload.
 
 ---
 
@@ -880,10 +945,13 @@ class CallError extends Error {
 - [ ] Pagination works with cursor
 
 ### Push Notifications
-- [ ] FCM delivery works on Android
+- [ ] FCM delivery works on Android (installed APK)
+- [ ] FCM data-only message wakes a backgrounded/terminated app and shows a call-screen notification
 - [ ] Expo push works on iOS
-- [ ] Invalid push token auto-disables device
-- [ ] Missed call push sent to caller
+- [ ] Incoming-call push goes to every registered **receiver** device, never the caller's
+- [ ] `CALL_STATE_CHANGED` push arrives on both devices for DECLINED / CANCELLED / MISSED / ENDED / FAILED and dismisses the ringing UI
+- [ ] Invalid/stale push token auto-disables the device (Expo `DeviceNotRegistered`)
+- [ ] Registering on every launch refreshes `lastSeenAt`; reinstallation replaces the old device record
 
 ---
 
@@ -897,7 +965,7 @@ LIVEKIT_URL=wss://your-instance.livekit.cloud
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 
-# Firebase (FCM for Android)
+# Firebase (FCM for Android data-only messages)
 FIREBASE_PROJECT_ID=...
 FIREBASE_PRIVATE_KEY=...
 FIREBASE_CLIENT_EMAIL=...
@@ -905,6 +973,13 @@ FIREBASE_CLIENT_EMAIL=...
 # API
 API_URL=https://your-api.example.com
 ```
+
+> The server needs no Expo secret — `expo-server-sdk` targets each device's Expo
+> push token directly. Expo itself needs your EAS `projectId` on the client
+> (`getExpoPushTokenAsync({ projectId })`), exported from `app.json` under
+> `extra.eas.projectId`. FCM tokens are obtained client-side from
+> `expo-notifications`/native FCM; only the Firebase service account
+> (`FIREBASE_*`) is used server-side.
 
 ---
 
