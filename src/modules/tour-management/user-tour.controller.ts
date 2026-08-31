@@ -155,25 +155,37 @@ export class UserTourController {
       // Generate unique booking reference
       const bookingReference = `TBK-${Date.now()}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
-      const paymentResponse = await paymentService.initializePayment({
-        totalAmount: totalPrice,
-        description: "Payment for tour: " + tour.id,
-        returnUrl: HUBTEL_RETURN_URL || "",
-        callbackUrl: HUBTEL_CALLBACK_URL || "",
-        cancellationUrl: HUBTEL_CANCELLATION_URL || "",
-        targetType: PaymentTargetType.TOUR_BOOKING,
-        targetId: tour.id,
-        userId: userId,
-        currency: tour.currency || "GHS",
-      });
+      let paymentId = "FREE_BOOKING";
+      let paymentStatus: PaymentStatus = PaymentStatus.SUCCESS;
+      let checkoutUrl: string | null = null;
+      let paymentData = null;
 
-      if (!paymentResponse.success)
-        return fail(
-          res,
-          500,
-          "Failed to book tour",
-          paymentResponse.error || paymentResponse.message,
-        );
+      if (totalPrice > 0) {
+        const paymentResponse = await paymentService.initializePayment({
+          totalAmount: totalPrice,
+          description: "Payment for tour: " + tour.id,
+          returnUrl: HUBTEL_RETURN_URL || "",
+          callbackUrl: HUBTEL_CALLBACK_URL || "",
+          cancellationUrl: HUBTEL_CANCELLATION_URL || "",
+          targetType: PaymentTargetType.TOUR_BOOKING,
+          targetId: tour.id,
+          userId: userId,
+          currency: tour.currency || "GHS",
+        });
+
+        if (!paymentResponse.success)
+          return fail(
+            res,
+            500,
+            "Failed to book tour",
+            paymentResponse.error || paymentResponse.message,
+          );
+
+        paymentId = paymentResponse.paymentId;
+        paymentStatus = paymentResponse.paymentStatus as PaymentStatus;
+        paymentData = paymentResponse.data;
+        checkoutUrl = paymentResponse.data?.data?.checkoutUrl || null;
+      }
 
       const newBooking = await prisma.tour_bookings.create({
         data: {
@@ -184,8 +196,8 @@ export class UserTourController {
           tourStartDate: new Date(bookingData.tourStartDate),
           bookingReference,
           totalPrice,
-          paymentId: paymentResponse.paymentId,
-          paymentStatus: paymentResponse.paymentStatus as PaymentStatus,
+          paymentId,
+          paymentStatus,
           currency: tour.currency || "GHS",
           specialRequests: bookingData.specialRequests,
         },
@@ -215,7 +227,7 @@ export class UserTourController {
         console.error("Failed to send booking confirmation email:", emailError);
       }
 
-      return created(res, { paymentData: paymentResponse.data, booking: newBooking });
+      return created(res, { paymentData, checkoutUrl, booking: newBooking });
     } catch (error) {
       console.error("Error booking tour:", error);
       return fail(res, 500, "Failed to book tour");

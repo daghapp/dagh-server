@@ -30,6 +30,26 @@ export class ItineraryPaymentController {
           ? pricing.itinerary.shortItineraryFee
           : pricing.itinerary.longItineraryFee;
 
+      if (amount === 0) {
+        await prisma.tourRequest.update({
+          where: { id: tourRequest.id },
+          data: { paymentStatus: "SUCCESS", paymentId: "FREE_ITINERARY" },
+        });
+
+        return ok(
+          res,
+          {
+            tourRequestId: tourRequest.id,
+            paymentId: "FREE_ITINERARY",
+            checkoutUrl: null,
+            checkoutId: null,
+            clientReference: null,
+            paymentData: null,
+          },
+          "Payment successful. Itinerary is free.",
+        );
+      }
+
       const payment = await paymentService.initializePayment({
         userId,
         targetType: PaymentTargetType.TOUR_REQUEST,
