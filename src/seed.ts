@@ -331,6 +331,7 @@ const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = [
   { code: "AG", name: "Antigua and Barbuda" },
   { code: "DM", name: "Dominica" },
   { code: "KN", name: "Saint Kitts and Nevis" },
+  { code: "GH", name: "Ghana" },
 ];
 
 // ── Dating module demo data ──────────────────────────────────────────────

@@ -194,11 +194,17 @@ Uploads the user's verification documents (passport or Ghana card). Also waits f
 ```json
 {
   "bio_document_urls": ["https://cloudinary.com/doc1.pdf"],
-  "bio_document_type": "PASSPORT"
+  "bio_document_type": "PASSPORT",
+  "bio_document_number": "G12345678"
 }
 ```
 
-`bio_document_type` is optional and accepts `"PASSPORT"` or `"GHANA_CARD"`.
+`bio_document_urls` — array of at least 1 valid URL.
+`bio_document_type` — optional, accepts `"PASSPORT"` or `"GHANA_CARD"`.
+`bio_document_number` — **required**. The unique ID number printed on the card
+(Ghana Card number or passport number). It is **globally unique**: the backend
+rejects the upload with `409` if the number already belongs to a *different*
+account, so one ID card can verify only one account.
 
 **Response (`200`):**
 ```json
@@ -207,11 +213,21 @@ Uploads the user's verification documents (passport or Ghana card). Also waits f
   "data": {
     "bio_document_urls": ["https://cloudinary.com/doc1.pdf"],
     "bio_document_type": "PASSPORT",
+    "bio_document_number": "G12345678",
     "bio_document_uploaded_at": "2026-08-17T10:05:00.000Z"
   },
   "message": "Bio documents updated successfully."
 }
 ```
+
+**Error (duplicate ID):**
+```json
+{
+  "success": false,
+  "error": "This document number has already been used to verify another account."
+}
+```
+(HTTP `409` — the document number is already linked to a different user.)
 
 **After this call:** Poll `GET /verification/status` until `isVerified === true`.
 

@@ -43,6 +43,7 @@ export class AdminProfileController {
         faceScanUrl: v.userProfile?.bio_profile_image_url ?? null,
         documentUrls: v.userProfile?.bio_document_urls ?? [],
         documentType: v.userProfile?.bio_document_type ?? null,
+        documentNumber: v.userProfile?.bio_document_number ?? null,
         bioData: {
           status: v.bioDataStatus,
           approvedBy: v.bioDataApprovedBy,

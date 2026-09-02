@@ -22,11 +22,21 @@ export async function postBioDocument(req: Request, res: Response) {
       return fail(res, 404, "Profile not found. Please initialize your profile first.");
     }
 
+    const existingDoc = await prisma.userProfile.findUnique({
+      where: { bio_document_number: body.bio_document_number },
+      select: { userId: true },
+    });
+
+    if (existingDoc && existingDoc.userId !== userId) {
+      return fail(res, 409, "This document number has already been used to verify another account.");
+    }
+
     const updated = await prisma.userProfile.update({
       where: { userId },
       data: {
         bio_document_urls: body.bio_document_urls,
         bio_document_type: (body.bio_document_type as BioDocumentType | null | undefined) ?? null,
+        bio_document_number: body.bio_document_number,
         bio_document_uploaded_at: new Date(),
       },
     });
@@ -42,6 +52,7 @@ export async function postBioDocument(req: Request, res: Response) {
       {
         bio_document_urls: updated.bio_document_urls,
         bio_document_type: updated.bio_document_type,
+        bio_document_number: updated.bio_document_number,
         bio_document_uploaded_at: updated.bio_document_uploaded_at,
       },
       "Bio documents updated successfully.",

@@ -77,6 +77,7 @@ model UserProfile {
   // Bio document uploads
   bio_document_urls        String[]
   bio_document_type        BioDocumentType?
+  bio_document_number      String?   @unique
   bio_document_uploaded_at DateTime?
 
   // Opposite relation: one profile -> one ProfileVerification

@@ -75,9 +75,15 @@ request-body validators (`/verification/phone/*` and `/verification/bio_document
  5. POST /verification/bio_profile_url      ← face image URL
  6. POST /upload                            ← document front  (multipart)
  7. POST /upload                            ← document back   (multipart)
- 8. POST /verification/bio_document_urls    ← both document URLs + type
+ 8. POST /verification/bio_document_urls    ← both document URLs + type + card number
  9. GET  /verification/validation-step/status   ← poll until VERIFIED / REJECTED
 ```
+
+> **One ID card per account.** The `bio_document_number` (Ghana Card / passport
+> number) submitted at step 8 is **globally unique** across the platform. The
+> backend rejects (HTTP 409) any account that tries to verify with a document
+> number already used to verify **another** account. So one physical ID card can
+> be used to verify only **one** account.
 
 Steps 2–3 happen only if the user's phone is not already verified.
 
@@ -322,12 +328,16 @@ state.
     "https://res.cloudinary.com/…/passport-front.jpg",
     "https://res.cloudinary.com/…/passport-back.jpg"
   ],
-  "bio_document_type": "PASSPORT"
+  "bio_document_type": "PASSPORT",
+  "bio_document_number": "G12345678"
 }
 ```
 
 `bio_document_urls` — array of at least 1 valid URL (send front + back).
 `bio_document_type` — optional, `PASSPORT` or `GHANA_CARD`.
+`bio_document_number` — **required**. The unique ID number printed on the card
+(Ghana Card number or passport number). Must be 1–50 characters. This value is
+**globally unique** — no other verified account may use the same number.
 
 **Response 200:**
 
@@ -337,6 +347,7 @@ state.
   "data": {
     "bio_document_urls": ["https://res.cloudinary.com/…/passport-front.jpg", "https://res.cloudinary.com/…/passport-back.jpg"],
     "bio_document_type": "PASSPORT",
+    "bio_document_number": "G12345678",
     "bio_document_uploaded_at": "2026-08-08T12:00:00.000Z"
   },
   "message": "Bio documents updated successfully."
@@ -347,10 +358,16 @@ state.
 
 | Status | Error |
 |--------|-------|
-| 400 (validation) | `bio_document_urls must contain at least 1 url` / `Each bio document URL must be a valid URL` |
+| 400 (validation) | `bio_document_urls must contain at least 1 url` / `Each bio document URL must be a valid URL` / `bio_document_number is required` |
+| **409** | `This document number has already been used to verify another account.` |
 | 404 | `Profile not found. Please initialize your profile first.` |
 | 401 | `Unauthorized` |
 | 500 | `Failed to update bio documents.` |
+
+> **409 — duplicate ID:** When this is returned, the submitted
+> `bio_document_number` is already linked to a **different** user account. The
+> upload is rejected and the same ID card cannot be used to verify a second
+> account. Tell the user their ID has already been used.
 
 > Frontend: on 200 navigate to the **"Verifying Your Profile"** screen and start
 > polling 2.7.

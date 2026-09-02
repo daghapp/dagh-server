@@ -305,6 +305,9 @@ router.post("/bio_profile_url", protectedRoute, postBioProfileUrl);
  *                 enum: [PASSPORT, GHANA_CARD]
  *                 nullable: true
  *                 description: Type of bio document (optional)
+ *               bio_document_number:
+ *                 type: string
+ *                 description: Unique ID number printed on the card (Ghana Card or passport number). Must be globally unique — the same number cannot verify a second account.
  *     responses:
  *       200:
  *         description: Bio documents updated successfully
@@ -312,6 +315,8 @@ router.post("/bio_profile_url", protectedRoute, postBioProfileUrl);
  *         description: Invalid payload
  *       401:
  *         description: Unauthorized
+ *       409:
+ *         description: Document number already used to verify another account
  */
 router.post("/bio_document_urls", protectedRoute, validate(postBioDocumentSchema), postBioDocument);
 
