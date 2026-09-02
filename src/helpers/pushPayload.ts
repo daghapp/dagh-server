@@ -12,6 +12,26 @@ export interface CallerProfile {
   profile?: { bio_profile_image_url?: string | null; profileUrl?: string | null } | null;
 }
 
+export interface SenderProfile {
+  id: string;
+  fullName: string;
+  profile?: { bio_profile_image_url?: string | null; profileUrl?: string | null } | null;
+}
+
+export type MessageNotificationType = "NEW_MESSAGE";
+
+export interface NewMessagePayload {
+  type: MessageNotificationType;
+  messageId: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarUrl?: string;
+  messageType: string;
+  route: string;
+  schemaVersion: string;
+}
+
 export interface DevicePushTarget {
   id: string;
   platform: string;
@@ -146,9 +166,71 @@ export function buildCallStatePayload(
   });
 }
 
+const MAX_PREVIEW_LENGTH = 120;
+
+/**
+ * Build a safe preview string for the visible notification body.
+ * Strips markup, collapses whitespace, and truncates to ~120 chars.
+ * Never places sensitive URLs in the preview.
+ */
+function sanitizeTextPreview(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_PREVIEW_LENGTH);
+}
+
+/**
+ * Build the visible notification body based on message type.
+ */
+export function messagePreviewBody(messageType: string, content?: string | null): string {
+  switch (messageType) {
+    case "VOICE_NOTE":
+      return "Sent a voice message";
+    case "IMAGE":
+      return "Sent a photo";
+    case "VIDEO":
+      return "Sent a video";
+    case "TEXT":
+      return content ? sanitizeTextPreview(content) : "New message";
+    default:
+      return "New message";
+  }
+}
+
+/**
+ * Build the NEW_MESSAGE push payload for a chat message. The payload carries
+ * enough data for the frontend to navigate to the correct conversation.
+ */
+export function buildNewMessagePayload(
+  message: {
+    id: string;
+    type: string;
+    content?: string | null;
+  },
+  sender: SenderProfile,
+  conversationId: string,
+): PushPayload {
+  return sanitizePushData({
+    type: "NEW_MESSAGE",
+    messageId: message.id,
+    conversationId,
+    senderId: sender.id,
+    senderName: sender.fullName,
+    senderAvatarUrl: getPublicProfileImage(sender),
+    messageType: message.type,
+    route: "/(connect)/chat/[id]",
+    schemaVersion: "1",
+  });
+}
+
 export function titleForPayload(payload: PushPayload): string {
   if (payload.type === "INCOMING_CALL") {
     return payload.callType === "VIDEO" ? "Incoming video call" : "Incoming voice call";
+  }
+  if (payload.type === "NEW_MESSAGE") {
+    return payload.senderName || "Simply Mark";
   }
   return "Call update";
 }
@@ -156,6 +238,9 @@ export function titleForPayload(payload: PushPayload): string {
 export function bodyForPayload(payload: PushPayload): string {
   if (payload.type === "INCOMING_CALL") {
     return `${payload.callerName ?? "Someone"} is calling...`;
+  }
+  if (payload.type === "NEW_MESSAGE") {
+    return messagePreviewBody(payload.messageType, payload.content);
   }
   switch (payload.status) {
     case "DECLINED":
@@ -174,34 +259,65 @@ export function bodyForPayload(payload: PushPayload): string {
 }
 
 /**
- * Build an Expo push message. `channelId` and the custom ringtone are only used
- * by Android, but expo-server-sdk forwards them harmlessly for iOS.
+ * Build an Expo push message. Uses a dedicated `messages` channel for chat
+ * messages (default sound) and the `calls` channel with a custom ringtone
+ * for incoming calls.
  */
 export function buildExpoMessage(to: string, payload: PushPayload): ExpoPushMessage {
+  const isCall = payload.type === "INCOMING_CALL" || payload.type === "CALL_STATE_CHANGED";
   return {
     to,
     title: titleForPayload(payload),
     body: bodyForPayload(payload),
-    sound: payload.type === "INCOMING_CALL" ? "call_ringtone.wav" : "default",
+    sound: isCall ? "call_ringtone.wav" : "default",
     priority: "high",
-    channelId: "calls",
+    channelId: isCall ? "calls" : "messages",
     data: payload,
   };
 }
 
 /**
- * Build a Firebase Cloud Messaging data-only message. Data-only messages wake
- * the app in the background and let it build a call-screen notification.
+ * Build a Firebase Cloud Messaging message. For calls, sends data-only to wake
+ * the app for custom call-screen handling. For messages, sends a visible
+ * notification with data payload so the notification displays reliably even
+ * when the app is terminated.
  */
 export function buildFcmMessage(
   token: string,
   payload: PushPayload,
 ): {
   token: string;
+  notification?: { title: string; body: string };
   data: PushPayload;
-  android: { priority: "high" };
-  apns: { headers: { "apns-priority": string }; payload: { aps: { "content-available": number } } };
+  android: { priority: "high"; notification?: { channelId: string; sound: string } };
+  apns: { headers: { "apns-priority": string }; payload: { aps: { "content-available": number; alert?: { title: string; body: string } } } };
 } {
+  const isMessage = payload.type === "NEW_MESSAGE";
+
+  if (isMessage) {
+    return {
+      token,
+      notification: {
+        title: titleForPayload(payload),
+        body: bodyForPayload(payload),
+      },
+      data: payload,
+      android: {
+        priority: "high",
+        notification: { channelId: "messages", sound: "default" },
+      },
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: {
+          aps: {
+            "content-available": 1,
+            alert: { title: titleForPayload(payload), body: bodyForPayload(payload) },
+          },
+        },
+      },
+    };
+  }
+
   return {
     token,
     data: payload,

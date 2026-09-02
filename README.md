@@ -485,6 +485,32 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 |--------|----------|------|-------------|
 | POST | `/devices/register` | Bearer | Register or update a device for push notifications (upsert on `userId` + `deviceId`; stores Expo/FCM/APNs/VoIP tokens, updates `lastSeenAt` every launch) |
 | DELETE | `/devices/:deviceId` | Bearer | Unregister a device (also disabled server-side on logout) |
+| GET | `/devices/notifications/preferences` | Bearer | Get notification preferences (e.g. `messagesEnabled`) |
+| PATCH | `/devices/notifications/preferences` | Bearer | Update notification preferences (`{ "messagesEnabled": boolean }`) |
+
+#### Message push notifications
+
+`POST /messages` and `POST /messages/voice-note` persist the message
+**and** write a durable `MessagePushDelivery` outbox record for the recipient in
+the **same database transaction**. The API returns the created message
+immediately (with a non-blocking `notification: { status: "QUEUED" }` field) and
+a worker delivers the push in the background:
+
+- Every **enabled** device belonging to the recipient is targeted; the sender's
+  devices are never targeted.
+- Each delivery carries a canonical `NEW_MESSAGE` data payload with
+  `messageId`, `conversationId`, `senderId`, `senderName`, `senderAvatarUrl`,
+  `messageType`, `route`, and `schemaVersion` so tapping the notification opens
+  the exact chat.
+- The visible body is built server-side per type: `TEXT` (sanitized/truncated
+  ~120 chars), `Sent a voice message`, `Sent a photo`, `Sent a video`, or
+  `New message`.
+- Android uses a dedicated `messages` notification channel (default sound, not
+  the call ringtone).
+- Deliveries retry transient provider failures with bounded exponential backoff
+  (max 5 attempts), fetch Expo receipts to confirm delivery, and automatically
+  disable + clear tokens the provider rejects (`DeviceNotRegistered`).
+- Recipients can opt out globally via `PATCH /devices/notifications/preferences`.
 
 ### Dating
 
@@ -561,6 +587,12 @@ Dating real-time events via Socket.IO: `match:mutual` (both users on mutual like
 Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
 Dating discovery and profile selection are gated behind full KYC verification (see
 [Tour-to-dating integration](#itinerary-generation)).
+
+> **Opposite-gender discovery (legal compliance):** dating recommendations are
+> **always** filtered to the opposite of the viewer's own gender — MALE viewers
+> see only FEMALE profiles and FEMALE viewers see only MALE profiles. This is
+> enforced in the matching engine and overrides any `genderPreference` a user
+> has saved. `OTHER`-gender viewers are shown an empty discovery queue.
 
 ### Calls
 
@@ -794,6 +826,8 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `Call` | Voice/video call records with state machine (INITIATING → RINGING → ANSWERED → ENDED / DECLINED / CANCELLED / MISSED / FAILED) |
 | `CallAuditLog` | Audit trail for all call state transitions |
 | `CallPushDelivery` | Durable push outbox + delivery records: per (call, device, provider) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp |
+| `MessagePushDelivery` | Durable push outbox + delivery records for chat messages: per (message, device) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp |
+| `UserNotificationPreference` | Per-user global notification preferences (e.g. `messagesEnabled`) |
 | `UserDevice` | Device push notification tokens (FCM, Expo, APNs, VoIP), upserted per installation with `lastSeenAt`, `enabled` |
 | `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
 | `ServiceRequest` / `AuditLog` | Provider service tracking |
@@ -809,7 +843,7 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 | Pending payments check | Every 5 minutes | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries |
 | Unverified user cleanup | Hourly | Deletes `PENDING_VERIFICATION` users older than 24 hours |
 | Call expiry | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants |
-| Push delivery | Every 10 seconds | Sends PENDING `CallPushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
+| Push delivery | Every 10 seconds | Sends PENDING `CallPushDelivery` and `MessagePushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
 
 ---
 

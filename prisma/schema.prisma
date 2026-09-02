@@ -58,6 +58,7 @@ model User {
   swipesMade          UserSwipe[]          @relation("Swiper")
   swipesReceived      UserSwipe[]          @relation("SwipeTarget")
   discoveryPreference DiscoveryPreference?
+  notificationPreferences UserNotificationPreference?
 
   @@map("users")
 }
@@ -147,6 +148,18 @@ model UserDevice {
   @@index([userId])
   @@index([userId, enabled])
   @@map("user_devices")
+}
+
+model UserNotificationPreference {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  messagesEnabled Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_preferences")
 }
 
 // Phase 3.1 — Enhanced with planId, tierCode, and memberCode for the membership tiers system
@@ -341,9 +354,10 @@ model Message {
   readAt         DateTime?
   createdAt      DateTime    @default(now())
 
-  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User          @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver     User          @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation Conversation?         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                  @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User                  @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  pushDeliveries MessagePushDelivery[]
 
   @@index([conversationId])
   @@index([senderId])
@@ -603,6 +617,33 @@ model CallPushDelivery {
   @@index([callId])
   @@index([deviceId])
   @@map("call_push_deliveries")
+}
+
+model MessagePushDelivery {
+  id                String             @id @default(uuid())
+  messageId         String
+  targetUserId      String
+  deviceId          String
+  provider          PushProvider
+  payload           Json
+  token             String
+  status            PushDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  errorCode         String?
+  attemptCount      Int                @default(0)
+  acceptedAt        DateTime?
+  receiptsFetchedAt DateTime?
+  lastAttemptAt     DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, deviceId])
+  @@index([status, lastAttemptAt])
+  @@index([messageId])
+  @@index([deviceId])
+  @@map("message_push_deliveries")
 }
 
 model CallAuditLog {

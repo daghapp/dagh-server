@@ -298,6 +298,12 @@ Score = (Interest overlap × 40) + (Age proximity × 30) + (Profile completeness
 
 **Tier boosts:** FREE=1.0, SILVER=1.25, GOLD=1.3, ELITE=1.4
 
+> **Opposite-gender discovery (legal compliance):** `getDiscoveryCandidates`
+> always filters recommendations to the opposite of the viewer's own gender
+> (`oppositeGenderPreference`: MALE → FEMALE, FEMALE → MALE, OTHER/unknown → none).
+> This is enforced in the matching engine and overrides any `genderPreference`
+> saved via `PUT /dating/preferences`.
+
 ### Super-Like Daily Limits
 | Tier | Daily Limit |
 |------|-------------|
@@ -369,6 +375,34 @@ Swipe (LIKE) → Check mutual → If target already liked you → Create Match +
 }
 ```
 
+**Message push notifications:** `POST /messages` and `POST /messages/voice-note`
+persist the message, update the conversation's last-message fields, **and** write
+a durable `MessagePushDelivery` outbox record for the recipient in the **same
+database transaction**. The response includes the created message plus a
+non-blocking `notification: { status: "QUEUED" }` field. Delivery is asynchronous:
+
+- Targeted devices: every **enabled** installation belonging to the recipient;
+  the sender's devices are never targeted. Tokens are deduplicated and devices
+  without a usable Expo/FCM token are skipped.
+- Provider per device: native FCM on Android, otherwise the Expo token. A visible
+  notification plus a `data` payload is sent so it displays even when the app is
+  terminated.
+- `data` payload (`type: "NEW_MESSAGE"`): `messageId`, `conversationId`,
+  `senderId`, `senderName`, `senderAvatarUrl`, `messageType`, `route`, and
+  `schemaVersion` — enough for tap-to-open navigation to the exact chat.
+- Server-built visible body per type: `TEXT` (sanitized, whitespace collapsed,
+  truncated ~120 chars, markup stripped), `Sent a voice message`, `Sent a photo`,
+  `Sent a video`, or `New message`.
+- Android uses a dedicated `messages` channel (default sound, not the call
+  ringtone).
+- The `push-delivery` cron worker (every 10s) sends PENDING rows with bounded
+  exponential backoff (max 5 attempts), fetches Expo receipts to record
+  `DELIVERED`/`FAILED`, and disables + clears tokens the provider rejects
+  (`DeviceNotRegistered`).
+- Recipients can disable message pushes globally via
+  `PATCH /devices/notifications/preferences` (`messagesEnabled`), stored in
+  `UserNotificationPreference`.
+
 ### 7b. Calls
 
 **Base path:** `/calls`  
@@ -408,7 +442,9 @@ incoming-call screens.
 **Device tokens:** stored per installation in `UserDevice`
 (`(userId, deviceId)` unique) with Expo/FCM/APNs/VoIP tokens, upserted on every
 `POST /devices/register`, refreshed `lastSeenAt`, and disabled on logout or
-provider rejection.
+provider rejection. Per-user global notification preferences (`messagesEnabled`)
+live in `UserNotificationPreference`, read/written via
+`GET`/`PATCH /devices/notifications/preferences`.
 
 ### Frontend Implementation
 1. **Conversations list:** `GET /messages/conversations` — shows last message preview
@@ -913,6 +949,10 @@ Client connects with: io(url, { auth: { token: "<JWT>" } })
 | `Conversation` | Chat thread | Has participants (String[]) |
 | `Message` | Chat message | Belongs to Conversation, Sender, Receiver |
 | `CallLog` | Call history | References Caller + Receiver |
+| `MessagePushDelivery` | Durable push outbox for chat messages (PENDING → SENT → DELIVERED/FAILED) | Belongs to Message |
+| `CallPushDelivery` | Durable push outbox for calls | Belongs to Call |
+| `UserDevice` | Per-installation push tokens (Expo/FCM/APNs/VoIP) | Belongs to User |
+| `UserNotificationPreference` | Per-user global notification preferences (`messagesEnabled`) | Belongs to User |
 
 ### Safety Models
 

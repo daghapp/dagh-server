@@ -2,7 +2,12 @@ import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import { validate } from "../middleware/validation.js";
 import { registerDeviceSchema } from "../validator/deviceValidation.js";
-import { registerDevice, unregisterDevice } from "../modules/devices/devices.controller.js";
+import {
+  registerDevice,
+  unregisterDevice,
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from "../modules/devices/devices.controller.js";
 
 const router = express.Router();
 
@@ -76,5 +81,50 @@ router.post("/register", validate(registerDeviceSchema), registerDevice);
  *         description: Internal server error
  */
 router.delete("/:deviceId", unregisterDevice);
+
+/**
+ * @swagger
+ * /devices/notifications/preferences:
+ *   get:
+ *     summary: Get notification preferences
+ *     tags: [Devices]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current notification preferences
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/notifications/preferences", getNotificationPreferences);
+
+/**
+ * @swagger
+ * /devices/notifications/preferences:
+ *   patch:
+ *     summary: Update notification preferences
+ *     tags: [Devices]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - messagesEnabled
+ *             properties:
+ *               messagesEnabled:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Notification preferences updated
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Internal server error
+ */
+router.patch("/notifications/preferences", updateNotificationPreferences);
 
 export { router };

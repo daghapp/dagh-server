@@ -3,6 +3,7 @@ import {
   sanitizePushData,
   buildIncomingCallPayload,
   buildCallStatePayload,
+  buildNewMessagePayload,
   buildExpoMessage,
   buildFcmMessage,
   providerForDevice,
@@ -10,6 +11,7 @@ import {
   isTransientProviderError,
   titleForPayload,
   bodyForPayload,
+  messagePreviewBody,
   type PushPayload,
 } from "../src/helpers/pushPayload.js";
 
@@ -173,5 +175,182 @@ describe("error classification", () => {
     expect(isTransientProviderError(new Error("socket hang up: timeout"))).toBe(true);
     expect(isTransientProviderError("messaging/server-unavailable")).toBe(true);
     expect(isTransientProviderError(new Error("DeviceNotRegistered"))).toBe(false);
+  });
+});
+
+describe("buildNewMessagePayload", () => {
+  const message = {
+    id: "msg-123",
+    type: "TEXT",
+    content: "Hello, how are you?",
+  };
+  const sender = {
+    id: "sender-1",
+    fullName: "Simply Mark",
+    profile: { bio_profile_image_url: "https://example.com/photo.jpg" },
+  };
+
+  it("carries type NEW_MESSAGE and all required tap-to-open fields", () => {
+    const payload = buildNewMessagePayload(message, sender, "conv-1");
+    expect(payload.type).toBe("NEW_MESSAGE");
+    expect(payload.messageId).toBe("msg-123");
+    expect(payload.conversationId).toBe("conv-1");
+    expect(payload.senderId).toBe("sender-1");
+    expect(payload.senderName).toBe("Simply Mark");
+    expect(payload.senderAvatarUrl).toBe("https://example.com/photo.jpg");
+    expect(payload.messageType).toBe("TEXT");
+    expect(payload.route).toBe("/(connect)/chat/[id]");
+    expect(payload.schemaVersion).toBe("1");
+    expect(Object.values(payload).every((v) => typeof v === "string")).toBe(true);
+  });
+
+  it("omits senderAvatarUrl when the sender has no public profile photo", () => {
+    const payload = buildNewMessagePayload(
+      message,
+      { id: "sender-2", fullName: "B", profile: { bio_profile_image_url: null, profileUrl: null } },
+      "conv-1",
+    );
+    expect("senderAvatarUrl" in payload).toBe(false);
+  });
+
+  it("uses correct messageType for IMAGE", () => {
+    const payload = buildNewMessagePayload(
+      { id: "msg-2", type: "IMAGE", content: null },
+      sender,
+      "conv-1",
+    );
+    expect(payload.messageType).toBe("IMAGE");
+  });
+});
+
+describe("messagePreviewBody", () => {
+  it("returns sanitized text for TEXT messages", () => {
+    expect(messagePreviewBody("TEXT", "Hello there")).toBe("Hello there");
+  });
+
+  it("truncates long text to ~120 chars", () => {
+    const longText = "A".repeat(200);
+    expect(messagePreviewBody("TEXT", longText).length).toBeLessThanOrEqual(120);
+  });
+
+  it("strips HTML markup from text", () => {
+    expect(messagePreviewBody("TEXT", "<b>Hello</b> world")).toBe("Hello world");
+  });
+
+  it("collapses whitespace", () => {
+    expect(messagePreviewBody("TEXT", "Hello   world")).toBe("Hello world");
+  });
+
+  it("returns fixed strings for media types", () => {
+    expect(messagePreviewBody("VOICE_NOTE")).toBe("Sent a voice message");
+    expect(messagePreviewBody("IMAGE")).toBe("Sent a photo");
+    expect(messagePreviewBody("VIDEO")).toBe("Sent a video");
+  });
+
+  it("returns fallback for unknown types", () => {
+    expect(messagePreviewBody("DOCUMENT")).toBe("New message");
+  });
+
+  it("returns fallback when TEXT has no content", () => {
+    expect(messagePreviewBody("TEXT")).toBe("New message");
+  });
+});
+
+describe("titleForPayload / bodyForPayload for messages", () => {
+  it("returns sender name as title for NEW_MESSAGE", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      senderName: "Simply Mark",
+      messageType: "TEXT",
+    };
+    expect(titleForPayload(payload)).toBe("Simply Mark");
+  });
+
+  it("returns sanitized content as body for TEXT messages", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      messageType: "TEXT",
+      content: "Hello!",
+    };
+    expect(bodyForPayload(payload)).toBe("Hello!");
+  });
+
+  it("returns fixed body for IMAGE messages", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      messageType: "IMAGE",
+    };
+    expect(bodyForPayload(payload)).toBe("Sent a photo");
+  });
+
+  it("returns fixed body for VOICE_NOTE messages", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      messageType: "VOICE_NOTE",
+    };
+    expect(bodyForPayload(payload)).toBe("Sent a voice message");
+  });
+
+  it("returns fixed body for VIDEO messages", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      messageType: "VIDEO",
+    };
+    expect(bodyForPayload(payload)).toBe("Sent a video");
+  });
+});
+
+describe("buildExpoMessage for messages", () => {
+  const payload: PushPayload = {
+    type: "NEW_MESSAGE",
+    senderName: "Simply Mark",
+    messageType: "TEXT",
+    messageId: "msg-1",
+    conversationId: "conv-1",
+    senderId: "sender-1",
+  };
+
+  it("uses messages channel and default sound for NEW_MESSAGE", () => {
+    const msg = buildExpoMessage("ExponentPushToken[x]", payload);
+    expect(msg.channelId).toBe("messages");
+    expect(msg.sound).toBe("default");
+    expect(msg.title).toBe("Simply Mark");
+    expect(msg.priority).toBe("high");
+    expect(msg.data).toEqual(payload);
+  });
+
+  it("still uses calls channel and ringtone for INCOMING_CALL", () => {
+    const callPayload: PushPayload = { type: "INCOMING_CALL", callType: "VOICE", callerName: "Ama" };
+    const msg = buildExpoMessage("ExponentPushToken[y]", callPayload);
+    expect(msg.channelId).toBe("calls");
+    expect(msg.sound).toBe("call_ringtone.wav");
+  });
+});
+
+describe("buildFcmMessage for messages", () => {
+  it("builds a visible notification with data payload for NEW_MESSAGE", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      senderName: "Simply Mark",
+      messageType: "TEXT",
+      content: "Hello",
+    };
+    const msg = buildFcmMessage("fcm-1", payload);
+    expect(msg.token).toBe("fcm-1");
+    expect(msg.notification).toBeDefined();
+    expect(msg.notification!.title).toBe("Simply Mark");
+    expect(msg.notification!.body).toBe("Hello");
+    expect(msg.data).toEqual(payload);
+    expect(msg.android.notification).toBeDefined();
+    expect(msg.android.notification!.channelId).toBe("messages");
+    expect(msg.android.notification!.sound).toBe("default");
+  });
+
+  it("builds a data-only message for calls", () => {
+    const payload: PushPayload = { type: "INCOMING_CALL", callId: "call-1" };
+    const msg = buildFcmMessage("fcm-2", payload);
+    expect(msg.notification).toBeUndefined();
+    expect(msg.android.notification).toBeUndefined();
+    expect(msg.data).toEqual(payload);
   });
 });

@@ -100,3 +100,44 @@ export function logCallDuration(data: {
 }) {
   log("call.total_duration", data);
 }
+
+// ---------------------------------------------------------------------------
+// Message push notification events
+// ---------------------------------------------------------------------------
+
+export function logMessagePushEnqueued(data: {
+  messageId: string;
+  userId: string;
+  deviceCount: number;
+}) {
+  log("message.push_enqueued", data);
+}
+
+export function logMessagePushSent(data: {
+  messageId: string;
+  deviceId?: string;
+  provider?: string;
+  providerMessageId?: string | null;
+}) {
+  log("message.push_sent", data);
+}
+
+export function logMessagePushFailed(data: {
+  messageId: string;
+  deviceId: string;
+  provider?: string;
+  errorCode: string;
+  tokenInvalidated: boolean;
+}) {
+  log("message.push_failed", data);
+}
+
+export function logMessagePushReceipt(data: {
+  messageId: string;
+  deviceId: string;
+  provider: string;
+  status: string;
+  errorCode?: string;
+}) {
+  log("message.push_receipt", data);
+}

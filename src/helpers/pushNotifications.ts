@@ -4,12 +4,14 @@ import { getFirebaseMessaging } from "../config/firebase.js";
 import {
   buildIncomingCallPayload,
   buildCallStatePayload,
+  buildNewMessagePayload,
   buildExpoMessage,
   buildFcmMessage,
   providerForDevice,
   isInvalidTokenError,
   isTransientProviderError,
   type CallerProfile,
+  type SenderProfile,
   type PushPayload,
   type PushProvider,
 } from "./pushPayload.js";
@@ -18,8 +20,12 @@ import {
   logCallPushSent,
   logCallPushFailed,
   logCallPushReceipt,
+  logMessagePushEnqueued,
+  logMessagePushSent,
+  logMessagePushFailed,
+  logMessagePushReceipt,
 } from "./callLogger.js";
-import type { Call, CallPushDelivery } from "../../generated/prisma/client.js";
+import type { Call, CallPushDelivery, MessagePushDelivery } from "../../generated/prisma/client.js";
 
 const expo = new Expo();
 
@@ -128,6 +134,233 @@ export async function enqueueCallStatePush(call: Call): Promise<void> {
   void dispatchCallDeliveries(call.id).catch((error) => {
     console.error("[push] dispatchCallDeliveries error:", error);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Message push enqueue
+// ---------------------------------------------------------------------------
+
+/**
+ * Upsert a pending message delivery row for one device.
+ */
+async function upsertMessageDelivery(input: {
+  messageId: string;
+  targetUserId: string;
+  deviceId: string;
+  provider: PushProvider;
+  token: string;
+  payload: PushPayload;
+}): Promise<void> {
+  const { messageId, targetUserId, deviceId, provider, token, payload } = input;
+  await prisma.messagePushDelivery.upsert({
+    where: { messageId_deviceId: { messageId, deviceId } },
+    update: {
+      targetUserId,
+      token,
+      payload,
+      status: "PENDING",
+      attemptCount: 0,
+      providerMessageId: null,
+      errorCode: null,
+      acceptedAt: null,
+      receiptsFetchedAt: null,
+      lastAttemptAt: null,
+    },
+    create: {
+      messageId,
+      targetUserId,
+      deviceId,
+      provider,
+      token,
+      payload,
+      status: "PENDING",
+      attemptCount: 0,
+    },
+  });
+}
+
+/**
+ * Enqueue push notifications for a new message to every enabled device of the
+ * recipient. The sender's devices are never targeted. Skips devices with no
+ * usable token. Deduplicates identical tokens.
+ */
+export async function enqueueMessagePushDeliveries(
+  messageId: string,
+  recipientUserId: string,
+  sender: SenderProfile,
+  conversationId: string,
+  messageType: string,
+  content?: string | null,
+): Promise<void> {
+  const preference = await prisma.userNotificationPreference.findUnique({
+    where: { userId: recipientUserId },
+  });
+  if (preference && !preference.messagesEnabled) return;
+
+  const devices = await prisma.userDevice.findMany({
+    where: { userId: recipientUserId, enabled: true },
+  });
+
+  if (devices.length === 0) return;
+
+  const seenTokens = new Set<string>();
+  let enqueued = 0;
+
+  for (const device of devices) {
+    const target = providerForDevice(device);
+    if (!target) continue;
+    if (seenTokens.has(target.token)) continue;
+    seenTokens.add(target.token);
+
+    const payload = buildNewMessagePayload(
+      { id: messageId, type: messageType, content },
+      sender,
+      conversationId,
+    );
+
+    await upsertMessageDelivery({
+      messageId,
+      targetUserId: recipientUserId,
+      deviceId: device.id,
+      provider: target.provider,
+      token: target.token,
+      payload,
+    });
+    enqueued++;
+  }
+
+  logMessagePushEnqueued({ messageId, userId: recipientUserId, deviceCount: enqueued });
+}
+
+// ---------------------------------------------------------------------------
+// Message delivery
+// ---------------------------------------------------------------------------
+
+/** Deliver a single message outbox row, updating status/attempt metadata. */
+async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
+  const device = await prisma.userDevice.findUnique({ where: { id: row.deviceId } });
+  if (!device || !device.enabled) {
+    await prisma.messagePushDelivery.update({
+      where: { id: row.id },
+      data: { status: "FAILED", errorCode: "DEVICE_DISABLED", lastAttemptAt: new Date() },
+    });
+    return;
+  }
+
+  const result = await sendToDevice(row.provider, row.token, row.payload as PushPayload);
+  const now = new Date();
+
+  if (!result.errorCode) {
+    await prisma.messagePushDelivery.update({
+      where: { id: row.id },
+      data: {
+        status: "SENT",
+        providerMessageId: result.providerMessageId,
+        errorCode: null,
+        attemptCount: { increment: 1 },
+        acceptedAt: now,
+        lastAttemptAt: now,
+      },
+    });
+    logMessagePushSent({
+      messageId: row.messageId,
+      deviceId: row.deviceId,
+      provider: row.provider,
+      providerMessageId: result.providerMessageId,
+    });
+    return;
+  }
+
+  if (result.invalidToken) {
+    await prisma.messagePushDelivery.update({
+      where: { id: row.id },
+      data: {
+        status: "FAILED",
+        errorCode: result.errorCode,
+        attemptCount: { increment: 1 },
+        lastAttemptAt: now,
+      },
+    });
+    await invalidateToken(row.deviceId, row.provider);
+    logMessagePushFailed({
+      messageId: row.messageId,
+      deviceId: row.deviceId,
+      provider: row.provider,
+      errorCode: result.errorCode,
+      tokenInvalidated: true,
+    });
+    return;
+  }
+
+  if (result.transient && row.attemptCount + 1 < MAX_ATTEMPTS) {
+    await prisma.messagePushDelivery.update({
+      where: { id: row.id },
+      data: { errorCode: result.errorCode, attemptCount: { increment: 1 }, lastAttemptAt: now },
+    });
+    return;
+  }
+
+  await prisma.messagePushDelivery.update({
+    where: { id: row.id },
+    data: {
+      status: "FAILED",
+      errorCode: result.errorCode,
+      attemptCount: { increment: 1 },
+      lastAttemptAt: now,
+    },
+  });
+  logMessagePushFailed({
+    messageId: row.messageId,
+    deviceId: row.deviceId,
+    provider: row.provider,
+    errorCode: result.errorCode,
+    tokenInvalidated: false,
+  });
+}
+
+/**
+ * Immediate best-effort dispatch of a message's pending pushes. In-memory guard
+ * prevents a duplicate send for the same message within one process; the cron
+ * worker remains the durable fallback.
+ */
+const dispatchingMessages = new Set<string>();
+
+export async function dispatchMessageDeliveries(messageId: string): Promise<void> {
+  if (dispatchingMessages.has(messageId)) return;
+  dispatchingMessages.add(messageId);
+  try {
+    const rows = await prisma.messagePushDelivery.findMany({
+      where: { messageId, status: "PENDING" },
+      take: 50,
+    });
+    for (const row of rows) {
+      await sendMessageDeliveryRow(row);
+    }
+  } finally {
+    dispatchingMessages.delete(messageId);
+  }
+}
+
+/**
+ * Cron worker step: deliver every pending message outbox row whose backoff
+ * window has elapsed.
+ */
+export async function sendPendingMessagePushDeliveries(): Promise<void> {
+  const rows = await prisma.messagePushDelivery.findMany({
+    where: { status: "PENDING", attemptCount: { lt: MAX_ATTEMPTS } },
+    take: 200,
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const row of rows) {
+    if (
+      row.lastAttemptAt &&
+      row.lastAttemptAt.getTime() + backoffMs(row.attemptCount) > Date.now()
+    ) {
+      continue;
+    }
+    await sendMessageDeliveryRow(row);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +675,100 @@ export async function fetchExpoPushReceipts(): Promise<void> {
     });
     logCallPushReceipt({
       callId: row.callId,
+      deviceId: row.deviceId,
+      provider: "EXPO",
+      status: "FAILED",
+      errorCode: errorString,
+    });
+  }
+}
+
+/**
+ * Fetch Expo push receipts for message push tickets accepted earlier.
+ */
+export async function fetchMessageExpoPushReceipts(): Promise<void> {
+  const cutoff = new Date(Date.now() - EXPO_RECEIPT_DELAY_MS);
+
+  const rows = await prisma.messagePushDelivery.findMany({
+    where: {
+      status: "SENT",
+      provider: "EXPO",
+      receiptsFetchedAt: null,
+      acceptedAt: { not: null, lte: cutoff },
+    },
+    take: 1000,
+  });
+
+  const receiptIds = rows
+    .map((row) => row.providerMessageId)
+    .filter((id): id is string => Boolean(id));
+
+  if (receiptIds.length === 0) return;
+
+  const receipts = new Map<string, ExpoPushReceipt>();
+  for (const chunk of expo.chunkPushNotificationReceiptIds(receiptIds)) {
+    try {
+      const batch = await expo.getPushNotificationReceiptsAsync(chunk);
+      for (const [id, receipt] of Object.entries(batch)) {
+        receipts.set(id, receipt);
+      }
+    } catch (error) {
+      console.error("[push] message getPushNotificationReceiptsAsync error:", error);
+    }
+  }
+
+  const now = new Date();
+
+  for (const row of rows) {
+    if (!row.providerMessageId) {
+      await prisma.messagePushDelivery.update({
+        where: { id: row.id },
+        data: { receiptsFetchedAt: now, status: "FAILED", errorCode: "RECEIPT_MISSING_ID" },
+      });
+      continue;
+    }
+
+    const receipt = receipts.get(row.providerMessageId);
+    if (!receipt) continue;
+
+    if (receipt.status === "ok") {
+      await prisma.messagePushDelivery.update({
+        where: { id: row.id },
+        data: { status: "DELIVERED", receiptsFetchedAt: now },
+      });
+      logMessagePushReceipt({
+        messageId: row.messageId,
+        deviceId: row.deviceId,
+        provider: "EXPO",
+        status: "DELIVERED",
+      });
+      continue;
+    }
+
+    const errorString = [receipt.message, receipt.details?.error].filter(Boolean).join(" | ");
+
+    if (isInvalidTokenError(receipt)) {
+      await prisma.messagePushDelivery.update({
+        where: { id: row.id },
+        data: { status: "FAILED", errorCode: errorString, receiptsFetchedAt: now },
+      });
+      await invalidateToken(row.deviceId, "EXPO");
+      logMessagePushFailed({
+        messageId: row.messageId,
+        deviceId: row.deviceId,
+        provider: "EXPO",
+        errorCode: errorString,
+        tokenInvalidated: true,
+      });
+      continue;
+    }
+
+    await prisma.messagePushDelivery.update({
+      where: { id: row.id },
+      data: { status: "FAILED", errorCode: errorString, receiptsFetchedAt: now },
+    });
+    logMessagePushReceipt({
+      messageId: row.messageId,
       deviceId: row.deviceId,
       provider: "EXPO",
       status: "FAILED",

@@ -4,6 +4,7 @@ import {
   haversineKm,
   resolveTierBoost,
   scoreCandidate,
+  oppositeGenderPreference,
 } from "../src/services/matching.service.js";
 import type { MatchCandidate } from "../src/services/matching.service.js";
 
@@ -108,5 +109,21 @@ describe("scoreCandidate", () => {
     const center = scoreCandidate(makeCandidate({ age: 35 }), baseFilters, []);
     const edge = scoreCandidate(makeCandidate({ age: 18 }), baseFilters, []);
     expect(center).toBeGreaterThan(edge);
+  });
+});
+
+describe("oppositeGenderPreference", () => {
+  it("MALE viewers see only FEMALE", () => {
+    expect(oppositeGenderPreference("MALE")).toEqual(["FEMALE"]);
+  });
+
+  it("FEMALE viewers see only MALE", () => {
+    expect(oppositeGenderPreference("FEMALE")).toEqual(["MALE"]);
+  });
+
+  it("OTHER or unknown viewers see nobody", () => {
+    expect(oppositeGenderPreference("OTHER")).toEqual([]);
+    expect(oppositeGenderPreference(null)).toEqual([]);
+    expect(oppositeGenderPreference(undefined)).toEqual([]);
   });
 });

@@ -97,3 +97,48 @@ export const disableAllUserDevices = async (userId: string) => {
     console.error("[Devices] disableAllUserDevices error:", error);
   }
 };
+
+/**
+ * Get notification preferences for the authenticated user.
+ */
+export const getNotificationPreferences = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const preference = await prisma.userNotificationPreference.findUnique({
+      where: { userId },
+    });
+
+    return ok(res, {
+      messagesEnabled: preference?.messagesEnabled ?? true,
+    });
+  } catch (error) {
+    console.error("[Devices] getNotificationPreferences error:", error);
+    return fail(res, 500, "Failed to fetch notification preferences");
+  }
+};
+
+/**
+ * Update notification preferences for the authenticated user.
+ */
+export const updateNotificationPreferences = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { messagesEnabled } = req.body;
+
+    if (typeof messagesEnabled !== "boolean") {
+      return fail(res, 400, "messagesEnabled must be a boolean");
+    }
+
+    const preference = await prisma.userNotificationPreference.upsert({
+      where: { userId },
+      update: { messagesEnabled },
+      create: { userId, messagesEnabled },
+    });
+
+    return ok(res, { messagesEnabled: preference.messagesEnabled }, "Notification preferences updated");
+  } catch (error) {
+    console.error("[Devices] updateNotificationPreferences error:", error);
+    return fail(res, 500, "Failed to update notification preferences");
+  }
+};

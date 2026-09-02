@@ -492,6 +492,64 @@ Returns the dating profile **plus the related `user` object** (`fullName`,
 `dateOfBirth`, `gender`, `ethnicity`, and profile image), so the Profile Preview
 can show the name and compute age from `dateOfBirth`.
 
+> **Opposite-gender discovery (legal compliance):** `GET /dating/recommendations`
+> is **always** filtered to the opposite of the viewer's own gender — MALE
+> viewers see only FEMALE profiles, FEMALE viewers see only MALE profiles. This
+> is enforced in the matching engine and overrides any `genderPreference` saved
+> via `PUT /dating/preferences`. `OTHER`-gender viewers get an empty queue.
+
+---
+
+## Devices
+
+| Method | Endpoint | Auth | What it does |
+|--------|----------|------|--------------|
+| POST | `/devices/register` | Bearer | Register or update a device for push notifications. |
+| DELETE | `/devices/:deviceId` | Bearer | Unregister a device (own device only). |
+| GET | `/devices/notifications/preferences` | Bearer | Get the user's notification preferences. |
+| PATCH | `/devices/notifications/preferences` | Bearer | Update the user's notification preferences. |
+
+### POST /devices/register
+
+Upserts on `(userId, deviceId)` — the owner comes from the authenticated access
+token, never from the body. Tokens rotate, so every registration replaces the
+old token values and sets `enabled = true` and `lastSeenAt = now()`.
+
+```json
+{
+  "deviceId": "installation-uuid",
+  "platform": "ANDROID",
+  "expoPushToken": "ExponentPushToken[...]",
+  "fcmToken": "native-fcm-token",
+  "apnsToken": null,
+  "voipPushToken": null
+}
+```
+
+`200` → the registered device.
+
+### DELETE /devices/:deviceId
+
+Only the authenticated owner can disable/delete their own installation. `404` if
+the `(userId, deviceId)` pair doesn't exist. Logout should call this; the server
+also disables every device on `POST /auth/logout` and auto-disables tokens that a
+push provider later rejects.
+
+### GET /devices/notifications/preferences
+
+```json
+{ "success": true, "data": { "messagesEnabled": true } }
+```
+
+### PATCH /devices/notifications/preferences
+
+```json
+{ "messagesEnabled": false }
+```
+
+`messagesEnabled: false` opts the user out of all chat message push
+notifications (`NEW_MESSAGE`). `200` → `{ success, data: { messagesEnabled } }`.
+
 ---
 
 ## Messages & Safety
@@ -517,6 +575,62 @@ can show the name and compute age from `dateOfBirth`.
 - `type` ∈ `TEXT | VOICE_NOTE | IMAGE | VIDEO`.
 - `content` required for `TEXT` (max 2000); `mediaUrl` required for `IMAGE`/`VIDEO`.
 - `403` if the two users are blocked from each other.
+
+**Responses:** the message is saved, the conversation's last-message fields are
+updated, and the recipient's push notification is scheduled — all in one database
+transaction. `201` returns the created message plus a non-blocking notification
+state:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "message-uuid",
+    "conversationId": "conversation-uuid",
+    "senderId": "sender-uuid",
+    "receiverId": "recipient-uuid",
+    "type": "TEXT",
+    "content": "Hi there",
+    "createdAt": "2026-09-02T12:00:00.000Z",
+    "notification": { "status": "QUEUED" }
+  }
+}
+```
+
+A push provider outage never rolls back the saved message — the delivery outbox
+record is stored and retried by a background worker. The same applies to
+`POST /messages/voice-note`.
+
+### Message push notifications
+
+Sending a message triggers a durable `NEW_MESSAGE` push to every enabled device
+of the **recipient** (the sender's devices are never targeted). The provider is
+chosen per device: native FCM on Android, otherwise the Expo token. A visible
+notification plus a `data` payload is sent so it displays even when the app is
+terminated:
+
+```json
+{
+  "type": "NEW_MESSAGE",
+  "messageId": "message-uuid",
+  "conversationId": "conversation-uuid",
+  "senderId": "sender-uuid",
+  "senderName": "Simply Mark",
+  "senderAvatarUrl": "https://example.com/public-profile-image.jpg",
+  "messageType": "TEXT",
+  "route": "/(connect)/chat/[id]",
+  "schemaVersion": "1"
+}
+```
+
+The visible body is built server-side per type: `TEXT` (sanitized, whitespace
+collapsed, truncated ~120 chars, markup stripped), `Sent a voice message`,
+`Sent a photo`, `Sent a video`, or `New message`. Android uses a dedicated
+`messages` channel (default sound). Deliveries retry transient failures with
+bounded exponential backoff (max 5 attempts), fetch Expo receipts to confirm
+delivery, and auto-disable + clear tokens the provider rejects
+(`DeviceNotRegistered`). Recipients can disable messages pushes via
+`PATCH /devices/notifications/preferences`.
 
 ### POST /messages/voice-note
 

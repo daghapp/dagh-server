@@ -4,6 +4,10 @@ import { Server } from "socket.io";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
 import { MessageType } from "../../../generated/prisma/client.js";
+import {
+  enqueueMessagePushDeliveries,
+  dispatchMessageDeliveries,
+} from "../../helpers/pushNotifications.js";
 
 let io: Server;
 
@@ -16,23 +20,19 @@ export const getIoInstance = (): Server | undefined => {
 };
 
 /**
- * Send a text or media message
+ * Send a text or media message.
+ * Writes the message, conversation update, and push outbox rows atomically,
+ * then returns the created message. Push delivery runs as a fire-and-forget
+ * best-effort dispatch after commit; the cron worker is the durable fallback.
  */
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const senderId = req.user!.id;
     const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
 
-    // Verify if either user has blocked the other
     if (await isUserBlocked(senderId, receiverId)) {
       return fail(res, 403, "Cannot send message. Communication is blocked between users.");
     }
-
-    let conversation = await prisma.conversation.findFirst({
-      where: {
-        AND: [{ participants: { has: senderId } }, { participants: { has: receiverId } }],
-      },
-    });
 
     const previewContent =
       type === "VOICE_NOTE"
@@ -43,57 +43,80 @@ export const sendMessage = async (req: Request, res: Response) => {
             ? "🎥 Video"
             : content || "Media message";
 
-    if (!conversation) {
-      conversation = await prisma.conversation.create({
-        data: {
-          participants: [senderId, receiverId],
-          lastMessage: previewContent,
-          lastMessageAt: new Date(),
+    const result = await prisma.$transaction(async (tx) => {
+      let conversation = await tx.conversation.findFirst({
+        where: {
+          AND: [{ participants: { has: senderId } }, { participants: { has: receiverId } }],
         },
       });
-    } else {
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessage: previewContent, lastMessageAt: new Date() },
-      });
-    }
 
-    const message = await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        senderId,
-        receiverId,
-        content: content || null,
-        type: type as MessageType,
-        mediaUrl: mediaUrl || null,
-        mediaDuration: mediaDuration ? Number(mediaDuration) : null,
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+      if (!conversation) {
+        conversation = await tx.conversation.create({
+          data: {
+            participants: [senderId, receiverId],
+            lastMessage: previewContent,
+            lastMessageAt: new Date(),
+          },
+        });
+      } else {
+        await tx.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessage: previewContent, lastMessageAt: new Date() },
+        });
+      }
+
+      const message = await tx.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId,
+          receiverId,
+          content: content || null,
+          type: type as MessageType,
+          mediaUrl: mediaUrl || null,
+          mediaDuration: mediaDuration ? Number(mediaDuration) : null,
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
+          },
+          receiver: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
           },
         },
-        receiver: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-          },
-        },
-      },
+      });
+
+      return { message, conversationId: conversation.id };
     });
+
+    const { message, conversationId } = result;
 
     if (io) {
       io.to(`user:${receiverId}`).emit("new_message", message);
       io.to(`user:${senderId}`).emit("message_sent", message);
     }
 
-    return created(res, message);
+    void enqueueMessagePushDeliveries(
+      message.id,
+      receiverId,
+      message.sender,
+      conversationId,
+      type,
+      content,
+    ).then(() => dispatchMessageDeliveries(message.id)).catch((error) => {
+      console.error("[push] message delivery error:", error);
+    });
+
+    return created(res, { ...message, notification: { status: "QUEUED" } });
   } catch (error) {
     console.error("Send message error:", error);
     return fail(res, 500, "Failed to send message");
@@ -101,7 +124,9 @@ export const sendMessage = async (req: Request, res: Response) => {
 };
 
 /**
- * Upload and send a Voice Note audio message
+ * Upload and send a Voice Note audio message.
+ * Writes the message, conversation update, and push outbox rows atomically,
+ * then returns the created message.
  */
 export const sendVoiceNote = async (req: Request, res: Response) => {
   try {
@@ -118,66 +143,82 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
 
     const audioUrl = req.file.path;
     const duration = mediaDuration ? parseInt(mediaDuration, 10) : 0;
-
-    let conversation = await prisma.conversation.findFirst({
-      where: {
-        AND: [{ participants: { has: senderId } }, { participants: { has: receiverId } }],
-      },
-    });
-
     const previewText = "🎵 Voice message";
 
-    if (!conversation) {
-      conversation = await prisma.conversation.create({
-        data: {
-          participants: [senderId, receiverId],
-          lastMessage: previewText,
-          lastMessageAt: new Date(),
+    const result = await prisma.$transaction(async (tx) => {
+      let conversation = await tx.conversation.findFirst({
+        where: {
+          AND: [{ participants: { has: senderId } }, { participants: { has: receiverId } }],
         },
       });
-    } else {
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessage: previewText, lastMessageAt: new Date() },
-      });
-    }
 
-    const message = await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        senderId,
-        receiverId,
-        type: MessageType.VOICE_NOTE,
-        content: previewText,
-        mediaUrl: audioUrl,
-        mediaDuration: duration,
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+      if (!conversation) {
+        conversation = await tx.conversation.create({
+          data: {
+            participants: [senderId, receiverId],
+            lastMessage: previewText,
+            lastMessageAt: new Date(),
+          },
+        });
+      } else {
+        await tx.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessage: previewText, lastMessageAt: new Date() },
+        });
+      }
+
+      const message = await tx.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId,
+          receiverId,
+          type: MessageType.VOICE_NOTE,
+          content: previewText,
+          mediaUrl: audioUrl,
+          mediaDuration: duration,
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
+          },
+          receiver: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
           },
         },
-        receiver: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-          },
-        },
-      },
+      });
+
+      return { message, conversationId: conversation.id };
     });
+
+    const { message, conversationId } = result;
 
     if (io) {
       io.to(`user:${receiverId}`).emit("new_message", message);
       io.to(`user:${senderId}`).emit("message_sent", message);
     }
 
-    return created(res, message);
+    void enqueueMessagePushDeliveries(
+      message.id,
+      receiverId,
+      message.sender,
+      conversationId,
+      "VOICE_NOTE",
+      previewText,
+    ).then(() => dispatchMessageDeliveries(message.id)).catch((error) => {
+      console.error("[push] voice note delivery error:", error);
+    });
+
+    return created(res, { ...message, notification: { status: "QUEUED" } });
   } catch (error) {
     console.error("Send voice note error:", error);
     return fail(res, 500, "Failed to send voice note");

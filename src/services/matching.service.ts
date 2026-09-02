@@ -57,6 +57,19 @@ export interface TravelContext {
 
 const DEFAULT_GEOFENCE_RADIUS_KM = 50;
 
+/**
+ * The legally-allowed discovery gender is the OPPOSITE of the viewer's own
+ * gender (MALE viewers see FEMALE profiles, FEMALE viewers see MALE profiles).
+ * OTHER-gender viewers have no legally-allowed opposite, so they see nobody.
+ * This is a hard compliance rule that overrides any user-configured
+ * genderPreference.
+ */
+export function oppositeGenderPreference(myGender: string | null | undefined): Gender[] {
+  if (myGender === "MALE") return ["FEMALE"];
+  if (myGender === "FEMALE") return ["MALE"];
+  return [];
+}
+
 export async function resolveTourTravelContext(
   tourRequestId: string,
   requesterId: string,
@@ -234,27 +247,28 @@ async function loadMyFilters(userId: string): Promise<{
   filters: DiscoveryFilters;
   myInterests: string[];
 }> {
-  const [preference, profile] = await Promise.all([
+  const [preference, profile, me] = await Promise.all([
     prisma.discoveryPreference.findUnique({ where: { userId } }),
     prisma.datingProfile.findUnique({ where: { userId } }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { gender: true },
+    }),
   ]);
+
+  // Legal compliance: always show only the opposite gender, regardless of any
+  // user-configured genderPreference.
+  const genderPreference = oppositeGenderPreference(me?.gender ?? null);
 
   const filters: DiscoveryFilters = {
     lookingFor: preference?.lookingFor ?? undefined,
-    genderPreference: preference?.genderPreference?.length
-      ? preference.genderPreference
-      : DEFAULT_FILTERS.genderPreference,
+    genderPreference,
     minAge: preference?.minAge ?? DEFAULT_FILTERS.minAge,
     maxAge: preference?.maxAge ?? DEFAULT_FILTERS.maxAge,
     maxDistanceKm: preference?.maxDistanceKm ?? DEFAULT_FILTERS.maxDistanceKm,
     locationLat: preference?.locationLat ?? DEFAULT_FILTERS.locationLat,
     locationLng: preference?.locationLng ?? DEFAULT_FILTERS.locationLng,
   };
-
-  const myLocation =
-    filters.locationLat != null && filters.locationLng != null
-      ? { lat: filters.locationLat, lng: filters.locationLng }
-      : null;
 
   return { filters, myInterests: profile?.interests ?? [] };
 }
