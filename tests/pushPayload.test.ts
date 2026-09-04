@@ -199,6 +199,7 @@ describe("buildNewMessagePayload", () => {
     expect(payload.senderName).toBe("Simply Mark");
     expect(payload.senderAvatarUrl).toBe("https://example.com/photo.jpg");
     expect(payload.messageType).toBe("TEXT");
+    expect(payload.previewBody).toBe("Hello, how are you?");
     expect(payload.route).toBe("/(connect)/chat/[id]");
     expect(payload.schemaVersion).toBe("1");
     expect(Object.values(payload).every((v) => typeof v === "string")).toBe(true);
@@ -245,10 +246,11 @@ describe("messagePreviewBody", () => {
     expect(messagePreviewBody("VOICE_NOTE")).toBe("Sent a voice message");
     expect(messagePreviewBody("IMAGE")).toBe("Sent a photo");
     expect(messagePreviewBody("VIDEO")).toBe("Sent a video");
+    expect(messagePreviewBody("DOCUMENT")).toBe("Sent a document");
   });
 
   it("returns fallback for unknown types", () => {
-    expect(messagePreviewBody("DOCUMENT")).toBe("New message");
+    expect(messagePreviewBody("UNKNOWN_TYPE")).toBe("New message");
   });
 
   it("returns fallback when TEXT has no content", () => {
@@ -270,7 +272,7 @@ describe("titleForPayload / bodyForPayload for messages", () => {
     const payload: PushPayload = {
       type: "NEW_MESSAGE",
       messageType: "TEXT",
-      content: "Hello!",
+      previewBody: "Hello!",
     };
     expect(bodyForPayload(payload)).toBe("Hello!");
   });
@@ -279,6 +281,7 @@ describe("titleForPayload / bodyForPayload for messages", () => {
     const payload: PushPayload = {
       type: "NEW_MESSAGE",
       messageType: "IMAGE",
+      previewBody: "Sent a photo",
     };
     expect(bodyForPayload(payload)).toBe("Sent a photo");
   });
@@ -287,6 +290,7 @@ describe("titleForPayload / bodyForPayload for messages", () => {
     const payload: PushPayload = {
       type: "NEW_MESSAGE",
       messageType: "VOICE_NOTE",
+      previewBody: "Sent a voice message",
     };
     expect(bodyForPayload(payload)).toBe("Sent a voice message");
   });
@@ -295,6 +299,7 @@ describe("titleForPayload / bodyForPayload for messages", () => {
     const payload: PushPayload = {
       type: "NEW_MESSAGE",
       messageType: "VIDEO",
+      previewBody: "Sent a video",
     };
     expect(bodyForPayload(payload)).toBe("Sent a video");
   });

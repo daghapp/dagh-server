@@ -139,6 +139,8 @@ model UserDevice {
   voipPushToken  String?
   enabled        Boolean   @default(true)
   lastSeenAt     DateTime  @default(now())
+  failureCount   Int       @default(0)
+  disabledAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1433,4 +1435,21 @@ model AllowedCountry {
   createdAt DateTime @default(now())
 
   @@map("allowed_countries")
+}
+
+model NotificationOutbox {
+  id              String   @id @default(uuid())
+  eventType       String
+  aggregateId     String
+  recipientUserId String
+  payload         Json
+  status          String   @default("PENDING") // PENDING, SENDING, COMPLETED, FAILED, RETRY_PENDING
+  attempts        Int      @default(0)
+  availableAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([eventType, aggregateId, recipientUserId])
+  @@index([status, availableAt])
+  @@map("notification_outbox")
 }

@@ -229,7 +229,70 @@ export async function enqueueMessagePushDeliveries(
     enqueued++;
   }
 
-  logMessagePushEnqueued({ messageId, userId: recipientUserId, deviceCount: enqueued });
+  logMessagePushEnqueued({ messageId, userId: recipientUserId, deviceCount: enqueued, conversationId });
+}
+
+/**
+ * Process pending NotificationOutbox records.
+ */
+const processingOutbox = new Set<string>();
+
+export async function dispatchNotificationOutbox(): Promise<void> {
+  const rows = await prisma.notificationOutbox.findMany({
+    where: { status: { in: ["PENDING", "RETRY_PENDING"] } },
+    take: 50,
+  });
+
+  for (const row of rows) {
+    if (processingOutbox.has(row.id)) continue;
+    processingOutbox.add(row.id);
+    try {
+      if (row.eventType === "MESSAGE_CREATED") {
+        const payload = row.payload as { messageId: string; conversationId: string; senderId: string };
+        const message = await prisma.message.findUnique({
+          where: { id: payload.messageId },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+              },
+            },
+          },
+        });
+
+        if (message) {
+          await enqueueMessagePushDeliveries(
+            message.id,
+            row.recipientUserId,
+            message.sender,
+            payload.conversationId,
+            message.type,
+            message.content,
+          );
+          await dispatchMessageDeliveries(message.id);
+        }
+      }
+
+      await prisma.notificationOutbox.update({
+        where: { id: row.id },
+        data: { status: "COMPLETED", attempts: { increment: 1 } },
+      });
+    } catch (error) {
+      console.error("[outbox] failed to process row:", row.id, error);
+      await prisma.notificationOutbox.update({
+        where: { id: row.id },
+        data: {
+          status: row.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "RETRY_PENDING",
+          attempts: { increment: 1 },
+        },
+      }).catch(() => {});
+    } finally {
+      processingOutbox.delete(row.id);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +302,7 @@ export async function enqueueMessagePushDeliveries(
 /** Deliver a single message outbox row, updating status/attempt metadata. */
 async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
   const device = await prisma.userDevice.findUnique({ where: { id: row.deviceId } });
+  const conversationId = (row.payload as PushPayload).conversationId;
   if (!device || !device.enabled) {
     await prisma.messagePushDelivery.update({
       where: { id: row.id },
@@ -267,6 +331,8 @@ async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
       deviceId: row.deviceId,
       provider: row.provider,
       providerMessageId: result.providerMessageId,
+      conversationId,
+      attempt: row.attemptCount + 1,
     });
     return;
   }
@@ -287,7 +353,9 @@ async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
       deviceId: row.deviceId,
       provider: row.provider,
       errorCode: result.errorCode,
+      conversationId,
       tokenInvalidated: true,
+      attempt: row.attemptCount + 1,
     });
     return;
   }
@@ -314,7 +382,9 @@ async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
     deviceId: row.deviceId,
     provider: row.provider,
     errorCode: result.errorCode,
+    conversationId,
     tokenInvalidated: false,
+    attempt: row.attemptCount + 1,
   });
 }
 
@@ -444,14 +514,15 @@ async function sendToDevice(
 /**
  * Invalidate a token that the provider rejected. The installation stays (it can
  * re-register) but the stale token is removed and the device disabled so we
- * never target it again.
+ * never target it again. `disabledAt` records when, `failureCount` tracks how
+ * many times this installation's tokens have been rejected.
  */
 async function invalidateToken(deviceId: string, provider: PushProvider): Promise<void> {
   const tokenField = provider === "FCM" ? { fcmToken: null } : { expoPushToken: null };
   await prisma.userDevice
     .updateMany({
       where: { id: deviceId, enabled: true },
-      data: { enabled: false, ...tokenField },
+      data: { enabled: false, disabledAt: new Date(), failureCount: { increment: 1 }, ...tokenField },
     })
     .catch((error) => {
       console.error("[push] invalidateToken error:", error);
@@ -731,6 +802,8 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
     const receipt = receipts.get(row.providerMessageId);
     if (!receipt) continue;
 
+    const conversationId = (row.payload as PushPayload).conversationId;
+
     if (receipt.status === "ok") {
       await prisma.messagePushDelivery.update({
         where: { id: row.id },
@@ -741,6 +814,7 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
         deviceId: row.deviceId,
         provider: "EXPO",
         status: "DELIVERED",
+        conversationId,
       });
       continue;
     }
@@ -758,6 +832,7 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
         deviceId: row.deviceId,
         provider: "EXPO",
         errorCode: errorString,
+        conversationId,
         tokenInvalidated: true,
       });
       continue;
@@ -773,6 +848,7 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
       provider: "EXPO",
       status: "FAILED",
       errorCode: errorString,
+      conversationId,
     });
   }
 }

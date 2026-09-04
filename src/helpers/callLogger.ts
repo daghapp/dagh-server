@@ -109,6 +109,7 @@ export function logMessagePushEnqueued(data: {
   messageId: string;
   userId: string;
   deviceCount: number;
+  conversationId?: string;
 }) {
   log("message.push_enqueued", data);
 }
@@ -118,6 +119,8 @@ export function logMessagePushSent(data: {
   deviceId?: string;
   provider?: string;
   providerMessageId?: string | null;
+  conversationId?: string;
+  attempt?: number;
 }) {
   log("message.push_sent", data);
 }
@@ -128,6 +131,8 @@ export function logMessagePushFailed(data: {
   provider?: string;
   errorCode: string;
   tokenInvalidated: boolean;
+  conversationId?: string;
+  attempt?: number;
 }) {
   log("message.push_failed", data);
 }
@@ -138,6 +143,7 @@ export function logMessagePushReceipt(data: {
   provider: string;
   status: string;
   errorCode?: string;
+  conversationId?: string;
 }) {
   log("message.push_receipt", data);
 }

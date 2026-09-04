@@ -28,6 +28,7 @@ export interface NewMessagePayload {
   senderName: string;
   senderAvatarUrl?: string;
   messageType: string;
+  previewBody: string;
   route: string;
   schemaVersion: string;
 }
@@ -192,6 +193,8 @@ export function messagePreviewBody(messageType: string, content?: string | null)
       return "Sent a photo";
     case "VIDEO":
       return "Sent a video";
+    case "DOCUMENT":
+      return "Sent a document";
     case "TEXT":
       return content ? sanitizeTextPreview(content) : "New message";
     default:
@@ -220,6 +223,7 @@ export function buildNewMessagePayload(
     senderName: sender.fullName,
     senderAvatarUrl: getPublicProfileImage(sender),
     messageType: message.type,
+    previewBody: messagePreviewBody(message.type, message.content),
     route: "/(connect)/chat/[id]",
     schemaVersion: "1",
   });
@@ -240,7 +244,7 @@ export function bodyForPayload(payload: PushPayload): string {
     return `${payload.callerName ?? "Someone"} is calling...`;
   }
   if (payload.type === "NEW_MESSAGE") {
-    return messagePreviewBody(payload.messageType, payload.content);
+    return payload.previewBody || messagePreviewBody(payload.messageType, payload.content);
   }
   switch (payload.status) {
     case "DECLINED":

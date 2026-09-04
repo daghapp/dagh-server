@@ -5,8 +5,7 @@ import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
 import { MessageType } from "../../../generated/prisma/client.js";
 import {
-  enqueueMessagePushDeliveries,
-  dispatchMessageDeliveries,
+  dispatchNotificationOutbox,
 } from "../../helpers/pushNotifications.js";
 
 let io: Server;
@@ -95,25 +94,32 @@ export const sendMessage = async (req: Request, res: Response) => {
         },
       });
 
+      await tx.notificationOutbox.create({
+        data: {
+          eventType: "MESSAGE_CREATED",
+          aggregateId: message.id,
+          recipientUserId: receiverId,
+          payload: {
+            messageId: message.id,
+            conversationId: conversation.id,
+            senderId,
+          },
+        },
+      });
+
       return { message, conversationId: conversation.id };
     });
 
-    const { message, conversationId } = result;
+    const { message } = result;
 
     if (io) {
       io.to(`user:${receiverId}`).emit("new_message", message);
       io.to(`user:${senderId}`).emit("message_sent", message);
     }
 
-    void enqueueMessagePushDeliveries(
-      message.id,
-      receiverId,
-      message.sender,
-      conversationId,
-      type,
-      content,
-    ).then(() => dispatchMessageDeliveries(message.id)).catch((error) => {
-      console.error("[push] message delivery error:", error);
+    // Best-effort immediate dispatch of the outbox
+    dispatchNotificationOutbox().catch(error => {
+      console.error("[outbox] fast dispatch error:", error);
     });
 
     return created(res, { ...message, notification: { status: "QUEUED" } });
@@ -197,25 +203,31 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
         },
       });
 
+      await tx.notificationOutbox.create({
+        data: {
+          eventType: "MESSAGE_CREATED",
+          aggregateId: message.id,
+          recipientUserId: receiverId,
+          payload: {
+            messageId: message.id,
+            conversationId: conversation.id,
+            senderId,
+          },
+        },
+      });
+
       return { message, conversationId: conversation.id };
     });
 
-    const { message, conversationId } = result;
+    const { message } = result;
 
     if (io) {
       io.to(`user:${receiverId}`).emit("new_message", message);
       io.to(`user:${senderId}`).emit("message_sent", message);
     }
 
-    void enqueueMessagePushDeliveries(
-      message.id,
-      receiverId,
-      message.sender,
-      conversationId,
-      "VOICE_NOTE",
-      previewText,
-    ).then(() => dispatchMessageDeliveries(message.id)).catch((error) => {
-      console.error("[push] voice note delivery error:", error);
+    dispatchNotificationOutbox().catch(error => {
+      console.error("[outbox] fast dispatch error:", error);
     });
 
     return created(res, { ...message, notification: { status: "QUEUED" } });

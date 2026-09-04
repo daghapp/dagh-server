@@ -5,6 +5,7 @@ import {
   fetchExpoPushReceipts,
   sendPendingMessagePushDeliveries,
   fetchMessageExpoPushReceipts,
+  dispatchNotificationOutbox,
 } from "../helpers/pushNotifications.js";
 
 /**
@@ -24,6 +25,7 @@ export const pushDeliveryJob = () => {
   cron.schedule("*/10 * * * * *", async () => {
     await withDistributedLock("push-delivery", 8000, async () => {
       await sendPendingPushDeliveries();
+      await dispatchNotificationOutbox();
       await sendPendingMessagePushDeliveries();
       await fetchExpoPushReceipts();
       await fetchMessageExpoPushReceipts();
