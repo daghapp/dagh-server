@@ -40,6 +40,7 @@ import { router as MembershipRoutes } from "./routes/membership.routes.js";
 import { router as DatingRoutes } from "./routes/dating.routes.js";
 import { router as GeoRoutes } from "./routes/geo.routes.js";
 import { router as DataPolicyRoutes } from "./routes/data-policy.routes.js";
+import { router as FaqRoutes } from "./routes/faq.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
@@ -211,6 +212,8 @@ app.use("/dating", DatingRoutes);
 app.use("/geo", GeoRoutes);
 // Data policy (public read + admin edit)
 app.use("/data-policy", DataPolicyRoutes);
+// FAQ (public read + admin CRUD)
+app.use("/faq", FaqRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({

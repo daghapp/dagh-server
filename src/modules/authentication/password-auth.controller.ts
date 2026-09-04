@@ -245,7 +245,9 @@ export class PasswordAuthController {
         return fail(res, 404, "User not found");
       }
 
-      if (user.accountStatus === "ACTIVE") {
+      // Only block re-verification for EMAIL_VERIFICATION — a PASSWORD_RESET
+      // OTP must be allowed for already-active users.
+      if (otpData.purpose === "EMAIL_VERIFICATION" && user.accountStatus === "ACTIVE") {
         return fail(res, 400, "Email already verified");
       }
 
@@ -285,7 +287,11 @@ export class PasswordAuthController {
         where: { id: otpRecord.id },
       });
 
-      return ok(res, null as never, "Email verified successfully");
+      const message =
+        otpData.purpose === "EMAIL_VERIFICATION"
+          ? "Email verified successfully"
+          : "OTP verified successfully";
+      return ok(res, null as never, message);
     } catch (error) {
       console.error("OTP verification error:", error);
       return fail(res, 500, "OTP verification failed");
