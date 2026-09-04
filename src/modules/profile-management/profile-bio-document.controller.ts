@@ -28,7 +28,11 @@ export async function postBioDocument(req: Request, res: Response) {
     });
 
     if (existingDoc && existingDoc.userId !== userId) {
-      return fail(res, 409, "This document number has already been used to verify another account.");
+      return fail(
+        res,
+        409,
+        "This document number has already been used to verify another account.",
+      );
     }
 
     const updated = await prisma.userProfile.update({

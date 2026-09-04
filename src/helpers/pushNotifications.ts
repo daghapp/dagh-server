@@ -229,7 +229,12 @@ export async function enqueueMessagePushDeliveries(
     enqueued++;
   }
 
-  logMessagePushEnqueued({ messageId, userId: recipientUserId, deviceCount: enqueued, conversationId });
+  logMessagePushEnqueued({
+    messageId,
+    userId: recipientUserId,
+    deviceCount: enqueued,
+    conversationId,
+  });
 }
 
 /**
@@ -248,7 +253,11 @@ export async function dispatchNotificationOutbox(): Promise<void> {
     processingOutbox.add(row.id);
     try {
       if (row.eventType === "MESSAGE_CREATED") {
-        const payload = row.payload as { messageId: string; conversationId: string; senderId: string };
+        const payload = row.payload as {
+          messageId: string;
+          conversationId: string;
+          senderId: string;
+        };
         const message = await prisma.message.findUnique({
           where: { id: payload.messageId },
           include: {
@@ -282,13 +291,15 @@ export async function dispatchNotificationOutbox(): Promise<void> {
       });
     } catch (error) {
       console.error("[outbox] failed to process row:", row.id, error);
-      await prisma.notificationOutbox.update({
-        where: { id: row.id },
-        data: {
-          status: row.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "RETRY_PENDING",
-          attempts: { increment: 1 },
-        },
-      }).catch(() => {});
+      await prisma.notificationOutbox
+        .update({
+          where: { id: row.id },
+          data: {
+            status: row.attempts + 1 >= MAX_ATTEMPTS ? "FAILED" : "RETRY_PENDING",
+            attempts: { increment: 1 },
+          },
+        })
+        .catch(() => {});
     } finally {
       processingOutbox.delete(row.id);
     }
@@ -522,7 +533,12 @@ async function invalidateToken(deviceId: string, provider: PushProvider): Promis
   await prisma.userDevice
     .updateMany({
       where: { id: deviceId, enabled: true },
-      data: { enabled: false, disabledAt: new Date(), failureCount: { increment: 1 }, ...tokenField },
+      data: {
+        enabled: false,
+        disabledAt: new Date(),
+        failureCount: { increment: 1 },
+        ...tokenField,
+      },
     })
     .catch((error) => {
       console.error("[push] invalidateToken error:", error);

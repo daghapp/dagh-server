@@ -4,9 +4,7 @@ import { Server } from "socket.io";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
 import { MessageType } from "../../../generated/prisma/client.js";
-import {
-  dispatchNotificationOutbox,
-} from "../../helpers/pushNotifications.js";
+import { dispatchNotificationOutbox } from "../../helpers/pushNotifications.js";
 
 let io: Server;
 
@@ -118,7 +116,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     }
 
     // Best-effort immediate dispatch of the outbox
-    dispatchNotificationOutbox().catch(error => {
+    dispatchNotificationOutbox().catch((error) => {
       console.error("[outbox] fast dispatch error:", error);
     });
 
@@ -226,7 +224,7 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
       io.to(`user:${senderId}`).emit("message_sent", message);
     }
 
-    dispatchNotificationOutbox().catch(error => {
+    dispatchNotificationOutbox().catch((error) => {
       console.error("[outbox] fast dispatch error:", error);
     });
 

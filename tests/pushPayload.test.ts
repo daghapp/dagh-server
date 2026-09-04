@@ -325,7 +325,11 @@ describe("buildExpoMessage for messages", () => {
   });
 
   it("still uses calls channel and ringtone for INCOMING_CALL", () => {
-    const callPayload: PushPayload = { type: "INCOMING_CALL", callType: "VOICE", callerName: "Ama" };
+    const callPayload: PushPayload = {
+      type: "INCOMING_CALL",
+      callType: "VOICE",
+      callerName: "Ama",
+    };
     const msg = buildExpoMessage("ExponentPushToken[y]", callPayload);
     expect(msg.channelId).toBe("calls");
     expect(msg.sound).toBe("call_ringtone.wav");

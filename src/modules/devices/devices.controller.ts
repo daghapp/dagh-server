@@ -136,7 +136,11 @@ export const updateNotificationPreferences = async (req: Request, res: Response)
       create: { userId, messagesEnabled },
     });
 
-    return ok(res, { messagesEnabled: preference.messagesEnabled }, "Notification preferences updated");
+    return ok(
+      res,
+      { messagesEnabled: preference.messagesEnabled },
+      "Notification preferences updated",
+    );
   } catch (error) {
     console.error("[Devices] updateNotificationPreferences error:", error);
     return fail(res, 500, "Failed to update notification preferences");

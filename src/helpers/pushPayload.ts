@@ -294,7 +294,10 @@ export function buildFcmMessage(
   notification?: { title: string; body: string };
   data: PushPayload;
   android: { priority: "high"; notification?: { channelId: string; sound: string } };
-  apns: { headers: { "apns-priority": string }; payload: { aps: { "content-available": number; alert?: { title: string; body: string } } } };
+  apns: {
+    headers: { "apns-priority": string };
+    payload: { aps: { "content-available": number; alert?: { title: string; body: string } } };
+  };
 } {
   const isMessage = payload.type === "NEW_MESSAGE";
 
