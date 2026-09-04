@@ -197,27 +197,31 @@ src/
 ├── server.ts                   # Express app setup, middleware, route mounting
 ├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts + 9 membership plans)
 ├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
-├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety, call state machine, call logger, push notifications
-├── jobs/                       # Cron jobs (pending payments, user cleanup)
-├── middleware/                  # Auth, admin, validation, Cloudinary upload, audio upload, Hubtel callback
+├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety, call state machine, call logger, push notifications, presence, livekit
+├── jobs/                       # Cron jobs (pending payments, user cleanup, call expiry, push delivery)
+├── middleware/                  # Auth, admin, validation, rate limiting, Cloudinary upload, audio upload, Hubtel callback
 ├── modules/
 │   ├── admin/                  # Admin console (dashboard, visa console, payments console)
 │   ├── authentication/         # Register, login, OAuth, password reset
 │   ├── common/                 # Image upload
+│   ├── data-policy/            # CMS-managed data policy (public read + admin CRUD)
 │   ├── dating/                 # Dating profiles, discovery, swiping, matches
+│   ├── devices/                # Device registration + notification preferences
+│   ├── faq/                    # FAQ CRUD (admin) + public read
+│   ├── geo/                    # Jurisdiction / geo-IP check
 │   ├── itinerary/              # Itinerary generation + payment
+│   ├── membership/             # Membership plans, subscriptions, priority support
 │   ├── messages/               # Messaging, voice notes, calls, block/report (REST + Socket.IO)
 │   ├── payment-management/     # Payment processing
 │   ├── profile-management/     # Profile CRUD, verification, ethnicity
-│   ├── membership/             # Membership plans, subscriptions, priority support
 │   ├── provider-management/    # Nearby hotels
 │   ├── tour-management/        # Tour CRUD, booking, admin
 │   └── visa-management/        # Visa-on-arrival requests + approval
-├── routes/                     # Express route definitions (21 files)
+├── routes/                     # Express route definitions (26 files)
 ├── services/                   # Business logic (membership, payment, matching)
 ├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
 ├── types/                      # TypeScript type augmentations (Express.User)
-├── validator/                  # Zod schemas (18 files)
+├── validator/                  # Zod schemas (24 files)
 └── views/                      # HTML/CSS for OAuth/payment callback pages
 ```
 
@@ -229,8 +233,9 @@ src/
 > endpoint with payloads and examples, `docs/admin-console-api.md` for the admin
 > console surface + frontend wiring patterns, `docs/admin-gateway-registration.md`
 > for the Admin Gateway registration flow, `docs/verification-flow.md` for
-> the identity-verification integration guide, and `docs/call-integration-guide.md`
-> for the voice/video calling frontend integration guide.
+> the identity-verification integration guide, `docs/call-integration-guide.md`
+> for the voice/video calling frontend integration guide, and
+> `docs/push-notifications.md` for the push notification architecture.
 
 All endpoints return responses in a standardized envelope:
 
@@ -711,6 +716,24 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 |--------|----------|------|-------------|
 | GET | `/providers/nearby-hotels` | Bearer | Find nearby hotels for itinerary |
 
+### Data Policy
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/data-policy` | Public | Get the current published data policy |
+| GET | `/data-policy/admin/policy` | Admin | Get the full data policy record for editing |
+| PUT | `/data-policy/admin/policy` | Admin | Update the data policy content (auto-increments version) |
+
+### FAQ
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/faq` | Public | Get all published FAQ items |
+| GET | `/faq/admin` | Admin | Get all FAQ items including unpublished |
+| POST | `/faq/admin` | Admin | Create a new FAQ item |
+| PUT | `/faq/admin/:id` | Admin | Update an FAQ item |
+| DELETE | `/faq/admin/:id` | Admin | Delete an FAQ item |
+
 ### Admin — Dashboard
 
 | Method | Endpoint | Auth | Description |
@@ -831,6 +854,8 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `UserDevice` | Device push notification tokens (FCM, Expo, APNs, VoIP), upserted per installation with `lastSeenAt`, `enabled` |
 | `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
 | `ServiceRequest` / `AuditLog` | Provider service tracking |
+| `DataPolicy` | CMS-managed data policy document (keyed, versioned) |
+| `FaqItem` | FAQ entries with optional category and sort order |
 
 See `prisma/schema.prisma` for the full schema with all fields and relations.
 
@@ -864,8 +889,8 @@ npm run test:watch     # Run tests in watch mode
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 130+ documented
-operations across 22 route files (source of truth: JSDoc annotations in
+Swagger UI available at `/api-docs` when the server is running. 140+ documented
+operations across 26 route files (source of truth: JSDoc annotations in
 `src/routes/*.ts` — update the annotation, not the spec).
 
 ---
