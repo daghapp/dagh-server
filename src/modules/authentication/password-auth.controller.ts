@@ -282,10 +282,15 @@ export class PasswordAuthController {
         });
       }
 
-      // Delete used OTP (deleteMany avoids P2025 race on concurrent submissions)
-      await prisma.otp.deleteMany({
-        where: { id: otpRecord.id },
-      });
+      // Only consume the OTP here for EMAIL_VERIFICATION. A PASSWORD_RESET OTP
+      // must remain valid so the follow-up /auth/reset-password call (which
+      // re-validates the same code) can still find and consume it.
+      if (otpData.purpose === "EMAIL_VERIFICATION") {
+        // deleteMany avoids P2025 race on concurrent submissions
+        await prisma.otp.deleteMany({
+          where: { id: otpRecord.id },
+        });
+      }
 
       const message =
         otpData.purpose === "EMAIL_VERIFICATION"
