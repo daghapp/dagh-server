@@ -39,6 +39,7 @@ import { router as MembershipRoutes } from "./routes/membership.routes.js";
 // Dating module
 import { router as DatingRoutes } from "./routes/dating.routes.js";
 import { router as GeoRoutes } from "./routes/geo.routes.js";
+import { router as DataPolicyRoutes } from "./routes/data-policy.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
@@ -208,6 +209,8 @@ app.use("/membership", MembershipRoutes);
 app.use("/dating", DatingRoutes);
 // Jurisdiction / geo-IP check
 app.use("/geo", GeoRoutes);
+// Data policy (public read + admin edit)
+app.use("/data-policy", DataPolicyRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({

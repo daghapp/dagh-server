@@ -1453,3 +1453,16 @@ model NotificationOutbox {
   @@index([status, availableAt])
   @@map("notification_outbox")
 }
+
+model DataPolicy {
+  id            String   @id @default(uuid())
+  key           String   @unique // e.g. "data-policy" — single active policy row
+  title         String
+  content       String   @db.Text // long-form policy content
+  version       Int      @default(1)
+  publishedAt   DateTime? // when the policy was last published/live
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("data_policies")
+}
