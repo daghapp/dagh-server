@@ -51,6 +51,7 @@ import { setIoInstance } from "./modules/messages/messages.controller.js";
 import { setIoInstance as setCallIoInstance } from "./modules/messages/calls.controller.js";
 import { setIoInstance as setDatingIoInstance } from "./modules/dating/swipe.controller.js";
 import { initFirebase } from "./config/firebase.js";
+import { initApns } from "./config/apns.js";
 import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
 
 dotenv.config();
@@ -284,6 +285,8 @@ setDatingIoInstance(io);
 
 // Initialize Firebase Admin for push notifications (no-op when not configured)
 initFirebase();
+// Initialize APNs provider for iOS VoIP call pushes (no-op when not configured)
+initApns();
 // Durable missed-call expiry worker (runs every 10s)
 setCallExpiryIo(io);
 callExpiryJob();

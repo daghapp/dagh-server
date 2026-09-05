@@ -38,9 +38,10 @@ export interface DevicePushTarget {
   platform: string;
   fcmToken: string | null;
   expoPushToken: string | null;
+  voipPushToken?: string | null;
 }
 
-export type PushProvider = "FCM" | "EXPO";
+export type PushProvider = "FCM" | "EXPO" | "VOIP";
 
 export type PushPayload = Record<string, string>;
 
@@ -73,6 +74,10 @@ const INVALID_TOKEN_MARKERS = [
   "messaging/registration-token-not-registered",
   "invalidtoken",
   "apnstokeninvalid",
+  "baddevicetoken",
+  "missingdevicetoken",
+  "unregistered",
+  "devicetokennotfortopic",
 ];
 
 const TRANSIENT_MARKERS = [
@@ -83,8 +88,11 @@ const TRANSIENT_MARKERS = [
   "serviceunavailable",
   "server-unavailable",
   "internal-error",
+  "internalservererror",
   "message-rate-exceeded",
   "toomanyrequests",
+  "shutdown",
+  "expiredprovidertoken",
   "providererror",
   "429",
   "500",
@@ -110,15 +118,25 @@ export function isTransientProviderError(error: unknown): boolean {
   return TRANSIENT_MARKERS.some((marker) => str.includes(marker));
 }
 
+export function isCallPayload(payload: PushPayload): boolean {
+  return payload.type === "INCOMING_CALL" || payload.type === "CALL_STATE_CHANGED";
+}
+
 /**
  * Decide which provider/token to use for a device.
- * Android prefers the native FCM token (reliable background delivery); anything
- * else falls back to the Expo token. Returns null when the device has no usable
- * token for push delivery.
+ * iOS devices that registered a PushKit VoIP token get call payloads delivered
+ * as an APNs VoIP push so the OS can launch the terminated app and present the
+ * call; on Android the native FCM token is preferred (reliable background
+ * delivery); anything else falls back to the Expo token. Returns null when the
+ * device has no usable token for push delivery.
  */
 export function providerForDevice(
   device: DevicePushTarget,
+  payload?: PushPayload,
 ): { provider: PushProvider; token: string } | null {
+  if (payload && isCallPayload(payload) && device.platform === "IOS" && device.voipPushToken) {
+    return { provider: "VOIP", token: device.voipPushToken };
+  }
   if (device.platform === "ANDROID" && device.fcmToken) {
     return { provider: "FCM", token: device.fcmToken };
   }
@@ -222,6 +240,7 @@ export function buildNewMessagePayload(
     senderId: sender.id,
     senderName: sender.fullName,
     senderAvatarUrl: getPublicProfileImage(sender),
+    senderImageUrl: getPublicProfileImage(sender),
     messageType: message.type,
     previewBody: messagePreviewBody(message.type, message.content),
     route: "/(connect)/chat/[id]",
@@ -265,9 +284,13 @@ export function bodyForPayload(payload: PushPayload): string {
 /**
  * Build an Expo push message. Uses a dedicated `messages` channel for chat
  * messages (default sound) and the `calls` channel with a custom ringtone
- * for incoming calls.
+ * for incoming calls. `ttlSeconds` bounds how long the provider may deliver.
  */
-export function buildExpoMessage(to: string, payload: PushPayload): ExpoPushMessage {
+export function buildExpoMessage(
+  to: string,
+  payload: PushPayload,
+  ttlSeconds?: number,
+): ExpoPushMessage {
   const isCall = payload.type === "INCOMING_CALL" || payload.type === "CALL_STATE_CHANGED";
   return {
     to,
@@ -276,42 +299,78 @@ export function buildExpoMessage(to: string, payload: PushPayload): ExpoPushMess
     sound: isCall ? "call_ringtone.wav" : "default",
     priority: "high",
     channelId: isCall ? "calls" : "messages",
+    ttl: ttlSeconds,
     data: payload,
   };
 }
 
 /**
- * Build a Firebase Cloud Messaging message. For calls, sends data-only to wake
- * the app for custom call-screen handling. For messages, sends a visible
- * notification with data payload so the notification displays reliably even
- * when the app is terminated.
+ * Build a Firebase Cloud Messaging message.
+ *
+ * - `INCOMING_CALL` — visible alert (title/body) on the `calls` channel plus
+ *   routing `data`, so a backgrounded/killed app shows a ring without needing
+ *   JavaScript. `ttlMs` (defaults to the remaining ring window) bounds delivery
+ *   to the ringing period.
+ * - `CALL_STATE_CHANGED` — silent data-only cleanup so only the app handler
+ *   dismisses ringing state.
+ * - `NEW_MESSAGE` — visible notification with data payload.
  */
 export function buildFcmMessage(
   token: string,
   payload: PushPayload,
+  ttlMs?: number,
 ): {
   token: string;
   notification?: { title: string; body: string };
   data: PushPayload;
-  android: { priority: "high"; notification?: { channelId: string; sound?: string } };
+  android: {
+    priority: "high";
+    ttl?: number;
+    notification?: { channelId: string; sound?: string; tag?: string };
+  };
   apns: {
     headers: { "apns-priority": string };
     payload: { aps: { "content-available": number; alert?: { title: string; body: string } } };
   };
 } {
-  const isCall = payload.type === "INCOMING_CALL" || payload.type === "CALL_STATE_CHANGED";
+  const isIncomingCall = payload.type === "INCOMING_CALL";
+  const isCallStateChanged = payload.type === "CALL_STATE_CHANGED";
+  const ttl = ttlMs !== undefined ? { ttl: ttlMs } : {};
 
-  if (isCall) {
+  if (isCallStateChanged) {
     return {
       token,
-      notification: {
-        title: titleForPayload(payload),
-        body: bodyForPayload(payload),
-      },
       data: payload,
+      android: { priority: "high", ...ttl },
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: {
+          aps: { "content-available": 1 },
+        },
+      },
+    };
+  }
+
+  const visible: { notification: { title: string; body: string }; data: PushPayload } = {
+    notification: {
+      title: titleForPayload(payload),
+      body: bodyForPayload(payload),
+    },
+    data: payload,
+  };
+
+  if (isIncomingCall) {
+    return {
+      token,
+      ...visible,
       android: {
         priority: "high",
-        notification: { channelId: "calls" },
+        ...ttl,
+        notification: {
+          channelId: "calls",
+          sound: "call_ringtone",
+          ...(payload.callId ? { tag: `incoming-call-${payload.callId}` } : {}),
+        },
       },
       apns: {
         headers: { "apns-priority": "10" },
@@ -327,13 +386,10 @@ export function buildFcmMessage(
 
   return {
     token,
-    notification: {
-      title: titleForPayload(payload),
-      body: bodyForPayload(payload),
-    },
-    data: payload,
+    ...visible,
     android: {
       priority: "high",
+      ...ttl,
       notification: { channelId: "messages", sound: "default" },
     },
     apns: {
@@ -344,6 +400,31 @@ export function buildFcmMessage(
           alert: { title: titleForPayload(payload), body: bodyForPayload(payload) },
         },
       },
+    },
+  };
+}
+
+export interface VoipPushMessage {
+  to: string;
+  pushType: "voip";
+  topic: string;
+  body: { aps: { "content-available": number }; [key: string]: unknown };
+}
+
+/**
+ * Build a PushKit VoIP push. Delivered directly to the device's APNs VoIP
+ * token so the OS launches the app even when it is terminated. `topic` must be
+ * the app bundle ID suffixed with `.voip` (PushKit requirement). The call data
+ * rides at the top level of the JSON body for `didReceiveIncomingPush`.
+ */
+export function buildVoipMessage(to: string, payload: PushPayload, topic: string): VoipPushMessage {
+  return {
+    to,
+    pushType: "voip",
+    topic,
+    body: {
+      aps: { "content-available": 1 },
+      ...payload,
     },
   };
 }

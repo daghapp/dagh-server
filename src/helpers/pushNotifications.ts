@@ -7,6 +7,7 @@ import {
   buildNewMessagePayload,
   buildExpoMessage,
   buildFcmMessage,
+  buildVoipMessage,
   providerForDevice,
   isInvalidTokenError,
   isTransientProviderError,
@@ -15,6 +16,17 @@ import {
   type PushPayload,
   type PushProvider,
 } from "./pushPayload.js";
+import { sendVoip, isApnsConfigured, getApnTopic } from "../config/apns.js";
+import {
+  logPushEventCreated,
+  logPushTargetSelected,
+  logPushSendAttempt,
+  logPushProviderAccepted,
+  logPushProviderError,
+  logPushReceiptChecked,
+  sanitizePayload,
+  tokenSuffix,
+} from "./pushDiagnostics.js";
 import {
   logCallPushEnqueued,
   logCallPushSent,
@@ -94,7 +106,16 @@ async function enqueueForUser(call: Call, userId: string, payload: PushPayload):
 
   let enqueued = 0;
   for (const device of devices) {
-    const target = providerForDevice(device);
+    const target = providerForDevice(device, payload);
+    logPushTargetSelected({
+      correlationId: call.id,
+      deviceId: device.id,
+      platform: device.platform,
+      provider: target?.provider,
+      tokenSuffix: target ? tokenSuffix(target.token) : null,
+      skipReason: target ? undefined : "no_usable_token",
+      eventType: payload.type,
+    });
     if (!target) continue;
     await upsertDelivery({
       callId: call.id,
@@ -117,6 +138,14 @@ async function enqueueForUser(call: Call, userId: string, payload: PushPayload):
  */
 export async function enqueueIncomingCallPush(call: Call, caller: CallerProfile): Promise<void> {
   const payload = buildIncomingCallPayload(call, caller);
+  logPushEventCreated({
+    eventType: "INCOMING_CALL",
+    eventId: call.id,
+    callId: call.id,
+    conversationId: call.conversationId ?? undefined,
+    recipientUserId: call.receiverId,
+    createdAt: new Date().toISOString(),
+  });
   await enqueueForUser(call, call.receiverId, payload);
   void dispatchCallDeliveries(call.id).catch((error) => {
     console.error("[push] dispatchCallDeliveries error:", error);
@@ -129,6 +158,23 @@ export async function enqueueIncomingCallPush(call: Call, caller: CallerProfile)
  */
 export async function enqueueCallStatePush(call: Call): Promise<void> {
   const payload = buildCallStatePayload(call);
+  const createdAt = new Date().toISOString();
+  logPushEventCreated({
+    eventType: "CALL_STATE_CHANGED",
+    eventId: call.id,
+    callId: call.id,
+    conversationId: call.conversationId ?? undefined,
+    recipientUserId: call.callerId,
+    createdAt,
+  });
+  logPushEventCreated({
+    eventType: "CALL_STATE_CHANGED",
+    eventId: call.id,
+    callId: call.id,
+    conversationId: call.conversationId ?? undefined,
+    recipientUserId: call.receiverId,
+    createdAt,
+  });
   await enqueueForUser(call, call.callerId, payload);
   await enqueueForUser(call, call.receiverId, payload);
   void dispatchCallDeliveries(call.id).catch((error) => {
@@ -195,6 +241,14 @@ export async function enqueueMessagePushDeliveries(
   const preference = await prisma.userNotificationPreference.findUnique({
     where: { userId: recipientUserId },
   });
+  logPushEventCreated({
+    eventType: "NEW_MESSAGE",
+    eventId: messageId,
+    messageId,
+    conversationId,
+    recipientUserId,
+    createdAt: new Date().toISOString(),
+  });
   if (preference && !preference.messagesEnabled) return;
 
   const devices = await prisma.userDevice.findMany({
@@ -207,16 +261,33 @@ export async function enqueueMessagePushDeliveries(
   let enqueued = 0;
 
   for (const device of devices) {
-    const target = providerForDevice(device);
-    if (!target) continue;
-    if (seenTokens.has(target.token)) continue;
-    seenTokens.add(target.token);
-
     const payload = buildNewMessagePayload(
       { id: messageId, type: messageType, content },
       sender,
       conversationId,
     );
+    const target = providerForDevice(device, payload);
+    logPushTargetSelected({
+      correlationId: messageId,
+      deviceId: device.id,
+      platform: device.platform,
+      provider: target?.provider,
+      tokenSuffix: target ? tokenSuffix(target.token) : null,
+      skipReason: target ? undefined : "no_usable_token",
+      eventType: payload.type,
+    });
+    if (!target) continue;
+    if (seenTokens.has(target.token)) {
+      logPushTargetSelected({
+        correlationId: messageId,
+        deviceId: device.id,
+        platform: device.platform,
+        skipReason: "duplicate_token",
+        eventType: payload.type,
+      });
+      continue;
+    }
+    seenTokens.add(target.token);
 
     await upsertMessageDelivery({
       messageId,
@@ -322,7 +393,12 @@ async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
     return;
   }
 
-  const result = await sendToDevice(row.provider, row.token, row.payload as PushPayload);
+  const result = await sendToDevice(
+    row.provider,
+    row.token,
+    row.payload as PushPayload,
+    row.attemptCount + 1,
+  );
   const now = new Date();
 
   if (!result.errorCode) {
@@ -459,7 +535,101 @@ async function sendToDevice(
   provider: PushProvider,
   token: string,
   payload: PushPayload,
+  attempt = 1,
 ): Promise<SendResult> {
+  // Incoming-call alerts must not outlive the ringing window: expire the
+  // delivery once the call is terminal and bound provider TTL to what remains.
+  const expiresAtMs =
+    payload.type === "INCOMING_CALL" && payload.expiresAt
+      ? new Date(payload.expiresAt).getTime()
+      : undefined;
+  const remainingRingMs =
+    expiresAtMs !== undefined ? Math.max(0, expiresAtMs - Date.now()) : undefined;
+
+  if (payload.type === "INCOMING_CALL" && remainingRingMs !== undefined && remainingRingMs <= 0) {
+    return {
+      providerMessageId: null,
+      errorCode: "CALL_EXPIRED",
+      transient: false,
+      invalidToken: false,
+    };
+  }
+
+  const ttlMs = remainingRingMs !== undefined ? Math.min(30_000, remainingRingMs) : undefined;
+  const ttlSeconds = ttlMs !== undefined ? Math.max(1, Math.ceil(ttlMs / 1000)) : undefined;
+
+  logPushSendAttempt({
+    correlationId: payload.callId ?? payload.messageId ?? "unknown",
+    deviceId: null,
+    provider,
+    eventType: payload.type,
+    attempt,
+    tokenSuffix: tokenSuffix(token),
+    ttlMs,
+    payload: sanitizePayload(payload),
+  });
+
+  if (provider === "VOIP") {
+    if (!isApnsConfigured()) {
+      return {
+        providerMessageId: null,
+        errorCode: "APNS_NOT_CONFIGURED",
+        transient: true,
+        invalidToken: false,
+      };
+    }
+
+    const message = buildVoipMessage(token, payload, getApnTopic());
+    let response;
+    try {
+      response = await sendVoip(message);
+    } catch (error) {
+      response = {
+        statusCode: null,
+        body: (error as { message?: string })?.message ?? String(error),
+      };
+    }
+
+    if (response.statusCode === 200) {
+      logPushProviderAccepted({
+        correlationId: payload.callId ?? payload.messageId ?? "unknown",
+        deviceId: null,
+        provider,
+        providerMessageId: response.apnsId ?? null,
+        eventType: payload.type,
+      });
+      return {
+        providerMessageId: response.apnsId ?? null,
+        errorCode: null,
+        transient: false,
+        invalidToken: false,
+      };
+    }
+
+    const errorCode =
+      response.statusCode === null
+        ? `APNs network: ${response.body}`
+        : `APNs ${response.statusCode}: ${response.body}`;
+    const transient = isTransientProviderError(errorCode);
+    const invalidToken = isInvalidTokenError(errorCode);
+    logPushProviderError({
+      correlationId: payload.callId ?? payload.messageId ?? "unknown",
+      deviceId: null,
+      provider,
+      eventType: payload.type,
+      errorCode,
+      attempt,
+      retry: transient && attempt < MAX_ATTEMPTS,
+      tokenInvalidated: invalidToken,
+    });
+    return {
+      providerMessageId: null,
+      errorCode,
+      transient,
+      invalidToken,
+    };
+  }
+
   if (provider === "FCM") {
     const messaging = getFirebaseMessaging();
     if (!messaging) {
@@ -472,7 +642,16 @@ async function sendToDevice(
     }
 
     try {
-      const messageId = await messaging.send(buildFcmMessage(token, payload));
+      const startedAt = Date.now();
+      const messageId = await messaging.send(buildFcmMessage(token, payload, ttlMs));
+      logPushProviderAccepted({
+        correlationId: payload.callId ?? payload.messageId ?? "unknown",
+        deviceId: null,
+        provider,
+        providerMessageId: messageId,
+        eventType: payload.type,
+        latencyMs: Date.now() - startedAt,
+      });
       return {
         providerMessageId: messageId,
         errorCode: null,
@@ -484,28 +663,63 @@ async function sendToDevice(
         (error as { code?: string })?.code ||
         (error as { message?: string })?.message ||
         String(error);
+      const transient = isTransientProviderError(error);
+      const invalidToken = isInvalidTokenError(error);
+      logPushProviderError({
+        correlationId: payload.callId ?? payload.messageId ?? "unknown",
+        deviceId: null,
+        provider,
+        eventType: payload.type,
+        errorCode: code,
+        attempt,
+        retry: transient && attempt < MAX_ATTEMPTS,
+        tokenInvalidated: invalidToken,
+      });
       return {
         providerMessageId: null,
         errorCode: code,
-        transient: isTransientProviderError(error),
-        invalidToken: isInvalidTokenError(error),
+        transient,
+        invalidToken,
       };
     }
   }
 
   try {
-    const message = buildExpoMessage(token, payload);
+    const message = buildExpoMessage(token, payload, ttlSeconds);
     const [ticket] = await expo.sendPushNotificationsAsync([message]);
     if (ticket && ticket.status === "error") {
+      const errorCode = [
+        ticket.message,
+        ticket.details?.error && `ExpoError:${ticket.details.error}`,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      const transient = isTransientProviderError(ticket);
+      const invalidToken = isInvalidTokenError(ticket);
+      logPushProviderError({
+        correlationId: payload.callId ?? payload.messageId ?? "unknown",
+        deviceId: null,
+        provider,
+        eventType: payload.type,
+        errorCode,
+        attempt,
+        retry: transient && attempt < MAX_ATTEMPTS,
+        tokenInvalidated: invalidToken,
+      });
       return {
         providerMessageId: null,
-        errorCode: [ticket.message, ticket.details?.error && `ExpoError:${ticket.details.error}`]
-          .filter(Boolean)
-          .join(" | "),
-        transient: isTransientProviderError(ticket),
-        invalidToken: isInvalidTokenError(ticket),
+        errorCode,
+        transient,
+        invalidToken,
       };
     }
+    logPushProviderAccepted({
+      correlationId: payload.callId ?? payload.messageId ?? "unknown",
+      deviceId: null,
+      provider,
+      providerMessageId: ticket?.id ?? null,
+      eventType: payload.type,
+    });
     return {
       providerMessageId: ticket?.id ?? null,
       errorCode: null,
@@ -513,11 +727,24 @@ async function sendToDevice(
       invalidToken: false,
     };
   } catch (error) {
+    const errorCode = (error as { message?: string })?.message || String(error);
+    const transient = isTransientProviderError(error);
+    const invalidToken = isInvalidTokenError(error);
+    logPushProviderError({
+      correlationId: payload.callId ?? payload.messageId ?? "unknown",
+      deviceId: null,
+      provider,
+      eventType: payload.type,
+      errorCode,
+      attempt,
+      retry: transient && attempt < MAX_ATTEMPTS,
+      tokenInvalidated: invalidToken,
+    });
     return {
       providerMessageId: null,
-      errorCode: (error as { message?: string })?.message || String(error),
-      transient: isTransientProviderError(error),
-      invalidToken: isInvalidTokenError(error),
+      errorCode,
+      transient,
+      invalidToken,
     };
   }
 }
@@ -529,7 +756,12 @@ async function sendToDevice(
  * many times this installation's tokens have been rejected.
  */
 async function invalidateToken(deviceId: string, provider: PushProvider): Promise<void> {
-  const tokenField = provider === "FCM" ? { fcmToken: null } : { expoPushToken: null };
+  const tokenField =
+    provider === "FCM"
+      ? { fcmToken: null }
+      : provider === "VOIP"
+        ? { voipPushToken: null }
+        : { expoPushToken: null };
   await prisma.userDevice
     .updateMany({
       where: { id: deviceId, enabled: true },
@@ -556,7 +788,12 @@ async function sendDeliveryRow(row: CallPushDelivery): Promise<void> {
     return;
   }
 
-  const result = await sendToDevice(row.provider, row.token, row.payload as PushPayload);
+  const result = await sendToDevice(
+    row.provider,
+    row.token,
+    row.payload as PushPayload,
+    row.attemptCount + 1,
+  );
   const now = new Date();
 
   if (!result.errorCode) {
@@ -735,6 +972,12 @@ export async function fetchExpoPushReceipts(): Promise<void> {
         provider: "EXPO",
         status: "DELIVERED",
       });
+      logPushReceiptChecked({
+        correlationId: row.callId,
+        deviceId: row.deviceId,
+        provider: "EXPO",
+        status: "DELIVERED",
+      });
       continue;
     }
 
@@ -753,6 +996,13 @@ export async function fetchExpoPushReceipts(): Promise<void> {
         errorCode: errorString,
         tokenInvalidated: true,
       });
+      logPushReceiptChecked({
+        correlationId: row.callId,
+        deviceId: row.deviceId,
+        provider: "EXPO",
+        status: "FAILED",
+        errorCode: errorString,
+      });
       continue;
     }
 
@@ -762,6 +1012,13 @@ export async function fetchExpoPushReceipts(): Promise<void> {
     });
     logCallPushReceipt({
       callId: row.callId,
+      deviceId: row.deviceId,
+      provider: "EXPO",
+      status: "FAILED",
+      errorCode: errorString,
+    });
+    logPushReceiptChecked({
+      correlationId: row.callId,
       deviceId: row.deviceId,
       provider: "EXPO",
       status: "FAILED",
@@ -832,6 +1089,12 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
         status: "DELIVERED",
         conversationId,
       });
+      logPushReceiptChecked({
+        correlationId: row.messageId,
+        deviceId: row.deviceId,
+        provider: "EXPO",
+        status: "DELIVERED",
+      });
       continue;
     }
 
@@ -851,6 +1114,13 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
         conversationId,
         tokenInvalidated: true,
       });
+      logPushReceiptChecked({
+        correlationId: row.messageId,
+        deviceId: row.deviceId,
+        provider: "EXPO",
+        status: "FAILED",
+        errorCode: errorString,
+      });
       continue;
     }
 
@@ -865,6 +1135,13 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
       status: "FAILED",
       errorCode: errorString,
       conversationId,
+    });
+    logPushReceiptChecked({
+      correlationId: row.messageId,
+      deviceId: row.deviceId,
+      provider: "EXPO",
+      status: "FAILED",
+      errorCode: errorString,
     });
   }
 }

@@ -113,8 +113,8 @@ async function getPushToken(): Promise<{ expoToken?: string; fcmToken?: string; 
 
   if (Platform.OS === "android") {
     // Installed APK (production or EAS dev client): native FCM device token.
-    // The server uses this for a high-priority data-only message so background
-    // delivery works.
+    // The server sends a visible high-priority notification for incoming calls
+    // and data-only for state changes, so background delivery works without JS.
     const token = await Notifications.getDevicePushTokenAsync();
     return { fcmToken: token.data };
   }
@@ -597,11 +597,11 @@ All notification metadata lives **inside `data`**, never only in the visible tit
 
 ### Delivery channels
 
-- **Android (installed APK):** the server sends a **high-priority FCM data-only message** (`data` + `android.priority: "high"`, no `notification` block) so it wakes the app in the background. The app is responsible for building a call-screen notification from `data` using your calls channel (see [Native Platform Integration](#native-platform-integration)).
+- **Android (installed APK):** for `INCOMING_CALL` the server sends a **visible high-priority FCM notification** — `data` + `notification` + `android.priority: "high"` + `android.notification { channelId: "calls", sound: "call_ringtone", tag: "incoming-call-<callId>" }` — so the ring displays even if the app is backgrounded/killed and JavaScript never wakes. `CALL_STATE_CHANGED` is **data-only** (high priority, no `notification` block) so only the app handler dismisses ringing state. Delivery TTL is bounded to `min(30000ms, remaining ring time)` and a delivery is skipped entirely once `expiresAt` has passed, so incoming-call alerts never outlive the ringing window.
 - **iOS + Android-in-Expo-Go:** an Expo push message with `channelId: "calls"`, `priority: "high"`, and `sound: "call_ringtone.wav"`.
-- **True iOS lock-screen calling:** delivered as an APNs VoIP push via PushKit instead (see [Native Platform Integration](#native-platform-integration)).
+- **True iOS lock-screen calling:** the server delivers an **APNs VoIP push (PushKit)** directly to the device's registered `voipPushToken` over HTTP/2 — no third-party provider involved. The OS launches the app even when terminated; the app then reports the incoming call to CallKit. The push body carries the full `INCOMING_CALL` / `CALL_STATE_CHANGED` payload at the top level (see [Native Platform Integration](#native-platform-integration)). Requires the APNs key variables in `.env` (`APPLE_APNS_KEY_ID`, `APPLE_APNS_TEAM_ID`, `APPLE_BUNDLE_ID`, `APPLE_APNS_P8_KEY`).
 
-The backend records a delivery row per (call, device, provider), processes Expo delivery receipts, retries transient failures with backoff, and removes tokens the provider flags as invalid (`DeviceNotRegistered`). A successful HTTP request to Expo only means the message was accepted — the receipt determines whether it reached APNs/FCM.
+The backend records a delivery row per (call, device, provider), processes Expo delivery receipts, retries transient failures with backoff, and removes tokens the provider flags as invalid (`DeviceNotRegistered` / APNs `BadDeviceToken` / `Unregistered`). A successful HTTP request to Expo only means the message was accepted — the receipt determines whether it reached APNs/FCM. APNs VoIP pushes are synchronous (HTTP status 200 = delivered).
 
 ---
 
@@ -815,7 +815,7 @@ VoipPushNotification.addEventListener("notification", (notification) => {
 Requires a **native build** (not Expo Go). Use `expo-module` or expo notifications config plugin.
 
 **Flow:**
-1. Receive FCM high-priority data message
+1. Receive the FCM high-priority notification (visible `INCOMING_CALL` alert + `data`; `CALL_STATE_CHANGED` arrives data-only)
 2. Create high-importance notification channel for calls
 3. Use `CallStyle` notification (Android 12+)
 4. Set full-screen intent for lock-screen behavior
@@ -858,14 +858,16 @@ Notifications.setNotificationHandler({
 });
 ```
 
-> **Background data messages:** because the server sends a **data-only** FCM
-> message on Android (no visible `notification` payload), a killed/backgrounded
-> app must build the call-screen notification itself from `data`. With
-> `expo-notifications`, configure a headless background task
-> (`expo-notifications.handleBackgroundNotificationAsync`) or a native
-> `onBackgroundMessage` handler that constructs a high-importance "calls"
-> notification (with `call_ringtone.wav` and a full-screen intent) from the
-> incoming payload.
+> **Foreground vs background handling:** the server already builds the **visible
+> `INCOMING_CALL` FCM notification** (with `notification` + `calls` channel +
+> `call_ringtone` + full-screen intent via channel importance) so the ring shows
+> even when the app is backgrounded/killed. On Android, `handleNotification`
+> (foreground) can drive the in-app call screen from `data` and call
+> `Notifications.setFullScreenIntent`-style behavior via the calls channel.
+> `CALL_STATE_CHANGED` is **data-only**, so a killed app will not wake on state
+> changes — dismissals rely on the socket while the app is running; the OS
+> removes the incoming-call notification automatically once the call window
+> (TTL) expires.
 
 ---
 
@@ -946,7 +948,7 @@ class CallError extends Error {
 
 ### Push Notifications
 - [ ] FCM delivery works on Android (installed APK)
-- [ ] FCM data-only message wakes a backgrounded/terminated app and shows a call-screen notification
+- [ ] FCM visible incoming-call notification rings on a backgrounded/terminated app (installed APK) and the TTL-bounded alert disappears after the ring window
 - [ ] Expo push works on iOS
 - [ ] Incoming-call push goes to every registered **receiver** device, never the caller's
 - [ ] `CALL_STATE_CHANGED` push arrives on both devices for DECLINED / CANCELLED / MISSED / ENDED / FAILED and dismisses the ringing UI
@@ -965,7 +967,7 @@ LIVEKIT_URL=wss://your-instance.livekit.cloud
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 
-# Firebase (FCM for Android data-only messages)
+# Firebase (FCM for Android: visible call alerts + data)
 FIREBASE_PROJECT_ID=...
 FIREBASE_PRIVATE_KEY=...
 FIREBASE_CLIENT_EMAIL=...

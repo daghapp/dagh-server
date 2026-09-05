@@ -585,6 +585,7 @@ model Call {
 enum PushProvider {
   FCM
   EXPO
+  VOIP
 }
 
 enum PushDeliveryStatus {

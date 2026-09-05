@@ -20,7 +20,8 @@ The server-side implementation for WhatsApp-style voice and video calling is **c
 | Secure LiveKit token generation | Deployed |
 | Device registration API (upsert per installation, Expo/FCM/APNs/VoIP tokens, `lastSeenAt` refresh) | Deployed |
 | Durable push outbox + delivery worker (every 10s) | Deployed |
-| Push notification delivery (FCM high-priority data-only + Expo within-push-group) | Deployed |
+| Push notification delivery (FCM visible calls + Expo within-push-group) | Deployed |
+| iOS PushKit VoIP call pushes via direct APNs (HTTP/2 + JWT) — rings terminated apps | Deployed |
 | Expo receipt processing (`DELIVERED`/`FAILED`, bounded backoff, token invalidation) | Deployed |
 | Terminal-state change pushes (`CALL_STATE_CHANGED` to both participants) | Deployed |
 | Disable devices on logout and on provider rejection | Deployed |
@@ -37,7 +38,7 @@ The server-side implementation for WhatsApp-style voice and video calling is **c
 - Ensures only one active call per user at a time (checked inside the creation transaction)
 - Atomically transitions call states (compare-and-set `RINGING`/`ANSWERED` only; no race conditions)
 - Enqueues a durable `INCOMING_CALL` outbox row per receiver device **before** responding, and delivers it in the background (works even if the call is answered immediately)
-- Sends high-priority FCM data-only pushes to all recipient devices on Android and same-group Expo pushes elsewhere; never pushes to the caller's devices
+- Sends high-priority FCM pushes to all recipient devices on Android — visible alert for `INCOMING_CALL`, data-only for `CALL_STATE_CHANGED` — and same-group Expo pushes elsewhere; never pushes to the caller's devices
 - Verifies delivery via Expo receipts; retries transient failures with bounded exponential backoff; disables and removes tokens the provider rejects (`DeviceNotRegistered`)
 - Automatically marks unanswered calls as missed after 40 seconds
 - Pushes `CALL_STATE_CHANGED` on DECLINED / CANCELLED / MISSED / ENDED / FAILED so the app always dismisses stale ringing screens

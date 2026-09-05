@@ -388,7 +388,7 @@ non-blocking `notification: { status: "QUEUED" }` field. Delivery is asynchronou
   notification plus a `data` payload is sent so it displays even when the app is
   terminated.
 - `data` payload (`type: "NEW_MESSAGE"`): `messageId`, `conversationId`,
-  `senderId`, `senderName`, `senderAvatarUrl`, `messageType`, `route`, and
+  `senderId`, `senderName`, `senderAvatarUrl`, `senderImageUrl`, `messageType`, `route`, and
   `schemaVersion` — enough for tap-to-open navigation to the exact chat.
 - Server-built visible body per type: `TEXT` (sanitized, whitespace collapsed,
   truncated ~120 chars, markup stripped), `Sent a voice message`, `Sent a photo`,
@@ -432,7 +432,7 @@ the expiry cron (`call-expiry`) is durable.
 **Push delivery:** kickoff (`POST /calls`) enqueues a `INCOMING_CALL` payload
 into the `CallPushDelivery` outbox for each enabled receiver device and returns
 immediately. The `push-delivery` cron worker (every 10s) sends high-priority FCM
-data-only messages on Android and Expo pushes elsewhere within the same push
+data-only state-change messages on Android and visible Expo pushes elsewhere within the same push
 group (not just last), fetches Expo receipts to record `DELIVERED`/`FAILED`,
 retries transient failures with bounded exponential backoff, and disables +
 nulls tokens the provider flags invalid. Terminal transitions push a
@@ -462,7 +462,7 @@ live in `UserNotificationPreference`, read/written via
 - **Conversation auto-creation:** Messaging conversations are auto-created on dating match — don't create them manually
 - **Voice note upload:** Must upload audio file to Cloudinary first, get URL, then send
 - **Call races:** Answer/cancel/decline/expiry are compared-and-set — a competing request returns `409 CALL_EXPIRED`/`CALL_ALREADY_ACTIVE`/`RECIPIENT_BUSY`; always re-fetch state on `409`
-- **Push nuance:** A `POST /calls` 2xx only guarantees the outbox row was enqueued. Delivery is confirmed asynchronously: Expo receipts determine true APNs/FCM acceptance, and short-lived Android background delivery relies on a high-priority data-only message
+- **Push nuance:** A `POST /calls` 2xx only guarantees the outbox row was enqueued. Delivery is confirmed asynchronously: Expo receipts determine true APNs/FCM acceptance, and Android incoming-call delivery relies on a high-priority visible notification bounded by the ring window (state changes remain data-only)
 - **Message ordering:** Messages don't have sequence numbers; rely on `createdAt` for ordering
 
 ---

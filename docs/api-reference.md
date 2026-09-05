@@ -617,6 +617,7 @@ terminated:
   "senderId": "sender-uuid",
   "senderName": "Simply Mark",
   "senderAvatarUrl": "https://example.com/public-profile-image.jpg",
+  "senderImageUrl": "https://example.com/public-profile-image.jpg",
   "messageType": "TEXT",
   "route": "/(connect)/chat/[id]",
   "schemaVersion": "1"

@@ -19,19 +19,21 @@ This document describes how push notifications are delivered in the dagh-server 
 
 ## Providers
 
-The server supports two push providers, selected per-device:
+The server supports three push providers, selected per-device:
 
 | Provider | Library | When Used |
 |----------|---------|-----------|
 | **Firebase Cloud Messaging (FCM)** | `firebase-admin` | Android devices with an `fcmToken` |
-| **Expo Push Notifications** | `expo-server-sdk` | All iOS devices; Android devices without an `fcmToken` |
+| **APNs VoIP** | built-in `http2` (direct APNs) | iOS devices with a `voipPushToken`, for **call** payloads only |
+| **Expo Push Notifications** | `expo-server-sdk` | iOS devices (without a VoIP token), Android devices without an `fcmToken` |
 
-Selection logic (`src/helpers/pushPayload.ts:119-129`):
+Selection logic (`src/helpers/pushPayload.ts:providerForDevice`):
+- **iOS + `voipPushToken` + call payload (`INCOMING_CALL` / `CALL_STATE_CHANGED`)** → VOIP (PushKit)
 - **Android** + `fcmToken` → FCM
 - **Android** without `fcmToken` → Expo
-- **iOS** → Expo (wraps APNs)
+- **iOS** without a usable VoIP token → Expo (wraps APNs)
 
-FCM is optional. If Firebase env vars are missing, the server logs a warning and all devices fall back to Expo.
+FCM is optional. If Firebase env vars are missing, the server logs a warning and Android devices fall back to Expo. APNs VoIP is optional too — a missing APNs key silently disables VoIP pushes and iOS devices fall back to Expo (banner only, no lock-screen call).
 
 ---
 
@@ -43,9 +45,15 @@ FCM is optional. If Firebase env vars are missing, the server logs a warning and
 | **Call State Changed** | Terminal call events (DECLINED, CANCELLED, MISSED, ENDED, FAILED) | `CALL_STATE_CHANGED` |
 | **New Message** | New chat message or voice note | `NEW_MESSAGE` |
 
-Call notifications on FCM are **data-only** (wakes the app for custom call-screen handling). On Expo they include a visible notification block.
+Display behavior per type:
 
-Message notifications include a visible `notification` block on both providers.
+- **Incoming Call (`INCOMING_CALL`)** — Always a **visible alert** so a backgrounded or killed app shows the ring even if JavaScript never wakes: FCM sends a `notification` block on the `calls` channel (custom ringtone, `priority: high`, `tag: incoming-call-<callId>`); Expo sends a visible notification on the `calls` channel. Provider TTL is bounded to the remaining ring window (`min(30000ms, ring remaining)`); once `expiresAt` passes the delivery is skipped (`CALL_EXPIRED`), so alerts never outlive the ringing period.
+- **Call State Changed (`CALL_STATE_CHANGED`)** — Silent **data-only** on FCM (no `notification` block) so only the app handler dismisses ringing state; on Expo it necessarily renders a banner because Expo cannot send truly silent pushes today.
+- **New Message (`NEW_MESSAGE`)** — Visible notification on both providers, always on the `messages` channel.
+
+On iOS devices with a registered `voipPushToken`, call payloads are delivered as **PushKit VoIP pushes** directly to APNs so the OS can launch the app even when terminated and present a lock-screen incoming-call UI.
+
+Message notifications are **never** sent over the VoIP channel.
 
 ---
 
@@ -101,11 +109,14 @@ Message notifications include a visible `notification` block on both providers.
 4. enqueueIncomingCallPush()
    ├─ Builds INCOMING_CALL payload
    ├─ Fetches all enabled UserDevice rows for receiver
+   ├─ Per device: VOIP (iOS w/ voipPushToken) | FCM (Android) | EXPO (fallback)
    └─ Writes CallPushDelivery rows (status: PENDING)
    │
 5. dispatchCallDeliveries()
-   └─ sendToDevice() (same path as messages)
+   └─ sendToDevice() — VOIP goes directly to APNs over HTTP/2
 ```
+
+`CALL_STATE_CHANGED` uses the same pipeline, targeting **both** participants so a terminated app can dismiss a stale ringing screen over PushKit too.
 
 ---
 
@@ -194,9 +205,15 @@ Environment variables (see `.env.example`):
 | `FIREBASE_PROJECT_ID` | No | Firebase project ID |
 | `FIREBASE_PRIVATE_KEY` | No | Service account private key (PEM) |
 | `FIREBASE_CLIENT_EMAIL` | No | Service account email |
+| `APPLE_APNS_KEY_ID` | No | APNs Auth Key ID (10 chars) — required for iOS VoIP |
+| `APPLE_APNS_TEAM_ID` | No | Apple Developer team ID — required for iOS VoIP |
+| `APPLE_BUNDLE_ID` | No | App bundle ID; PushKit topic is `<bundle-id>.voip` |
+| `APPLE_APNS_P8_KEY` | No | Contents of the APNs Auth Key `.p8` file (or use `APPLE_APNS_KEY_PATH`) |
+| `APPLE_APNS_KEY_PATH` | No | Filesystem path to the `.p8` key instead of `APPLE_APNS_P8_KEY` |
+| `APPLE_APNS_PRODUCTION` | No | `true` targets `api.push.apple.com`; unset/`false` uses the sandbox |
 | `REDIS_URL` | No | Distributed lock for cron (single-instance if omitted) |
 
-If any Firebase variable is missing, FCM is silently disabled and all devices use Expo.
+If any Firebase variable is missing, FCM is silently disabled and Android devices use Expo. If any APNs variable is missing, VoIP pushes are silently disabled and iOS devices use Expo.
 
 ---
 
@@ -205,6 +222,7 @@ If any Firebase variable is missing, FCM is silently disabled and all devices us
 | File | Role |
 |------|------|
 | `src/config/firebase.ts` | Firebase Admin SDK initialization |
+| `src/config/apns.ts` | Direct APNs HTTP/2 client (JWT ES256) for iOS VoIP pushes |
 | `src/helpers/pushPayload.ts` | Payload builders, provider selection, error classification |
 | `src/helpers/pushNotifications.ts` | Core engine: enqueue, dispatch, send, receipt polling, token invalidation |
 | `src/jobs/push-delivery.ts` | Cron worker (every 10s) for durable push delivery |
