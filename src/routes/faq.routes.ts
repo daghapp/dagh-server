@@ -9,10 +9,7 @@ import {
 import protectedRoute from "../middleware/protected.js";
 import requireAdmin from "../middleware/admin.js";
 import { validate } from "../middleware/validation.js";
-import {
-  createFaqItemSchema,
-  updateFaqItemSchema,
-} from "../validator/faq-validator.js";
+import { createFaqItemSchema, updateFaqItemSchema } from "../validator/faq-validator.js";
 
 const router = express.Router();
 
