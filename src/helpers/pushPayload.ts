@@ -293,15 +293,15 @@ export function buildFcmMessage(
   token: string;
   notification?: { title: string; body: string };
   data: PushPayload;
-  android: { priority: "high"; notification?: { channelId: string; sound: string } };
+  android: { priority: "high"; notification?: { channelId: string; sound?: string } };
   apns: {
     headers: { "apns-priority": string };
     payload: { aps: { "content-available": number; alert?: { title: string; body: string } } };
   };
 } {
-  const isMessage = payload.type === "NEW_MESSAGE";
+  const isCall = payload.type === "INCOMING_CALL" || payload.type === "CALL_STATE_CHANGED";
 
-  if (isMessage) {
+  if (isCall) {
     return {
       token,
       notification: {
@@ -311,7 +311,7 @@ export function buildFcmMessage(
       data: payload,
       android: {
         priority: "high",
-        notification: { channelId: "messages", sound: "default" },
+        notification: { channelId: "calls" },
       },
       apns: {
         headers: { "apns-priority": "10" },
@@ -327,11 +327,23 @@ export function buildFcmMessage(
 
   return {
     token,
+    notification: {
+      title: titleForPayload(payload),
+      body: bodyForPayload(payload),
+    },
     data: payload,
-    android: { priority: "high" },
+    android: {
+      priority: "high",
+      notification: { channelId: "messages", sound: "default" },
+    },
     apns: {
       headers: { "apns-priority": "10" },
-      payload: { aps: { "content-available": 1 } },
+      payload: {
+        aps: {
+          "content-available": 1,
+          alert: { title: titleForPayload(payload), body: bodyForPayload(payload) },
+        },
+      },
     },
   };
 }

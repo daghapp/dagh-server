@@ -355,11 +355,29 @@ describe("buildFcmMessage for messages", () => {
     expect(msg.android.notification!.sound).toBe("default");
   });
 
-  it("builds a data-only message for calls", () => {
-    const payload: PushPayload = { type: "INCOMING_CALL", callId: "call-1" };
+  it("builds a visible notification with data payload for INCOMING_CALL", () => {
+    const payload: PushPayload = {
+      type: "INCOMING_CALL",
+      callId: "call-1",
+      callerName: "Ama",
+      callType: "VOICE",
+    };
     const msg = buildFcmMessage("fcm-2", payload);
-    expect(msg.notification).toBeUndefined();
-    expect(msg.android.notification).toBeUndefined();
+    expect(msg.token).toBe("fcm-2");
+    expect(msg.notification).toBeDefined();
+    expect(msg.notification!.title).toBe("Incoming voice call");
+    expect(msg.notification!.body).toBe("Ama is calling...");
     expect(msg.data).toEqual(payload);
+    expect(msg.android.priority).toBe("high");
+    expect(msg.android.notification).toBeDefined();
+    expect(msg.android.notification!.channelId).toBe("calls");
+  });
+
+  it("builds a visible notification with data payload for CALL_STATE_CHANGED", () => {
+    const payload: PushPayload = { type: "CALL_STATE_CHANGED", callId: "call-1", status: "MISSED" };
+    const msg = buildFcmMessage("fcm-3", payload);
+    expect(msg.notification).toBeDefined();
+    expect(msg.android.notification).toBeDefined();
+    expect(msg.android.notification!.channelId).toBe("calls");
   });
 });
