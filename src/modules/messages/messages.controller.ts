@@ -3,6 +3,7 @@ import { prisma } from "../../config/index.js";
 import { Server } from "socket.io";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
+import { hasPaidActiveMembership } from "../../helpers/membership.js";
 import { MessageType } from "../../../generated/prisma/client.js";
 import { dispatchNotificationOutbox } from "../../helpers/pushNotifications.js";
 
@@ -26,6 +27,10 @@ export const sendMessage = async (req: Request, res: Response) => {
   try {
     const senderId = req.user!.id;
     const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
+
+    if (!(await hasPaidActiveMembership(senderId))) {
+      return fail(res, 403, "Messaging requires an active paid membership");
+    }
 
     if (await isUserBlocked(senderId, receiverId)) {
       return fail(res, 403, "Cannot send message. Communication is blocked between users.");
@@ -139,6 +144,10 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
 
     if (!req.file || !req.file.path) {
       return fail(res, 400, "Voice note audio file is required");
+    }
+
+    if (!(await hasPaidActiveMembership(senderId))) {
+      return fail(res, 403, "Messaging requires an active paid membership");
     }
 
     if (await isUserBlocked(senderId, receiverId)) {
