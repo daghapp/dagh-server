@@ -66,7 +66,7 @@ router.use(protectedRoute);
  *       400:
  *         description: Validation error (e.g. missing content for TEXT type)
  *       403:
- *         description: Users are blocked from communicating
+ *         description: Users are blocked from communicating or the sender lacks an active paid membership
  *       500:
  *         description: Internal server error
  */
@@ -107,7 +107,7 @@ router.post("/", validate(sendMessageSchema), sendMessage);
  *       400:
  *         description: Validation error or invalid audio file type
  *       403:
- *         description: Users are blocked from communicating
+ *         description: Users are blocked from communicating or the sender lacks an active paid membership
  *       413:
  *         description: Audio file exceeds 15MB limit
  *       500:

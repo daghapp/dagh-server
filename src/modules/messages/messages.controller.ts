@@ -29,7 +29,12 @@ export const sendMessage = async (req: Request, res: Response) => {
     const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
 
     if (!(await hasPaidActiveMembership(senderId))) {
-      return fail(res, 403, "Messaging requires an active paid membership");
+      return fail(
+        res,
+        403,
+        { code: "PAID_TIER_REQUIRED", message: "Messaging requires an active paid membership" },
+        { action: "UPGRADE", redirect: "/membership" },
+      );
     }
 
     if (await isUserBlocked(senderId, receiverId)) {
@@ -147,7 +152,12 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
     }
 
     if (!(await hasPaidActiveMembership(senderId))) {
-      return fail(res, 403, "Messaging requires an active paid membership");
+      return fail(
+        res,
+        403,
+        { code: "PAID_TIER_REQUIRED", message: "Messaging requires an active paid membership" },
+        { action: "UPGRADE", redirect: "/membership" },
+      );
     }
 
     if (await isUserBlocked(senderId, receiverId)) {

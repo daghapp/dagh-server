@@ -76,7 +76,7 @@ const callPerCallerLimiter = createRateLimiter("call-caller", 60 * 60 * 1000, {
  *       201:
  *         description: Call initiated
  *       403:
- *         description: Not matched or blocked
+ *         description: Not matched, blocked, or caller lacks an active paid membership
  *       409:
  *         description: Recipient busy or caller already in call
  *       422:

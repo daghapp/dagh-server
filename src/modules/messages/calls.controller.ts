@@ -125,10 +125,15 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     // 6.5 Check the caller has an active paid membership
     if (!(await hasPaidActiveMembership(callerId))) {
-      return fail(res, 403, {
-        code: "PAID_TIER_REQUIRED",
-        message: "Calling requires an active paid membership",
-      });
+      return fail(
+        res,
+        403,
+        {
+          code: "PAID_TIER_REQUIRED",
+          message: "Calling requires an active paid membership",
+        },
+        { action: "UPGRADE", redirect: "/membership" },
+      );
     }
 
     // 7. Atomically reject duplicate active calls and create the RINGING call.
