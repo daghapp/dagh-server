@@ -218,7 +218,7 @@ app.use("/faq", FaqRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({
-    name: "DAGH API",
+    name: "Diaspora Sync API",
     version: "1.0.0",
     status: "OK",
     health: "/health",

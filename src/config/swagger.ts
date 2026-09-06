@@ -8,9 +8,9 @@ const swaggerOptions: swaggerJSDoc.Options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "DAGH API Documentation",
+      title: "Diaspora Sync API Documentation",
       version: "1.0.0",
-      description: "API documentation for DAGH server",
+      description: "API documentation for Diaspora Sync server",
       contact: {
         name: "API Support",
       },
