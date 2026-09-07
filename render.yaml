@@ -11,3 +11,9 @@ services:
         value: https://dagh-server-fo64.onrender.com
       - key: ALLOWED_ORIGINS
         value: https://dagh-server-fo64.onrender.com
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false

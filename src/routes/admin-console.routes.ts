@@ -74,6 +74,91 @@ router.get(
 
 /**
  * @swagger
+ * /admin/users/verified:
+ *   get:
+ *     summary: List verified users with counts
+ *     description: Paginated list of verified users (names + contact details) with a verified-user count and overall user total
+ *     tags: [Admin - Dashboard]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Verified users and counts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     data:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           isVerified:
+ *                             type: boolean
+ *                           verifiedAt:
+ *                             type: string
+ *                             format: date-time
+ *                           user:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: string
+ *                               fullName:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *                               phoneNumber:
+ *                                 type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: number
+ *                         page:
+ *                           type: number
+ *                         limit:
+ *                           type: number
+ *                         totalPages:
+ *                           type: number
+ *                     counts:
+ *                       type: object
+ *                       properties:
+ *                         verifiedUsers:
+ *                           type: number
+ *                         totalUsers:
+ *                           type: number
+ *       403:
+ *         description: Admin privileges required
+ */
+router.get(
+  "/users/verified",
+  protectedRoute,
+  requireAdmin,
+  adminDashboard.verifiedUsers.bind(adminDashboard),
+);
+
+/**
+ * @swagger
  * /admin/visa-requests:
  *   get:
  *     summary: List visa requests (console queue)

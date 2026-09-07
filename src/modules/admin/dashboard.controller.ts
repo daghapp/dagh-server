@@ -112,4 +112,71 @@ export class AdminDashboardController {
       return fail(res, 500, "Failed to build dashboard summary");
     }
   }
+
+  /**
+   * GET /admin/users/verified — paginated list of verified users with their
+   * names/contact details, plus a verified count and overall total.
+   */
+  async verifiedUsers(req: Request, res: Response) {
+    try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+      const skip = (page - 1) * limit;
+
+      const [verifications, verifiedCount, totalUsers] = await Promise.all([
+        prisma.profileVerification.findMany({
+          where: { isVerified: true },
+          include: {
+            userProfile: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    phoneNumber: true,
+                    accountStatus: true,
+                    createdAt: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { lastUpdatedAt: "desc" },
+          skip,
+          take: limit,
+        }),
+        prisma.profileVerification.count({ where: { isVerified: true } }),
+        prisma.user.count(),
+      ]);
+
+      const data = verifications.map((v) => ({
+        id: v.id,
+        isVerified: v.isVerified,
+        verifiedAt: v.lastUpdatedAt,
+        phoneVerified: v.phone_number_verified,
+        ipAddressVerified: v.ip_address_verification,
+        bioProfileVerified: v.bio_profile_verification,
+        documentVerified: v.document_verification,
+        user: v.userProfile?.user ?? null,
+      }));
+
+      return ok(res, {
+        data,
+        pagination: {
+          total: verifiedCount,
+          page,
+          limit,
+          totalPages: Math.ceil(verifiedCount / limit),
+        },
+        counts: {
+          verifiedUsers: verifiedCount,
+          totalUsers,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to list verified users:", error);
+      return fail(res, 500, "Failed to list verified users");
+    }
+  }
 }
