@@ -21,17 +21,20 @@ This document describes how push notifications are delivered in the dagh-server 
 
 The server supports three push providers, selected per-device:
 
-| Provider | Library | When Used |
-|----------|---------|-----------|
-| **Firebase Cloud Messaging (FCM)** | `firebase-admin` | Android devices with an `fcmToken` |
-| **APNs VoIP** | built-in `http2` (direct APNs) | iOS devices with a `voipPushToken`, for **call** payloads only |
-| **Expo Push Notifications** | `expo-server-sdk` | iOS devices (without a VoIP token), Android devices without an `fcmToken` |
+| Provider                           | Library                        | When Used                                                                 |
+| ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------- |
+| **Firebase Cloud Messaging (FCM)** | `firebase-admin`               | Android devices with an `fcmToken`                                        |
+| **APNs VoIP**                      | built-in `http2` (direct APNs) | iOS devices with a `voipPushToken`, for **call** payloads only            |
+| **Expo Push Notifications**        | `expo-server-sdk`              | iOS devices (without a VoIP token), Android devices without an `fcmToken` |
 
 Selection logic (`src/helpers/pushPayload.ts:providerForDevice`):
-- **iOS + `voipPushToken` + call payload (`INCOMING_CALL` / `CALL_STATE_CHANGED`)** → VOIP (PushKit)
+
+- **iOS + `voipPushToken` + `INCOMING_CALL` payload** → VOIP (PushKit)
 - **Android** + `fcmToken` → FCM
 - **Android** without `fcmToken` → Expo
 - **iOS** without a usable VoIP token → Expo (wraps APNs)
+
+`CALL_STATE_CHANGED` is **never routed over VoIP** — it is cleanup signaling for a call that is not new, and per the push contract it travels over ordinary messaging/APNs instead.
 
 FCM is optional. If Firebase env vars are missing, the server logs a warning and Android devices fall back to Expo. APNs VoIP is optional too — a missing APNs key silently disables VoIP pushes and iOS devices fall back to Expo (banner only, no lock-screen call).
 
@@ -39,15 +42,15 @@ FCM is optional. If Firebase env vars are missing, the server logs a warning and
 
 ## Notification Types
 
-| Type | When Sent | Payload Key |
-|------|-----------|-------------|
-| **Incoming Call** | Call initiated to receiver | `INCOMING_CALL` |
+| Type                   | When Sent                                                         | Payload Key          |
+| ---------------------- | ----------------------------------------------------------------- | -------------------- |
+| **Incoming Call**      | Call initiated to receiver                                        | `INCOMING_CALL`      |
 | **Call State Changed** | Terminal call events (DECLINED, CANCELLED, MISSED, ENDED, FAILED) | `CALL_STATE_CHANGED` |
-| **New Message** | New chat message or voice note | `NEW_MESSAGE` |
+| **New Message**        | New chat message or voice note                                    | `NEW_MESSAGE`        |
 
 Display behavior per type:
 
-- **Incoming Call (`INCOMING_CALL`)** — Always a **visible alert** so a backgrounded or killed app shows the ring even if JavaScript never wakes: FCM sends a `notification` block on the `calls` channel (custom ringtone, `priority: high`, `tag: incoming-call-<callId>`); Expo sends a visible notification on the `calls` channel. Provider TTL is bounded to the remaining ring window (`min(30000ms, ring remaining)`); once `expiresAt` passes the delivery is skipped (`CALL_EXPIRED`), so alerts never outlive the ringing period.
+- **Incoming Call (`INCOMING_CALL`)** — On Android this is a **data-only** high-priority FCM push (no `notification` block). A visible FCM notification is deliberately NOT used: when backgrounded, Android handles notification payloads itself and can bypass the app's custom call receiver, breaking the native call path. The receiver's `FirebaseMessagingService` / headless handler owns presenting the call UI. Provider TTL is set to the remaining ring window (never exceeding it, matching the server's ringing deadline); once `expiresAt` passes the delivery is skipped (`CALL_EXPIRED`), so the native call path never outlives the ringing period. The payload carries `sequence` so a later stale incoming event never reopens an ended call.
 - **Call State Changed (`CALL_STATE_CHANGED`)** — Silent **data-only** on FCM (no `notification` block) so only the app handler dismisses ringing state; on Expo it necessarily renders a banner because Expo cannot send truly silent pushes today.
 - **New Message (`NEW_MESSAGE`)** — Visible notification on both providers, always on the `messages` channel.
 
@@ -59,15 +62,15 @@ Message notifications are **never** sent over the VoIP channel.
 
 ## Trigger Points
 
-| API Endpoint | Notification Sent |
-|--------------|-------------------|
-| `POST /calls` (initiate) | `INCOMING_CALL` → receiver |
-| `POST /calls/:callId/decline` | `CALL_STATE_CHANGED(DECLINED)` → both participants |
-| `POST /calls/:callId/cancel` | `CALL_STATE_CHANGED(CANCELLED)` → both participants |
-| `POST /calls/:callId/end` | `CALL_STATE_CHANGED(ENDED)` → both participants |
-| Call expiry cron (ring timeout) | `CALL_STATE_CHANGED(MISSED)` → both participants |
-| `POST /messages` (text/media) | `NEW_MESSAGE` → recipient |
-| `POST /messages/voice-note` | `NEW_MESSAGE` → recipient |
+| API Endpoint                    | Notification Sent                                   |
+| ------------------------------- | --------------------------------------------------- |
+| `POST /calls` (initiate)        | `INCOMING_CALL` → receiver                          |
+| `POST /calls/:callId/decline`   | `CALL_STATE_CHANGED(DECLINED)` → both participants  |
+| `POST /calls/:callId/cancel`    | `CALL_STATE_CHANGED(CANCELLED)` → both participants |
+| `POST /calls/:callId/end`       | `CALL_STATE_CHANGED(ENDED)` → both participants     |
+| Call expiry cron (ring timeout) | `CALL_STATE_CHANGED(MISSED)` → both participants    |
+| `POST /messages` (text/media)   | `NEW_MESSAGE` → recipient                           |
+| `POST /messages/voice-note`     | `NEW_MESSAGE` → recipient                           |
 
 ---
 
@@ -129,6 +132,7 @@ Push deliveries are written to the database **synchronously** within the same tr
 - Notifications survive process crashes
 
 **Transaction boundary:**
+
 ```
 BEGIN
   INSERT INTO messages (...)
@@ -143,13 +147,13 @@ COMMIT
 
 `src/jobs/push-delivery.ts` runs every **10 seconds** via `node-cron`:
 
-| Task | Description |
-|------|-------------|
-| `sendPendingPushDeliveries()` | Retries pending call push deliveries |
-| `dispatchNotificationOutbox()` | Processes queued message outbox events |
-| `sendPendingMessagePushDeliveries()` | Retries pending message deliveries |
-| `fetchExpoPushReceipts()` | Polls Expo for call delivery confirmations |
-| `fetchMessageExpoPushReceipts()` | Polls Expo for message delivery confirmations |
+| Task                                 | Description                                   |
+| ------------------------------------ | --------------------------------------------- |
+| `sendPendingPushDeliveries()`        | Retries pending call push deliveries          |
+| `dispatchNotificationOutbox()`       | Processes queued message outbox events        |
+| `sendPendingMessagePushDeliveries()` | Retries pending message deliveries            |
+| `fetchExpoPushReceipts()`            | Polls Expo for call delivery confirmations    |
+| `fetchMessageExpoPushReceipts()`     | Polls Expo for message delivery confirmations |
 
 **Distributed lock:** Uses Redis (`src/helpers/jobLock.ts`) to ensure only one instance runs the cron in multi-instance deployments. Without Redis, the lock is bypassed (single-instance mode).
 
@@ -178,6 +182,7 @@ Devices register via `POST /devices/register` (authenticated):
 - Enables the device and updates `lastSeenAt`
 
 **Other endpoints:**
+
 - `DELETE /devices/:deviceId` — unregisters a device
 - `GET /devices/notifications/preferences` — reads notification settings
 - `PATCH /devices/notifications/preferences` — toggles `messagesEnabled`
@@ -188,9 +193,9 @@ Devices register via `POST /devices/register` (authenticated):
 
 Per-user opt-out via `UserNotificationPreference`:
 
-| Field | Default | Effect |
-|-------|---------|--------|
-| `messagesEnabled` | `true` | When `false`, message push notifications are skipped |
+| Field             | Default | Effect                                               |
+| ----------------- | ------- | ---------------------------------------------------- |
+| `messagesEnabled` | `true`  | When `false`, message push notifications are skipped |
 
 Call notifications are **not** opt-out-able — they are always sent.
 
@@ -200,18 +205,18 @@ Call notifications are **not** opt-out-able — they are always sent.
 
 Environment variables (see `.env.example`):
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `FIREBASE_PROJECT_ID` | No | Firebase project ID |
-| `FIREBASE_PRIVATE_KEY` | No | Service account private key (PEM). Parser tolerates surrounding quotes, escaped `\n`/`\r`, and single-line keys |
-| `FIREBASE_CLIENT_EMAIL` | No | Service account email |
-| `APPLE_APNS_KEY_ID` | No | APNs Auth Key ID (10 chars) — required for iOS VoIP |
-| `APPLE_APNS_TEAM_ID` | No | Apple Developer team ID — required for iOS VoIP |
-| `APPLE_BUNDLE_ID` | No | App bundle ID; PushKit topic is `<bundle-id>.voip` |
-| `APPLE_APNS_P8_KEY` | No | Contents of the APNs Auth Key `.p8` file (or use `APPLE_APNS_KEY_PATH`) |
-| `APPLE_APNS_KEY_PATH` | No | Filesystem path to the `.p8` key instead of `APPLE_APNS_P8_KEY` |
-| `APPLE_APNS_PRODUCTION` | No | `true` targets `api.push.apple.com`; unset/`false` uses the sandbox |
-| `REDIS_URL` | No | Distributed lock for cron (single-instance if omitted) |
+| Variable                | Required | Purpose                                                                                                         |
+| ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------- |
+| `FIREBASE_PROJECT_ID`   | No       | Firebase project ID                                                                                             |
+| `FIREBASE_PRIVATE_KEY`  | No       | Service account private key (PEM). Parser tolerates surrounding quotes, escaped `\n`/`\r`, and single-line keys |
+| `FIREBASE_CLIENT_EMAIL` | No       | Service account email                                                                                           |
+| `APPLE_APNS_KEY_ID`     | No       | APNs Auth Key ID (10 chars) — required for iOS VoIP                                                             |
+| `APPLE_APNS_TEAM_ID`    | No       | Apple Developer team ID — required for iOS VoIP                                                                 |
+| `APPLE_BUNDLE_ID`       | No       | App bundle ID; PushKit topic is `<bundle-id>.voip`                                                              |
+| `APPLE_APNS_P8_KEY`     | No       | Contents of the APNs Auth Key `.p8` file (or use `APPLE_APNS_KEY_PATH`)                                         |
+| `APPLE_APNS_KEY_PATH`   | No       | Filesystem path to the `.p8` key instead of `APPLE_APNS_P8_KEY`                                                 |
+| `APPLE_APNS_PRODUCTION` | No       | `true` targets `api.push.apple.com`; unset/`false` uses the sandbox                                             |
+| `REDIS_URL`             | No       | Distributed lock for cron (single-instance if omitted)                                                          |
 
 If any Firebase variable is missing, FCM is silently disabled and Android devices use Expo. If any APNs variable is missing, VoIP pushes are silently disabled and iOS devices use Expo.
 
@@ -225,13 +230,14 @@ Android delivery requires two things to line up: the **backend** must initialize
 
 Check the boot log for exactly one of:
 
-| Boot log line | Meaning | Action |
-|---|---|---|
-| `[push] Firebase Admin initialized` | SDK ready | Backend is fine — go to step 2 |
-| `[push] Firebase not configured — missing: FIREBASE_...` | One or more env vars unset on the deployment | Set `FIREBASE_PROJECT_ID`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_CLIENT_EMAIL` in the hosting dashboard and redeploy |
-| `[push] Firebase initialization failed — private key NOT PEM-formatted ...` | `FIREBASE_PRIVATE_KEY` present but the value cannot be parsed as a PEM key | Re-paste the full service-account key (see below) |
+| Boot log line                                                               | Meaning                                                                    | Action                                                                                                           |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `[push] Firebase Admin initialized`                                         | SDK ready                                                                  | Backend is fine — go to step 2                                                                                   |
+| `[push] Firebase not configured — missing: FIREBASE_...`                    | One or more env vars unset on the deployment                               | Set `FIREBASE_PROJECT_ID`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_CLIENT_EMAIL` in the hosting dashboard and redeploy |
+| `[push] Firebase initialization failed — private key NOT PEM-formatted ...` | `FIREBASE_PRIVATE_KEY` present but the value cannot be parsed as a PEM key | Re-paste the full service-account key (see below)                                                                |
 
 **Private key format rules for `FIREBASE_PRIVATE_KEY`:**
+
 - Use the private key from the Firebase **service-account JSON** (Project settings → Service accounts → Generate new private key). It is the `private_key` field: a `-----BEGIN PRIVATE KEY-----` ... `-----END PRIVATE KEY-----` PEM block.
 - Do **not** include the surrounding JSON quotes.
 - Newlines may be entered as real line breaks or as JSON `\n`. The server normalizes quotes, escaped `\n`/`\r`, and single-line keys (`normalizePrivateKey` in `src/config/firebase.ts`), but the markers and the base64 body must be intact.
@@ -241,13 +247,13 @@ While Firebase is uninitialized, every FCM send returns `errorCode: "FIREBASE_NO
 
 ### 2. App: the client must receive and render the push
 
-| Check | Detail |
-|---|---|
-| `google-services.json` | Present in the Android build and pointing at the **same Firebase project** as the service account; Android `applicationId` must match the Firebase Android app package name |
-| Registration payload | `POST /devices/register` must send a real `fcmToken` (Android). Without it the backend falls back to Expo |
-| Notification channels | The backend references `channelId: "calls"` and `"messages"` (`buildFcmMessage`). The app must call `createNotificationChannel("calls")` and `createNotificationChannel("messages")` at startup, or Android silently drops the notification (Android 8+) |
-| Notification permission | POST_NOTIFICATIONS runtime permission granted (Android 13+) |
-| Background/terminated handling | Remote push handler registered (e.g. `expo-notifications`) so the app wakes for `data` payloads like `CALL_STATE_CHANGED` |
+| Check                          | Detail                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `google-services.json`         | Present in the Android build and pointing at the **same Firebase project** as the service account; Android `applicationId` must match the Firebase Android app package name                                                                                                                                                                                                                                            |
+| Registration payload           | `POST /devices/register` must send a real `fcmToken` (Android). Without it the backend falls back to Expo                                                                                                                                                                                                                                                                                                              |
+| Notification channels          | The backend references `channelId: "calls"` and `"messages"` for visible notifications (`buildFcmMessage`). `INCOMING_CALL` is data-only (see above) and the app must create a high-importance `calls` channel and present the call UI itself. The app must call `createNotificationChannel("calls")` and `createNotificationChannel("messages")` at startup, or Android silently drops the notifications (Android 8+) |
+| Notification permission        | POST_NOTIFICATIONS runtime permission granted (Android 13+)                                                                                                                                                                                                                                                                                                                                                            |
+| Background/terminated handling | Remote push handler registered (e.g. `expo-notifications`) so the app wakes for `data` payloads like `CALL_STATE_CHANGED`                                                                                                                                                                                                                                                                                              |
 
 ### 3. Confirm delivery end-to-end
 
@@ -259,17 +265,17 @@ While Firebase is uninitialized, every FCM send returns `errorCode: "FIREBASE_NO
 
 ## Key Files
 
-| File | Role |
-|------|------|
-| `src/config/firebase.ts` | Firebase Admin SDK initialization |
-| `src/config/apns.ts` | Direct APNs HTTP/2 client (JWT ES256) for iOS VoIP pushes |
-| `src/helpers/pushPayload.ts` | Payload builders, provider selection, error classification |
-| `src/helpers/pushNotifications.ts` | Core engine: enqueue, dispatch, send, receipt polling, token invalidation |
-| `src/jobs/push-delivery.ts` | Cron worker (every 10s) for durable push delivery |
-| `src/jobs/call-expiry.ts` | Expires unanswered calls, triggers MISSED pushes |
-| `src/helpers/jobLock.ts` | Redis-based distributed lock |
-| `src/helpers/callLogger.ts` | Structured logging for push events |
-| `src/modules/devices/devices.controller.ts` | Device registration API |
-| `src/modules/messages/calls.controller.ts` | Call lifecycle endpoints |
-| `src/modules/messages/messages.controller.ts` | Message send endpoints |
-| `prisma/schema.prisma` | Data models: `UserDevice`, `CallPushDelivery`, `MessagePushDelivery`, `NotificationOutbox` |
+| File                                          | Role                                                                                       |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/config/firebase.ts`                      | Firebase Admin SDK initialization                                                          |
+| `src/config/apns.ts`                          | Direct APNs HTTP/2 client (JWT ES256) for iOS VoIP pushes                                  |
+| `src/helpers/pushPayload.ts`                  | Payload builders, provider selection, error classification                                 |
+| `src/helpers/pushNotifications.ts`            | Core engine: enqueue, dispatch, send, receipt polling, token invalidation                  |
+| `src/jobs/push-delivery.ts`                   | Cron worker (every 10s) for durable push delivery                                          |
+| `src/jobs/call-expiry.ts`                     | Expires unanswered calls, triggers MISSED pushes                                           |
+| `src/helpers/jobLock.ts`                      | Redis-based distributed lock                                                               |
+| `src/helpers/callLogger.ts`                   | Structured logging for push events                                                         |
+| `src/modules/devices/devices.controller.ts`   | Device registration API                                                                    |
+| `src/modules/messages/calls.controller.ts`    | Call lifecycle endpoints                                                                   |
+| `src/modules/messages/messages.controller.ts` | Message send endpoints                                                                     |
+| `prisma/schema.prisma`                        | Data models: `UserDevice`, `CallPushDelivery`, `MessagePushDelivery`, `NotificationOutbox` |

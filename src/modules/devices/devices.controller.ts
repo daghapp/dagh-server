@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import { sendTestPushToUser } from "../../helpers/pushNotifications.js";
+import { deviceTokenPatch } from "./deviceTokenPatch.js";
 
 /**
  * Register or update a device for push notifications.
@@ -10,18 +11,20 @@ import { sendTestPushToUser } from "../../helpers/pushNotifications.js";
 export const registerDevice = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { deviceId, platform, expoPushToken, fcmToken, apnsToken, voipPushToken } = req.body;
+    const { deviceId, platform } = req.body;
+
+    // Token independence: an omitted token field is preserved on update; an
+    // explicit null (or empty string) clears it. `enabled` and `lastSeenAt`
+    // are always refreshed.
+    const { update, create } = deviceTokenPatch(req.body);
 
     const device = await prisma.userDevice.upsert({
       where: {
         userId_deviceId: { userId, deviceId },
       },
       update: {
+        ...update,
         platform,
-        expoPushToken: expoPushToken ?? undefined,
-        fcmToken: fcmToken ?? undefined,
-        apnsToken: apnsToken ?? undefined,
-        voipPushToken: voipPushToken ?? undefined,
         enabled: true,
         lastSeenAt: new Date(),
       },
@@ -29,10 +32,7 @@ export const registerDevice = async (req: Request, res: Response) => {
         userId,
         deviceId,
         platform,
-        expoPushToken: expoPushToken ?? null,
-        fcmToken: fcmToken ?? null,
-        apnsToken: apnsToken ?? null,
-        voipPushToken: voipPushToken ?? null,
+        ...create,
       },
     });
 

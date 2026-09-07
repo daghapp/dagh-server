@@ -485,7 +485,13 @@ export const answerCall = async (req: Request, res: Response) => {
       occurredAt: now.toISOString(),
     });
 
-    // Notify receiver's other devices
+    // Push the ANSWERED state to the caller's other installations and the
+    // receiver's other devices so an in-progress incoming-call ring is
+    // dismissed everywhere except the answering installation (its native
+    // handler preserves the locally answered call).
+    enqueueCallStatePush(answered).catch(() => {});
+
+    // Notify receiver's other socket devices
     const receiverSockets = io.sockets.adapter.rooms.get(`user:${userId}`);
     if (receiverSockets && receiverSockets.size > 1) {
       io.to(`user:${userId}`).emit("call.answered_elsewhere", {
@@ -533,6 +539,9 @@ export const declineCall = async (req: Request, res: Response) => {
         code: "CALL_ALREADY_ENDED",
         message: `Call is already ${existing.status}`,
       });
+    }
+    if (existing.expiresAt <= new Date()) {
+      return fail(res, 409, { code: "CALL_EXPIRED", message: "Call has expired" });
     }
 
     const now = new Date();
@@ -589,6 +598,9 @@ export const cancelCall = async (req: Request, res: Response) => {
         code: "CALL_ALREADY_ENDED",
         message: `Call is already ${existing.status}`,
       });
+    }
+    if (existing.expiresAt <= new Date()) {
+      return fail(res, 409, { code: "CALL_EXPIRED", message: "Call has expired" });
     }
 
     const now = new Date();

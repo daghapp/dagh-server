@@ -55,6 +55,7 @@ npx expo install livekit-client expo-notifications expo-device expo-constants
 ```
 
 Optional for native calling:
+
 ```bash
 npx expo install react-native-callkit  # iOS CallKit (via expo module)
 # Or use @react-native-voip-push-notification + expo-callkit
@@ -107,14 +108,19 @@ async function registerDevice(params: RegisterDeviceParams) {
 ### Get Push Token
 
 ```typescript
-async function getPushToken(): Promise<{ expoToken?: string; fcmToken?: string; voipToken?: string }> {
+async function getPushToken(): Promise<{
+  expoToken?: string;
+  fcmToken?: string;
+  voipToken?: string;
+}> {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== "granted") return {};
 
   if (Platform.OS === "android") {
     // Installed APK (production or EAS dev client): native FCM device token.
-    // The server sends a visible high-priority notification for incoming calls
-    // and data-only for state changes, so background delivery works without JS.
+    // The server sends a data-only high-priority push for incoming calls
+    // (and data-only for state changes), so your native call receiver handles
+    // background delivery without JS.
     const token = await Notifications.getDevicePushTokenAsync();
     return { fcmToken: token.data };
   }
@@ -141,6 +147,7 @@ async function getPushToken(): Promise<{ expoToken?: string; fcmToken?: string; 
 ### Unregister Device
 
 Call on logout:
+
 ```typescript
 async function unregisterDevice(deviceId: string) {
   await fetch(`${API_URL}/devices/${deviceId}`, {
@@ -149,6 +156,7 @@ async function unregisterDevice(deviceId: string) {
   });
 }
 ```
+
 The server also disables every device for the user during `POST /auth/logout`, and
 automatically disables + removes any push token a provider later rejects
 (`DeviceNotRegistered`).
@@ -188,8 +196,8 @@ async function initiateCall(params: InitiateCallParams) {
   }
 
   return {
-    call: data.data.call,       // { id, roomId, status, expiresAt, ... }
-    token: data.data.token,     // LiveKit JWT token
+    call: data.data.call, // { id, roomId, status, expiresAt, ... }
+    token: data.data.token, // LiveKit JWT token
     serviceUrl: data.data.serviceUrl, // wss://livekit.example.com
   };
 }
@@ -213,8 +221,8 @@ async function answerCall(callId: string) {
   return {
     callId: data.data.callId,
     roomId: data.data.roomId,
-    status: data.data.status,     // "ANSWERED"
-    token: data.data.token,       // LiveKit JWT for receiver
+    status: data.data.status, // "ANSWERED"
+    token: data.data.token, // LiveKit JWT for receiver
     serviceUrl: data.data.serviceUrl,
   };
 }
@@ -597,9 +605,9 @@ All notification metadata lives **inside `data`**, never only in the visible tit
 
 ### Delivery channels
 
-- **Android (installed APK):** for `INCOMING_CALL` the server sends a **visible high-priority FCM notification** — `data` + `notification` + `android.priority: "high"` + `android.notification { channelId: "calls", sound: "call_ringtone", tag: "incoming-call-<callId>" }` — so the ring displays even if the app is backgrounded/killed and JavaScript never wakes. `CALL_STATE_CHANGED` is **data-only** (high priority, no `notification` block) so only the app handler dismisses ringing state. Delivery TTL is bounded to `min(30000ms, remaining ring time)` and a delivery is skipped entirely once `expiresAt` has passed, so incoming-call alerts never outlive the ringing window.
+- **Android (installed APK):** for `INCOMING_CALL` the server sends a **data-only, high-priority FCM push** — no `notification` block, only the call `data` — so the app's native `FirebaseMessagingService` / headless call receiver controls presentation (a visible notification would be handled by Android itself and could bypass the custom call receiver). `CALL_STATE_CHANGED` is also **data-only** (high priority, no `notification` block) so only the app handler dismisses ringing state. Delivery TTL equals the remaining ring window (never exceeds it) and a delivery is skipped entirely once `expiresAt` has passed, so incoming-call pushes never outlive the ringing window.
 - **iOS + Android-in-Expo-Go:** an Expo push message with `channelId: "calls"`, `priority: "high"`, and `sound: "call_ringtone.wav"`.
-- **True iOS lock-screen calling:** the server delivers an **APNs VoIP push (PushKit)** directly to the device's registered `voipPushToken` over HTTP/2 — no third-party provider involved. The OS launches the app even when terminated; the app then reports the incoming call to CallKit. The push body carries the full `INCOMING_CALL` / `CALL_STATE_CHANGED` payload at the top level (see [Native Platform Integration](#native-platform-integration)). Requires the APNs key variables in `.env` (`APPLE_APNS_KEY_ID`, `APPLE_APNS_TEAM_ID`, `APPLE_BUNDLE_ID`, `APPLE_APNS_P8_KEY`).
+- **True iOS lock-screen calling:** the server delivers an **APNs VoIP push (PushKit)** directly to the device's registered `voipPushToken` over HTTP/2 — no third-party provider involved. The OS launches the app even when terminated; the app then reports the incoming call to CallKit. The push body carries the full `INCOMING_CALL` payload at the top level (see [Native Platform Integration](#native-platform-integration)); `CALL_STATE_CHANGED` cleanup is **not** delivered over VoIP — it travels over ordinary APNs/Expo. Requires the APNs key variables in `.env` (`APPLE_APNS_KEY_ID`, `APPLE_APNS_TEAM_ID`, `APPLE_BUNDLE_ID`, `APPLE_APNS_P8_KEY`).
 
 The backend records a delivery row per (call, device, provider), processes Expo delivery receipts, retries transient failures with backoff, and removes tokens the provider flags as invalid (`DeviceNotRegistered` / APNs `BadDeviceToken` / `Unregistered`). A successful HTTP request to Expo only means the message was accepted — the receipt determines whether it reached APNs/FCM. APNs VoIP pushes are synchronous (HTTP status 200 = delivered).
 
@@ -773,6 +781,7 @@ async function getCallHistory(cursor?: string, limit = 20) {
 This requires a **native module** (not Expo Go). Use `expo-module` or a config plugin.
 
 **Flow:**
+
 1. Register for VoIP pushes via PushKit
 2. Report incoming VoIP push to CallKit immediately
 3. CallKit shows native incoming call UI on lock screen
@@ -815,6 +824,7 @@ VoipPushNotification.addEventListener("notification", (notification) => {
 Requires a **native build** (not Expo Go). Use `expo-module` or expo notifications config plugin.
 
 **Flow:**
+
 1. Receive the FCM high-priority notification (visible `INCOMING_CALL` alert + `data`; `CALL_STATE_CHANGED` arrives data-only)
 2. Create high-importance notification channel for calls
 3. Use `CallStyle` notification (Android 12+)
@@ -887,20 +897,20 @@ class CallError extends Error {
 }
 ```
 
-| Code | HTTP | Meaning | Action |
-|------|------|---------|--------|
-| `CALL_NOT_FOUND` | 404 | Call doesn't exist or user not a participant | Dismiss call UI |
-| `NOT_CALL_PARTICIPANT` | 403 | User is not caller or receiver | Dismiss call UI |
-| `NOT_MATCHED` | 403 | Users are not matched | Show error, cannot call |
-| `USER_BLOCKED` | 403 | Users blocked each other | Show error, cannot call |
-| `RECIPIENT_BUSY` | 409 | Recipient in another call | Show "User is busy" |
-| `CALL_ALREADY_ACTIVE` | 409 | Caller already in a call | Dismiss, show active call |
-| `CALL_ALREADY_ANSWERED` | 409 | Call answered by another device | Close incoming UI |
-| `CALL_ALREADY_ENDED` | 409 | Call already ended | Dismiss call UI |
-| `CALL_EXPIRED` | 409 | Call expired (40s timeout) | Dismiss call UI |
-| `INVALID_CALL_STATE` | 409 | Wrong state for this action | Re-fetch call state |
-| `LIVEKIT_TOKEN_FAILED` | 500 | Token generation failed | Retry or show error |
-| `RATE_LIMITED` | 429 | Too many calls | Show "try again later" |
+| Code                    | HTTP | Meaning                                      | Action                    |
+| ----------------------- | ---- | -------------------------------------------- | ------------------------- |
+| `CALL_NOT_FOUND`        | 404  | Call doesn't exist or user not a participant | Dismiss call UI           |
+| `NOT_CALL_PARTICIPANT`  | 403  | User is not caller or receiver               | Dismiss call UI           |
+| `NOT_MATCHED`           | 403  | Users are not matched                        | Show error, cannot call   |
+| `USER_BLOCKED`          | 403  | Users blocked each other                     | Show error, cannot call   |
+| `RECIPIENT_BUSY`        | 409  | Recipient in another call                    | Show "User is busy"       |
+| `CALL_ALREADY_ACTIVE`   | 409  | Caller already in a call                     | Dismiss, show active call |
+| `CALL_ALREADY_ANSWERED` | 409  | Call answered by another device              | Close incoming UI         |
+| `CALL_ALREADY_ENDED`    | 409  | Call already ended                           | Dismiss call UI           |
+| `CALL_EXPIRED`          | 409  | Call expired (40s timeout)                   | Dismiss call UI           |
+| `INVALID_CALL_STATE`    | 409  | Wrong state for this action                  | Re-fetch call state       |
+| `LIVEKIT_TOKEN_FAILED`  | 500  | Token generation failed                      | Retry or show error       |
+| `RATE_LIMITED`          | 429  | Too many calls                               | Show "try again later"    |
 
 ### Key Rules
 
@@ -914,6 +924,7 @@ class CallError extends Error {
 ## Testing Checklist
 
 ### Basic Flow
+
 - [ ] Initiate voice call → recipient sees incoming call
 - [ ] Initiate video call → recipient sees incoming call with video type
 - [ ] Answer → both join LiveKit room, audio/video works
@@ -923,11 +934,13 @@ class CallError extends Error {
 - [ ] No answer → becomes MISSED after timeout
 
 ### Background/Terminated
+
 - [ ] Recipient app backgrounded → push notification received
 - [ ] Recipient app terminated → push notification received, tap opens app
 - [ ] Recipient device locked → native call UI shown (iOS/Android)
 
 ### Edge Cases
+
 - [ ] Duplicate initiate (same idempotency key) → returns same call
 - [ ] Recipient already in another call → 409 RECIPIENT_BUSY
 - [ ] Caller already in another call → 409 CALL_ALREADY_ACTIVE
@@ -938,17 +951,20 @@ class CallError extends Error {
 - [ ] Unmatched users → 403 NOT_MATCHED
 
 ### Multi-Device
+
 - [ ] Answer on device A → device B shows ANSWERED_ELSEWHERE
 - [ ] End on device A → device B call terminates
 - [ ] Decline on device A → both devices stop ringing
 
 ### Call History
+
 - [ ] After call completes, history shows correct direction/type/status/duration
 - [ ] Pagination works with cursor
 
 ### Push Notifications
+
 - [ ] FCM delivery works on Android (installed APK)
-- [ ] FCM visible incoming-call notification rings on a backgrounded/terminated app (installed APK) and the TTL-bounded alert disappears after the ring window
+- [ ] FCM data-only incoming-call push reaches the app's native call receiver on a backgrounded/terminated app (installed APK) and the TTL-bounded delivery disappears after the ring window
 - [ ] Expo push works on iOS
 - [ ] Incoming-call push goes to every registered **receiver** device, never the caller's
 - [ ] `CALL_STATE_CHANGED` push arrives on both devices for DECLINED / CANCELLED / MISSED / ENDED / FAILED and dismisses the ringing UI
@@ -987,17 +1003,17 @@ API_URL=https://your-api.example.com
 
 ## Summary of Server Endpoints
 
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `POST` | `/calls` | Initiate call |
-| `GET` | `/calls/history` | Call history (cursor pagination) |
-| `GET` | `/calls/:callId` | Get call state |
-| `POST` | `/calls/:callId/answer` | Answer call |
-| `POST` | `/calls/:callId/decline` | Decline call |
-| `POST` | `/calls/:callId/cancel` | Cancel outgoing call |
-| `POST` | `/calls/:callId/end` | End active call |
-| `POST` | `/calls/:callId/token` | Get LiveKit token |
-| `POST` | `/devices/register` | Register device for push |
-| `DELETE` | `/devices/:deviceId` | Unregister device |
+| Method   | Endpoint                 | Purpose                          |
+| -------- | ------------------------ | -------------------------------- |
+| `POST`   | `/calls`                 | Initiate call                    |
+| `GET`    | `/calls/history`         | Call history (cursor pagination) |
+| `GET`    | `/calls/:callId`         | Get call state                   |
+| `POST`   | `/calls/:callId/answer`  | Answer call                      |
+| `POST`   | `/calls/:callId/decline` | Decline call                     |
+| `POST`   | `/calls/:callId/cancel`  | Cancel outgoing call             |
+| `POST`   | `/calls/:callId/end`     | End active call                  |
+| `POST`   | `/calls/:callId/token`   | Get LiveKit token                |
+| `POST`   | `/devices/register`      | Register device for push         |
+| `DELETE` | `/devices/:deviceId`     | Unregister device                |
 
 All endpoints require `Authorization: Bearer <token>` header.

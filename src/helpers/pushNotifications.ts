@@ -399,6 +399,7 @@ async function sendMessageDeliveryRow(row: MessagePushDelivery): Promise<void> {
     row.token,
     row.payload as PushPayload,
     row.attemptCount + 1,
+    row.deviceId,
   );
   const now = new Date();
 
@@ -537,9 +538,11 @@ async function sendToDevice(
   token: string,
   payload: PushPayload,
   attempt = 1,
+  deviceId: string | null = null,
 ): Promise<SendResult> {
-  // Incoming-call alerts must not outlive the ringing window: expire the
-  // delivery once the call is terminal and bound provider TTL to what remains.
+  // Incoming-call pushes must not outlive the ringing window: expire the
+  // delivery once the call is terminal and bound provider TTL to the remaining
+  // ring time (never exceed it), matching the server's ringing deadline.
   const expiresAtMs =
     payload.type === "INCOMING_CALL" && payload.expiresAt
       ? new Date(payload.expiresAt).getTime()
@@ -556,15 +559,17 @@ async function sendToDevice(
     };
   }
 
-  const ttlMs = remainingRingMs !== undefined ? Math.min(30_000, remainingRingMs) : undefined;
+  const ttlMs = remainingRingMs !== undefined ? Math.max(1, Math.ceil(remainingRingMs)) : undefined;
   const ttlSeconds = ttlMs !== undefined ? Math.max(1, Math.ceil(ttlMs / 1000)) : undefined;
+  const correlationId = payload.callId ?? payload.messageId ?? "unknown";
 
   logPushSendAttempt({
-    correlationId: payload.callId ?? payload.messageId ?? "unknown",
-    deviceId: null,
+    correlationId,
+    deviceId,
     provider,
     eventType: payload.type,
     attempt,
+    priority: "high",
     tokenSuffix: tokenSuffix(token),
     ttlMs,
     payload: sanitizePayload(payload),
@@ -593,8 +598,8 @@ async function sendToDevice(
 
     if (response.statusCode === 200) {
       logPushProviderAccepted({
-        correlationId: payload.callId ?? payload.messageId ?? "unknown",
-        deviceId: null,
+        correlationId,
+        deviceId,
         provider,
         providerMessageId: response.apnsId ?? null,
         eventType: payload.type,
@@ -614,8 +619,8 @@ async function sendToDevice(
     const transient = isTransientProviderError(errorCode);
     const invalidToken = isInvalidTokenError(errorCode);
     logPushProviderError({
-      correlationId: payload.callId ?? payload.messageId ?? "unknown",
-      deviceId: null,
+      correlationId,
+      deviceId,
       provider,
       eventType: payload.type,
       errorCode,
@@ -646,8 +651,8 @@ async function sendToDevice(
       const startedAt = Date.now();
       const messageId = await messaging.send(buildFcmMessage(token, payload, ttlMs));
       logPushProviderAccepted({
-        correlationId: payload.callId ?? payload.messageId ?? "unknown",
-        deviceId: null,
+        correlationId,
+        deviceId,
         provider,
         providerMessageId: messageId,
         eventType: payload.type,
@@ -667,8 +672,8 @@ async function sendToDevice(
       const transient = isTransientProviderError(error);
       const invalidToken = isInvalidTokenError(error);
       logPushProviderError({
-        correlationId: payload.callId ?? payload.messageId ?? "unknown",
-        deviceId: null,
+        correlationId,
+        deviceId,
         provider,
         eventType: payload.type,
         errorCode: code,
@@ -698,8 +703,8 @@ async function sendToDevice(
       const transient = isTransientProviderError(ticket);
       const invalidToken = isInvalidTokenError(ticket);
       logPushProviderError({
-        correlationId: payload.callId ?? payload.messageId ?? "unknown",
-        deviceId: null,
+        correlationId,
+        deviceId,
         provider,
         eventType: payload.type,
         errorCode,
@@ -715,8 +720,8 @@ async function sendToDevice(
       };
     }
     logPushProviderAccepted({
-      correlationId: payload.callId ?? payload.messageId ?? "unknown",
-      deviceId: null,
+      correlationId,
+      deviceId,
       provider,
       providerMessageId: ticket?.id ?? null,
       eventType: payload.type,
@@ -732,8 +737,8 @@ async function sendToDevice(
     const transient = isTransientProviderError(error);
     const invalidToken = isInvalidTokenError(error);
     logPushProviderError({
-      correlationId: payload.callId ?? payload.messageId ?? "unknown",
-      deviceId: null,
+      correlationId,
+      deviceId,
       provider,
       eventType: payload.type,
       errorCode,
@@ -794,6 +799,7 @@ async function sendDeliveryRow(row: CallPushDelivery): Promise<void> {
     row.token,
     row.payload as PushPayload,
     row.attemptCount + 1,
+    row.deviceId,
   );
   const now = new Date();
 
@@ -1202,7 +1208,7 @@ export async function sendTestPushToUser(userId: string): Promise<{
       continue;
     }
 
-    const result = await sendToDevice(target.provider, target.token, payload);
+    const result = await sendToDevice(target.provider, target.token, payload, 1, device.id);
     results.push({
       deviceId: device.id,
       provider: target.provider,

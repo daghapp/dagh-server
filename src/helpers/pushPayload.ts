@@ -118,10 +118,6 @@ export function isTransientProviderError(error: unknown): boolean {
   return TRANSIENT_MARKERS.some((marker) => str.includes(marker));
 }
 
-export function isCallPayload(payload: PushPayload): boolean {
-  return payload.type === "INCOMING_CALL" || payload.type === "CALL_STATE_CHANGED";
-}
-
 /**
  * True when the token is an Expo push token (`ExponentPushToken[...]`) rather
  * than a native FCM/APNs registration token. Expo-format tokens are routinely
@@ -136,17 +132,27 @@ export function isExpoPushToken(token: string): boolean {
 
 /**
  * Decide which provider/token to use for a device.
- * iOS devices that registered a PushKit VoIP token get call payloads delivered
- * as an APNs VoIP push so the OS can launch the terminated app and present the
- * call; on Android the native FCM token is preferred (reliable background
- * delivery); anything else falls back to the Expo token. Returns null when the
- * device has no usable token for push delivery.
+ * iOS devices that registered a PushKit VoIP token get **incoming-call** payloads
+ * delivered as an APNs VoIP push so the OS can launch the terminated app and
+ * present the call; on Android the native FCM token is preferred (reliable
+ * background delivery); anything else falls back to the Expo token. Returns null
+ * when the device has no usable token for push delivery.
+ *
+ * Call *state-change* cleanup payloads (CALL_STATE_CHANGED) are intentionally
+ * NOT routed over VoIP: they are not new calls, and per the push contract they
+ * must travel over ordinary messaging/APNs instead so a stale ring cannot be
+ * treated as a fresh incoming call.
  */
 export function providerForDevice(
   device: DevicePushTarget,
   payload?: PushPayload,
 ): { provider: PushProvider; token: string } | null {
-  if (payload && isCallPayload(payload) && device.platform === "IOS" && device.voipPushToken) {
+  if (
+    payload &&
+    payload.type === "INCOMING_CALL" &&
+    device.platform === "IOS" &&
+    device.voipPushToken
+  ) {
     return { provider: "VOIP", token: device.voipPushToken };
   }
   if (device.platform === "ANDROID" && device.fcmToken && !isExpoPushToken(device.fcmToken)) {
@@ -163,10 +169,14 @@ export function providerForDevice(
 
 /**
  * Build the notification payload for an incoming call. The call ID returned by
- * POST /calls is carried inside `data` so the app can navigate to the exact call.
+ * POST /calls is carried inside `data` so the app can navigate to the exact call,
+ * and `expiresAt` (the server's ringing deadline) lets the app reject expired
+ * calls. `sequence` mirrors the call version so older/duplicate events can be
+ * ignored. `callerImageUrl` is always a string (empty when the caller has no
+ * public photo), matching the frontend contract.
  */
 export function buildIncomingCallPayload(
-  call: Pick<Call, "id" | "callType" | "conversationId" | "expiresAt">,
+  call: Pick<Call, "id" | "callType" | "conversationId" | "expiresAt" | "version">,
   caller: CallerProfile,
 ): PushPayload {
   return sanitizePushData({
@@ -175,9 +185,10 @@ export function buildIncomingCallPayload(
     callType: call.callType,
     callerId: caller.id,
     callerName: caller.fullName,
-    callerImageUrl: getPublicProfileImage(caller),
+    callerImageUrl: getPublicProfileImage(caller) ?? "",
     conversationId: call.conversationId,
     expiresAt: call.expiresAt.toISOString(),
+    sequence: call.version,
   });
 }
 
@@ -258,6 +269,7 @@ export function buildNewMessagePayload(
     senderImageUrl: getPublicProfileImage(sender),
     messageType: message.type,
     previewBody: messagePreviewBody(message.type, message.content),
+    preview: messagePreviewBody(message.type, message.content),
     route: "/(connect)/chat/[id]",
     schemaVersion: "1",
   });
@@ -322,10 +334,13 @@ export function buildExpoMessage(
 /**
  * Build a Firebase Cloud Messaging message.
  *
- * - `INCOMING_CALL` — visible alert (title/body) on the `calls` channel plus
- *   routing `data`, so a backgrounded/killed app shows a ring without needing
- *   JavaScript. `ttlMs` (defaults to the remaining ring window) bounds delivery
- *   to the ringing period.
+ * - `INCOMING_CALL` — **data-only** high-priority push. Native incoming calls must
+ *   NOT carry an FCM `notification` block: when backgrounded Android handles a
+ *   visible notification itself and can bypass the app's custom call receiver,
+ *   breaking the native call path. The receiver's FirebaseMessagingService /
+ *   headless handler owns presenting the call UI. `ttlMs` (defaults to the
+ *   remaining ring window) and an APNs `content-available` mirror keep delivery
+ *   to the ringing period and wake the app.
  * - `CALL_STATE_CHANGED` — silent data-only cleanup so only the app handler
  *   dismisses ringing state.
  * - `NEW_MESSAGE` — visible notification with data payload.
@@ -366,6 +381,20 @@ export function buildFcmMessage(
     };
   }
 
+  if (isIncomingCall) {
+    return {
+      token,
+      data: payload,
+      android: { priority: "high", ...ttl },
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: {
+          aps: { "content-available": 1 },
+        },
+      },
+    };
+  }
+
   const visible: { notification: { title: string; body: string }; data: PushPayload } = {
     notification: {
       title: titleForPayload(payload),
@@ -373,31 +402,6 @@ export function buildFcmMessage(
     },
     data: payload,
   };
-
-  if (isIncomingCall) {
-    return {
-      token,
-      ...visible,
-      android: {
-        priority: "high",
-        ...ttl,
-        notification: {
-          channelId: "calls",
-          sound: "call_ringtone",
-          ...(payload.callId ? { tag: `incoming-call-${payload.callId}` } : {}),
-        },
-      },
-      apns: {
-        headers: { "apns-priority": "10" },
-        payload: {
-          aps: {
-            "content-available": 1,
-            alert: { title: titleForPayload(payload), body: bodyForPayload(payload) },
-          },
-        },
-      },
-    };
-  }
 
   return {
     token,

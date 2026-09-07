@@ -38,6 +38,7 @@ describe("buildIncomingCallPayload", () => {
     callType: "VOICE" as const,
     conversationId: "conv-1",
     expiresAt: new Date("2026-08-29T12:01:00.000Z"),
+    version: 1,
   };
   const caller = {
     id: "caller-1",
@@ -53,16 +54,17 @@ describe("buildIncomingCallPayload", () => {
     expect(payload.callerName).toBe("Ama Mensah");
     expect(payload.conversationId).toBe("conv-1");
     expect(payload.expiresAt).toBe("2026-08-29T12:01:00.000Z");
+    expect(payload.sequence).toBe("1");
     expect(Object.values(payload).every((v) => typeof v === "string")).toBe(true);
   });
 
-  it("omits image URL when the caller has no public profile photo", () => {
+  it("sends an empty-string image URL when the caller has no public photo (contract)", () => {
     const payload = buildIncomingCallPayload(call, {
       id: "caller-2",
       fullName: "B",
       profile: { bio_profile_image_url: null, profileUrl: null },
     });
-    expect("callerImageUrl" in payload).toBe(false);
+    expect(payload.callerImageUrl).toBe("");
   });
 });
 
@@ -180,13 +182,37 @@ describe("providerForDevice with VoIP", () => {
     ).toEqual({ provider: "VOIP", token: "AABBCCDD" });
   });
 
-  it("uses VoIP for CALL_STATE_CHANGED payloads too", () => {
+  it("uses VoIP for INCOMING_CALL payloads on iOS", () => {
+    expect(
+      providerForDevice(
+        { id: "d6", platform: "IOS", fcmToken: null, expoPushToken: null, voipPushToken: "EEFF" },
+        { type: "INCOMING_CALL", callId: "call-1", status: "DECLINED" },
+      ),
+    ).toEqual({ provider: "VOIP", token: "EEFF" });
+  });
+
+  it("never routes CALL_STATE_CHANGED over VoIP (ordinary APNs instead)", () => {
     expect(
       providerForDevice(
         { id: "d6", platform: "IOS", fcmToken: null, expoPushToken: null, voipPushToken: "EEFF" },
         { type: "CALL_STATE_CHANGED", callId: "call-1", status: "DECLINED" },
       ),
-    ).toEqual({ provider: "VOIP", token: "EEFF" });
+    ).toBeNull();
+  });
+
+  it("routes CALL_STATE_CHANGED over Expo when an Expo token exists", () => {
+    expect(
+      providerForDevice(
+        {
+          id: "d12",
+          platform: "IOS",
+          fcmToken: null,
+          expoPushToken: "ExponentPushToken[state]",
+          voipPushToken: "EEFF",
+        },
+        { type: "CALL_STATE_CHANGED", callId: "call-1", status: "DECLINED" },
+      ),
+    ).toEqual({ provider: "EXPO", token: "ExponentPushToken[state]" });
   });
 
   it("never uses VoIP for non-call payloads", () => {
@@ -272,18 +298,29 @@ describe("buildExpoMessage", () => {
 });
 
 describe("buildFcmMessage", () => {
-  it("builds a high-priority visible incoming-call message with calls channel", () => {
+  it("builds a high-priority DATA-ONLY incoming-call message", () => {
     const payload: PushPayload = { type: "INCOMING_CALL", callId: "call-1", callerName: "Ama" };
     const msg = buildFcmMessage("fcm-1", payload);
     expect(msg.token).toBe("fcm-1");
     expect(msg.data).toEqual(payload);
     expect(msg.android.priority).toBe("high");
     expect(msg.apns.headers["apns-priority"]).toBe("10");
-    expect(msg.notification).toBeDefined();
-    expect(msg.android.notification).toBeDefined();
-    expect(msg.android.notification!.channelId).toBe("calls");
-    expect(msg.android.notification!.sound).toBe("call_ringtone");
-    expect(msg.android.notification!.tag).toBe("incoming-call-call-1");
+    // Native incoming calls must NOT include a notification block: Android
+    // would handle it itself and bypass the custom call receiver.
+    expect(msg.notification).toBeUndefined();
+    expect(msg.android.notification).toBeUndefined();
+  });
+
+  it("does not apply an Android call ringtone/tag since incoming calls are data-only", () => {
+    const payload: PushPayload = {
+      type: "INCOMING_CALL",
+      callId: "call-1",
+      callType: "VOICE",
+      callerName: "Ama",
+    };
+    const msg = buildFcmMessage("fcm-1", payload);
+    expect(msg.android.notification).toBeUndefined();
+    expect(msg.data.type).toBe("INCOMING_CALL");
   });
 
   it("applies the incoming-call TTL when provided", () => {
@@ -371,6 +408,7 @@ describe("buildNewMessagePayload", () => {
     expect(payload.senderImageUrl).toBe("https://example.com/photo.jpg");
     expect(payload.messageType).toBe("TEXT");
     expect(payload.previewBody).toBe("Hello, how are you?");
+    expect(payload.preview).toBe("Hello, how are you?");
     expect(payload.route).toBe("/(connect)/chat/[id]");
     expect(payload.schemaVersion).toBe("1");
     expect(Object.values(payload).every((v) => typeof v === "string")).toBe(true);
@@ -527,7 +565,7 @@ describe("buildFcmMessage for messages", () => {
     expect(msg.android.notification!.sound).toBe("default");
   });
 
-  it("builds a visible incoming-call alert on the calls channel", () => {
+  it("keeps incoming-call messages data-only on FCM", () => {
     const payload: PushPayload = {
       type: "INCOMING_CALL",
       callId: "call-1",
@@ -538,10 +576,8 @@ describe("buildFcmMessage for messages", () => {
     expect(msg.token).toBe("fcm-2");
     expect(msg.data).toEqual(payload);
     expect(msg.android.priority).toBe("high");
-    expect(msg.notification).toBeDefined();
-    expect(msg.android.notification).toBeDefined();
-    expect(msg.android.notification!.channelId).toBe("calls");
-    expect(msg.android.notification!.sound).toBe("call_ringtone");
+    expect(msg.notification).toBeUndefined();
+    expect(msg.android.notification).toBeUndefined();
   });
 
   it("keeps CALL_STATE_CHANGED data-only too", () => {

@@ -11,13 +11,13 @@ This is the addendum to `docs/call-integration-guide.md` (which covers the basel
 
 The backend now delivers call pushes over **three channels**, and which one reaches a device depends on what it registered:
 
-| Platform | Channel | Terminated app behavior |
-|----------|---------|-------------------------|
-| **iOS** with a `voipPushToken` | APNs **PushKit VoIP** push (read-only, delivered directly by the server) | iOS **launches** the app to deliver it — this is the only channel that reliably rings a killed app |
-| **Android** with an `fcmToken` | FCM — **visible** high-priority alert for `INCOMING_CALL`; **data-only** for `CALL_STATE_CHANGED` | Lock-screen ring from the server-built notification, TTL-bounded to the ring window; your foreground handler adds the full-screen in-app experience; OEM settings can still block it |
-| **iOS / Android** with only an `expoPushToken` | Expo push (visible banner) | Banner only; **no** call UI when terminated |
+| Platform                                       | Channel                                                                             | Terminated app behavior                                                                                                                                                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **iOS** with a `voipPushToken`                 | APNs **PushKit VoIP** push (read-only, delivered directly by the server)            | iOS **launches** the app to deliver it — this is the only channel that reliably rings a killed app                                                                                                              |
+| **Android** with an `fcmToken`                 | FCM — **data-only** high-priority push for `INCOMING_CALL` and `CALL_STATE_CHANGED` | Your native `FirebaseMessagingService` / foreground service presents the call (full-screen intent / `CallStyle`); the server never posts a visible notification for calls so Android can't bypass your receiver |
+| **iOS / Android** with only an `expoPushToken` | Expo push (visible banner)                                                          | Banner only; **no** call UI when terminated                                                                                                                                                                     |
 
-**Your job:** make sure iOS devices register a `voipPushToken` and handle the PushKit push with CallKit. On Android the server already posts a **visible** incoming-call notification (high priority, `calls` channel, `call_ringtone`, `tag: incoming-call-<callId>`, TTL = `min(30000ms, remaining ring)`), so a killed app still rings; your foreground service + full-screen intent add the richest in-app experience.
+**Your job:** make sure iOS devices register a `voipPushToken` and handle the PushKit push with CallKit. On Android the server sends a **data-only** incoming-call push (high priority, TTL-bounded to the ring window) so your own native call receiver decides how to present the call; your foreground service + full-screen intent add the native ringing UX.
 
 ---
 
@@ -30,14 +30,14 @@ The backend now delivers call pushes over **three channels**, and which one reac
   "deviceId": "unique-per-installation-id",
   "platform": "IOS",
   "expoPushToken": "ExponentPushToken[...]",
-  "voipPushToken": "HEX-APNS-VOIP-TOKEN"      // iOS only — you MUST send this now
+  "voipPushToken": "HEX-APNS-VOIP-TOKEN" // iOS only — you MUST send this now
 }
 ```
 
 - **iOS:** the PushKit token is a 64-char hex string received from the `register` event. Send it as `voipPushToken`. Also keep sending `expoPushToken` (it remains the fallback for messages and for devices without a VoIP token).
 - **Android:** send `fcmToken` (from Firebase) so calls go over FCM instead of Expo.
 - Keep sending the same `deviceId` across launches; the server upserts.
-- If an iOS device registered a `voipPushToken`, the server will deliver `INCOMING_CALL` and `CALL_STATE_CHANGED` pushes over VoIP and **won't** also send the Expo banner (avoids duplicates).
+- If an iOS device registered a `voipPushToken`, the server will deliver `INCOMING_CALL` pushes over VoIP and **won't** also send the Expo banner (avoids duplicates). `CALL_STATE_CHANGED` cleanup is delivered as an ordinary push, never over VoIP.
 
 > On **logout**, call `DELETE /devices/:deviceId` (or use `PATCH` to disable) so stale tokens are not targeted.
 
@@ -58,7 +58,8 @@ The call payload keys are the same across channels; on **iOS VoIP push** they ar
   "callerName": "John Doe",
   "callerImageUrl": "https://…",        // omitted if caller has no photo
   "conversationId": "uuid",
-  "expiresAt": "2026-09-05T12:01:00.000Z"
+  "expiresAt": "2026-09-05T12:01:00.000Z",
+  "sequence": "1"
 }
 ```
 
@@ -115,20 +116,21 @@ Flow:
    - Start ringtone playback **inside the PushKit handler** (background), not after you fire a JS timeout.
 4. **Answer** → `POST /calls/:callId/answer`, then join the LiveKit room, then `reportOutgoingCall`/update CallKit state to connected.
 5. **Decline / expiry** → `POST /calls/:callId/decline` (or let the server mark it missed).
-6. **On `CALL_STATE_CHANGED` push** → if the `callId` matches a call you reported to CallKit, end it: `cxProvider.reportCall(withUUID:callId, endedAt: date, reason: .remoteEnded)` and dismiss any ringing UI.
+6. **On `CALL_STATE_CHANGED` push** → if the `callId` matches a call you reported to CallKit, end it: `cxProvider.reportCall(withUUID:callId, endedAt: date, reason: .remoteEnded)` and dismiss any ringing UI. State-change cleanup is delivered over ordinary APNs/Expo, not a new VoIP push.
 7. Always end the reported CallKit call when the call truly ends (both sides) so the lock screen doesn't get stuck.
 
 > **Apple user force-quits the app (swipe-up in app switcher):** iOS will not relaunch the app for VoIP pushes until the user opens it manually. Your push will be accepted server-side but the call won't show. This is an OS policy you cannot work around — but note the **socket path covers the fore/background** case and the **CallKit missed-call UI** can be produced later from call history via `GET /calls/history`.
 
 ---
 
-## 5. Android — visible incoming-call alert + foreground service (required)
+## 5. Android — data-only incoming-call FCM + native call receiver (required)
 
-Requires a **native build** (Expo Go cannot do this). The server sends `INCOMING_CALL` as a **visible** high-priority FCM notification — `notification` block + your call `data` — on the **calls** channel, with `sound: "call_ringtone"`, `tag: "incoming-call-<callId>"`, and a TTL of `min(30000ms, remaining ring time)`. A delivery is skipped entirely once the call has expired, so the ring can never outlive the ringing window. `CALL_STATE_CHANGED` stays **data-only** (no `notification` block) so only your handler dismisses ringing state.
+Requires a **native build** (Expo Go cannot do this). The server sends `INCOMING_CALL` as a **data-only** high-priority FCM message — no `notification` block, only the call `data` — so the app's own `FirebaseMessagingService` / headless handler controls call presentation. The server does NOT post a visible notification for native calls: a visible notification would be handled by Android itself and could bypass the custom call receiver. The message TTL is set to the remaining ring time (never exceeding the ring window) and the delivery is skipped entirely once the call has expired, so the ring can never outlive the ringing period. `CALL_STATE_CHANGED` also stays data-only so only your handler dismisses ringing state.
 
 With `expo-notifications`:
+
 - Register for push: `Notifications.getDevicePushTokenAsync()` (or FCM directly) → send as `fcmToken`.
-- Create the **calls** channel with max importance and `call_ringtone.wav`. This channel carries the server-built alert and its full-screen-intent behavior:
+- Create the **calls** channel with max importance, sound, and full-screen-intent behavior. When foregrounded, present the in-app call screen. When backgrounded/terminated, a native `FirebaseMessagingService.onBackgroundMessage` receives the data and must start a foreground service + present the full-screen intent / `CallStyle` notification (Android 12+) to the incoming-call activity:
   ```js
   await Notifications.setNotificationChannelAsync("calls", {
     name: "Calls",
@@ -137,20 +139,7 @@ With `expo-notifications`:
     vibrationPattern: [0, 250, 250, 250],
   });
   ```
-- Present the in-app call screen while foregrounded and route the tap:
-  ```js
-  Notifications.setNotificationHandler({
-    handleNotification: async (notification) => {
-      const data = notification.request.content.data;
-      if (data?.type === "INCOMING_CALL") {
-        return { shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false };
-      }
-      // CALL_STATE_CHANGED / others — nothing visual
-      return { shouldShowAlert: false, shouldPlaySound: false, shouldSetBadge: false };
-    },
-  });
-  ```
-- Install a **headless/background handler** to react while killed — mainly for the data-only `CALL_STATE_CHANGED` cleanup and to drive the full-screen intent:
+- Install a **headless/background handler** to react while killed:
   ```js
   Notifications.handleBackgroundNotificationAsync(async ({ notification }) => {
     const data = notification.request.content.data;
@@ -163,7 +152,7 @@ With `expo-notifications`:
     }
   });
   ```
-- For the most robust killed-state ring, prefer a native `FirebaseMessagingService.onBackgroundMessage` that starts a persistent foreground service and shows a high-importance `CallStyle` notification (Android 12+) with a **full-screen intent** to the incoming-call activity — redundant with the server alert, but the best UX.
+- For the most robust killed-state ring, prefer a native `FirebaseMessagingService.onBackgroundMessage` that starts a persistent foreground service and shows a high-importance `CallStyle` notification (Android 12+) with a **full-screen intent** to the incoming-call activity.
 
 > **Android OEM "battery optimization"** (Xiaomi, Samsung, etc.) can delay or block background wake. Educate users, or document that these devices need the app whitelisted. This is platform behavior, not a server bug.
 
@@ -179,5 +168,5 @@ Connected sockets deliver `call.incoming` immediately; that path is untouched an
 - [ ] Kill the iOS app (don't force-quit) → call a tester → lock screen shows CallKit incoming call with caller name + ringtone.
 - [ ] Answer from the lock screen → joins room, audio/video works; decline/expiry dismisses the screen everywhere.
 - [ ] Kill the Android app → call → lock screen shows full-screen call notification.
-- [ ] Close one device after the call is answered on another; the first device's ringing screen dismisses (CALL_STATE_CHANGED over VoIP/FCM).
+- [ ] Close one device after the call is answered on another; the first device's ringing screen dismisses (CALL_STATE_CHANGED — ordinary push on iOS, data-only FCM on Android).
 - [ ] Message pushes still work and are **not** delivered over the VoIP channel.

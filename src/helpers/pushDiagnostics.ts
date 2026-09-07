@@ -82,6 +82,7 @@ export function logPushSendAttempt(data: {
   eventType: string;
   attempt: number;
   tokenSuffix?: string | null;
+  priority?: string;
   ttlMs?: number;
   payload: Record<string, unknown>;
 }): void {
