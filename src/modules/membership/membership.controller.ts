@@ -155,6 +155,27 @@ export class MembershipController {
     }
   }
 
+  // POST /api/membership/cancel — cancel the authenticated user's active subscription
+  async cancelSubscription(req: Request, res: Response) {
+    try {
+      const userId = req.user?.id as string;
+      const result = await membershipService.cancelSubscription(userId);
+
+      if (!result.success) {
+        const code = result.code || "CANCELLATION_FAILED";
+        let status = 422;
+        if (code === "NO_SUBSCRIPTION") status = 404;
+        else if (code === "SUBSCRIPTION_NOT_CANCELLABLE") status = 409;
+        return fail(res, status, { code, message: result.message });
+      }
+
+      return ok(res, result.data, result.message);
+    } catch (error) {
+      console.error("Error cancelling subscription:", error);
+      return fail(res, 500, "Failed to cancel subscription");
+    }
+  }
+
   // POST /api/membership/support — create a priority support ticket (paid tiers only)
   async createPrioritySupport(req: Request, res: Response) {
     try {

@@ -12,6 +12,8 @@ import { getAccountId } from "../helpers/ledger.js";
 // Phase 2.4 — Replace hardcoded amounts (464, 1450, 200) with env-driven pricing config
 import { pricing } from "../config/pricing.js";
 import { withDistributedLock, tryAcquireWorkItem } from "../helpers/jobLock.js";
+import { settleMembershipPayment } from "../services/membership.service.js";
+import { SubscriptionStatus } from "../../generated/prisma/client.js";
 
 const JOB_LOCK_TTL_MS = 15 * 60 * 1000;
 const ITEM_CLAIM_TTL_MS = 10 * 60 * 1000;
@@ -184,6 +186,26 @@ export const checkPendingPaymentsJob = () => {
                   }
                 }
               });
+
+              // Membership subscription payment settled via the provider —
+              // activate/upgrade the user's subscription idempotently.
+              if (
+                newStatus === "SUCCESS" &&
+                payment.targetType === PaymentTargetType.MEMBERSHIP_SUBSCRIPTION
+              ) {
+                await settleMembershipPayment(payment);
+              } else if (
+                newStatus !== "SUCCESS" &&
+                payment.targetType === PaymentTargetType.MEMBERSHIP_SUBSCRIPTION
+              ) {
+                await prisma.userSubscription.updateMany({
+                  where: {
+                    userId: payment.userId,
+                    status: SubscriptionStatus.PAYMENT_PENDING,
+                  },
+                  data: { status: SubscriptionStatus.PAYMENT_FAILED },
+                });
+              }
 
               // Send notification emails after the transaction commits.
               if (emailTarget) {

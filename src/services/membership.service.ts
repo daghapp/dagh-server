@@ -276,6 +276,97 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
   };
 }
 
+// Cancels the authenticated user's active subscription.
+// Only ACTIVE and PAYMENT_PENDING subscriptions can be cancelled.
+// Returns an error object (mirroring subscribeToPlan's convention) for client-facing failure.
+export async function cancelSubscription(userId: string) {
+  const subscription = await prisma.userSubscription.findUnique({ where: { userId } });
+
+  if (!subscription) {
+    return {
+      success: false,
+      code: "NO_SUBSCRIPTION",
+      message: "No subscription found for this user",
+    };
+  }
+
+  if (subscription.status !== SubscriptionStatus.ACTIVE && subscription.status !== SubscriptionStatus.PAYMENT_PENDING) {
+    return {
+      success: false,
+      code: "SUBSCRIPTION_NOT_CANCELLABLE",
+      message: "Subscription is not in a cancellable state",
+    };
+  }
+
+  const updated = await prisma.userSubscription.update({
+    where: { id: subscription.id },
+    data: { status: SubscriptionStatus.CANCELLED, endDate: new Date() },
+  });
+
+  return {
+    success: true,
+    message: "Subscription cancelled successfully.",
+    data: {
+      subscriptionId: updated.id,
+      status: updated.status,
+      cancelledAt: updated.endDate,
+    },
+  };
+}
+
+// Marks subscriptions whose endDate has passed as EXPIRED.
+// Used by the subscription-expiry cron job; idempotent — only touches ACTIVE rows.
+export async function expireExpiredSubscriptions(): Promise<number> {
+  const now = new Date();
+
+  const result = await prisma.userSubscription.updateMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      endDate: { lte: now },
+    },
+    data: { status: SubscriptionStatus.EXPIRED },
+  });
+
+  return result.count;
+}
+
+// Renews ACTIVE autoRenew subscriptions whose endDate has passed by rolling
+// the endDate forward by one billing interval (no re-charge). True recurring
+// billing is not possible without stored Hubtel payment credentials, so this
+// is a grace/extension model for testing.
+// Returns the number of renewals performed.
+export async function renewSubscriptions(): Promise<number> {
+  const now = new Date();
+
+  const due = await prisma.userSubscription.findMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      autoRenew: true,
+      endDate: { lte: now },
+    },
+    include: { plan: true },
+  });
+
+  let renewed = 0;
+
+  for (const subscription of due) {
+    if (!subscription.plan || !subscription.endDate) continue;
+
+    const nextEndDate = computeEndDate(subscription.plan.interval, subscription.endDate);
+    if (!nextEndDate) continue;
+
+    if (nextEndDate.getTime() <= now.getTime()) continue;
+
+    await prisma.userSubscription.update({
+      where: { id: subscription.id },
+      data: { endDate: nextEndDate },
+    });
+    renewed++;
+  }
+
+  return renewed;
+}
+
 // Returns the current user's subscription with the associated plan details
 // If no subscription exists yet, returns a virtual FREE-tier response
 export async function getUserSubscription(userId: string) {
@@ -450,4 +541,60 @@ export async function handleSubscriptionPaymentCallback(
   });
 
   return { payment };
+}
+
+// Shared helper used by the pending-payments cron.
+// Idempotently marks a membership payment SUCCESS and activates the user's subscription.
+// No-op (returns false) if the payment is not a success or not a membership payment.
+export async function settleMembershipPayment(payment: {
+  id: string;
+  userId: string;
+  targetType: string;
+  targetId: string;
+}): Promise<boolean> {
+  if (payment.targetType !== PaymentTargetType.MEMBERSHIP_SUBSCRIPTION) {
+    return false;
+  }
+
+  const plan = await prisma.membershipPlan.findUnique({ where: { id: payment.targetId } });
+  if (!plan) {
+    throw new Error("Membership plan not found");
+  }
+
+  const now = new Date();
+  const endDate = computeEndDate(plan.interval, now);
+
+  const subscription = await prisma.userSubscription.upsert({
+    where: { userId: payment.userId },
+    update: {
+      planId: plan.id,
+      tierCode: plan.code,
+      startDate: now,
+      endDate,
+      status: SubscriptionStatus.ACTIVE,
+    },
+    create: {
+      userId: payment.userId,
+      planId: plan.id,
+      tierCode: plan.code,
+      memberCode: await generateUniqueMemberCode(),
+      startDate: now,
+      endDate,
+      status: SubscriptionStatus.ACTIVE,
+    },
+  });
+
+  if (!subscription.memberCode) {
+    await prisma.userSubscription.update({
+      where: { id: subscription.id },
+      data: { memberCode: await generateUniqueMemberCode() },
+    });
+  }
+
+  await prisma.payment.update({
+    where: { id: payment.id },
+    data: { status: PaymentStatus.SUCCESS },
+  });
+
+  return true;
 }

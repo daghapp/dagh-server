@@ -13,7 +13,7 @@ import {
   logCallTokenGenerated,
 } from "../../helpers/callLogger.js";
 import { isUserBlocked } from "../../helpers/safety.js";
-import { hasPaidActiveMembership } from "../../helpers/membership.js";
+// import { hasPaidActiveMembership } from "../../helpers/membership.js"; // TODO: re-enable with paid-tier gating
 import { getRedisClient } from "../../config/redis.js";
 import crypto from "crypto";
 import type { Server } from "socket.io";
@@ -123,18 +123,19 @@ export const initiateCall = async (req: Request, res: Response) => {
       return fail(res, 403, { code: "USER_BLOCKED", message: "Cannot place call" });
     }
 
-    // 6.5 Check the caller has an active paid membership
-    if (!(await hasPaidActiveMembership(callerId))) {
-      return fail(
-        res,
-        403,
-        {
-          code: "PAID_TIER_REQUIRED",
-          message: "Calling requires an active paid membership",
-        },
-        { action: "UPGRADE", redirect: "/membership" },
-      );
-    }
+    // TODO: Re-enable paid-tier gating once membership is fully rolled out.
+    // During testing the FREE tier is allowed to place calls.
+    // if (!(await hasPaidActiveMembership(callerId))) {
+    //   return fail(
+    //     res,
+    //     403,
+    //     {
+    //       code: "PAID_TIER_REQUIRED",
+    //       message: "Calling requires an active paid membership",
+    //     },
+    //     { action: "UPGRADE", redirect: "/membership" },
+    //   );
+    // }
 
     // 7. Atomically reject duplicate active calls and create the RINGING call.
     //    Both user rows are locked (in stable sorted order) so two concurrent

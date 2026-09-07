@@ -235,6 +235,48 @@ router.get("/my-subscription", protectedRoute, controller.getMySubscription.bind
 
 /**
  * @swagger
+ * /membership/cancel:
+ *   post:
+ *     summary: Cancel the authenticated user's active subscription
+ *     tags: [Membership]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription cancelled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subscriptionId:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       enum: [CANCELLED]
+ *                     cancelledAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: No subscription found for this user
+ *       409:
+ *         description: Subscription is not in a cancellable state
+ */
+router.post("/cancel", protectedRoute, controller.cancelSubscription.bind(controller));
+
+/**
+ * @swagger
  * /membership/support:
  *   post:
  *     summary: Create a priority support ticket (paid tiers only)

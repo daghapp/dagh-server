@@ -14,6 +14,7 @@ export const AdminEntityType = {
   USER: "USER",
   REPORT: "REPORT",
   PROFILE_VERIFICATION: "PROFILE_VERIFICATION",
+  MEMBERSHIP_PLAN: "MEMBERSHIP_PLAN",
 } as const;
 
 export type AdminEntityType = (typeof AdminEntityType)[keyof typeof AdminEntityType];

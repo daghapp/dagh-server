@@ -4,11 +4,15 @@ import requireAdmin from "../middleware/admin.js";
 import { AdminVisaConsoleController } from "../modules/admin/visa-console.controller.js";
 import { AdminPaymentsConsoleController } from "../modules/admin/payments-console.controller.js";
 import { AdminDashboardController } from "../modules/admin/dashboard.controller.js";
+import { AdminPlansConsoleController } from "../modules/admin/plans-console.controller.js";
+import { validate } from "../middleware/validation.js";
+import { createMembershipPlanSchema } from "../validator/index.js";
 
 const router = express.Router();
 const adminVisa = new AdminVisaConsoleController();
 const adminPayments = new AdminPaymentsConsoleController();
 const adminDashboard = new AdminDashboardController();
+const adminPlans = new AdminPlansConsoleController();
 
 /**
  * @swagger
@@ -449,5 +453,182 @@ router.get(
   requireAdmin,
   adminPayments.stats.bind(adminPayments),
 );
+
+/**
+ * @swagger
+ * /admin/plans:
+ *   get:
+ *     summary: List membership plans (console)
+ *     tags: [Admin - Plans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: active
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Optional filter to only active/inactive plans
+ *     responses:
+ *       200:
+ *         description: Membership plans
+ *       403:
+ *         description: Admin privileges required
+ */
+router.get("/plans", protectedRoute, requireAdmin, adminPlans.list.bind(adminPlans));
+
+/**
+ * @swagger
+ * /admin/plans:
+ *   post:
+ *     summary: Create a membership plan (console)
+ *     tags: [Admin - Plans]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code, name, price, interval]
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 enum: [FREE, BASELINE, SENIOR_PIONEER, SANKOFA_SETTLED, BASIC, SILVER, GOLD_INVESTOR, ELITE_AMBASSADOR, FAMILY_PLAN]
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               price:
+ *                 type: number
+ *               currency:
+ *                 type: string
+ *                 default: GHS
+ *               interval:
+ *                 type: string
+ *                 enum: [MONTHLY, ANNUAL, BIENNIAL, CUSTOM]
+ *               features:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               isMostPopular:
+ *                 type: boolean
+ *               isActive:
+ *                 type: boolean
+ *     responses:
+ *       201:
+ *         description: Plan created
+ *       400:
+ *         description: Validation error or invalid code/interval
+ *       409:
+ *         description: Plan already exists
+ *       403:
+ *         description: Admin privileges required
+ */
+router.post(
+  "/plans",
+  protectedRoute,
+  requireAdmin,
+  validate(createMembershipPlanSchema),
+  adminPlans.create.bind(adminPlans),
+);
+
+/**
+ * @swagger
+ * /admin/plans/{id}:
+ *   patch:
+ *     summary: Update a membership plan (console)
+ *     tags: [Admin - Plans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               price:
+ *                 type: number
+ *               currency:
+ *                 type: string
+ *               interval:
+ *                 type: string
+ *               features:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               isMostPopular:
+ *                 type: boolean
+ *               isActive:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Plan updated
+ *       404:
+ *         description: Plan not found
+ *       403:
+ *         description: Admin privileges required
+ */
+router.patch("/plans/:id", protectedRoute, requireAdmin, adminPlans.update.bind(adminPlans));
+
+/**
+ * @swagger
+ * /admin/plans/{id}/toggle:
+ *   post:
+ *     summary: Activate/deactivate a membership plan (console)
+ *     tags: [Admin - Plans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Plan status updated
+ *       404:
+ *         description: Plan not found
+ *       403:
+ *         description: Admin privileges required
+ */
+router.post("/plans/:id/toggle", protectedRoute, requireAdmin, adminPlans.toggle.bind(adminPlans));
+
+/**
+ * @swagger
+ * /admin/plans/{id}:
+ *   delete:
+ *     summary: Delete a membership plan (console)
+ *     tags: [Admin - Plans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Plan deleted
+ *       404:
+ *         description: Plan not found
+ *       403:
+ *         description: Admin privileges required
+ */
+router.delete("/plans/:id", protectedRoute, requireAdmin, adminPlans.remove.bind(adminPlans));
 
 export { router };
