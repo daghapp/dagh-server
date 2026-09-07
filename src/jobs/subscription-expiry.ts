@@ -1,9 +1,6 @@
 import cron from "node-cron";
 import { withDistributedLock } from "../helpers/jobLock.js";
-import {
-  expireExpiredSubscriptions,
-  renewSubscriptions,
-} from "../services/membership.service.js";
+import { expireExpiredSubscriptions, renewSubscriptions } from "../services/membership.service.js";
 
 const JOB_LOCK_TTL_MS = 15 * 60 * 1000;
 

@@ -290,7 +290,10 @@ export async function cancelSubscription(userId: string) {
     };
   }
 
-  if (subscription.status !== SubscriptionStatus.ACTIVE && subscription.status !== SubscriptionStatus.PAYMENT_PENDING) {
+  if (
+    subscription.status !== SubscriptionStatus.ACTIVE &&
+    subscription.status !== SubscriptionStatus.PAYMENT_PENDING
+  ) {
     return {
       success: false,
       code: "SUBSCRIPTION_NOT_CANCELLABLE",

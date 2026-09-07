@@ -51,13 +51,21 @@ export class AdminPlansConsoleController {
         isActive?: boolean;
       };
 
-      const existing = await prisma.membershipPlan.findUnique({ where: { code: body.code as never } });
+      const existing = await prisma.membershipPlan.findUnique({
+        where: { code: body.code as never },
+      });
       if (existing) {
-        return fail(res, 409, { code: "PLAN_ALREADY_EXISTS", message: "A plan with this code already exists" });
+        return fail(res, 409, {
+          code: "PLAN_ALREADY_EXISTS",
+          message: "A plan with this code already exists",
+        });
       }
 
       if (!PLAN_CODES.includes(body.code)) {
-        return fail(res, 400, { code: "INVALID_PLAN_CODE", message: "Invalid membership tier code" });
+        return fail(res, 400, {
+          code: "INVALID_PLAN_CODE",
+          message: "Invalid membership tier code",
+        });
       }
 
       if (!INTERVALS.includes(body.interval)) {

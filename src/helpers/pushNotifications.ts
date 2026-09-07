@@ -1193,7 +1193,12 @@ export async function sendTestPushToUser(userId: string): Promise<{
   for (const device of devices) {
     const target = providerForDevice(device, payload);
     if (!target) {
-      results.push({ deviceId: device.id, provider: "EXPO", status: "SKIPPED", error: "no_usable_token" });
+      results.push({
+        deviceId: device.id,
+        provider: "EXPO",
+        status: "SKIPPED",
+        error: "no_usable_token",
+      });
       continue;
     }
 
