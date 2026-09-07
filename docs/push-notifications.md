@@ -203,7 +203,7 @@ Environment variables (see `.env.example`):
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `FIREBASE_PROJECT_ID` | No | Firebase project ID |
-| `FIREBASE_PRIVATE_KEY` | No | Service account private key (PEM) |
+| `FIREBASE_PRIVATE_KEY` | No | Service account private key (PEM). Parser tolerates surrounding quotes, escaped `\n`/`\r`, and single-line keys |
 | `FIREBASE_CLIENT_EMAIL` | No | Service account email |
 | `APPLE_APNS_KEY_ID` | No | APNs Auth Key ID (10 chars) — required for iOS VoIP |
 | `APPLE_APNS_TEAM_ID` | No | Apple Developer team ID — required for iOS VoIP |
@@ -214,6 +214,46 @@ Environment variables (see `.env.example`):
 | `REDIS_URL` | No | Distributed lock for cron (single-instance if omitted) |
 
 If any Firebase variable is missing, FCM is silently disabled and Android devices use Expo. If any APNs variable is missing, VoIP pushes are silently disabled and iOS devices use Expo.
+
+---
+
+## Troubleshooting — Android (FCM) pushes not arriving
+
+Android delivery requires two things to line up: the **backend** must initialize Firebase Admin, and the **app** must be able to display the message. Work through these in order.
+
+### 1. Backend: Firebase must initialize successfully
+
+Check the boot log for exactly one of:
+
+| Boot log line | Meaning | Action |
+|---|---|---|
+| `[push] Firebase Admin initialized` | SDK ready | Backend is fine — go to step 2 |
+| `[push] Firebase not configured — missing: FIREBASE_...` | One or more env vars unset on the deployment | Set `FIREBASE_PROJECT_ID`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_CLIENT_EMAIL` in the hosting dashboard and redeploy |
+| `[push] Firebase initialization failed — private key NOT PEM-formatted ...` | `FIREBASE_PRIVATE_KEY` present but the value cannot be parsed as a PEM key | Re-paste the full service-account key (see below) |
+
+**Private key format rules for `FIREBASE_PRIVATE_KEY`:**
+- Use the private key from the Firebase **service-account JSON** (Project settings → Service accounts → Generate new private key). It is the `private_key` field: a `-----BEGIN PRIVATE KEY-----` ... `-----END PRIVATE KEY-----` PEM block.
+- Do **not** include the surrounding JSON quotes.
+- Newlines may be entered as real line breaks or as JSON `\n`. The server normalizes quotes, escaped `\n`/`\r`, and single-line keys (`normalizePrivateKey` in `src/config/firebase.ts`), but the markers and the base64 body must be intact.
+- A wrong/corrupt key fails with `FirebaseAppError: Failed to parse private key` (`app/invalid-credential`, `DECODER routines::unsupported`).
+
+While Firebase is uninitialized, every FCM send returns `errorCode: "FIREBASE_NOT_CONFIGURED"` and Android binary falls back to Expo.
+
+### 2. App: the client must receive and render the push
+
+| Check | Detail |
+|---|---|
+| `google-services.json` | Present in the Android build and pointing at the **same Firebase project** as the service account; Android `applicationId` must match the Firebase Android app package name |
+| Registration payload | `POST /devices/register` must send a real `fcmToken` (Android). Without it the backend falls back to Expo |
+| Notification channels | The backend references `channelId: "calls"` and `"messages"` (`buildFcmMessage`). The app must call `createNotificationChannel("calls")` and `createNotificationChannel("messages")` at startup, or Android silently drops the notification (Android 8+) |
+| Notification permission | POST_NOTIFICATIONS runtime permission granted (Android 13+) |
+| Background/terminated handling | Remote push handler registered (e.g. `expo-notifications`) so the app wakes for `data` payloads like `CALL_STATE_CHANGED` |
+
+### 3. Confirm delivery end-to-end
+
+- After a fresh test, the backend logs should show `push.provider_accepted` with an FCM `providerMessageId`. That means Firebase accepted the message — if the phone still shows nothing, the problem is in the app-side list above.
+- `push.provider_error` with `messaging/registration-token-not-registered` (or a device being disabled) means the installed device token no longer matches — re-register or reinstall the app.
+- `call.push_failed` with the timestamped `CALL_STATE_CHANGED` retries (`attempt: 4`, `attempt: 5`) typically indicate a stuck outbox from a previous boot; they drain once Firebase is initialized.
 
 ---
 

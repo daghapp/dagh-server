@@ -10,6 +10,7 @@ import {
   providerForDevice,
   isInvalidTokenError,
   isTransientProviderError,
+  isExpoPushToken,
   titleForPayload,
   bodyForPayload,
   messagePreviewBody,
@@ -119,6 +120,40 @@ describe("providerForDevice", () => {
     expect(
       providerForDevice({ id: "d4", platform: "ANDROID", fcmToken: null, expoPushToken: null }),
     ).toBeNull();
+  });
+
+  it("routes an Expo-format token registered as fcmToken through Expo, not FCM", () => {
+    expect(
+      providerForDevice({
+        id: "d10",
+        platform: "ANDROID",
+        fcmToken: "ExponentPushToken[abc123]",
+        expoPushToken: null,
+      }),
+    ).toEqual({ provider: "EXPO", token: "ExponentPushToken[abc123]" });
+  });
+
+  it("prefers the registered expoPushToken over a mis-registered Expo-format fcmToken", () => {
+    expect(
+      providerForDevice({
+        id: "d11",
+        platform: "ANDROID",
+        fcmToken: "ExponentPushToken[old]",
+        expoPushToken: "ExponentPushToken[new]",
+      }),
+    ).toEqual({ provider: "EXPO", token: "ExponentPushToken[new]" });
+  });
+});
+
+describe("isExpoPushToken", () => {
+  it("recognizes Expo push token format", () => {
+    expect(isExpoPushToken("ExponentPushToken[abc123]")).toBe(true);
+  });
+
+  it("returns false for native FCM and APNs tokens", () => {
+    expect(isExpoPushToken("fK4lQ3mZcFvB8xY2wN7pRtA")).toBe(false);
+    expect(isExpoPushToken("9E7F4A2B:unit-test")).toBe(false);
+    expect(isExpoPushToken("")).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   buildFcmMessage,
   buildVoipMessage,
   providerForDevice,
+  sanitizePushData,
   isInvalidTokenError,
   isTransientProviderError,
   type CallerProfile,
@@ -1144,6 +1145,69 @@ export async function fetchMessageExpoPushReceipts(): Promise<void> {
       errorCode: errorString,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Test push (diagnostics endpoint)
+// ---------------------------------------------------------------------------
+
+export interface TestPushResult {
+  deviceId: string;
+  provider: PushProvider;
+  status: "SENT" | "FAILED" | "SKIPPED";
+  providerMessageId?: string;
+  error?: string;
+}
+
+/**
+ * Send a test notification to every enabled device of the user. Backs the
+ * `POST /devices/test-push` endpoint so clients can validate the push pipeline
+ * end-to-end without creating a real message or call. Skips devices with no
+ * usable token and reports per-device outcomes.
+ */
+export async function sendTestPushToUser(userId: string): Promise<{
+  deviceCount: number;
+  results: TestPushResult[];
+}> {
+  const devices = await prisma.userDevice.findMany({
+    where: { userId, enabled: true },
+  });
+
+  if (devices.length === 0) {
+    return { deviceCount: 0, results: [] };
+  }
+
+  const payload: PushPayload = sanitizePushData({
+    type: "NEW_MESSAGE",
+    messageId: `push-test-${Date.now()}`,
+    conversationId: "push-test",
+    senderId: "system",
+    senderName: "Diaspora Sync",
+    messageType: "TEXT",
+    previewBody: "This is a test push notification",
+    route: "/(connect)/chat/[id]",
+    schemaVersion: "1",
+  });
+
+  const results: TestPushResult[] = [];
+  for (const device of devices) {
+    const target = providerForDevice(device, payload);
+    if (!target) {
+      results.push({ deviceId: device.id, provider: "EXPO", status: "SKIPPED", error: "no_usable_token" });
+      continue;
+    }
+
+    const result = await sendToDevice(target.provider, target.token, payload);
+    results.push({
+      deviceId: device.id,
+      provider: target.provider,
+      status: result.errorCode ? "FAILED" : "SENT",
+      ...(result.providerMessageId ? { providerMessageId: result.providerMessageId } : {}),
+      ...(result.errorCode ? { error: result.errorCode } : {}),
+    });
+  }
+
+  return { deviceCount: devices.length, results };
 }
 
 // ---------------------------------------------------------------------------

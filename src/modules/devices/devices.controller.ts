@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import { sendTestPushToUser } from "../../helpers/pushNotifications.js";
 
 /**
  * Register or update a device for push notifications.
@@ -39,6 +40,22 @@ export const registerDevice = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("[Devices] registerDevice error:", error);
     return fail(res, 500, "Failed to register device");
+  }
+};
+
+/**
+ * Send a test push notification to every enabled device of the authenticated
+ * user. Returns a per-device result summary so the client can see which
+ * provider was used and whether the provider accepted the message.
+ */
+export const sendTestPush = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const summary = await sendTestPushToUser(userId);
+    return ok(res, summary, "Test push sent");
+  } catch (error) {
+    console.error("[Devices] sendTestPush error:", error);
+    return fail(res, 500, "Failed to send test push");
   }
 };
 

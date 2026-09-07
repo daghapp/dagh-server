@@ -123,6 +123,18 @@ export function isCallPayload(payload: PushPayload): boolean {
 }
 
 /**
+ * True when the token is an Expo push token (`ExponentPushToken[...]`) rather
+ * than a native FCM/APNs registration token. Expo-format tokens are routinely
+ * pasted into the `fcmToken` field by clients running Expo Go, where there is no
+ * native FCM token. Routing those through FCM makes the provider reject the
+ * message and permanently disable the device, so they must be sent via Expo
+ * instead.
+ */
+export function isExpoPushToken(token: string): boolean {
+  return token.startsWith("ExponentPushToken[") && token.endsWith("]");
+}
+
+/**
  * Decide which provider/token to use for a device.
  * iOS devices that registered a PushKit VoIP token get call payloads delivered
  * as an APNs VoIP push so the OS can launch the terminated app and present the
@@ -137,11 +149,14 @@ export function providerForDevice(
   if (payload && isCallPayload(payload) && device.platform === "IOS" && device.voipPushToken) {
     return { provider: "VOIP", token: device.voipPushToken };
   }
-  if (device.platform === "ANDROID" && device.fcmToken) {
+  if (device.platform === "ANDROID" && device.fcmToken && !isExpoPushToken(device.fcmToken)) {
     return { provider: "FCM", token: device.fcmToken };
   }
   if (device.expoPushToken) {
     return { provider: "EXPO", token: device.expoPushToken };
+  }
+  if (device.fcmToken && isExpoPushToken(device.fcmToken)) {
+    return { provider: "EXPO", token: device.fcmToken };
   }
   return null;
 }

@@ -5,6 +5,7 @@ import { registerDeviceSchema } from "../validator/deviceValidation.js";
 import {
   registerDevice,
   unregisterDevice,
+  sendTestPush,
   getNotificationPreferences,
   updateNotificationPreferences,
 } from "../modules/devices/devices.controller.js";
@@ -57,6 +58,22 @@ router.use(protectedRoute);
  *         description: Internal server error
  */
 router.post("/register", validate(registerDeviceSchema), registerDevice);
+
+/**
+ * @swagger
+ * /devices/test-push:
+ *   post:
+ *     summary: Send a test push notification to the authenticated user's devices
+ *     tags: [Devices]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Test push sent. data.results reports per-device outcomes
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/test-push", sendTestPush);
 
 /**
  * @swagger
