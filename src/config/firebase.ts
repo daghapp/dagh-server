@@ -63,7 +63,7 @@ export function initFirebase(): void {
       }),
     });
     messaging = getMessaging(firebaseApp);
-    console.log("[push] Firebase Admin initialized");
+    console.log(`[push] Firebase Admin initialized for project ${projectId}`);
   } catch (error) {
     const startsPem = privateKey.startsWith("-----BEGIN");
     const hasNewline = privateKey.includes("\n");

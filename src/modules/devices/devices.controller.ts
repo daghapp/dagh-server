@@ -18,6 +18,13 @@ export const registerDevice = async (req: Request, res: Response) => {
     // are always refreshed.
     const { update, create } = deviceTokenPatch(req.body);
 
+    // An installation UUID is unique to the handset. If another account still
+    // owns this deviceId (logout skipped DELETE, or the user switched accounts),
+    // drop that row so the previous user never keeps receiving this phone's pushes.
+    await prisma.userDevice.deleteMany({
+      where: { deviceId, userId: { not: userId } },
+    });
+
     const device = await prisma.userDevice.upsert({
       where: {
         userId_deviceId: { userId, deviceId },

@@ -31,6 +31,7 @@ export function tokenSuffix(token: string): string | null {
 
 const REDACTED_FIELDS = new Set([
   "content",
+  "preview",
   "previewBody",
   "senderName",
   "senderImageUrl",

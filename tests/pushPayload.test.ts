@@ -242,6 +242,48 @@ describe("providerForDevice with VoIP", () => {
     ).toEqual({ provider: "EXPO", token: "ExponentPushToken[c]" });
   });
 
+  it("does not send Android incoming calls through Expo", () => {
+    expect(
+      providerForDevice(
+        {
+          id: "d-android-expo",
+          platform: "ANDROID",
+          fcmToken: null,
+          expoPushToken: "ExponentPushToken[b]",
+        },
+        callPayload,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not send iOS incoming calls through Expo when VoIP is missing", () => {
+    expect(
+      providerForDevice(
+        {
+          id: "d-ios-expo-only",
+          platform: "IOS",
+          fcmToken: null,
+          expoPushToken: "ExponentPushToken[c]",
+        },
+        callPayload,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not send Android CALL_STATE_CHANGED through Expo", () => {
+    expect(
+      providerForDevice(
+        {
+          id: "d-android-state",
+          platform: "ANDROID",
+          fcmToken: null,
+          expoPushToken: "ExponentPushToken[b]",
+        },
+        { type: "CALL_STATE_CHANGED", callId: "call-1", status: "CANCELLED" },
+      ),
+    ).toBeNull();
+  });
+
   it("does not apply VoIP to Android even with a voipPushToken", () => {
     expect(
       providerForDevice(
@@ -487,6 +529,15 @@ describe("titleForPayload / bodyForPayload for messages", () => {
     expect(bodyForPayload(payload)).toBe("Hello!");
   });
 
+  it("uses preview when previewBody is absent", () => {
+    const payload: PushPayload = {
+      type: "NEW_MESSAGE",
+      messageType: "TEXT",
+      preview: "Contract preview",
+    };
+    expect(bodyForPayload(payload)).toBe("Contract preview");
+  });
+
   it("returns fixed body for IMAGE messages", () => {
     const payload: PushPayload = {
       type: "NEW_MESSAGE",
@@ -586,5 +637,6 @@ describe("buildFcmMessage for messages", () => {
     expect(msg.data).toEqual(payload);
     expect(msg.notification).toBeUndefined();
     expect(msg.android.notification).toBeUndefined();
+    expect(msg.android.ttl).toBe(60_000);
   });
 });

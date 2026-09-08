@@ -34,8 +34,8 @@ export async function transitionCall(
   return prisma.$transaction(async (tx) => {
     // Lock the row with SELECT ... FOR UPDATE to prevent concurrent transitions
     const rows = await tx.$queryRaw<
-      { id: string; status: CallStatus; version: number }[]
-    >`SELECT id, status, version FROM calls WHERE id = ${callId} FOR UPDATE`;
+      { id: string; status: CallStatus; version: number; callerId: string; receiverId: string }[]
+    >`SELECT id, status, version, "callerId", "receiverId" FROM calls WHERE id = ${callId} FOR UPDATE`;
 
     if (rows.length === 0) return null;
 
@@ -59,6 +59,16 @@ export async function transitionCall(
         version: { increment: 1 },
         ...updates,
       },
+    });
+
+    await tx.notificationOutbox.createMany({
+      data: [call.callerId, call.receiverId].map((recipientUserId) => ({
+        eventType: "CALL_STATE_CHANGED",
+        aggregateId: `${callId}:${updated.version}`,
+        recipientUserId,
+        payload: { callId, sequence: updated.version },
+      })),
+      skipDuplicates: true,
     });
 
     // Write audit log

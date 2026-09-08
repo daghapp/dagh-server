@@ -4,7 +4,6 @@ import { ok, created, fail } from "../../helpers/response.js";
 import { getCallServiceUrl } from "../../helpers/call-service.js";
 import { generateLiveKitRoomToken, generateSecureCallToken } from "../../helpers/livekit.js";
 import { transitionCall } from "../../helpers/callStateMachine.js";
-import { sendIncomingCallPush, enqueueCallStatePush } from "../../helpers/pushNotifications.js";
 import {
   logCallInitiated,
   logCallAnswerTime,
@@ -142,7 +141,8 @@ export const initiateCall = async (req: Request, res: Response) => {
     //    call attempts can never both pass the busy check.
     const callId = crypto.randomUUID();
     const roomId = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 40_000);
+    const RING_WINDOW_MS = 45_000;
+    const expiresAt = new Date(Date.now() + RING_WINDOW_MS);
     const ringingAt = new Date();
 
     let ringing: Awaited<ReturnType<typeof prisma.call.create>>;
@@ -174,7 +174,7 @@ export const initiateCall = async (req: Request, res: Response) => {
           throw new CallBusyError("RECIPIENT_BUSY", "This user is currently in another call");
         }
 
-        return tx.call.create({
+        const created = await tx.call.create({
           data: {
             id: callId,
             roomId,
@@ -187,6 +187,17 @@ export const initiateCall = async (req: Request, res: Response) => {
             expiresAt,
           },
         });
+
+        await tx.notificationOutbox.create({
+          data: {
+            eventType: "INCOMING_CALL",
+            aggregateId: created.id,
+            recipientUserId: created.receiverId,
+            payload: { callId: created.id, sequence: created.version },
+          },
+        });
+
+        return created;
       });
     } catch (error) {
       if (error instanceof CallBusyError) {
@@ -218,13 +229,13 @@ export const initiateCall = async (req: Request, res: Response) => {
       conversationId: ringing.conversationId,
       caller: callerProfile
         ? {
-            id: callerProfile.id,
-            fullName: callerProfile.fullName,
-            profileImageUrl:
-              callerProfile.profile?.bio_profile_image_url ||
-              callerProfile.profile?.profileUrl ||
-              null,
-          }
+          id: callerProfile.id,
+          fullName: callerProfile.fullName,
+          profileImageUrl:
+            callerProfile.profile?.bio_profile_image_url ||
+            callerProfile.profile?.profileUrl ||
+            null,
+        }
         : null,
       status: ringing.status,
       expiresAt: ringing.expiresAt.toISOString(),
@@ -246,12 +257,7 @@ export const initiateCall = async (req: Request, res: Response) => {
     };
     io.to(`user:${callerId}`).emit("call.ringing", ringingPayload);
 
-    // 12. Send push notifications (fire-and-forget)
-    if (callerProfile) {
-      sendIncomingCallPush(ringing, callerProfile).catch(() => {});
-    }
-
-    // 13. Cache idempotency response
+    // 12. Cache idempotency response
     const responseData = {
       call: {
         id: ringing.id,
@@ -296,16 +302,16 @@ export const getCallHistory = async (req: Request, res: Response) => {
       OR: [{ callerId: userId }, { receiverId: userId }],
       ...(cursor
         ? {
-            createdAt: {
-              lt:
-                (
-                  await prisma.call.findUnique({
-                    where: { id: cursor },
-                    select: { createdAt: true },
-                  })
-                )?.createdAt ?? new Date(),
-            },
-          }
+          createdAt: {
+            lt:
+              (
+                await prisma.call.findUnique({
+                  where: { id: cursor },
+                  select: { createdAt: true },
+                })
+              )?.createdAt ?? new Date(),
+          },
+        }
         : {}),
     };
 
@@ -330,21 +336,21 @@ export const getCallHistory = async (req: Request, res: Response) => {
       otherUser:
         call.callerId === userId
           ? {
-              id: call.receiver.id,
-              fullName: call.receiver.fullName,
-              profileImageUrl:
-                call.receiver.profile?.bio_profile_image_url ||
-                call.receiver.profile?.profileUrl ||
-                null,
-            }
+            id: call.receiver.id,
+            fullName: call.receiver.fullName,
+            profileImageUrl:
+              call.receiver.profile?.bio_profile_image_url ||
+              call.receiver.profile?.profileUrl ||
+              null,
+          }
           : {
-              id: call.caller.id,
-              fullName: call.caller.fullName,
-              profileImageUrl:
-                call.caller.profile?.bio_profile_image_url ||
-                call.caller.profile?.profileUrl ||
-                null,
-            },
+            id: call.caller.id,
+            fullName: call.caller.fullName,
+            profileImageUrl:
+              call.caller.profile?.bio_profile_image_url ||
+              call.caller.profile?.profileUrl ||
+              null,
+          },
       startedAt: call.ringingAt?.toISOString() ?? call.createdAt.toISOString(),
       answeredAt: call.answeredAt?.toISOString() ?? null,
       endedAt: call.endedAt?.toISOString() ?? null,
@@ -489,7 +495,6 @@ export const answerCall = async (req: Request, res: Response) => {
     // receiver's other devices so an in-progress incoming-call ring is
     // dismissed everywhere except the answering installation (its native
     // handler preserves the locally answered call).
-    enqueueCallStatePush(answered).catch(() => {});
 
     // Notify receiver's other socket devices
     const receiverSockets = io.sockets.adapter.rooms.get(`user:${userId}`);
@@ -565,8 +570,6 @@ export const declineCall = async (req: Request, res: Response) => {
     io.to(`user:${declined.callerId}`).emit("call.declined", payload);
     io.to(`user:${declined.receiverId}`).emit("call.declined", payload);
 
-    // Push state change to both participants (fire-and-forget)
-    enqueueCallStatePush(declined).catch(() => {});
 
     return ok(res, { callId: declined.id, status: "DECLINED" });
   } catch (error) {
@@ -630,8 +633,6 @@ export const cancelCall = async (req: Request, res: Response) => {
     io.to(`user:${cancelled.receiverId}`).emit("call.cancelled", payload);
     io.to(`user:${cancelled.callerId}`).emit("call.cancelled", payload);
 
-    // Push state change to both participants (fire-and-forget)
-    enqueueCallStatePush(cancelled).catch(() => {});
 
     return ok(res, { callId: cancelled.id, status: "CANCELLED" });
   } catch (error) {
@@ -704,8 +705,6 @@ export const endCall = async (req: Request, res: Response) => {
     io.to(`user:${ended.callerId}`).emit("call.ended", payload);
     io.to(`user:${ended.receiverId}`).emit("call.ended", payload);
 
-    // Push state change to both participants (fire-and-forget)
-    enqueueCallStatePush(ended).catch(() => {});
 
     // Create a CALL_LOG message in the conversation
     if (existing.conversationId) {

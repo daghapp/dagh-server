@@ -130,37 +130,50 @@ export function isExpoPushToken(token: string): boolean {
   return token.startsWith("ExponentPushToken[") && token.endsWith("]");
 }
 
+function nativeAndroidFcmToken(device: DevicePushTarget): string | null {
+  return device.platform === "ANDROID" && device.fcmToken && !isExpoPushToken(device.fcmToken)
+    ? device.fcmToken
+    : null;
+}
+
 /**
  * Decide which provider/token to use for a device.
- * iOS devices that registered a PushKit VoIP token get **incoming-call** payloads
- * delivered as an APNs VoIP push so the OS can launch the terminated app and
- * present the call; on Android the native FCM token is preferred (reliable
- * background delivery); anything else falls back to the Expo token. Returns null
- * when the device has no usable token for push delivery.
  *
- * Call *state-change* cleanup payloads (CALL_STATE_CHANGED) are intentionally
- * NOT routed over VoIP: they are not new calls, and per the push contract they
- * must travel over ordinary messaging/APNs instead so a stale ring cannot be
- * treated as a fresh incoming call.
+ * Native call events never share a path with Expo:
+ *   - iOS `INCOMING_CALL` → APNs VoIP (`voipPushToken`) only
+ *   - Android `INCOMING_CALL` / `CALL_STATE_CHANGED` → direct FCM (`fcmToken`) only
+ *   - iOS `CALL_STATE_CHANGED` → ordinary Expo/APNs (never a new VoIP push)
+ *
+ * Chat messages use FCM on Android when a native FCM token exists, otherwise Expo.
+ * A device is never targeted by more than one provider for the same event.
  */
 export function providerForDevice(
   device: DevicePushTarget,
   payload?: PushPayload,
 ): { provider: PushProvider; token: string } | null {
-  if (
-    payload &&
-    payload.type === "INCOMING_CALL" &&
-    device.platform === "IOS" &&
-    device.voipPushToken
-  ) {
-    return { provider: "VOIP", token: device.voipPushToken };
+  const eventType = payload?.type;
+
+  if (eventType === "INCOMING_CALL") {
+    if (device.platform === "IOS" && device.voipPushToken) {
+      return { provider: "VOIP", token: device.voipPushToken };
+    }
+    const fcmToken = nativeAndroidFcmToken(device);
+    if (fcmToken) return { provider: "FCM", token: fcmToken };
+    return null;
   }
-  if (device.platform === "ANDROID" && device.fcmToken && !isExpoPushToken(device.fcmToken)) {
-    return { provider: "FCM", token: device.fcmToken };
+
+  if (eventType === "CALL_STATE_CHANGED") {
+    const fcmToken = nativeAndroidFcmToken(device);
+    if (fcmToken) return { provider: "FCM", token: fcmToken };
+    if (device.platform === "IOS" && device.expoPushToken) {
+      return { provider: "EXPO", token: device.expoPushToken };
+    }
+    return null;
   }
-  if (device.expoPushToken) {
-    return { provider: "EXPO", token: device.expoPushToken };
-  }
+
+  const fcmToken = nativeAndroidFcmToken(device);
+  if (fcmToken) return { provider: "FCM", token: fcmToken };
+  if (device.expoPushToken) return { provider: "EXPO", token: device.expoPushToken };
   if (device.fcmToken && isExpoPushToken(device.fcmToken)) {
     return { provider: "EXPO", token: device.fcmToken };
   }
@@ -186,7 +199,7 @@ export function buildIncomingCallPayload(
     callerId: caller.id,
     callerName: caller.fullName,
     callerImageUrl: getPublicProfileImage(caller) ?? "",
-    conversationId: call.conversationId,
+    conversationId: call.conversationId ?? "",
     expiresAt: call.expiresAt.toISOString(),
     sequence: call.version,
   });
@@ -290,7 +303,11 @@ export function bodyForPayload(payload: PushPayload): string {
     return `${payload.callerName ?? "Someone"} is calling...`;
   }
   if (payload.type === "NEW_MESSAGE") {
-    return payload.previewBody || messagePreviewBody(payload.messageType, payload.content);
+    return (
+      payload.preview ||
+      payload.previewBody ||
+      messagePreviewBody(payload.messageType, payload.content)
+    );
   }
   switch (payload.status) {
     case "DECLINED":
@@ -368,10 +385,11 @@ export function buildFcmMessage(
   const ttl = ttlMs !== undefined ? { ttl: ttlMs } : {};
 
   if (isCallStateChanged) {
+    const stateTtl = ttlMs !== undefined ? { ttl: ttlMs } : { ttl: 60_000 };
     return {
       token,
       data: payload,
-      android: { priority: "high", ...ttl },
+      android: { priority: "high", ...stateTtl },
       apns: {
         headers: { "apns-priority": "10" },
         payload: {

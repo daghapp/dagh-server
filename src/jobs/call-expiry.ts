@@ -2,7 +2,6 @@ import cron from "node-cron";
 import { prisma } from "../config/prisma.js";
 import { withDistributedLock } from "../helpers/jobLock.js";
 import { transitionCall } from "../helpers/callStateMachine.js";
-import { enqueueCallStatePush } from "../helpers/pushNotifications.js";
 import { logCallExpired } from "../helpers/callLogger.js";
 import type { Server } from "socket.io";
 
@@ -57,8 +56,6 @@ export const callExpiryJob = () => {
         io.to(`user:${call.callerId}`).emit("call.missed", payload);
         io.to(`user:${call.receiverId}`).emit("call.missed", payload);
 
-        // Push state change to both participants (fire-and-forget)
-        enqueueCallStatePush(changed).catch(() => {});
       }
     });
   });

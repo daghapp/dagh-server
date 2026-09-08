@@ -114,7 +114,7 @@ async function enqueueForUser(call: Call, userId: string, payload: PushPayload):
       platform: device.platform,
       provider: target?.provider,
       tokenSuffix: target ? tokenSuffix(target.token) : null,
-      skipReason: target ? undefined : "no_usable_token",
+      skipReason: target ? undefined : "native_call_token_missing",
       eventType: payload.type,
     });
     if (!target) continue;
@@ -154,30 +154,32 @@ export async function enqueueIncomingCallPush(call: Call, caller: CallerProfile)
 }
 
 /**
+ * Queue a state-change push for a single recipient. Each transition creates one
+ * outbox row per participant, so dispatch must enqueue only the row's own
+ * recipient — re-targeting both participants for every row would re-enqueue
+ * (and reset) delivery rows that the first dispatch already sent, producing
+ * duplicate pushes.
+ */
+async function enqueueCallStatePushForUser(call: Call, recipientUserId: string): Promise<void> {
+  const payload = buildCallStatePayload(call);
+  logPushEventCreated({
+    eventType: "CALL_STATE_CHANGED",
+    eventId: call.id,
+    callId: call.id,
+    conversationId: call.conversationId ?? undefined,
+    recipientUserId,
+    createdAt: new Date().toISOString(),
+  });
+  await enqueueForUser(call, recipientUserId, payload);
+}
+
+/**
  * Queue a state-change push (declined / cancelled / missed / ended / failed) to
  * both participants so they can dismiss an obsolete incoming-call screen.
  */
 export async function enqueueCallStatePush(call: Call): Promise<void> {
-  const payload = buildCallStatePayload(call);
-  const createdAt = new Date().toISOString();
-  logPushEventCreated({
-    eventType: "CALL_STATE_CHANGED",
-    eventId: call.id,
-    callId: call.id,
-    conversationId: call.conversationId ?? undefined,
-    recipientUserId: call.callerId,
-    createdAt,
-  });
-  logPushEventCreated({
-    eventType: "CALL_STATE_CHANGED",
-    eventId: call.id,
-    callId: call.id,
-    conversationId: call.conversationId ?? undefined,
-    recipientUserId: call.receiverId,
-    createdAt,
-  });
-  await enqueueForUser(call, call.callerId, payload);
-  await enqueueForUser(call, call.receiverId, payload);
+  await enqueueCallStatePushForUser(call, call.callerId);
+  await enqueueCallStatePushForUser(call, call.receiverId);
   void dispatchCallDeliveries(call.id).catch((error) => {
     console.error("[push] dispatchCallDeliveries error:", error);
   });
@@ -357,6 +359,33 @@ export async function dispatchNotificationOutbox(): Promise<void> {
         }
       }
 
+      if (row.eventType === "INCOMING_CALL" || row.eventType === "CALL_STATE_CHANGED") {
+        const payload = row.payload as { callId: string };
+        const call = await prisma.call.findUnique({
+          where: { id: payload.callId },
+          include: {
+            caller: {
+              select: {
+                id: true,
+                fullName: true,
+                profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+              },
+            },
+          },
+        });
+
+        if (call) {
+          if (row.eventType === "INCOMING_CALL") {
+            await enqueueIncomingCallPush(call, call.caller);
+          } else {
+            await enqueueCallStatePushForUser(call, row.recipientUserId);
+            void dispatchCallDeliveries(call.id).catch((error) => {
+              console.error("[push] dispatchCallDeliveries error:", error);
+            });
+          }
+        }
+      }
+
       await prisma.notificationOutbox.update({
         where: { id: row.id },
         data: { status: "COMPLETED", attempts: { increment: 1 } },
@@ -371,7 +400,7 @@ export async function dispatchNotificationOutbox(): Promise<void> {
             attempts: { increment: 1 },
           },
         })
-        .catch(() => {});
+        .catch(() => { });
     } finally {
       processingOutbox.delete(row.id);
     }
@@ -559,7 +588,12 @@ async function sendToDevice(
     };
   }
 
-  const ttlMs = remainingRingMs !== undefined ? Math.max(1, Math.ceil(remainingRingMs)) : undefined;
+  const ttlMs =
+    remainingRingMs !== undefined
+      ? Math.max(1, Math.ceil(remainingRingMs))
+      : payload.type === "CALL_STATE_CHANGED"
+        ? 60_000
+        : undefined;
   const ttlSeconds = ttlMs !== undefined ? Math.max(1, Math.ceil(ttlMs / 1000)) : undefined;
   const correlationId = payload.callId ?? payload.messageId ?? "unknown";
 
@@ -1191,6 +1225,7 @@ export async function sendTestPushToUser(userId: string): Promise<{
     senderName: "Diaspora Sync",
     messageType: "TEXT",
     previewBody: "This is a test push notification",
+    preview: "This is a test push notification",
     route: "/(connect)/chat/[id]",
     schemaVersion: "1",
   });
