@@ -46,6 +46,13 @@ const MAX_ATTEMPTS = 5;
 const EXPO_RECEIPT_DELAY_MS = 60_000;
 
 /**
+ * Call statuses during which an INCOMING_CALL push is still worth delivering.
+ * Once a call has left the ringing phase (answered, declined, cancelled,
+ * missed, ended or failed) any pending incoming-call delivery is obsolete.
+ */
+const ACTIVE_RINGING_STATUSES = new Set(["INITIATING", "RINGING"]);
+
+/**
  * Bounded exponential backoff between delivery attempts (2s, 4s, 8s, ... capped
  * at 60s) so transient provider failures retry without hammering the provider.
  */
@@ -387,7 +394,12 @@ export async function dispatchNotificationOutbox(): Promise<void> {
 
         if (call) {
           if (row.eventType === "INCOMING_CALL") {
-            await enqueueIncomingCallPush(call, call.caller);
+            // Don't re-enqueue an incoming-call push once the call has left the
+            // ringing phase — enqueueForUser would reset every delivery row back
+            // to PENDING, re-dispatch them, and flood the log with CALL_EXPIRED.
+            if (ACTIVE_RINGING_STATUSES.has(call.status)) {
+              await enqueueIncomingCallPush(call, call.caller);
+            }
           } else {
             const statePayload = sanitizePushData({
               type: "CALL_STATE_CHANGED",
@@ -634,7 +646,7 @@ async function sendToDevice(
       return {
         providerMessageId: null,
         errorCode: "APNS_NOT_CONFIGURED",
-        transient: true,
+        transient: false,
         invalidToken: false,
       };
     }
@@ -696,7 +708,7 @@ async function sendToDevice(
       return {
         providerMessageId: null,
         errorCode: "FIREBASE_NOT_CONFIGURED",
-        transient: true,
+        transient: false,
         invalidToken: false,
       };
     }
@@ -839,23 +851,59 @@ async function invalidateToken(deviceId: string, provider: PushProvider): Promis
 
 /** Deliver a single outbox row, updating status/attempt metadata. */
 async function sendDeliveryRow(row: CallPushDelivery): Promise<void> {
+  const now = new Date();
   const device = await prisma.userDevice.findUnique({ where: { id: row.deviceId } });
   if (!device || !device.enabled) {
     await prisma.callPushDelivery.update({
       where: { id: row.id },
-      data: { status: "FAILED", errorCode: "DEVICE_DISABLED", lastAttemptAt: new Date() },
+      data: { status: "FAILED", errorCode: "DEVICE_DISABLED", lastAttemptAt: now },
     });
     return;
+  }
+
+  const payload = row.payload as PushPayload;
+
+  // Incoming-call pushes are only meaningful while the call is still ringing.
+  // Once the ring window has closed — either the call state left INITIATING/
+  // RINGING or `expiresAt` passed — the delivery is obsolete. Fail it here
+  // instead of calling the provider so it is never retried by the cron worker.
+  if (payload.type === "INCOMING_CALL") {
+    const call = await prisma.call.findUnique({
+      where: { id: row.callId },
+      select: { status: true },
+    });
+    const expiresAtMs = payload.expiresAt ? new Date(payload.expiresAt).getTime() : undefined;
+    const noLongerRinging =
+      (call !== null && !ACTIVE_RINGING_STATUSES.has(call.status)) ||
+      (expiresAtMs !== undefined && expiresAtMs <= now.getTime());
+    if (noLongerRinging) {
+      await prisma.callPushDelivery.update({
+        where: { id: row.id },
+        data: {
+          status: "FAILED",
+          errorCode: "CALL_EXPIRED",
+          attemptCount: { increment: 1 },
+          lastAttemptAt: now,
+        },
+      });
+      logCallPushFailed({
+        callId: row.callId,
+        deviceId: row.deviceId,
+        provider: row.provider,
+        errorCode: "CALL_EXPIRED",
+        tokenInvalidated: false,
+      });
+      return;
+    }
   }
 
   const result = await sendToDevice(
     row.provider,
     row.token,
-    row.payload as PushPayload,
+    payload,
     row.attemptCount + 1,
     row.deviceId,
   );
-  const now = new Date();
 
   if (!result.errorCode) {
     await prisma.callPushDelivery.update({
