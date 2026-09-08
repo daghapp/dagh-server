@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { prisma } from "../config/prisma.js";
 import { withDistributedLock } from "../helpers/jobLock.js";
 import { transitionCall } from "../helpers/callStateMachine.js";
+import { dispatchNotificationOutbox } from "../helpers/pushNotifications.js";
 import { logCallExpired } from "../helpers/callLogger.js";
 import type { Server } from "socket.io";
 
@@ -39,6 +40,11 @@ export const callExpiryJob = () => {
         );
 
         if (!changed) continue;
+
+        // Best-effort immediate dispatch of MISSED state push
+        dispatchNotificationOutbox().catch((error) => {
+          console.error("[outbox] call expiry dispatch error:", error);
+        });
 
         logCallExpired({
           callId: call.id,

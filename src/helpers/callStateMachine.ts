@@ -66,7 +66,14 @@ export async function transitionCall(
         eventType: "CALL_STATE_CHANGED",
         aggregateId: `${callId}:${updated.version}`,
         recipientUserId,
-        payload: { callId, sequence: updated.version },
+        payload: {
+          callId,
+          callType: updated.callType,
+          status: updated.status,
+          conversationId: updated.conversationId,
+          sequence: updated.version,
+          occurredAt: new Date().toISOString(),
+        },
       })),
       skipDuplicates: true,
     });

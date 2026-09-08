@@ -12,6 +12,7 @@ import {
   logCallTokenGenerated,
 } from "../../helpers/callLogger.js";
 import { isUserBlocked } from "../../helpers/safety.js";
+import { dispatchNotificationOutbox } from "../../helpers/pushNotifications.js";
 // import { hasPaidActiveMembership } from "../../helpers/membership.js"; // TODO: re-enable with paid-tier gating
 import { getRedisClient } from "../../config/redis.js";
 import crypto from "crypto";
@@ -205,6 +206,12 @@ export const initiateCall = async (req: Request, res: Response) => {
       }
       throw error;
     }
+
+    // Best-effort immediate dispatch of the incoming-call push.
+    // The cron worker remains the durable fallback.
+    dispatchNotificationOutbox().catch((error) => {
+      console.error("[outbox] call fast dispatch error:", error);
+    });
 
     // 10. Generate caller LiveKit token (short-lived)
     const liveKitToken = await generateSecureCallToken({
@@ -470,6 +477,11 @@ export const answerCall = async (req: Request, res: Response) => {
       });
     }
 
+    // Best-effort immediate dispatch of ANSWERED state push
+    dispatchNotificationOutbox().catch((error) => {
+      console.error("[outbox] call state dispatch error:", error);
+    });
+
     // Generate receiver LiveKit token
     const liveKitToken = await generateSecureCallToken({
       roomId: answered.roomId,
@@ -559,6 +571,11 @@ export const declineCall = async (req: Request, res: Response) => {
       });
     }
 
+    // Best-effort immediate dispatch of DECLINED state push
+    dispatchNotificationOutbox().catch((error) => {
+      console.error("[outbox] call state dispatch error:", error);
+    });
+
     const payload = {
       callId: declined.id,
       callType: declined.callType,
@@ -621,6 +638,11 @@ export const cancelCall = async (req: Request, res: Response) => {
         message: "Cannot cancel in current state",
       });
     }
+
+    // Best-effort immediate dispatch of CANCELLED state push
+    dispatchNotificationOutbox().catch((error) => {
+      console.error("[outbox] call state dispatch error:", error);
+    });
 
     const payload = {
       callId: cancelled.id,
@@ -688,6 +710,11 @@ export const endCall = async (req: Request, res: Response) => {
     if (!ended) {
       return fail(res, 409, { code: "INVALID_CALL_STATE", message: "Cannot end in current state" });
     }
+
+    // Best-effort immediate dispatch of ENDED state push
+    dispatchNotificationOutbox().catch((error) => {
+      console.error("[outbox] call state dispatch error:", error);
+    });
 
     logCallDuration({ callId, durationSec, endedBy: userId, endReason: "hangup" });
 

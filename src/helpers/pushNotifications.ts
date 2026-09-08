@@ -160,8 +160,12 @@ export async function enqueueIncomingCallPush(call: Call, caller: CallerProfile)
  * (and reset) delivery rows that the first dispatch already sent, producing
  * duplicate pushes.
  */
-async function enqueueCallStatePushForUser(call: Call, recipientUserId: string): Promise<void> {
-  const payload = buildCallStatePayload(call);
+async function enqueueCallStatePushForUser(
+  call: Call,
+  recipientUserId: string,
+  eventPayload: PushPayload = buildCallStatePayload(call),
+): Promise<void> {
+  const payload = eventPayload;
   logPushEventCreated({
     eventType: "CALL_STATE_CHANGED",
     eventId: call.id,
@@ -360,9 +364,16 @@ export async function dispatchNotificationOutbox(): Promise<void> {
       }
 
       if (row.eventType === "INCOMING_CALL" || row.eventType === "CALL_STATE_CHANGED") {
-        const payload = row.payload as { callId: string };
+        const eventPayload = row.payload as {
+          callId: string;
+          callType?: string;
+          status?: string;
+          conversationId?: string | null;
+          sequence?: number;
+          occurredAt?: string;
+        };
         const call = await prisma.call.findUnique({
-          where: { id: payload.callId },
+          where: { id: eventPayload.callId },
           include: {
             caller: {
               select: {
@@ -378,7 +389,16 @@ export async function dispatchNotificationOutbox(): Promise<void> {
           if (row.eventType === "INCOMING_CALL") {
             await enqueueIncomingCallPush(call, call.caller);
           } else {
-            await enqueueCallStatePushForUser(call, row.recipientUserId);
+            const statePayload = sanitizePushData({
+              type: "CALL_STATE_CHANGED",
+              callId: eventPayload.callId,
+              callType: eventPayload.callType ?? call.callType,
+              status: eventPayload.status ?? call.status,
+              conversationId: eventPayload.conversationId ?? call.conversationId,
+              sequence: eventPayload.sequence ?? call.version,
+              occurredAt: eventPayload.occurredAt ?? new Date().toISOString(),
+            });
+            await enqueueCallStatePushForUser(call, row.recipientUserId, statePayload);
             void dispatchCallDeliveries(call.id).catch((error) => {
               console.error("[push] dispatchCallDeliveries error:", error);
             });
