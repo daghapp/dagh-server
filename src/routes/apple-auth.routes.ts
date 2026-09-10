@@ -1,6 +1,8 @@
 import { Router } from "express";
 import passport from "passport";
 import { AppleAuthController } from "../modules/authentication/apple-auth.controller.js";
+import { createOAuthState } from "../modules/authentication/oauth-state.js";
+import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
 import { viewsPath } from "../helpers/view-path.js";
 
 const router = Router();
@@ -36,15 +38,27 @@ const appleStrategyGuard = (
  *   get:
  *     summary: Initiate Apple Sign In
  *     tags: [OAuth]
+ *     parameters:
+ *       - in: query
+ *         name: redirect
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Exact app return destination (e.g. diasporansync:///oauth)
  *     responses:
  *       302:
  *         description: Redirects to Apple Sign In
+ *       503:
+ *         description: Apple Sign In is not configured on this server
  */
 router.get("/apple", appleStrategyGuard, (req, res, next) => {
   const redirect = req.query.redirect as string | undefined;
+  // Issue an unpredictable, single-use state token bound to the session. Only
+  // exact approved app return destinations survive the round-trip.
+  const state = createOAuthState(req.session, redirect);
   passport.authenticate("apple", {
     scope: ["name", "email"],
-    state: redirect ? Buffer.from(redirect).toString("base64") : undefined,
+    state,
   })(req, res, next);
 });
 
@@ -70,13 +84,13 @@ router.get("/apple", appleStrategyGuard, (req, res, next) => {
  *                 description: JWT containing user identity info
  *               state:
  *                 type: string
- *                 description: Base64-encoded redirect URI
+ *                 description: Opaque one-time state token issued at initiation
  *               user:
  *                 type: string
  *                 description: JSON string with user profile (first login only)
  *     responses:
  *       302:
- *         description: Redirects to success or failure page
+ *         description: Redirects to the app return destination or success/failure page
  */
 router.post(
   "/apple/callback",
@@ -96,11 +110,13 @@ router.post(
  *     description: Displayed when Apple Sign In authentication fails
  *     tags: [OAuth]
  *     responses:
+ *       302:
+ *         description: Returns to the app return destination with an error parameter
  *       401:
  *         description: Authentication failed - renders failure page
  */
-router.get("/apple/failed", (_req, res) => {
-  res.status(401).sendFile(viewsPath("auth-failed.html"));
+router.get("/apple/failed", (req, res) => {
+  handleOauthFailure(req, res, "auth-failed.html", "/auth/apple");
 });
 
 /**

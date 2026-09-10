@@ -1,6 +1,8 @@
 import { Router } from "express";
 import passport from "passport";
 import { GoogleAuthController } from "../modules/authentication/index.js";
+import { createOAuthState } from "../modules/authentication/oauth-state.js";
+import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
 import { viewsPath } from "../helpers/view-path.js";
 
 const router = Router();
@@ -13,16 +15,25 @@ const googleAuthController = new GoogleAuthController();
  *   get:
  *     summary: Initiate Google OAuth login
  *     tags: [OAuth]
+ *     parameters:
+ *       - in: query
+ *         name: redirect
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Exact app return destination (e.g. diasporansync:///oauth)
  *     responses:
  *       302:
  *         description: Redirects to Google OAuth
  */
 router.get("/google", (req, res, next) => {
   const redirect = req.query.redirect as string | undefined;
+  // Issue an unpredictable, single-use state token bound to the session. Only
+  // exact approved app return destinations survive the round-trip.
+  const state = createOAuthState(req.session, redirect);
   passport.authenticate("google", {
     scope: ["profile", "email"],
-    // encode the app redirect URI into state so it survives the OAuth round-trip
-    state: redirect ? Buffer.from(redirect).toString("base64") : undefined,
+    state,
   })(req, res, next);
 });
 
@@ -43,10 +54,10 @@ router.get("/google", (req, res, next) => {
  *         name: state
  *         schema:
  *           type: string
- *         description: Base64-encoded redirect URI
+ *         description: Opaque one-time state token issued at initiation
  *     responses:
  *       302:
- *         description: Redirects to success or failure page
+ *         description: Redirects to the app return destination or success/failure page
  */
 router.get(
   "/google/callback",
@@ -65,11 +76,13 @@ router.get(
  *     description: Displayed when Google OAuth authentication fails
  *     tags: [OAuth]
  *     responses:
+ *       302:
+ *         description: Returns to the app return destination with an error parameter
  *       401:
  *         description: Authentication failed - renders failure page
  */
-router.get("/google/failed", (_req, res) => {
-  res.status(401).sendFile(viewsPath("auth-failed.html"));
+router.get("/google/failed", (req, res) => {
+  handleOauthFailure(req, res, "auth-failed.html", "/auth/google");
 });
 
 /**

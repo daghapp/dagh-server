@@ -117,6 +117,9 @@ const authLimiter = createRateLimiter("auth", 15 * 60 * 1000, {
 
 app.use(helmet());
 app.use(express.json());
+// urlencoded body parsing for the Apple Sign In callback (response_mode=form_post),
+// which posts its auth code/state as application/x-www-form-urlencoded.
+app.use(express.urlencoded({ extended: true }));
 app.use(
   cors({
     origin: (origin, callback) => {

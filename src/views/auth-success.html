@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Authentication Success</title>
+    <title>Diaspora Sync Sign In</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
@@ -20,51 +20,44 @@
         border-radius: 10px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         text-align: center;
-        max-width: 500px;
+        max-width: 420px;
       }
-      h1 { 
-        color: #27ae60; 
-        margin-bottom: 20px; 
+      h1 {
+        color: #27ae60;
+        margin-bottom: 20px;
       }
-      p { 
-        color: #555; 
-        margin-bottom: 20px; 
+      p {
+        color: #555;
+        margin-bottom: 20px;
       }
-      .token { 
-        background: #f8f9fa; 
-        padding: 10px; 
-        border-radius: 5px; 
-        word-break: break-all;
-        font-size: 12px;
-        margin-bottom: 15px;
-        text-align: left;
-      }
-      .label { 
-        font-weight: bold; 
-        color: #333; 
-        margin-bottom: 5px;
-      }
-      .email {
-        color: #667eea;
+      .app-link {
+        display: inline-block;
+        padding: 14px 32px;
+        background: #d9750b;
+        color: white;
+        text-decoration: none;
         font-weight: bold;
+        border-radius: 30px;
+        transition: background 0.3s;
+        margin-top: 6px;
+      }
+      .app-link:hover {
+        background: #b25f08;
+      }
+      .sub {
+        font-size: 13px;
+        color: #888;
+        margin-top: 22px;
+        margin-bottom: 0;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>✅ Authentication Successful!</h1>
-      <p>Welcome, <span class="email" id="userEmail"></span></p>
-      <div class="label">Access Token:</div>
-      <div class="token" id="accessToken"></div>
-      <div class="label">Refresh Token:</div>
-      <div class="token" id="refreshToken"></div>
+      <h1>Signed In</h1>
+      <p>You are signed in to <strong>Diaspora Sync</strong>.</p>
+      <a class="app-link" href="diasporansync:///oauth">Open Diaspora Sync</a>
+      <p class="sub">If the app does not open, launch it manually and keep this tab open.</p>
     </div>
-    <script>
-      // Tokens will be injected via query params or other method
-      const urlParams = new URLSearchParams(window.location.search);
-      document.getElementById('userEmail').textContent = urlParams.get('email') || 'User';
-      document.getElementById('accessToken').textContent = urlParams.get('accessToken') || 'N/A';
-      document.getElementById('refreshToken').textContent = urlParams.get('refreshToken') || 'N/A';
-    </script>
   </body>
 </html>

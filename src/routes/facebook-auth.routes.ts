@@ -1,6 +1,8 @@
 import { Router } from "express";
 import passport from "passport";
 import { FacebookAuthController } from "../modules/authentication/facebook-auth.controller.js";
+import { createOAuthState } from "../modules/authentication/oauth-state.js";
+import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
 import { viewsPath } from "../helpers/view-path.js";
 
 const router = Router();
@@ -13,11 +15,24 @@ const facebookAuthController = new FacebookAuthController();
  *   get:
  *     summary: Initiate Facebook OAuth login
  *     tags: [OAuth]
+ *     parameters:
+ *       - in: query
+ *         name: redirect
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Exact app return destination (e.g. diasporansync:///oauth)
  *     responses:
  *       302:
  *         description: Redirects to Facebook OAuth
  */
-router.get("/facebook", passport.authenticate("facebook", { scope: ["email"] }));
+router.get("/facebook", (req, res, next) => {
+  const redirect = req.query.redirect as string | undefined;
+  // Issue an unpredictable, single-use state token bound to the session. Only
+  // exact approved app return destinations survive the round-trip.
+  const state = createOAuthState(req.session, redirect);
+  passport.authenticate("facebook", { scope: ["email"], state })(req, res, next);
+});
 
 /**
  * @swagger
@@ -32,9 +47,14 @@ router.get("/facebook", passport.authenticate("facebook", { scope: ["email"] }))
  *         schema:
  *           type: string
  *         description: Authorization code from Facebook
+ *       - in: query
+ *         name: state
+ *         schema:
+ *           type: string
+ *         description: Opaque one-time state token issued at initiation
  *     responses:
  *       302:
- *         description: Redirects to success or failure page
+ *         description: Redirects to the app return destination or success/failure page
  */
 router.get(
   "/facebook/callback",
@@ -53,11 +73,13 @@ router.get(
  *     description: Displayed when Facebook OAuth authentication fails
  *     tags: [OAuth]
  *     responses:
+ *       302:
+ *         description: Returns to the app return destination with an error parameter
  *       401:
  *         description: Authentication failed - renders failure page
  */
 router.get("/facebook/failed", (req, res) => {
-  res.status(401).sendFile(viewsPath("auth-failed.html"));
+  handleOauthFailure(req, res, "auth-failed.html", "/auth/facebook");
 });
 
 /**
