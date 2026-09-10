@@ -8,7 +8,7 @@
  * Previously this logic was duplicated across payment.controller.ts (static vs instance methods),
  * user-tour.controller.ts, user-visa.controller.ts, and itinerary.payment.controller.ts.
  */
-import { prisma, hubtelClient, hubtelDirectMoneyReceive } from "../config/index.js";
+import { prisma, hubtelClient, hubtelDirectMoneyReceive, paymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../config/index.js";
 import {
   generateClientReference,
   generateClientReference_targetType,
@@ -57,6 +57,15 @@ type InitPaymentResult = {
 };
 
 export async function initializePayment(input: InitPaymentInput): Promise<InitPaymentResult> {
+  if (!paymentsEnabled) {
+    return {
+      success: false,
+      message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+
   const reference = generateClientReference_targetType(input.targetType);
 
   const {
@@ -147,6 +156,15 @@ type InitPaymentMOMOInput = InitializePaymentSchema_MOMO;
 export async function initializePaymentMOMO(
   input: InitPaymentMOMOInput,
 ): Promise<InitPaymentResult> {
+  if (!paymentsEnabled) {
+    return {
+      success: false,
+      message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+
   const reference = generateClientReference();
 
   const result = await prisma.$transaction(async (tx) => {

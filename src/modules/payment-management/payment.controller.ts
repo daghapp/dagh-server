@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma, hubtelClient, hubtelStatusClient } from "../../config/index.js";
+import { prisma, hubtelClient, hubtelStatusClient, paymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../../config/index.js";
 import { initializePaymentSchema, initializePaymentSchema_momo } from "../../validator/index.js";
 import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
@@ -29,6 +29,10 @@ export class PaymentController {
         currency: body.currency ?? "GHS",
       });
 
+      if (!result.success) {
+        return fail(res, 503, result.message);
+      }
+
       return ok(res, null as never, result.message);
     } catch (error) {
       console.error("Payment initialization error:", error);
@@ -45,6 +49,10 @@ export class PaymentController {
       const payload = initializePaymentSchema_momo.parse(req.body);
       const result = await paymentService.initializePaymentMOMO(payload);
 
+      if (!result.success) {
+        return fail(res, 503, result.message);
+      }
+
       return ok(res, result.data, result.message);
     } catch (error) {
       console.error("Payment initialization error:", error);
@@ -54,6 +62,10 @@ export class PaymentController {
 
   async subscriptionPayment(req: Request, res: Response) {
     try {
+      if (!paymentsEnabled) {
+        return fail(res, 503, PAYMENTS_DISABLED_MESSAGE);
+      }
+
       const user = req.user as { id: string; email: string } | undefined;
       if (!user) {
         return fail(res, 401, "Unauthorized");

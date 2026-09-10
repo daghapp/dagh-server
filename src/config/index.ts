@@ -3,3 +3,4 @@ export * from "./passport.js";
 export * from "./session.js";
 export * from "./hubtel.js";
 export * from "./pricing.js";
+export * from "./payments.js";

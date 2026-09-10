@@ -83,6 +83,10 @@ export class UserVisaController {
         cancellationUrl: HUBTEL_CANCELLATION_URL,
       });
 
+      if (!payment.success) {
+        return fail(res, 503, payment.message);
+      }
+
       await prisma.visaOnArrivalRequest.update({
         where: { id: requestId as string },
         data: { paymentId: payment.paymentId, packageType },
