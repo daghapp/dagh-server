@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
 import { Router } from "express";
 import passport from "passport";
 import { FacebookAuthController } from "../modules/authentication/facebook-auth.controller.js";
-import { createOAuthState } from "../modules/authentication/oauth-state.js";
+import {
+  createOAuthState,
+  isAllowedAppReturnDestination,
+} from "../modules/authentication/oauth-state.js";
 import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
 import { viewsPath } from "../helpers/view-path.js";
 
@@ -94,7 +98,14 @@ router.get("/facebook/failed", (req, res) => {
  *         description: Authentication successful - renders success page
  */
 router.get("/facebook/success", (req, res) => {
-  res.sendFile(viewsPath("auth-success.html"));
+  const redirect = req.session?.oauthState?.redirect;
+  const template = readFileSync(viewsPath("auth-success.html"), "utf8");
+  if (redirect && isAllowedAppReturnDestination(redirect)) {
+    const appUrl = `${redirect}?provider=facebook`;
+    res.type("html").send(template.replace("__APP_REDIRECT_URL__", appUrl));
+  } else {
+    res.type("html").send(template.replace("__APP_REDIRECT_URL__", ""));
+  }
 });
 
 export { router };

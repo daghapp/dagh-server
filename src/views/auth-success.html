@@ -59,5 +59,14 @@
       <a class="app-link" href="diasporansync:///oauth">Open Diaspora Sync</a>
       <p class="sub">If the app does not open, launch it manually and keep this tab open.</p>
     </div>
+    <script>
+      // When the server renders this page after a successful OAuth callback,
+      // it embeds the redirect URL with tokens. Auto-redirect immediately;
+      // the manual link above is the fallback when opened directly.
+      var redirectUrl = "__APP_REDIRECT_URL__";
+      if (redirectUrl && redirectUrl.indexOf("diasporansync:///oauth") === 0 && redirectUrl.indexOf("accessToken=") !== -1) {
+        window.location.replace(redirectUrl);
+      }
+    </script>
   </body>
 </html>

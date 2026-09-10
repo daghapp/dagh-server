@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
 import { Router } from "express";
 import passport from "passport";
 import { AppleAuthController } from "../modules/authentication/apple-auth.controller.js";
-import { createOAuthState } from "../modules/authentication/oauth-state.js";
+import {
+  createOAuthState,
+  isAllowedAppReturnDestination,
+} from "../modules/authentication/oauth-state.js";
 import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
 import { viewsPath } from "../helpers/view-path.js";
 
@@ -130,8 +134,15 @@ router.get("/apple/failed", (req, res) => {
  *       200:
  *         description: Authentication successful - renders success page
  */
-router.get("/apple/success", (_req, res) => {
-  res.sendFile(viewsPath("auth-success.html"));
+router.get("/apple/success", (req, res) => {
+  const redirect = req.session?.oauthState?.redirect;
+  const template = readFileSync(viewsPath("auth-success.html"), "utf8");
+  if (redirect && isAllowedAppReturnDestination(redirect)) {
+    const appUrl = `${redirect}?provider=apple`;
+    res.type("html").send(template.replace("__APP_REDIRECT_URL__", appUrl));
+  } else {
+    res.type("html").send(template.replace("__APP_REDIRECT_URL__", ""));
+  }
 });
 
 export { router };
