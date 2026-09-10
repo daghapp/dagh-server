@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { initializeApp, cert, type App } from "firebase-admin/app";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
+
+const SERVICE_ACCOUNT_PATH = "/etc/secrets/firebase-service-account.json";
 
 let firebaseApp: App | null = null;
 let messaging: Messaging | null = null;
@@ -34,47 +37,59 @@ export function normalizePrivateKey(raw: string): string {
 }
 
 /**
- * Initialize Firebase Admin SDK. Called once during server startup.
- * No-op when env vars are missing — push notifications are silently skipped.
+ * Load Firebase credentials from JSON file or environment variables.
+ * JSON file at /etc/secrets/firebase-service-account.json is tried first (Render Secret Files).
+ * Falls back to individual FIREBASE_* env vars for backward compatibility.
  */
-export function initFirebase(): void {
+function loadCredentials(): { projectId: string; privateKey: string; clientEmail: string } | null {
+  // Try JSON service account file first
+  try {
+    const raw = readFileSync(SERVICE_ACCOUNT_PATH, "utf8");
+    const sa = JSON.parse(raw);
+    if (sa.project_id && sa.private_key && sa.client_email) {
+      return {
+        projectId: sa.project_id,
+        privateKey: sa.private_key,
+        clientEmail: sa.client_email,
+      };
+    }
+    console.warn("[push] Service account JSON missing required fields, falling back to env vars");
+  } catch {
+    // File not found or invalid — fall through to env vars
+  }
+
+  // Fall back to environment variables
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 
-  const missing: string[] = [];
-  if (!projectId) missing.push("FIREBASE_PROJECT_ID");
-  if (!rawPrivateKey) missing.push("FIREBASE_PRIVATE_KEY");
-  if (!clientEmail) missing.push("FIREBASE_CLIENT_EMAIL");
+  if (projectId && rawPrivateKey && clientEmail) {
+    return { projectId, privateKey: normalizePrivateKey(rawPrivateKey), clientEmail };
+  }
 
-  if (missing.length > 0) {
-    console.warn(`[push] Firebase not configured — missing: ${missing.join(", ")}`);
+  return null;
+}
+
+/**
+ * Initialize Firebase Admin SDK. Called once during server startup.
+ * No-op when credentials are missing — push notifications are silently skipped.
+ */
+export function initFirebase(): void {
+  const creds = loadCredentials();
+
+  if (!creds) {
+    console.warn("[push] Firebase not configured — no service-account file or FIREBASE_* env vars found");
     return;
   }
 
-  const privateKey = normalizePrivateKey(rawPrivateKey!);
-
   try {
     firebaseApp = initializeApp({
-      credential: cert({
-        projectId: projectId!,
-        privateKey,
-        clientEmail: clientEmail!,
-      }),
+      credential: cert(creds),
     });
     messaging = getMessaging(firebaseApp);
-    console.log(`[push] Firebase Admin initialized for project ${projectId}`);
+    console.log(`[push] Firebase Admin initialized for project ${creds.projectId}`);
   } catch (error) {
-    const startsPem = privateKey.startsWith("-----BEGIN");
-    const hasNewline = privateKey.includes("\n");
-    const isMultiLine = privateKey.split("\n").filter(Boolean).length > 1;
-    console.error(
-      `[push] Firebase initialization failed — private key ${startsPem ? "" : "NOT "}PEM-formatted, ` +
-        `newlines ${hasNewline ? "present" : "absent"}, body lines: ${isMultiLine ? "wrapped" : "single-line"}. ` +
-        "Ensure FIREBASE_PRIVATE_KEY contains the full service-account PEM key (begin/end markers included, " +
-        "no surrounding quotes).",
-      error,
-    );
+    console.error("[push] Firebase initialization failed", error);
   }
 }
 
