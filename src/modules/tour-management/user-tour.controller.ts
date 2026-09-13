@@ -436,7 +436,7 @@ export class UserTourController {
           data: {
             userId,
             paymentId: paymentResponse.paymentId, // link to payment record
-            paymentStatus: PaymentStatus.PENDING, // always pending until Hubtel callback
+            paymentStatus: paymentResponse.paymentStatus as PaymentStatus, // Use actual status (e.g. SUCCESS when mocked)
             tourId: bookingData.tourId,
             numberOfPeople: bookingData.numberOfPeople,
             bookingDate: new Date(bookingData.bookingDate),
