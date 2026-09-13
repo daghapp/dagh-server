@@ -58,35 +58,11 @@ type InitPaymentResult = {
 
 export async function initializePayment(input: InitPaymentInput): Promise<InitPaymentResult> {
   if (!paymentsEnabled) {
-    const reference = generateClientReference_targetType(input.targetType);
-    const payment = await prisma.payment.create({
-      data: {
-        userId: input.userId,
-        targetType: input.targetType,
-        targetId: input.targetId,
-        amount: input.totalAmount,
-        currency: input.currency,
-        description: input.description,
-        reference,
-        status: PaymentStatus.SUCCESS,
-        provider: PaymentProvider.HUBTEL,
-      },
-    });
-
     return {
-      success: true,
-      message: "Payment simulated successfully for testing.",
-      paymentId: payment.id,
-      paymentStatus: payment.status,
-      data: {
-        responseCode: "0000",
-        data: {
-          message: "Simulated",
-          clientReference: reference,
-          checkoutId: "simulated_checkout_id",
-          checkoutUrl: input.returnUrl || undefined,
-        },
-      }
+      success: false,
+      message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
     };
   }
 
@@ -181,26 +157,11 @@ export async function initializePaymentMOMO(
   input: InitPaymentMOMOInput,
 ): Promise<InitPaymentResult> {
   if (!paymentsEnabled) {
-    const reference = generateClientReference();
-    const payment = await prisma.payment.create({
-      data: {
-        userId: input.userId,
-        targetType: input.targetType,
-        targetId: input.targetId,
-        amount: input.amount,
-        currency: input.currency,
-        description: input.description,
-        reference,
-        status: PaymentStatus.SUCCESS,
-        provider: PaymentProvider.HUBTEL,
-      },
-    });
-
     return {
-      success: true,
-      message: "Payment simulated successfully for testing",
-      paymentId: payment.id,
-      paymentStatus: payment.status,
+      success: false,
+      message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
     };
   }
 
