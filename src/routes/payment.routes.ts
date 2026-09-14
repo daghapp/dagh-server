@@ -115,6 +115,42 @@ router.post(
 
 /**
  * @swagger
+ * /payment/status:
+ *   get:
+ *     summary: Check if payments are currently enabled
+ *     description: Public availability flag used by the frontend to skip payment screens when payments are disabled. Never returns the admin who toggled the setting.
+ *     tags: [Payment]
+ *     responses:
+ *       200:
+ *         description: Current payment availability
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     enabled:
+ *                       type: boolean
+ *                       example: false
+ *                     reason:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "Scheduled maintenance until 16:00 GMT"
+ *                 message:
+ *                   type: string
+ *                   example: "Payments are temporarily disabled. Please try again later."
+ *       500:
+ *         description: Failed to fetch payment status
+ */
+router.get("/status", paymentController.getPaymentStatus.bind(paymentController));
+
+/**
+ * @swagger
  * /payment/verify/{reference}:
  *   get:
  *     summary: Verify a payment transaction

@@ -234,8 +234,10 @@ src/
 > console surface + frontend wiring patterns, `docs/admin-gateway-registration.md`
 > for the Admin Gateway registration flow, `docs/verification-flow.md` for
 > the identity-verification integration guide, `docs/call-integration-guide.md`
-> for the voice/video calling frontend integration guide, and
-> `docs/push-notifications.md` for the push notification architecture.
+> for the voice/video calling frontend integration guide,
+> `docs/payment-control-system.md` for the payment enable/disable toggle
+> (admin API + public status endpoint), and `docs/push-notifications.md` for
+> the push notification architecture.
 
 All endpoints return responses in a standardized envelope:
 
@@ -459,6 +461,7 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
+| GET | `/payment/status` | Public | Check whether payments are currently enabled (frontend uses this to skip payment screens when disabled) |
 | POST | `/payment/initialize` | Bearer | Initialize a payment |
 | GET | `/payment/verify/:reference` | Bearer | Verify payment status |
 | GET | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status |
@@ -769,6 +772,15 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 |--------|----------|------|-------------|
 | GET | `/admin/payments` | Admin | Transaction list (paginated; filters: `status`, `targetType`, `q` reference/user, `from`/`to`) |
 | GET | `/admin/payments/stats` | Admin | Payment KPIs (total revenue, success/pending/failed counts + amounts, success rate) |
+| GET | `/admin/payments/status` | Admin | Current payment control state (`enabled`, `reason`, `updatedAt`, `updatedBy`) |
+| PATCH | `/admin/payments/status` | Admin | Enable/disable the payment system (`{ enabled: boolean, reason?: string }`) — writes an audit log entry |
+
+Payment availability is a **database-persisted runtime toggle** (see
+`docs/payment-control-system.md`): admins flip it via `PATCH /admin/payments/status`
+without redeploying, it takes effect within ~10s, and new checkouts/MOMO/subscription
+initializations are blocked with `503` while disabled. Callbacks and status
+verification for already-initiated payments keep working. The frontend can poll
+the public `GET /payment/status` to skip payment screens when the toggle is off.
 
 ### Admin — Profile Verification
 
@@ -856,6 +868,7 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `ServiceRequest` / `AuditLog` | Provider service tracking |
 | `DataPolicy` | CMS-managed data policy document (keyed, versioned) |
 | `FaqItem` | FAQ entries with optional category and sort order |
+| `SystemSetting` | Key-value feature flags (`system_settings` table) — currently stores the `PAYMENTS_ENABLED` payment toggle |
 
 See `prisma/schema.prisma` for the full schema with all fields and relations.
 

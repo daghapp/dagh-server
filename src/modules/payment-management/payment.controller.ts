@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma, hubtelClient, hubtelStatusClient, isPaymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../../config/index.js";
+import { prisma, hubtelClient, hubtelStatusClient, isPaymentsEnabled, getPaymentControlDetails, PAYMENTS_DISABLED_MESSAGE } from "../../config/index.js";
 import { initializePaymentSchema, initializePaymentSchema_momo } from "../../validator/index.js";
 import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
@@ -8,6 +8,20 @@ import { ok, fail } from "../../helpers/response.js";
 import { PaymentTargetType } from "../../../generated/prisma/client.js";
 
 export class PaymentController {
+  async getPaymentStatus(_req: Request, res: Response) {
+    try {
+      const details = await getPaymentControlDetails();
+      return ok(
+        res,
+        { enabled: details.enabled, reason: details.reason },
+        details.enabled ? "Payments are enabled" : PAYMENTS_DISABLED_MESSAGE,
+      );
+    } catch (error) {
+      console.error("Failed to fetch payment status:", error);
+      return fail(res, 500, "Failed to fetch payment status");
+    }
+  }
+
   async initializePayment(req: Request, res: Response) {
     try {
       const user = req.user as { id: string; email: string } | undefined;
