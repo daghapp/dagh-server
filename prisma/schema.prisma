@@ -1481,3 +1481,15 @@ model FaqItem {
   @@index([category, sortOrder])
   @@map("faq_items")
 }
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}

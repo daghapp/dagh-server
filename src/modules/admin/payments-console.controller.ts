@@ -9,6 +9,12 @@ import {
   parseDateRange,
   type QueryValue,
 } from "../../helpers/admin-query.js";
+import {
+  getPaymentControlDetails,
+  setPaymentControlStatus,
+} from "../../config/payments.js";
+import { logAdminActivity, AdminEntityType } from "../../helpers/admin-activity.js";
+import { updatePaymentControlSchema } from "../../validator/index.js";
 
 const PAYMENT_STATUSES = Object.values(PaymentStatus) as readonly string[];
 const TARGET_TYPES = Object.values(PaymentTargetType) as readonly string[];
@@ -114,6 +120,63 @@ export class AdminPaymentsConsoleController {
     } catch (error) {
       console.error("Failed to compute payment stats:", error);
       return fail(res, 500, "Failed to compute payment stats");
+    }
+  }
+
+  /**
+   * GET /admin/payments/status — current payment system active status and metadata.
+   */
+  async getControlStatus(_req: Request, res: Response) {
+    try {
+      const details = await getPaymentControlDetails();
+      return ok(res, details);
+    } catch (error) {
+      console.error("Failed to fetch payment control status:", error);
+      return fail(res, 500, "Failed to fetch payment control status");
+    }
+  }
+
+  /**
+   * PATCH /admin/payments/status — enable or disable the payment system.
+   */
+  async updateControlStatus(req: Request, res: Response) {
+    try {
+      const parseResult = updatePaymentControlSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        const errorMsg = parseResult.error.issues?.[0]?.message ?? "Invalid request body";
+        return fail(res, 400, errorMsg);
+      }
+
+      const { enabled, reason } = parseResult.data;
+      const adminId = (req.user as { id?: string })?.id;
+
+      const updatedDetails = await setPaymentControlStatus({
+        enabled,
+        reason,
+        updatedBy: adminId,
+      });
+
+      if (adminId) {
+        try {
+          await logAdminActivity({
+            actorId: adminId,
+            entityType: AdminEntityType.PAYMENT,
+            action: enabled ? "ENABLE_PAYMENTS" : "DISABLE_PAYMENTS",
+            note: reason ?? (enabled ? "Payments enabled by admin" : "Payments disabled by admin"),
+          });
+        } catch (logErr) {
+          console.warn("Failed to write admin activity log:", logErr);
+        }
+      }
+
+      return ok(
+        res,
+        updatedDetails,
+        enabled ? "Payment system enabled successfully" : "Payment system disabled successfully",
+      );
+    } catch (error) {
+      console.error("Failed to update payment control status:", error);
+      return fail(res, 500, "Failed to update payment control status");
     }
   }
 }

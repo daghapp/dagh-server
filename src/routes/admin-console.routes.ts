@@ -6,7 +6,7 @@ import { AdminPaymentsConsoleController } from "../modules/admin/payments-consol
 import { AdminDashboardController } from "../modules/admin/dashboard.controller.js";
 import { AdminPlansConsoleController } from "../modules/admin/plans-console.controller.js";
 import { validate } from "../middleware/validation.js";
-import { createMembershipPlanSchema } from "../validator/index.js";
+import { createMembershipPlanSchema, updatePaymentControlSchema } from "../validator/index.js";
 
 const router = express.Router();
 const adminVisa = new AdminVisaConsoleController();
@@ -537,6 +537,113 @@ router.get(
   protectedRoute,
   requireAdmin,
   adminPayments.stats.bind(adminPayments),
+);
+
+/**
+ * @swagger
+ * /admin/payments/status:
+ *   get:
+ *     summary: Payment system control status
+ *     description: Returns whether the payment system is currently enabled or disabled, plus updater and reason metadata
+ *     tags: [Admin - Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Payment system status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     enabled:
+ *                       type: boolean
+ *                     reason:
+ *                       type: string
+ *                       nullable: true
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedBy:
+ *                       type: string
+ *                       nullable: true
+ *       403:
+ *         description: Admin privileges required
+ */
+router.get(
+  "/payments/status",
+  protectedRoute,
+  requireAdmin,
+  adminPayments.getControlStatus.bind(adminPayments),
+);
+
+/**
+ * @swagger
+ * /admin/payments/status:
+ *   patch:
+ *     summary: Toggle payment system availability
+ *     description: Enables or disables payment processing (Hubtel checkout & MOMO) across the entire platform
+ *     tags: [Admin - Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - enabled
+ *             properties:
+ *               enabled:
+ *                 type: boolean
+ *                 description: Set to true to enable payments, false to disable
+ *               reason:
+ *                 type: string
+ *                 description: Optional reason or maintenance notice
+ *                 maxLength: 500
+ *     responses:
+ *       200:
+ *         description: Updated payment system status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     enabled:
+ *                       type: boolean
+ *                     reason:
+ *                       type: string
+ *                       nullable: true
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedBy:
+ *                       type: string
+ *                       nullable: true
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid request payload
+ *       403:
+ *         description: Admin privileges required
+ */
+router.patch(
+  "/payments/status",
+  protectedRoute,
+  requireAdmin,
+  validate(updatePaymentControlSchema),
+  adminPayments.updateControlStatus.bind(adminPayments),
 );
 
 /**

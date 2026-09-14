@@ -92,3 +92,11 @@ export type InitializePaymentSchema_CARD = z.infer<typeof initializePaymentSchem
 export type InitializePaymentSchema = z.infer<typeof initializePaymentSchema>;
 export type SubscriptionPaymentSchema = z.infer<typeof subscriptionPaymentSchema>;
 export type HubtelDirectReceiveResponseSchema = z.infer<typeof hubtelDirectReceiveResponseSchema>;
+
+export const updatePaymentControlSchema = z.object({
+  enabled: z.boolean({
+    message: "enabled is required and must be a boolean",
+  }),
+  reason: z.string().max(500, "Reason must not exceed 500 characters").optional(),
+});
+export type UpdatePaymentControlSchema = z.infer<typeof updatePaymentControlSchema>;

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma, hubtelClient, hubtelStatusClient, paymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../../config/index.js";
+import { prisma, hubtelClient, hubtelStatusClient, isPaymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../../config/index.js";
 import { initializePaymentSchema, initializePaymentSchema_momo } from "../../validator/index.js";
 import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
@@ -62,7 +62,7 @@ export class PaymentController {
 
   async subscriptionPayment(req: Request, res: Response) {
     try {
-      if (!paymentsEnabled) {
+      if (!(await isPaymentsEnabled())) {
         return fail(res, 503, PAYMENTS_DISABLED_MESSAGE);
       }
 
