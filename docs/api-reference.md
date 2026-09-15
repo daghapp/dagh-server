@@ -105,6 +105,8 @@ Returns `data: { id, email, fullName, accountType, accessToken, refreshToken }`.
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
 | POST | `/profile/init` | Bearer | Create the user's `UserProfile` + empty `ProfileVerification` row (idempotent). |
+| GET | `/profile/account` | Bearer | Get the authenticated user's login profile: `username`, `firstName`, `lastName`, `fullName`, `profileImageUrl`, plus account fields. |
+| PATCH | `/profile/account` | Bearer | Update own login profile: `username`, `firstName`, `lastName`, `profileImageUrl` (send `null` on `profileImageUrl` to remove the picture). |
 | PATCH | `/profile` | Bearer | Update own account fields: `fullName`, `gender`, `dateOfBirth`, `ethnicity`. |
 | PATCH | `/profile/ethnicity` | Bearer | Set the user's ethnicity (used for itinerary personalization). |
 

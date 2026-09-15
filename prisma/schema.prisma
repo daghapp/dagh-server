@@ -24,6 +24,11 @@ model User {
   lastLoginAt             DateTime?
   lastActiveAt            DateTime?
   fullName                String
+  // Login-profile fields (editable via PATCH /profile/account)
+  username               String?                  @unique
+  firstName              String?
+  lastName               String?
+  profileImageUrl        String?
   dateOfBirth             DateTime?
   gender                  String?
   phoneNumber             String?                  @unique
