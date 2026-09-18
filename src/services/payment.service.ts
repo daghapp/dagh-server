@@ -24,9 +24,17 @@ import { InitializePaymentSchema, InitializePaymentSchema_MOMO } from "../valida
 import axios, { AxiosResponse } from "axios";
 import { HubtelDirectReceiveResponseSchema } from "../validator/index.js";
 
-export const HUBTEL_CALLBACK_URL = process.env.API_URL + "/payment/hubtel_callback";
-export const HUBTEL_CANCELLATION_URL = process.env.API_URL + "/payment/hubtel_cancellation";
-export const HUBTEL_RETURN_URL = process.env.API_URL + "/payment/processing";
+// These are used as defaults by controllers that don't specify their own callback URL.
+// Visa and itinerary controllers override callbackUrl inline.
+export const HUBTEL_CALLBACK_URL =
+  process.env.HUBTEL_CALLBACK_URL ||
+  `${process.env.API_URL}/tours/hubtel-callback`;
+export const HUBTEL_CANCELLATION_URL =
+  process.env.HUBTEL_CANCELLATION_URL ||
+  `${process.env.API_URL}/payment/processing`;
+export const HUBTEL_RETURN_URL =
+  process.env.HUBTEL_RETURN_URL ||
+  `${process.env.API_URL}/payment/processing`;
 
 type InitPaymentInput = InitializePaymentSchema & {
   targetType: PaymentTargetType;

@@ -78,7 +78,7 @@ export class UserVisaController {
         totalAmount: totalAmount,
         currency: "GHS",
         description: `Visa on Arrival - ${packageType}`,
-        callbackUrl: `${process.env.API_URL}/visa-request/payment-callback`,
+        callbackUrl: `${process.env.API_URL}/visa-requests/payment-callback`,
         returnUrl: HUBTEL_RETURN_URL || "",
         cancellationUrl: HUBTEL_CANCELLATION_URL,
       });
@@ -143,10 +143,16 @@ export class UserVisaController {
             ],
           });
 
-          await prisma.visaOnArrivalRequest.update({
+        await prisma.visaOnArrivalRequest.update({
             where: { paymentId: payment.id },
             data: { status: "READY_FOR_GIS_SUBMISSION" },
           });
+
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { status: PaymentStatus.SUCCESS },
+          });
+
         }
 
         if (visaRequest.packageType === "EXPEDITED") {
@@ -165,6 +171,12 @@ export class UserVisaController {
             where: { paymentId: payment.id },
             data: { status: "EXPEDITED_AIRPORT_PAYMENT_PENDING" },
           });
+
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { status: PaymentStatus.SUCCESS },
+          });
+
 
           try {
             await sendEmail({
