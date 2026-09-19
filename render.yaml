@@ -7,6 +7,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PAYMENTS_ENABLED
+        value: "true"
       - key: API_URL
         value: https://dagh-server-fo64.onrender.com
       - key: ALLOWED_ORIGINS
