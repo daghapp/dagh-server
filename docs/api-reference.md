@@ -402,6 +402,136 @@ Query: `tourSiteId` (required), `radiusKm` (default 30), `limit` (default 10).
 
 ---
 
+## Community (YouTube Video Feed)
+
+Gated video cards that drive app members to the YouTube channel. A preview teaser
+is freely viewable; full-length playback is unlocked per user after tapping
+"Subscribe to Unlock". Every action is logged server-side as an analytics event
+so you can measure the funnel (card view → subscribe intent → watch).
+
+| Method | Endpoint | Auth | What it does |
+|--------|----------|------|--------------|
+| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`. |
+| GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status. |
+| GET | `/community/my-unlocks` | Bearer | Every video ID the caller has unlocked — call on app launch. |
+| POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. |
+| POST | `/community/videos/:videoId/unlock` | Bearer | Unlock full access (idempotent). Call when the user returns from YouTube. |
+| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate. |
+| POST | `/community/admin/videos` | Admin | Create a video card. |
+| PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished`. |
+| DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
+
+### GET /community/videos
+
+Paginated list of published cards. Each card includes the caller's unlock state
+so the client can render the correct button color/behavior without extra calls.
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Two-line bold title",
+      "description": "One-sentence value proposition for the full discussion.",
+      "teaserUrl": "https://cdn.../teaser.mp4",
+      "thumbnailUrl": "https://img.youtube.com/vi/<videoId>/hqdefault.jpg",
+      "youtubeVideoId": "dQw4w9WgXcQ",
+      "isUnlocked": false,
+      "unlockedAt": null,
+      "publishedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ],
+  "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 }
+}
+```
+
+### GET /community/my-unlocks
+
+Rehydrates local `isSubscribed`/unlock state on app launch (avoid per-card
+lookups). Falls back to `[]` for a user with no unlocks.
+
+```json
+{
+  "success": true,
+  "data": {
+    "unlocks": [{ "videoId": "uuid", "unlockedAt": "2026-10-01T00:00:00.000Z" }]
+  }
+}
+```
+
+### POST /community/videos/:videoId/interact
+
+Append-only analytics event. Safe to fire for every user action (client-side
+fire-and-forget). `action` must be one of:
+
+- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock"
+- `PREVIEW_CLIP` — user opened the teaser modal
+- `WATCH_FULL_VIDEO` — user tapped the unlocked "Watch on YouTube" button
+- `UNLOCK` — user returned from YouTube and unlocked full access
+
+```json
+{ "action": "SUBSCRIBE_INTENT" }
+```
+
+`400` for an unknown action; `404` if the video doesn't exist.
+
+### POST /community/videos/:videoId/unlock
+
+Marks the video as unlocked for the caller. Idempotent (`@@unique([userId, videoId])`
+with an upsert) — call it every time the user returns from YouTube; it is a no-op
+if already unlocked. Recommended flow: client calls `unlock`, then refreshes with
+`GET /community/videos` (or updates local state from the response).
+
+```json
+{ "success": true, "data": { "isUnlocked": true, "unlockedAt": "2026-10-01T00:00:00.000Z" }, "message": "Video unlocked" }
+```
+
+### GET /community/videos/:videoId/analytics (Admin)
+
+Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
+(0 when no intents yet).
+
+```json
+{
+  "success": true,
+  "data": {
+    "videoId": "uuid",
+    "title": "Two-line bold title",
+    "youtubeVideoId": "dQw4w9WgXcQ",
+    "interactions": { "SUBSCRIBE_INTENT": 40, "PREVIEW_CLIP": 300, "WATCH_FULL_VIDEO": 22, "UNLOCK": 18 },
+    "totalUnlocks": 18,
+    "conversionRate": 0.45
+  }
+}
+```
+
+### POST /community/admin/videos (Admin)
+
+```json
+{
+  "title": "Two-line bold title",
+  "description": "One-sentence value proposition.",
+  "teaserUrl": "https://cdn.../teaser.mp4",
+  "thumbnailUrl": "https://img.youtube.com/vi/<videoId>/hqdefault.jpg",
+  "youtubeVideoId": "dQw4w9WgXcQ",
+  "isPublished": true
+}
+```
+
+`409` if a card with that `youtubeVideoId` already exists.
+
+### PUT /community/admin/videos/:videoId (Admin)
+
+Accepts any subset of `title`, `description`, `teaserUrl`, `thumbnailUrl`, `isPublished`.
+
+### DELETE /community/admin/videos/:videoId (Admin)
+
+Soft-delete — sets `isPublished = false`. The card and its analytics/ unlock
+rows are preserved.
+
+---
+
 ## Dating
 
 | Method | Endpoint | Auth | What it does |

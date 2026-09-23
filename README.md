@@ -1,6 +1,6 @@
 # Diaspora Affairs Ghana (DAGH) — Backend API
 
-REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, and payments via Hubtel.
+REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, payments via Hubtel, and a community video feed that gates full YouTube playback behind a subscribe prompt (with unlock state and funnel analytics).
 
 ---
 
@@ -737,6 +737,24 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 | PUT | `/faq/admin/:id` | Admin | Update an FAQ item |
 | DELETE | `/faq/admin/:id` | Admin | Delete an FAQ item |
 
+### Community (YouTube Video Feed)
+
+Gated video cards that drive app members to the YouTube channel. Full-length
+playback is unlocked per user after a subscribe prompt; every action is logged
+as an analytics event for funnel conversion.
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/community/videos` | Bearer | List published video cards (paginated; each card includes `isUnlocked`) |
+| GET | `/community/videos/:videoId` | Bearer | Get a single video card with the caller's unlock status |
+| GET | `/community/my-unlocks` | Bearer | All unlocked video IDs for the caller — call on app launch to rehydrate state |
+| POST | `/community/videos/:videoId/interact` | Bearer | Log an interaction event (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`) |
+| POST | `/community/videos/:videoId/unlock` | Bearer | Unlock full access (idempotent) — call when the user returns from YouTube |
+| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate (`unlocks / subscribe_intents`) |
+| POST | `/community/admin/videos` | Admin | Create a video card (`title`, `description`, `teaserUrl`, `thumbnailUrl`, `youtubeVideoId`) |
+| PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished` |
+| DELETE | `/community/admin/videos/:videoId` | Admin | Unpublish (soft-delete, sets `isPublished = false`) |
+
 ### Admin — Dashboard
 
 | Method | Endpoint | Auth | Description |
@@ -869,6 +887,9 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `DataPolicy` | CMS-managed data policy document (keyed, versioned) |
 | `FaqItem` | FAQ entries with optional category and sort order |
 | `SystemSetting` | Key-value feature flags (`system_settings` table) — currently stores the `PAYMENTS_ENABLED` payment toggle |
+| `CommunityVideo` | Admin-managed YouTube video cards (title, description, teaser/thumbnail URLs, `youtubeVideoId`) |
+| `VideoInteraction` | Append-only analytics log of community actions (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`) |
+| `VideoUnlock` | Per-user unlocked state for a video (`@@unique([userId, videoId])`) — persists full-access unlocks across sessions |
 
 See `prisma/schema.prisma` for the full schema with all fields and relations.
 
