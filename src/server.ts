@@ -41,6 +41,8 @@ import { router as DatingRoutes } from "./routes/dating.routes.js";
 import { router as GeoRoutes } from "./routes/geo.routes.js";
 import { router as DataPolicyRoutes } from "./routes/data-policy.routes.js";
 import { router as FaqRoutes } from "./routes/faq.routes.js";
+// Community video feed (YouTube funnel)
+import { router as CommunityRoutes } from "./routes/community.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
@@ -220,6 +222,8 @@ app.use("/geo", GeoRoutes);
 app.use("/data-policy", DataPolicyRoutes);
 // FAQ (public read + admin CRUD)
 app.use("/faq", FaqRoutes);
+// Community video feed (YouTube subscribe funnel + analytics)
+app.use("/community", CommunityRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({

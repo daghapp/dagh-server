@@ -56,6 +56,10 @@ model User {
 
   tourRequests TourRequest[]
 
+  // Community video interactions & unlocks
+  videoInteractions VideoInteraction[]
+  videoUnlocks      VideoUnlock[]
+
   adminActivityLogs AdminActivityLog[]
   adminProfile      AdminProfile?
 
@@ -1497,4 +1501,64 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// ── Community Video Feed ──────────────────────────────────────────────────────
+// CommunityVideo: admin-managed cards linking to YouTube content.
+// Displayed in the app feed; full playback is gated behind a subscribe prompt.
+model CommunityVideo {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  teaserUrl       String   // short clip or animated thumbnail URL
+  thumbnailUrl    String
+  youtubeVideoId  String   @unique // used to build deep links on mobile
+  isPublished     Boolean  @default(true)
+  publishedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  interactions VideoInteraction[]
+  unlocks      VideoUnlock[]
+
+  @@map("community_videos")
+}
+
+// VideoInteraction: append-only analytics event log.
+// One row per user action; used to measure funnel conversion.
+model VideoInteraction {
+  id        String               @id @default(uuid())
+  userId    String
+  videoId   String
+  action    VideoInteractionType
+  createdAt DateTime             @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video CommunityVideo  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([userId, videoId])
+  @@index([videoId, action])
+  @@map("video_interactions")
+}
+
+// VideoUnlock: persists per-user unlock state across sessions.
+// Unique constraint ensures idempotency — calling unlock multiple times is safe.
+model VideoUnlock {
+  id         String   @id @default(uuid())
+  userId     String
+  videoId    String
+  unlockedAt DateTime @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video CommunityVideo  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@map("video_unlocks")
+}
+
+enum VideoInteractionType {
+  SUBSCRIBE_INTENT  // user tapped "Subscribe to Unlock"
+  PREVIEW_CLIP      // user opened the teaser modal via thumbnail
+  WATCH_FULL_VIDEO  // user tapped "Watch Full Video on YouTube"
+  UNLOCK            // user returned from YouTube and unlocked full access
 }
