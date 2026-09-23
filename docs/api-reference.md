@@ -420,6 +420,52 @@ so you can measure the funnel (card view → subscribe intent → watch).
 | POST | `/community/admin/videos` | Admin | Create a video card. |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished`. |
 | DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
+| POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API and add missing cards to the feed. |
+
+### POST /community/admin/sync-youtube (Admin)
+
+Auto-populates the feed from the configured YouTube channel. Resolves the channel
+via `YOUTUBE_CHANNEL_ID` or `YOUTUBE_CHANNEL_HANDLE` (e.g. `@diasporaaffairsgh`),
+or an explicit `channelId` / `handle` in the request body, then fetches the latest
+uploads from the channel's uploads playlist.
+
+Only **new** uploads are inserted. Existing cards are never overwritten, so admin
+edits to title/description and soft-deletes (`isPublished = false`) survive a
+sync. Teasers are derived from the video's own embed URL — the app plays the
+first 45 seconds as the preview clip, then surfaces the subscribe /
+"Watch on YouTube" call-to-action that deep-links to the channel.
+
+Repeated syncs for the same channel are returned from a Redis-backed cooldown
+cache (`YOUTUBE_SYNC_COOLDOWN_MS`, default 1 hour) instead of re-hitting the
+YouTube API, protecting quota.
+
+Body (all optional):
+
+```json
+{
+  "channelId": "UC...",
+  "handle": "@diasporaaffairsgh",
+  "maxResults": 6
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "channelId": "UC...",
+    "fetched": 6,
+    "created": 4,
+    "alreadyPresent": 2,
+    "syncedAt": "2026-10-01T00:00:00.000Z",
+    "cached": false
+  }
+}
+```
+
+`503` if `YOUTUBE_API_KEY` is not configured; `502` if the YouTube API call fails.
 
 ### GET /community/videos
 

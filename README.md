@@ -237,7 +237,9 @@ src/
 > for the voice/video calling frontend integration guide,
 > `docs/payment-control-system.md` for the payment enable/disable toggle
 > (admin API + public status endpoint), and `docs/push-notifications.md` for
-> the push notification architecture.
+> the push notification architecture. See
+> `docs/youtube-video-feed-setup.md` for the credentials and steps required to
+> populate the community YouTube video feed.
 
 All endpoints return responses in a standardized envelope:
 
@@ -754,6 +756,7 @@ as an analytics event for funnel conversion.
 | POST | `/community/admin/videos` | Admin | Create a video card (`title`, `description`, `teaserUrl`, `thumbnailUrl`, `youtubeVideoId`) |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished` |
 | DELETE | `/community/admin/videos/:videoId` | Admin | Unpublish (soft-delete, sets `isPublished = false`) |
+| POST | `/community/admin/sync-youtube` | Admin | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards (teaser = first 45s of the video; Redis cooldown protects API quota) |
 
 ### Admin — Dashboard
 

@@ -6,6 +6,8 @@ import express from "express";
 import { CommunityController } from "../modules/community/community.controller.js";
 import protectedRoute from "../middleware/protected.js";
 import requireAdmin from "../middleware/admin.js";
+import { validate } from "../middleware/validation.js";
+import { syncCommunityVideosSchema } from "../validator/community-validator.js";
 
 const router = express.Router();
 const controller = new CommunityController();
@@ -447,6 +449,94 @@ router.delete(
   protectedRoute,
   requireAdmin,
   controller.adminDeleteVideo.bind(controller),
+);
+
+/**
+ * @swagger
+ * /community/admin/sync-youtube:
+ *   post:
+ *     summary: Sync latest uploads from the configured YouTube channel (admin)
+ *     description: >
+ *       Resolves the channel (YOUTUBE_CHANNEL_ID / YOUTUBE_CHANNEL_HANDLE in the
+ *       environment, or an explicit channelId/handle in the request body), pulls
+ *       the latest uploads via the YouTube Data API, and adds any missing videos
+ *       to the feed.
+ *
+ *       Existing cards are never overwritten, so admin edits and soft-deletes are
+ *       preserved across sync runs. Teasers are derived from the video's own
+ *       embed URL — the app plays the first 45 seconds as the preview clip and
+ *       then surfaces the "Watch on YouTube" / subscribe call-to-action.
+ *
+ *       A single sync is rate-limited per channel by a Redis-backed cooldown
+ *       (YOUTUBE_SYNC_COOLDOWN_MS, default 1 hour) to protect API quota.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               channelId:
+ *                 type: string
+ *                 description: Override the configured channel ID
+ *               handle:
+ *                 type: string
+ *                 description: Override the configured channel handle (e.g. "@diasporaaffairsgh")
+ *               maxResults:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 20
+ *                 default: 6
+ *                 description: Number of latest uploads to sync
+ *     responses:
+ *       200:
+ *         description: Sync summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     channelId:
+ *                       type: string
+ *                     fetched:
+ *                       type: integer
+ *                     created:
+ *                       type: integer
+ *                     alreadyPresent:
+ *                       type: integer
+ *                     syncedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     cached:
+ *                       type: boolean
+ *                       description: true when returned from the Redis cooldown cache instead of the API
+ *       400:
+ *         description: Invalid request body
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin)
+ *       502:
+ *         description: YouTube Data API error
+ *       503:
+ *         description: YouTube API key not configured
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/admin/sync-youtube",
+  protectedRoute,
+  requireAdmin,
+  validate(syncCommunityVideosSchema),
+  controller.adminSyncChannel.bind(controller),
 );
 
 export { router };

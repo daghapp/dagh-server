@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as communityService from "../../services/community.service.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
 import { VideoInteractionType } from "../../../generated/prisma/client.js";
+import { YouTubeApiError, YouTubeNotConfiguredError } from "../../services/youtube.service.js";
 
 const VALID_ACTIONS = new Set<VideoInteractionType>([
   "SUBSCRIBE_INTENT",
@@ -204,6 +205,39 @@ export class CommunityController {
     } catch (error) {
       console.error("[COMMUNITY_ADMIN_DELETE_ERROR]", error);
       return fail(res, 500, "Failed to delete community video");
+    }
+  }
+
+  // ── POST /community/admin/sync-youtube (admin) ────────────────────────────
+  // Pulls the latest uploads from the configured YouTube channel and adds any
+  // missing videos to the feed. Reads YOUTUBE_* env vars, or an explicit
+  // channelId/handle in the request body.
+  async adminSyncChannel(req: Request, res: Response) {
+    try {
+      const payload = req.body as communityService.SyncVideosPayload;
+
+      const result = await communityService.syncVideosFromChannel(payload);
+
+      console.log("[COMMUNITY_ADMIN_SYNC]", {
+        channelId: result.channelId,
+        fetched: result.fetched,
+        created: result.created,
+        alreadyPresent: result.alreadyPresent,
+        cached: result.cached,
+      });
+      return ok(res, result, "Community videos synced");
+    } catch (error) {
+      if (error instanceof YouTubeNotConfiguredError) {
+        return fail(res, 503, {
+          code: "YOUTUBE_NOT_CONFIGURED",
+          message: error.message,
+        });
+      }
+      if (error instanceof YouTubeApiError) {
+        return fail(res, 502, { code: "YOUTUBE_API_ERROR", message: error.message });
+      }
+      console.error("[COMMUNITY_ADMIN_SYNC_ERROR]", error);
+      return fail(res, 500, "Failed to sync community videos");
     }
   }
 }

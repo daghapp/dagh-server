@@ -2,10 +2,11 @@
 // Community Service — Video Feed & Analytics
 // ─────────────────────────────────────────
 // Manages community video cards, per-user unlock state, interaction logging,
-// and basic analytics aggregation for the admin analytics endpoint.
+// basic analytics aggregation, and YouTube channel sync for the admin.
 
 import { prisma } from "../config/index.js";
 import { VideoInteractionType } from "../../generated/prisma/client.js";
+import { fetchChannelLatestCards, getCachedSync, setCachedSync } from "./youtube.service.js";
 
 // ── List published videos (paginated) ────────────────────────────────────────
 
@@ -287,4 +288,71 @@ export async function adminDeleteVideo(videoId: string) {
   });
 
   return { success: true };
+}
+
+// ── Admin: sync latest uploads from the configured YouTube channel ────────────
+// Fetches the channel's most recent uploads via the YouTube Data API and adds
+// any missing videos to the feed. Existing cards are never overwritten, so
+// admin edits (title/description) and soft-deletes (isPublished=false) are
+// preserved across sync runs.
+//
+// Teasers are derived from the video's own embed URL — the app plays the first
+// 45 seconds as the preview and then surfaces the subscribe / "Watch on
+// YouTube" call-to-action.
+
+export interface SyncVideosPayload {
+  channelId?: string;
+  handle?: string;
+  maxResults?: number;
+}
+
+export async function syncVideosFromChannel(payload: SyncVideosPayload) {
+  const { channelId: sourceChannelId, cards } = await fetchChannelLatestCards(
+    payload.channelId,
+    payload.handle,
+    payload.maxResults,
+  );
+
+  const cached = await getCachedSync(sourceChannelId);
+  if (cached) {
+    return {
+      channelId: sourceChannelId,
+      fetched: 0,
+      created: 0,
+      alreadyPresent: 0,
+      syncedAt: cached.syncedAt,
+      cached: true,
+    };
+  }
+
+  let created = 0;
+  let alreadyPresent = 0;
+
+  for (const card of cards) {
+    const existing = await prisma.communityVideo.findUnique({
+      where: { youtubeVideoId: card.youtubeVideoId },
+      select: { id: true },
+    });
+
+    if (existing) {
+      alreadyPresent += 1;
+      continue;
+    }
+
+    await prisma.communityVideo.create({ data: { ...card } });
+    created += 1;
+  }
+
+  const summary = {
+    channelId: sourceChannelId,
+    fetched: cards.length,
+    created,
+    alreadyPresent,
+    syncedAt: new Date().toISOString(),
+    cached: false,
+  };
+
+  await setCachedSync(sourceChannelId, summary);
+
+  return summary;
 }
