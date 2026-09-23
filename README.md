@@ -1,6 +1,6 @@
 # Diaspora Affairs Ghana (DAGH) — Backend API
 
-REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, payments via Hubtel, and a community video feed that gates full YouTube playback behind a subscribe prompt (with unlock state and funnel analytics).
+REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, payments via Hubtel, and a community video feed that gates full YouTube playback behind a subscribe prompt (with unlock state, funnel analytics, and optional server-side subscription verification via OAuth).
 
 ---
 
@@ -752,6 +752,9 @@ as an analytics event for funnel conversion.
 | GET | `/community/my-unlocks` | Bearer | All unlocked video IDs for the caller — call on app launch to rehydrate state |
 | POST | `/community/videos/:videoId/interact` | Bearer | Log an interaction event (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`) |
 | POST | `/community/videos/:videoId/unlock` | Bearer | Unlock full access (idempotent) — call when the user returns from YouTube |
+| GET | `/community/youtube/start/:videoId` | Bearer | Start server-side subscription verification — returns a Google OAuth authorization URL (optional; requires `YOUTUBE_OAUTH_CLIENT_ID`/`YOUTUBE_OAUTH_CLIENT_SECRET`) |
+| GET | `/community/youtube/callback` | Public | Google OAuth callback — checks the subscription against the configured channel, unlocks the video on success, caches the verdict, redirects back to `YOUTUBE_VERIFY_RETURN_URL` |
+| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock state + the last cached subscription verdict (poll on feed load; never hits the API) |
 | GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate (`unlocks / subscribe_intents`) |
 | POST | `/community/admin/videos` | Admin | Create a video card (`title`, `description`, `teaserUrl`, `thumbnailUrl`, `youtubeVideoId`) |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished` |

@@ -4,6 +4,7 @@
 
 import express from "express";
 import { CommunityController } from "../modules/community/community.controller.js";
+import { YouTubeVerifyController } from "../modules/community/youtube-verify.controller.js";
 import protectedRoute from "../middleware/protected.js";
 import requireAdmin from "../middleware/admin.js";
 import { validate } from "../middleware/validation.js";
@@ -11,6 +12,7 @@ import { syncCommunityVideosSchema } from "../validator/community-validator.js";
 
 const router = express.Router();
 const controller = new CommunityController();
+const youtubeVerifyController = new YouTubeVerifyController();
 
 // ── User routes (all require auth) ────────────────────────────────────────────
 
@@ -246,6 +248,157 @@ router.post(
  *         description: Internal server error
  */
 router.post("/videos/:videoId/unlock", protectedRoute, controller.unlockVideo.bind(controller));
+
+// ── YouTube subscription verification (optional OAuth) ─────────────────────────
+
+/**
+ * @swagger
+ * /community/youtube/start/{videoId}:
+ *   get:
+ *     summary: Start server-side YouTube subscription verification for a video
+ *     description: >
+ *       Returns a Google authorization URL that, when opened, lets the user
+ *       grant read-only YouTube access to the account they subscribe with. Once
+ *       authorized, Google redirects to /community/youtube/callback, which checks
+ *       the subscription against the configured channel and unlocks the video on
+ *       success. Requires YOUTUBE_OAUTH_CLIENT_ID / YOUTUBE_OAUTH_CLIENT_SECRET.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: videoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Authorization URL created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     authUrl:
+ *                       type: string
+ *                     expiresIn:
+ *                       type: integer
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Video not found
+ *       503:
+ *         description: YouTube OAuth not configured
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/youtube/start/:videoId",
+  protectedRoute,
+  youtubeVerifyController.start.bind(youtubeVerifyController),
+);
+
+/**
+ * @swagger
+ * /community/youtube/callback:
+ *   get:
+ *     summary: YouTube OAuth callback (server-side subscription verification)
+ *     description: >
+ *       Public OAuth redirect target registered in the Google console. Exchanges
+ *       the authorization code, checks whether the user is subscribed to the
+ *       configured channel via the YouTube Data API, unlocks the video when true,
+ *       caches the verdict, and redirects back to YOUTUBE_VERIFY_RETURN_URL with
+ *       subscribed / videoId / unlocked query params.
+ *     tags: [Community]
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         description: Google authorization code
+ *       - in: query
+ *         name: state
+ *         schema:
+ *           type: string
+ *         description: Signed state token from /community/youtube/start/:videoId
+ *       - in: query
+ *         name: error
+ *         schema:
+ *           type: string
+ *         description: Present when the user denied the consent screen
+ *     responses:
+ *       302:
+ *         description: Redirect to the app deep link with the verification verdict
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/youtube/callback", youtubeVerifyController.callback.bind(youtubeVerifyController));
+
+/**
+ * @swagger
+ * /community/youtube/status/{videoId}:
+ *   get:
+ *     summary: Get durable unlock state plus the last cached subscription verdict
+ *     description: >
+ *       Combines the persistent VideoUnlock record with the most recent
+ *       server-side verification verdict (cached up to YOUTUBE_VERIFY_CACHE_MS).
+ *       Call on feed load / app resume to rehydrate buttons without re-running
+ *       the OAuth flow.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: videoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Verification status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     videoId:
+ *                       type: string
+ *                     isUnlocked:
+ *                       type: boolean
+ *                     unlockedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                     verifiedSubscribed:
+ *                       type: boolean
+ *                       nullable: true
+ *                       description: Most recent server-side verdict, null when not cached
+ *                     verifiedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                     cached:
+ *                       type: boolean
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/youtube/status/:videoId",
+  protectedRoute,
+  youtubeVerifyController.status.bind(youtubeVerifyController),
+);
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 

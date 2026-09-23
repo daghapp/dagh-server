@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import {
   isYouTubeConfigured,
   getYouTubeChannelId,
@@ -27,6 +27,16 @@ function playlistItem(videoId: string, title = "Video", publishedAt = "2026-01-0
     snippet: { title, description: "desc", publishedAt, resourceId: { videoId } },
   };
 }
+
+// Deterministic baseline: src/config/redis.ts loads the real .env via
+// `import "dotenv/config"`, which leaks locally-configured YOUTUBE_* values
+// into the test process. Clear them before every test so assertions that expect
+// "unset" hold regardless of the developer's .env.
+beforeEach(() => {
+  vi.stubEnv("YOUTUBE_API_KEY", "");
+  vi.stubEnv("YOUTUBE_CHANNEL_ID", "");
+  vi.stubEnv("YOUTUBE_CHANNEL_HANDLE", "");
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();

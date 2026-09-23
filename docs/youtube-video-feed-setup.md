@@ -33,8 +33,11 @@ the mobile app must implement to display the videos.
   `.env.example`.
 
 ### Not required
-- No YouTube OAuth / user tokens. Subscription verification is not implemented
-  — the unlock is a client-triggered flag after the user returns from YouTube.
+- No YouTube OAuth / user tokens. By default the unlock is a client-triggered
+  flag after the user returns from YouTube. **Optional:** you can enable
+  **server-side subscription verification** so a video only unlocks when the
+  YouTube Data API confirms the user is actually subscribed to the channel
+  (see [section 8](#8-optional-server-side-subscription-verification)).
 
 ---
 
@@ -172,8 +175,12 @@ designed funnel:
 4. **Unlock + rehydrate:**
    - When the user returns to the app, call
      `POST /community/videos/:videoId/unlock` (idempotent) and log `UNLOCK`.
-   - On app launch, call `GET /community/my-unlocks` to rehydrate all unlocked
-     IDs and render buttons green without re-fetching every card.
+   - If **server-side verification** is enabled (section 8), "Subscribe to
+     Unlock" opens the OAuth flow instead — the callback unlocks the video only
+     after the API confirms the subscription.
+   - On app launch, call `GET /community/my-unlocks` (or
+     `GET /community/youtube/status/:videoId` for a single card) to rehydrate
+     all unlocked IDs and render buttons green without re-fetching every card.
 
 5. **Analytics:** log every meaningful tap via
    `POST /community/videos/:videoId/interact` with
@@ -183,7 +190,71 @@ designed funnel:
 
 ---
 
-## 8. End-to-end acceptance checklist
+## 8. Optional — server-side subscription verification
+
+The default flow trusts the client when it says the user returned from YouTube.
+If you want an actual **server-side check**, enable the OAuth verification
+route. It uses Google OAuth (not just the API key) to ask the YouTube Data API
+whether the authorized account is subscribed to the configured channel.
+
+Flow:
+
+```
+App                    Server                           Google / YouTube
+ │ GET /youtube/start/:videoId ─▶ │ build signed state (user+video)   │
+ │ ◀────────────{"authUrl"}────── │                                   │
+ │ open authUrl in browser ──────────────────────────────▶ consent    │
+ │                                          ◀──────────── redirect    │
+ │                           callback: code + state ─▶ │               │
+ │                                                     │ token exchange│
+ │                                                     │ subscriptions │
+ │                                                     │ mine+channel  │
+ │ ◀──────────── 302 → daghapp://youtube/verify?subscribed=true...     │
+```
+
+### Requirements
+
+| Env var | Description |
+|---------|-------------|
+| `YOUTUBE_OAUTH_CLIENT_ID` | Google Cloud **OAuth 2.0 Client ID** (Web application) |
+| `YOUTUBE_OAUTH_CLIENT_SECRET` | Matching client secret |
+| `YOUTUBE_OAUTH_REDIRECT_URI` | HTTPS callback; **must** be added to the client's Authorized redirect URIs in the Google console. Defaults to `<API_URL>/community/youtube/callback` when using `API_URL`. |
+| `YOUTUBE_VERIFY_RETURN_URL` | App deep link the browser returns to (default `daghapp://youtube/verify`) |
+| `YOUTUBE_VERIFY_CACHE_MS` | How long a verdict is cached before a re-check (default `3600000` = 1h). Reads are served from cache so feed loads / status polls never hit the API. |
+
+The same Google Cloud project needs **YouTube Data API v3** enabled. Create the
+OAuth client under **APIs & Services → Credentials → Create credentials →
+OAuth client ID → Web application**, then add the redirect URI.
+
+### Endpoints
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| GET | `/community/youtube/start/:videoId` | Bearer | Returns `{ authUrl, expiresIn }` — the state token inside encodes the user + video for 15 min |
+| GET | `/community/youtube/callback` | Public | Google redirect target. Exchanges the code, checks `subscriptions?mine=true&forChannelId=<channel>`, unlocks + logs `SUBSCRIBE_INTENT`/`UNLOCK` when subscribed, caches the verdict, redirects to the return URL |
+| GET | `/community/youtube/status/:videoId` | Bearer | `{ isUnlocked, verifiedSubscribed, verifiedAt, cached }` — durable unlock + last cached verdict |
+
+Behavior notes:
+
+- **Cost:** the `subscriptions` check costs **1 quota unit** per call. Negative
+  verdicts are cached too, so a user re-running the flow repeatedly does not
+  burn quota.
+- **Cache:** Redis-first, with a bounded in-memory fallback for single-instance
+  deployments (no `REDIS_URL`).
+- **CSRF-safe:** the `state` is a signed JWT (`JWT_ACCESS_SECRET`), so an
+  attacker cannot forge whose account is being verified or which video unlocks.
+- **Optional by design:** none of the existing client-triggered unlock flows
+  change when these env vars are not set — they simply never unlock server-side.
+
+### App wording for the consent screen scope
+
+The scope requested is read-only (`youtube.readonly`). Google displays a
+permission prompt only the first time per account; afterwards re-verification is
+an instant redirect.
+
+---
+
+## 9. End-to-end acceptance checklist
 
 - [ ] `YOUTUBE_API_KEY` in env, YouTube Data API v3 enabled
 - [ ] Channel ID **or** handle set (`@diasporaaffairsgh` pre-filled)
@@ -194,4 +265,6 @@ designed funnel:
 - [ ] Returning to app calls `/unlock` → button turns green — logs `UNLOCK`
 - [ ] "Watch Full Video on YouTube" opens the video — logs `WATCH_FULL_VIDEO`
 - [ ] Relaunching the app preserves green state via `GET /community/my-unlocks`
+- [ ] *(Optional)* `YOUTUBE_OAUTH_*` configured; `/community/youtube/start/:videoId` returns an `authUrl`
+- [ ] *(Optional)* Completing consent unlocks only when actually subscribed; `/community/youtube/status/:videoId` reflects it
 - [ ] Admin analytics endpoint shows the funnel numbers
