@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import * as bcrypt from "bcrypt";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 
@@ -119,5 +120,53 @@ export async function updateAccountProfile(req: Request, res: Response) {
     }
     console.error("[updateAccountProfile]", error);
     return fail(res, 500, "Failed to update profile.");
+  }
+}
+
+/**
+ * DELETE /profile/account — permanently deletes the authenticated user's
+ * account and all owned data. The current password must be supplied when the
+ * account was registered with email/password; OAuth-only accounts (no
+ * passwordHash) are deleted on authentication alone.
+ *
+ * `AdminActivityLog.actor` has an `onDelete: Restrict` FK, so the user's audit
+ * rows are purged before the user row itself (all other owned rows cascade).
+ */
+export async function deleteAccount(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id as string;
+    if (!userId) {
+      return fail(res, 401, "Unauthorized");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user) {
+      return fail(res, 404, "User not found");
+    }
+
+    if (user.passwordHash) {
+      const { password } = req.body as { password?: string };
+      if (!password) {
+        return fail(res, 400, "Password is required to delete your account");
+      }
+      const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+      if (!passwordMatch) {
+        return fail(res, 400, "Incorrect password");
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.adminActivityLog.deleteMany({ where: { actorId: userId } }),
+      prisma.user.delete({ where: { id: userId } }),
+    ]);
+
+    return ok(res, null as never, "Account deleted successfully");
+  } catch (error) {
+    console.error("[deleteAccount]", error);
+    return fail(res, 500, "Failed to delete account.");
   }
 }

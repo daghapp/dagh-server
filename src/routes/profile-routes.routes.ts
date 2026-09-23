@@ -9,9 +9,13 @@ import {
   getAccountProfile,
   updateAccountProfile,
 } from "../modules/profile-management/account-profile.controller.js";
+import { deleteAccount } from "../modules/profile-management/account-profile.controller.js";
 import { validate } from "../middleware/validation.js";
 import { profileSettingsSchema } from "../validator/profile-settings-validator.js";
-import { accountProfileSchema } from "../validator/account-profile-validator.js";
+import {
+  accountProfileSchema,
+  deleteAccountSchema,
+} from "../validator/account-profile-validator.js";
 
 // ─────────────────────────────────────────
 // POST /profile/init
@@ -180,5 +184,39 @@ router.patch("/", protectedRoute, validate(profileSettingsSchema), updateOwnProf
  */
 router.get("/account", protectedRoute, getAccountProfile);
 router.patch("/account", protectedRoute, validate(accountProfileSchema), updateAccountProfile);
+
+// ─────────────────────────────────────────
+// DELETE /profile/account
+// ─────────────────────────────────────────
+
+/**
+ * @swagger
+ * /profile/account:
+ *   delete:
+ *     summary: Permanently delete the authenticated user's account
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: Current password. Required for email/password accounts only.
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       400:
+ *         description: Validation error, missing password, or incorrect password
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
+router.delete("/account", protectedRoute, validate(deleteAccountSchema), deleteAccount);
 
 export { router };

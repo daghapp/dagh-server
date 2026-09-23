@@ -35,3 +35,19 @@ export const accountProfileSchema = z.object({
 });
 
 export type AccountProfileInput = z.infer<typeof accountProfileSchema>;
+
+/**
+ * Account-deletion schema — the authenticated user can permanently delete
+ * their account via DELETE /profile/account. The current password is required
+ * for accounts registered with email/password. It is optional because
+ * OAuth-only accounts (Google/Facebook/Apple) have no passwordHash to verify.
+ */
+export const deleteAccountSchema = z.object({
+  password: z
+    .string()
+    .trim()
+    .min(1, "Password is required")
+    .optional(),
+});
+
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
