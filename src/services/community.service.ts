@@ -155,6 +155,7 @@ export async function logInteraction(
   userId: string,
   videoId: string,
   action: VideoInteractionType,
+  durationMs?: number,
 ) {
   const video = await resolvePublishedVideo(videoId);
 
@@ -162,7 +163,7 @@ export async function logInteraction(
     return { success: false, code: "VIDEO_NOT_FOUND" as const };
   }
 
-  await prisma.videoInteraction.create({ data: { userId, videoId: video.id, action } });
+  await prisma.videoInteraction.create({ data: { userId, videoId: video.id, action, durationMs } });
   return { success: true };
 }
 
@@ -211,6 +212,13 @@ export async function getVideoAnalytics(videoId: string) {
 
   const totalUnlocks = await prisma.videoUnlock.count({ where: { videoId } });
 
+  // Aggregate client-reported watch time (durationMs) across interactions.
+  const watchTime = await prisma.videoInteraction.aggregate({
+    where: { videoId, durationMs: { not: null } },
+    _sum: { durationMs: true },
+    _avg: { durationMs: true },
+  });
+
   return {
     videoId: video.id,
     title: video.title,
@@ -219,6 +227,8 @@ export async function getVideoAnalytics(videoId: string) {
     totalUnlocks,
     conversionRate:
       counts.SUBSCRIBE_INTENT > 0 ? Number((totalUnlocks / counts.SUBSCRIBE_INTENT).toFixed(4)) : 0,
+    totalWatchTimeMs: watchTime._sum.durationMs ?? null,
+    avgWatchTimeMs: watchTime._avg.durationMs ? Math.round(watchTime._avg.durationMs) : null,
   };
 }
 

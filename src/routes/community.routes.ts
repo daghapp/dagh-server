@@ -193,11 +193,15 @@ router.get("/videos/:videoId", protectedRoute, controller.getVideo.bind(controll
  *               action:
  *                 type: string
  *                 enum: [SUBSCRIBE_INTENT, PREVIEW_CLIP, WATCH_FULL_VIDEO, UNLOCK]
+ *               durationMs:
+ *                 type: integer
+ *                 minimum: 0
+ *                 description: Optional client-reported watch time (ms) for the event, e.g. how far the user got into the teaser before leaving.
  *     responses:
  *       200:
  *         description: Interaction logged
  *       400:
- *         description: Invalid action value
+ *         description: Invalid action or durationMs value
  *       401:
  *         description: Unauthorized
  *       404:
@@ -459,6 +463,14 @@ router.get(
  *                       type: number
  *                       format: float
  *                       description: totalUnlocks / SUBSCRIBE_INTENT events
+ *                     totalWatchTimeMs:
+ *                       type: integer
+ *                       nullable: true
+ *                       description: Sum of client-reported durationMs across interactions (null when none reported)
+ *                     avgWatchTimeMs:
+ *                       type: integer
+ *                       nullable: true
+ *                       description: Average client-reported durationMs per interaction (null when none reported)
  *       401:
  *         description: Unauthorized
  *       403:

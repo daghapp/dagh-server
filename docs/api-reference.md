@@ -526,10 +526,14 @@ fire-and-forget). `action` must be one of:
 - `UNLOCK` — user returned from YouTube and unlocked full access
 
 ```json
-{ "action": "SUBSCRIBE_INTENT" }
+{ "action": "SUBSCRIBE_INTENT", "durationMs": 18400 }
 ```
 
-`400` for an unknown action; `404` if the video doesn't exist.
+`durationMs` is optional — client-reported watch time in milliseconds (e.g. how far
+the user got into the 45s teaser before leaving the clip or tapping subscribe).
+It must be a non-negative integer.
+
+`400` for an unknown action or an invalid `durationMs`; `404` if the video doesn't exist.
 
 ### POST /community/videos/:videoId/unlock
 
@@ -594,10 +598,16 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
     "youtubeVideoId": "dQw4w9WgXcQ",
     "interactions": { "SUBSCRIBE_INTENT": 40, "PREVIEW_CLIP": 300, "WATCH_FULL_VIDEO": 22, "UNLOCK": 18 },
     "totalUnlocks": 18,
-    "conversionRate": 0.45
+    "conversionRate": 0.45,
+    "totalWatchTimeMs": 5420000,
+    "avgWatchTimeMs": 28942
   }
 }
 ```
+
+`totalWatchTimeMs` / `avgWatchTimeMs` aggregate the client-reported `durationMs`
+(milliseconds) across interactions; they are `null` until clients start sending
+`durationMs` with `POST /community/videos/:videoId/interact`.
 
 ### POST /community/admin/videos (Admin)
 

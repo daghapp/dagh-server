@@ -1526,12 +1526,15 @@ model CommunityVideo {
 
 // VideoInteraction: append-only analytics event log.
 // One row per user action; used to measure funnel conversion.
+// durationMs is client-reported time (ms) the user spent on the event source
+// (e.g. seconds into the 45s teaser before leaving) — null when not reported.
 model VideoInteraction {
-  id        String               @id @default(uuid())
-  userId    String
-  videoId   String
-  action    VideoInteractionType
-  createdAt DateTime             @default(now())
+  id         String               @id @default(uuid())
+  userId     String
+  videoId    String
+  action     VideoInteractionType
+  durationMs Int?
+  createdAt  DateTime             @default(now())
 
   user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   video CommunityVideo  @relation(fields: [videoId], references: [id], onDelete: Cascade)

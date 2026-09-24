@@ -99,12 +99,14 @@ export class CommunityController {
 
   // ── POST /community/videos/:videoId/interact ──────────────────────────────
   // Logs a user interaction event (analytics). Fire-and-forget from the client.
+  // Optional body field `durationMs` (integer ms ≥ 0) records client-reported
+  // watch time, e.g. how far the user got into the 45s teaser before leaving.
   async logInteraction(req: Request, res: Response) {
     const start = started();
     try {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
-      const { action } = req.body as { action: string };
+      const { action, durationMs } = req.body as { action: string; durationMs?: unknown };
 
       if (!action || !VALID_ACTIONS.has(action as VideoInteractionType)) {
         logCommunityWarn("community.interact.invalid_action", {
@@ -112,7 +114,8 @@ export class CommunityController {
           userId,
           videoId,
           action: action ?? null,
-          durationMs: Date.now() - start,
+          durationMs: durationMs ?? null,
+          elapsedMs: Date.now() - start,
         });
         return fail(res, 400, {
           code: "INVALID_ACTION",
@@ -120,10 +123,31 @@ export class CommunityController {
         });
       }
 
+      if (
+        durationMs !== undefined &&
+        (typeof durationMs !== "number" ||
+          !Number.isInteger(durationMs) ||
+          durationMs < 0)
+      ) {
+        logCommunityWarn("community.interact.invalid_duration", {
+          status: 400,
+          userId,
+          videoId,
+          action,
+          durationMs: durationMs ?? null,
+          elapsedMs: Date.now() - start,
+        });
+        return fail(res, 400, {
+          code: "INVALID_DURATION",
+          message: "durationMs must be a non-negative integer (milliseconds)",
+        });
+      }
+
       const result = await communityService.logInteraction(
         userId,
         videoId,
         action as VideoInteractionType,
+        durationMs as number | undefined,
       );
 
       if (!result.success) {
@@ -132,7 +156,8 @@ export class CommunityController {
           userId,
           videoId,
           action,
-          durationMs: Date.now() - start,
+          durationMs: durationMs ?? null,
+          elapsedMs: Date.now() - start,
         });
         return fail(res, 404, { code: result.code, message: "Video not found" });
       }
@@ -142,9 +167,10 @@ export class CommunityController {
         userId,
         videoId,
         action,
-        durationMs: Date.now() - start,
+        durationMs: durationMs ?? null,
+        elapsedMs: Date.now() - start,
       });
-      return ok(res, null, "Interaction logged");
+      return ok(res, { logged: true, durationMs: durationMs ?? null }, "Interaction logged");
     } catch (error) {
       logCommunityError("community.interact.error", {
         status: 500,
@@ -251,6 +277,8 @@ export class CommunityController {
         interactions: analytics.interactions,
         totalUnlocks: analytics.totalUnlocks,
         conversionRate: analytics.conversionRate,
+        totalWatchTimeMs: analytics.totalWatchTimeMs,
+        avgWatchTimeMs: analytics.avgWatchTimeMs,
         durationMs: Date.now() - start,
       });
       return ok(res, analytics, "Analytics retrieved");

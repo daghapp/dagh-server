@@ -182,10 +182,30 @@ designed funnel:
      `GET /community/youtube/status/:videoId` for a single card) to rehydrate
      all unlocked IDs and render buttons green without re-fetching every card.
 
+### Frontend local state — button rehydration (recommended)
+
+Keep a persisted map so buttons render instantly and stay green across launches:
+
+- **Key:** the card's `videoId` (the internal uuid returned by the feed, aliased
+  from `id`). Store `videoId → unlockedAt` in AsyncStorage/encrypted storage.
+  Keep `youtubeVideoId` separately — it is only used for deep links.
+- **On launch:** call `GET /community/my-unlocks` and merge the response into
+  the map (`{ unlocks: [{ videoId, unlockedAt }] }`). Merge, don't replace, so
+  unlocks made offline/other devices aren't lost.
+- **On unlock:** `POST /community/videos/:videoId/unlock` → on success set
+  `map[videoId] = unlockedAt` from the response (or `Date.now()`).
+- **Render:** green state when `map[videoId]` is truthy OR the feed card says
+  `isUnlocked: true`; otherwise the red "Subscribe to Unlock" state.
+- A stale `videoId` (e.g. a card later unpublished) simply never renders — the
+  server returns 404 for it, which the app can treat as "lock again".
+
 5. **Analytics:** log every meaningful tap via
    `POST /community/videos/:videoId/interact` with
-   `SUBSCRIBE_INTENT | PREVIEW_CLIP | WATCH_FULL_VIDEO | UNLOCK`. Admins read
-   the funnel (interaction counts + conversion rate) at
+   `SUBSCRIBE_INTENT | PREVIEW_CLIP | WATCH_FULL_VIDEO | UNLOCK`. Pass the
+   optional `durationMs` (integer ms ≥ 0) to record watch time — e.g. send
+   `durationMs` on `PREVIEW_CLIP` when the user leaves the teaser, so you can
+   measure drop-off within the 45s clip. Admins read the funnel (interaction
+   counts + conversion rate + watch-time totals) at
    `GET /community/videos/:videoId/analytics`.
 
 ### API payload contract (what the feed returns)
