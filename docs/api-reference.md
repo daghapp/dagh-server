@@ -471,6 +471,9 @@ Response:
 
 Paginated list of published cards. Each card includes the caller's unlock state
 so the client can render the correct button color/behavior without extra calls.
+`videoId` is an alias of `id` — both are stable identifiers you can use as the
+`:videoId` path/query param on the other endpoints. `:videoId` also accepts the
+YouTube video id directly (`youtubeVideoId`).
 
 ```json
 {
@@ -478,6 +481,7 @@ so the client can render the correct button color/behavior without extra calls.
   "data": [
     {
       "id": "uuid",
+      "videoId": "uuid",
       "title": "Two-line bold title",
       "description": "One-sentence value proposition for the full discussion.",
       "teaserUrl": "https://cdn.../teaser.mp4",
@@ -491,6 +495,11 @@ so the client can render the correct button color/behavior without extra calls.
   "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 }
 }
 ```
+
+Non-nullable string fields (`title`, `description`, `thumbnailUrl`, `teaserUrl`)
+are never `null` in the DB (defaulting to `"Untitled"` / `""` and derived YouTube
+URLs respectively), so the client does not need null-guards on them. `unlockedAt`
+is the only nullable field (`null` until unlocked). Timestamps serialize as ISO-8601 strings.
 
 ### GET /community/my-unlocks
 
@@ -531,6 +540,44 @@ if already unlocked. Recommended flow: client calls `unlock`, then refreshes wit
 
 ```json
 { "success": true, "data": { "isUnlocked": true, "unlockedAt": "2026-10-01T00:00:00.000Z" }, "message": "Video unlocked" }
+```
+
+### Cross-origin / network notes
+
+- **Native mobile requests** (no `Origin` header) are always allowed — CORS only
+  applies to browsers/webviews.
+- **Web views / web clients** must have their origin in the `ALLOWED_ORIGINS`
+  env var (`server.ts`). Requests with an unknown origin get `403`
+  `Origin not allowed by CORS`. Add e.g. `http://localhost:3000` (comma-separated).
+- The API never proxies thumbnails or video assets — cards point straight at
+  `i.ytimg.com` / `youtube.com`, which are loaded client-side and are not subject
+  to the API's CORS policy.
+
+### Persisted state (unlock / engagement)
+
+Per-user unlock state and analytics live in dedicated tables (see `community_videos`,
+`video_unlocks`, `video_interactions` in the schema):
+
+- `VideoUnlock(userId, videoId, unlockedAt)` — one row per user+video
+  (`@@unique([userId, videoId])`), written idempotently by `POST .../unlock`.
+  Read back via `GET /community/my-unlocks` or the `isUnlocked`/`unlockedAt`
+  fields on the feed.
+- `VideoInteraction(userId, videoId, action, createdAt)` — append-only event
+  log written by `POST .../interact`, aggregated by the admin analytics endpoint.
+
+No client-side state migration is needed; the app rehydrates from
+`GET /community/my-unlocks` on launch.
+
+### Server logging
+
+Every feed endpoint emits a single structured JSON line (event prefixed
+`community.*`) with `timestamp`, `status`, `userId`, `videoId`, and `durationMs`.
+Happy paths log at `info`, expected client errors (404/400) at `warn`, and
+server failures (500) at `error`, so feed breakage is greppable, e.g.:
+
+```
+{"timestamp":"2026-10-01T00:00:00.000Z","event":"community.feed.get.not_found","status":404,"userId":"...","videoId":"..."}
+{"timestamp":"2026-10-01T00:00:00.000Z","event":"community.feed.list.error","status":500,"userId":"...","error":"...","durationMs":12}
 ```
 
 ### GET /community/videos/:videoId/analytics (Admin)

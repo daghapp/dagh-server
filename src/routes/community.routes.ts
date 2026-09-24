@@ -21,7 +21,7 @@ const youtubeVerifyController = new YouTubeVerifyController();
  * /community/videos:
  *   get:
  *     summary: List published community video cards
- *     description: Returns paginated published videos with an isUnlocked flag for the calling user.
+ *     description: Returns paginated published videos with an isUnlocked flag for the calling user. Each card carries `videoId` (alias of `id`) plus `youtubeVideoId`.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -56,6 +56,9 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *                     properties:
  *                       id:
  *                         type: string
+ *                       videoId:
+ *                         type: string
+ *                         description: Alias of id — use as the :videoId path param
  *                       title:
  *                         type: string
  *                       description:
@@ -137,6 +140,7 @@ router.get("/my-unlocks", protectedRoute, controller.getMyUnlocks.bind(controlle
  * /community/videos/{videoId}:
  *   get:
  *     summary: Get a single community video with unlock status
+ *     description: Accepts either the internal card id or the YouTube video id.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -146,6 +150,7 @@ router.get("/my-unlocks", protectedRoute, controller.getMyUnlocks.bind(controlle
  *         required: true
  *         schema:
  *           type: string
+ *         description: Internal card id or YouTube video id
  *     responses:
  *       200:
  *         description: Video detail with unlock status
@@ -166,6 +171,7 @@ router.get("/videos/:videoId", protectedRoute, controller.getVideo.bind(controll
  *     description: >
  *       Append-only analytics event. Safe to call for every user action.
  *       Valid actions: SUBSCRIBE_INTENT, PREVIEW_CLIP, WATCH_FULL_VIDEO, UNLOCK.
+ *       Accepts either the internal card id or the YouTube video id.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -213,6 +219,7 @@ router.post(
  *     description: >
  *       Idempotent — calling this multiple times for the same user+video is safe.
  *       Call this when the user returns to the app after visiting the YouTube channel.
+ *       Accepts either the internal card id or the YouTube video id.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -222,6 +229,7 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
+ *         description: Internal card id or YouTube video id
  *     responses:
  *       200:
  *         description: Video unlocked (or already unlocked)

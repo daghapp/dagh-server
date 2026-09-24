@@ -188,6 +188,57 @@ designed funnel:
    the funnel (interaction counts + conversion rate) at
    `GET /community/videos/:videoId/analytics`.
 
+### API payload contract (what the feed returns)
+
+Every card in `GET /community/videos` is:
+
+```json
+{
+  "id": "uuid",
+  "videoId": "uuid",
+  "title": "string",
+  "description": "string",
+  "teaserUrl": "string",
+  "thumbnailUrl": "string",
+  "youtubeVideoId": "string",
+  "isUnlocked": "boolean",
+  "unlockedAt": "ISO-8601 | null",
+  "publishedAt": "ISO-8601"
+}
+```
+
+- `videoId` is an **alias of `id`** (the internal card id). Use either as the
+  `:videoId` path param on the detail / interact / unlock / analytics routes.
+- The `:videoId` param also **accepts the YouTube id** (`youtubeVideoId`)
+  directly, so deep links from YouTube never 404.
+- `title`, `description`, `thumbnailUrl`, `teaserUrl` are **never null** (DB
+  defaults / derived YouTube URLs). `unlockedAt` is the only nullable field.
+
+### CORS / network headers
+
+- Native app requests (no `Origin` header) are always allowed.
+- Web views & browsers must be in `ALLOWED_ORIGINS` (comma-separated, no
+  wildcard). Unknown origins get `403 Origin not allowed by CORS`. See
+  `server.ts` — the API's own public origin is always included.
+- Thumbnails/embeds load directly from `i.ytimg.com` / `youtube.com`
+  client-side; the API does not proxy media, so those are not subject to API
+  CORS.
+
+### Persisted user state (unlock tracking)
+
+- `video_unlocks` — `(userId, videoId, unlockedAt)` with `@@unique([userId, videoId])`,
+  written idempotently by `POST /community/videos/:videoId/unlock`.
+- `video_interactions` — append-only analytics rows per user action.
+- Rehydrate on app launch with `GET /community/my-unlocks` — no client-side
+  state migration needed.
+
+### Server-side logging
+
+Each feed/unlock/interact call logs one structured JSON line
+(`event: community.*`, with `status`, `userId`, `videoId`, `durationMs`).
+500s log at `error`, expected 404/400s at `warn` — e.g.
+`grep 'community.feed.list.error'` catches feed fetch failures immediately.
+
 ---
 
 ## 8. Optional — server-side subscription verification
@@ -259,7 +310,10 @@ an instant redirect.
 - [ ] `YOUTUBE_API_KEY` in env, YouTube Data API v3 enabled
 - [ ] Channel ID **or** handle set (`@diasporaaffairsgh` pre-filled)
 - [ ] Admin runs `POST /community/admin/sync-youtube` → `created > 0`
-- [ ] `GET /community/videos` returns cards with `isUnlocked: false`
+- [ ] `GET /community/videos` returns cards with `videoId`, `thumbnailUrl`, `title`, `description`, `isUnlocked: false`
+- [ ] `POST /community/videos/:videoId/unlock` works with the `videoId` from a card **and** with `youtubeVideoId` directly
+- [ ] Web-view origin is in `ALLOWED_ORIGINS` (native requests need no origin)
+- [ ] Server logs show a `community.feed.list` line per request and `community.feed.*.not_found` / `*.error` lines on failures
 - [ ] App plays 45s teaser, then shows subscribe overlay — logs `PREVIEW_CLIP`
 - [ ] "Subscribe to Unlock" opens YouTube app — logs `SUBSCRIBE_INTENT`
 - [ ] Returning to app calls `/unlock` → button turns green — logs `UNLOCK`

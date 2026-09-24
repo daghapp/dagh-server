@@ -5,8 +5,21 @@
 // basic analytics aggregation, and YouTube channel sync for the admin.
 
 import { prisma } from "../config/index.js";
-import { VideoInteractionType } from "../../generated/prisma/client.js";
+import { VideoInteractionType, type CommunityVideo } from "../../generated/prisma/client.js";
 import { fetchChannelLatestCards, getCachedSync, setCachedSync } from "./youtube.service.js";
+
+// ── Video identifier resolution ───────────────────────────────────────────────
+// User-facing routes accept the internal card id (uuid) OR the YouTube video id
+// (e.g. from a deep link), so the app never needs to know which it holds. Always
+// resolve to the canonical DB id before writing unlock/interaction rows so the
+// foreign key points at the real CommunityVideo.
+
+async function resolvePublishedVideo(identifier: string) {
+  return prisma.communityVideo.findFirst({
+    where: { isPublished: true, OR: [{ id: identifier }, { youtubeVideoId: identifier }] },
+    select: { id: true },
+  });
+}
 
 // ── List published videos (paginated) ────────────────────────────────────────
 
@@ -69,6 +82,7 @@ export async function listVideosForUser(userId: string, page: number, limit: num
 
   const enriched = videos.map((v) => ({
     ...v,
+    videoId: v.id,
     isUnlocked: unlockedMap.has(v.id),
     unlockedAt: unlockedMap.get(v.id) ?? null,
   }));
@@ -77,10 +91,11 @@ export async function listVideosForUser(userId: string, page: number, limit: num
 }
 
 // ── Get a single published video ─────────────────────────────────────────────
+// Accepts either the internal card id or the YouTube video id.
 
 export async function getVideo(videoId: string) {
-  return prisma.communityVideo.findFirst({
-    where: { id: videoId, isPublished: true },
+  const video = await prisma.communityVideo.findFirst({
+    where: { isPublished: true, OR: [{ id: videoId }, { youtubeVideoId: videoId }] },
     select: {
       id: true,
       title: true,
@@ -91,6 +106,12 @@ export async function getVideo(videoId: string) {
       publishedAt: true,
     },
   });
+
+  if (!video) {
+    return null;
+  }
+
+  return { ...video, videoId: video.id };
 }
 
 // ── Get unlock status for a single video ─────────────────────────────────────
@@ -111,19 +132,16 @@ export async function getUnlockStatus(userId: string, videoId: string) {
 // Idempotent: calling this multiple times for the same user+video is safe.
 
 export async function unlockVideo(userId: string, videoId: string) {
-  const video = await prisma.communityVideo.findFirst({
-    where: { id: videoId, isPublished: true },
-    select: { id: true },
-  });
+  const video = await resolvePublishedVideo(videoId);
 
   if (!video) {
     return { success: false, code: "VIDEO_NOT_FOUND" as const };
   }
 
   const record = await prisma.videoUnlock.upsert({
-    where: { userId_videoId: { userId, videoId } },
+    where: { userId_videoId: { userId, videoId: video.id } },
     update: {}, // already unlocked — no-op
-    create: { userId, videoId },
+    create: { userId, videoId: video.id },
     select: { unlockedAt: true },
   });
 
@@ -138,16 +156,13 @@ export async function logInteraction(
   videoId: string,
   action: VideoInteractionType,
 ) {
-  const video = await prisma.communityVideo.findFirst({
-    where: { id: videoId, isPublished: true },
-    select: { id: true },
-  });
+  const video = await resolvePublishedVideo(videoId);
 
   if (!video) {
     return { success: false, code: "VIDEO_NOT_FOUND" as const };
   }
 
-  await prisma.videoInteraction.create({ data: { userId, videoId, action } });
+  await prisma.videoInteraction.create({ data: { userId, videoId: video.id, action } });
   return { success: true };
 }
 
@@ -218,7 +233,13 @@ export interface CreateVideoPayload {
   isPublished?: boolean;
 }
 
-export async function adminCreateVideo(payload: CreateVideoPayload) {
+// Explicit discriminated union so callers can narrow on result.success. Without
+// it TS widens both arms to `success: boolean` and `data` stays `| undefined`.
+export type CreateVideoResult =
+  | { success: false; code: "DUPLICATE_VIDEO_ID" }
+  | { success: true; data: CommunityVideo };
+
+export async function adminCreateVideo(payload: CreateVideoPayload): Promise<CreateVideoResult> {
   const existing = await prisma.communityVideo.findUnique({
     where: { youtubeVideoId: payload.youtubeVideoId },
     select: { id: true },
@@ -252,7 +273,14 @@ export interface UpdateVideoPayload {
   isPublished?: boolean;
 }
 
-export async function adminUpdateVideo(videoId: string, payload: UpdateVideoPayload) {
+export type AdminUpdateVideoResult =
+  | { success: false; code: "VIDEO_NOT_FOUND" }
+  | { success: true; data: CommunityVideo };
+
+export async function adminUpdateVideo(
+  videoId: string,
+  payload: UpdateVideoPayload,
+): Promise<AdminUpdateVideoResult> {
   const existing = await prisma.communityVideo.findUnique({
     where: { id: videoId },
     select: { id: true },

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
+import { logCommunity, logCommunityWarn, logCommunityError } from "../../helpers/communityLogger.js";
 import * as communityService from "../../services/community.service.js";
 import * as youtubeOauth from "../../services/youtube-oauth.service.js";
 import {
@@ -11,6 +12,10 @@ import {
 // Express 5 types req.params values as string | string[]; cast to string for all handlers.
 function param(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function started(): number {
+  return Date.now();
 }
 
 // Redirects the browser back to the app deep link with the verification outcome,
@@ -39,19 +44,31 @@ export class YouTubeVerifyController {
   // Returns the Google authorization URL that will verify the caller's YouTube
   // subscription to the configured channel before unlocking the video.
   async start(req: Request, res: Response) {
+    const start = started();
     try {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
       const video = await communityService.getVideo(videoId);
       if (!video) {
+        logCommunityWarn("community.verify.start.not_found", {
+          status: 404,
+          userId,
+          videoId,
+          durationMs: Date.now() - start,
+        });
         return fail(res, 404, "Video not found");
       }
 
-      const state = youtubeOauth.signVerifyState(userId, videoId);
+      const state = youtubeOauth.signVerifyState(userId, video.id);
       const authUrl = youtubeOauth.buildAuthUrl(state);
 
-      console.log("[COMMUNITY_YOUTUBE_VERIFY_START]", { userId, videoId });
+      logCommunity("community.verify.start", {
+        status: 200,
+        userId,
+        videoId: video.id,
+        durationMs: Date.now() - start,
+      });
       return ok(
         res,
         { authUrl, expiresIn: 15 * 60 },
@@ -59,12 +76,24 @@ export class YouTubeVerifyController {
       );
     } catch (error) {
       if (error instanceof YouTubeNotConfiguredError) {
+        logCommunityWarn("community.verify.start.not_configured", {
+          status: 503,
+          userId: req.user?.id,
+          message: error.message,
+          durationMs: Date.now() - start,
+        });
         return fail(res, 503, {
           code: "YOUTUBE_OAUTH_NOT_CONFIGURED",
           message: error.message,
         });
       }
-      console.error("[COMMUNITY_YOUTUBE_VERIFY_START_ERROR]", error);
+      logCommunityError("community.verify.start.error", {
+        status: 500,
+        userId: req.user?.id,
+        videoId: param(req.params.videoId),
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
       return fail(res, 500, "Failed to start YouTube verification");
     }
   }
@@ -107,7 +136,7 @@ export class YouTubeVerifyController {
         }
       }
 
-      console.log("[COMMUNITY_YOUTUBE_VERIFY_CALLBACK]", {
+      logCommunity("community.verify.callback", {
         userId: payload.userId,
         videoId: payload.videoId,
         subscribed,
@@ -116,9 +145,17 @@ export class YouTubeVerifyController {
       return redirectResult(res, { subscribed, videoId: payload.videoId, unlocked });
     } catch (error) {
       if (error instanceof YouTubeNotConfiguredError || error instanceof YouTubeApiError) {
-        console.warn("[COMMUNITY_YOUTUBE_VERIFY_CALLBACK_WARN]", error.message);
+        logCommunityWarn("community.verify.callback.warn", {
+          userId: payload.userId,
+          videoId: payload.videoId,
+          message: error.message,
+        });
       } else {
-        console.error("[COMMUNITY_YOUTUBE_VERIFY_CALLBACK_ERROR]", error);
+        logCommunityError("community.verify.callback.error", {
+          userId: payload.userId,
+          videoId: payload.videoId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
       return redirectResult(res, { subscribed: false, videoId: payload.videoId });
     }
@@ -129,17 +166,32 @@ export class YouTubeVerifyController {
   // by the app on feed load / app resume to rehydrate the buttons without
   // re-running the OAuth flow.
   async status(req: Request, res: Response) {
+    const start = started();
     try {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const unlockStatus = await communityService.getUnlockStatus(userId, videoId);
+      // Resolve the canonical card id so the unlock lookup works whether the app
+      // passes the internal id or the YouTube video id.
+      const video = await communityService.getVideo(videoId);
+      const canonicalId = video?.id ?? videoId;
+
+      const unlockStatus = await communityService.getUnlockStatus(userId, canonicalId);
       const cached = await youtubeOauth.getCachedVerification(userId);
 
+      logCommunity("community.verify.status", {
+        status: 200,
+        userId,
+        videoId: canonicalId,
+        isUnlocked: unlockStatus.isUnlocked,
+        verifiedSubscribed: cached?.subscribed ?? null,
+        cached: Boolean(cached),
+        durationMs: Date.now() - start,
+      });
       return ok(
         res,
         {
-          videoId,
+          videoId: canonicalId,
           isUnlocked: unlockStatus.isUnlocked,
           unlockedAt: unlockStatus.unlockedAt,
           verifiedSubscribed: cached?.subscribed ?? null,
@@ -149,7 +201,13 @@ export class YouTubeVerifyController {
         "YouTube verification status retrieved",
       );
     } catch (error) {
-      console.error("[COMMUNITY_YOUTUBE_VERIFY_STATUS_ERROR]", error);
+      logCommunityError("community.verify.status.error", {
+        status: 500,
+        userId: req.user?.id,
+        videoId: param(req.params.videoId),
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
       return fail(res, 500, "Failed to fetch YouTube verification status");
     }
   }
