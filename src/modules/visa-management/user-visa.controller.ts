@@ -143,7 +143,7 @@ export class UserVisaController {
             ],
           });
 
-        await prisma.visaOnArrivalRequest.update({
+          await prisma.visaOnArrivalRequest.update({
             where: { paymentId: payment.id },
             data: { status: "READY_FOR_GIS_SUBMISSION" },
           });
@@ -152,7 +152,6 @@ export class UserVisaController {
             where: { id: payment.id },
             data: { status: PaymentStatus.SUCCESS },
           });
-
         }
 
         if (visaRequest.packageType === "EXPEDITED") {
@@ -176,7 +175,6 @@ export class UserVisaController {
             where: { id: payment.id },
             data: { status: PaymentStatus.SUCCESS },
           });
-
 
           try {
             await sendEmail({

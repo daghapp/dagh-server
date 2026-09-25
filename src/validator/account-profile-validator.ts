@@ -43,11 +43,7 @@ export type AccountProfileInput = z.infer<typeof accountProfileSchema>;
  * OAuth-only accounts (Google/Facebook/Apple) have no passwordHash to verify.
  */
 export const deleteAccountSchema = z.object({
-  password: z
-    .string()
-    .trim()
-    .min(1, "Password is required")
-    .optional(),
+  password: z.string().trim().min(1, "Password is required").optional(),
 });
 
 export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;

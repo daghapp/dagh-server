@@ -133,7 +133,8 @@ export async function setPaymentControlStatus(input: {
     create: {
       key: PAYMENT_SETTING_KEY,
       value: payloadValue,
-      description: "Controls whether payments (Hubtel checkout & MOMO) are enabled across the system",
+      description:
+        "Controls whether payments (Hubtel checkout & MOMO) are enabled across the system",
       updatedBy: input.updatedBy ?? null,
     },
     update: {

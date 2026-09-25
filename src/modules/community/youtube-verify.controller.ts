@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
-import { logCommunity, logCommunityWarn, logCommunityError } from "../../helpers/communityLogger.js";
+import {
+  logCommunity,
+  logCommunityWarn,
+  logCommunityError,
+} from "../../helpers/communityLogger.js";
 import * as communityService from "../../services/community.service.js";
 import * as youtubeOauth from "../../services/youtube-oauth.service.js";
 import {

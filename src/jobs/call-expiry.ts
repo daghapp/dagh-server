@@ -61,7 +61,6 @@ export const callExpiryJob = () => {
 
         io.to(`user:${call.callerId}`).emit("call.missed", payload);
         io.to(`user:${call.receiverId}`).emit("call.missed", payload);
-
       }
     });
   });

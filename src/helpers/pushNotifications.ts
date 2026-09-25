@@ -432,7 +432,7 @@ export async function dispatchNotificationOutbox(): Promise<void> {
             attempts: { increment: 1 },
           },
         })
-        .catch(() => { });
+        .catch(() => {});
     } finally {
       processingOutbox.delete(row.id);
     }

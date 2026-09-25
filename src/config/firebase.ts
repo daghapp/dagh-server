@@ -78,7 +78,9 @@ export function initFirebase(): void {
   const creds = loadCredentials();
 
   if (!creds) {
-    console.warn("[push] Firebase not configured — no service-account file or FIREBASE_* env vars found");
+    console.warn(
+      "[push] Firebase not configured — no service-account file or FIREBASE_* env vars found",
+    );
     return;
   }
 

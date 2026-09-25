@@ -246,8 +246,7 @@ export interface CreateVideoPayload {
 // Explicit discriminated union so callers can narrow on result.success. Without
 // it TS widens both arms to `success: boolean` and `data` stays `| undefined`.
 export type CreateVideoResult =
-  | { success: false; code: "DUPLICATE_VIDEO_ID" }
-  | { success: true; data: CommunityVideo };
+  { success: false; code: "DUPLICATE_VIDEO_ID" } | { success: true; data: CommunityVideo };
 
 export async function adminCreateVideo(payload: CreateVideoPayload): Promise<CreateVideoResult> {
   const existing = await prisma.communityVideo.findUnique({
@@ -284,8 +283,7 @@ export interface UpdateVideoPayload {
 }
 
 export type AdminUpdateVideoResult =
-  | { success: false; code: "VIDEO_NOT_FOUND" }
-  | { success: true; data: CommunityVideo };
+  { success: false; code: "VIDEO_NOT_FOUND" } | { success: true; data: CommunityVideo };
 
 export async function adminUpdateVideo(
   videoId: string,

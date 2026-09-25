@@ -1,7 +1,11 @@
 import { Request, Response } from "express";
 import * as communityService from "../../services/community.service.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
-import { logCommunity, logCommunityWarn, logCommunityError } from "../../helpers/communityLogger.js";
+import {
+  logCommunity,
+  logCommunityWarn,
+  logCommunityError,
+} from "../../helpers/communityLogger.js";
 import { VideoInteractionType } from "../../../generated/prisma/client.js";
 import { YouTubeApiError, YouTubeNotConfiguredError } from "../../services/youtube.service.js";
 
@@ -125,9 +129,7 @@ export class CommunityController {
 
       if (
         durationMs !== undefined &&
-        (typeof durationMs !== "number" ||
-          !Number.isInteger(durationMs) ||
-          durationMs < 0)
+        (typeof durationMs !== "number" || !Number.isInteger(durationMs) || durationMs < 0)
       ) {
         logCommunityWarn("community.interact.invalid_duration", {
           status: 400,

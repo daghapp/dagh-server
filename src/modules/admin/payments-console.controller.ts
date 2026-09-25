@@ -9,10 +9,7 @@ import {
   parseDateRange,
   type QueryValue,
 } from "../../helpers/admin-query.js";
-import {
-  getPaymentControlDetails,
-  setPaymentControlStatus,
-} from "../../config/payments.js";
+import { getPaymentControlDetails, setPaymentControlStatus } from "../../config/payments.js";
 import { logAdminActivity, AdminEntityType } from "../../helpers/admin-activity.js";
 import { updatePaymentControlSchema } from "../../validator/index.js";
 

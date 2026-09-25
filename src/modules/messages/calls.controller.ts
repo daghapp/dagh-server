@@ -236,13 +236,13 @@ export const initiateCall = async (req: Request, res: Response) => {
       conversationId: ringing.conversationId,
       caller: callerProfile
         ? {
-          id: callerProfile.id,
-          fullName: callerProfile.fullName,
-          profileImageUrl:
-            callerProfile.profile?.bio_profile_image_url ||
-            callerProfile.profile?.profileUrl ||
-            null,
-        }
+            id: callerProfile.id,
+            fullName: callerProfile.fullName,
+            profileImageUrl:
+              callerProfile.profile?.bio_profile_image_url ||
+              callerProfile.profile?.profileUrl ||
+              null,
+          }
         : null,
       status: ringing.status,
       expiresAt: ringing.expiresAt.toISOString(),
@@ -309,16 +309,16 @@ export const getCallHistory = async (req: Request, res: Response) => {
       OR: [{ callerId: userId }, { receiverId: userId }],
       ...(cursor
         ? {
-          createdAt: {
-            lt:
-              (
-                await prisma.call.findUnique({
-                  where: { id: cursor },
-                  select: { createdAt: true },
-                })
-              )?.createdAt ?? new Date(),
-          },
-        }
+            createdAt: {
+              lt:
+                (
+                  await prisma.call.findUnique({
+                    where: { id: cursor },
+                    select: { createdAt: true },
+                  })
+                )?.createdAt ?? new Date(),
+            },
+          }
         : {}),
     };
 
@@ -343,21 +343,21 @@ export const getCallHistory = async (req: Request, res: Response) => {
       otherUser:
         call.callerId === userId
           ? {
-            id: call.receiver.id,
-            fullName: call.receiver.fullName,
-            profileImageUrl:
-              call.receiver.profile?.bio_profile_image_url ||
-              call.receiver.profile?.profileUrl ||
-              null,
-          }
+              id: call.receiver.id,
+              fullName: call.receiver.fullName,
+              profileImageUrl:
+                call.receiver.profile?.bio_profile_image_url ||
+                call.receiver.profile?.profileUrl ||
+                null,
+            }
           : {
-            id: call.caller.id,
-            fullName: call.caller.fullName,
-            profileImageUrl:
-              call.caller.profile?.bio_profile_image_url ||
-              call.caller.profile?.profileUrl ||
-              null,
-          },
+              id: call.caller.id,
+              fullName: call.caller.fullName,
+              profileImageUrl:
+                call.caller.profile?.bio_profile_image_url ||
+                call.caller.profile?.profileUrl ||
+                null,
+            },
       startedAt: call.ringingAt?.toISOString() ?? call.createdAt.toISOString(),
       answeredAt: call.answeredAt?.toISOString() ?? null,
       endedAt: call.endedAt?.toISOString() ?? null,
@@ -587,7 +587,6 @@ export const declineCall = async (req: Request, res: Response) => {
     io.to(`user:${declined.callerId}`).emit("call.declined", payload);
     io.to(`user:${declined.receiverId}`).emit("call.declined", payload);
 
-
     return ok(res, { callId: declined.id, status: "DECLINED" });
   } catch (error) {
     console.error("[Calls] declineCall error:", error);
@@ -654,7 +653,6 @@ export const cancelCall = async (req: Request, res: Response) => {
 
     io.to(`user:${cancelled.receiverId}`).emit("call.cancelled", payload);
     io.to(`user:${cancelled.callerId}`).emit("call.cancelled", payload);
-
 
     return ok(res, { callId: cancelled.id, status: "CANCELLED" });
   } catch (error) {
@@ -731,7 +729,6 @@ export const endCall = async (req: Request, res: Response) => {
 
     io.to(`user:${ended.callerId}`).emit("call.ended", payload);
     io.to(`user:${ended.receiverId}`).emit("call.ended", payload);
-
 
     // Create a CALL_LOG message in the conversation
     if (existing.conversationId) {

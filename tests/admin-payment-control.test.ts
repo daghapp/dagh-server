@@ -13,7 +13,11 @@ import { AdminPaymentsConsoleController } from "../src/modules/admin/payments-co
 import { PaymentTargetType, AuthProvider, AccountType } from "../generated/prisma/client.js";
 import type { Request, Response } from "express";
 
-function createMockRes(): { res: Response; json: ReturnType<typeof vi.fn>; status: ReturnType<typeof vi.fn> } {
+function createMockRes(): {
+  res: Response;
+  json: ReturnType<typeof vi.fn>;
+  status: ReturnType<typeof vi.fn>;
+} {
   const json = vi.fn();
   const status = vi.fn().mockImplementation(() => ({ json }));
   const res = {

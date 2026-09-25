@@ -8,7 +8,13 @@
  * Previously this logic was duplicated across payment.controller.ts (static vs instance methods),
  * user-tour.controller.ts, user-visa.controller.ts, and itinerary.payment.controller.ts.
  */
-import { prisma, hubtelClient, hubtelDirectMoneyReceive, isPaymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../config/index.js";
+import {
+  prisma,
+  hubtelClient,
+  hubtelDirectMoneyReceive,
+  isPaymentsEnabled,
+  PAYMENTS_DISABLED_MESSAGE,
+} from "../config/index.js";
 import {
   generateClientReference,
   generateClientReference_targetType,
@@ -27,14 +33,11 @@ import { HubtelDirectReceiveResponseSchema } from "../validator/index.js";
 // These are used as defaults by controllers that don't specify their own callback URL.
 // Visa and itinerary controllers override callbackUrl inline.
 export const HUBTEL_CALLBACK_URL =
-  process.env.HUBTEL_CALLBACK_URL ||
-  `${process.env.API_URL}/tours/hubtel-callback`;
+  process.env.HUBTEL_CALLBACK_URL || `${process.env.API_URL}/tours/hubtel-callback`;
 export const HUBTEL_CANCELLATION_URL =
-  process.env.HUBTEL_CANCELLATION_URL ||
-  `${process.env.API_URL}/payment/processing`;
+  process.env.HUBTEL_CANCELLATION_URL || `${process.env.API_URL}/payment/processing`;
 export const HUBTEL_RETURN_URL =
-  process.env.HUBTEL_RETURN_URL ||
-  `${process.env.API_URL}/payment/processing`;
+  process.env.HUBTEL_RETURN_URL || `${process.env.API_URL}/payment/processing`;
 
 type InitPaymentInput = InitializePaymentSchema & {
   targetType: PaymentTargetType;
