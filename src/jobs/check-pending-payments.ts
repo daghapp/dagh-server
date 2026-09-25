@@ -5,7 +5,7 @@ import {
   PaymentTargetType,
   VisaRequestStatus,
 } from "../../generated/prisma/client.js";
-import { hubtelStatusClient } from "../config/index.js";
+import { getHubtelStatusClient } from "../config/hubtel.js";
 import { convertUSDToGHS } from "../helpers/stringHelper.js";
 import sendEmail from "../config/resend.config.js";
 import { getAccountId } from "../helpers/ledger.js";
@@ -50,6 +50,7 @@ export const checkPendingPaymentsJob = () => {
             if (!claimed) return;
 
             try {
+              const hubtelStatusClient = await getHubtelStatusClient();
               const { data: responseData } = await hubtelStatusClient(
                 `?clientReference=${payment.reference}`,
               );

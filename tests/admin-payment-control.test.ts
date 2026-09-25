@@ -277,5 +277,38 @@ describe("Admin Payment Control", () => {
       expect(activity).not.toBeNull();
       expect(activity?.note).toBe("Emergency payment processor pause");
     });
+
+    it("updateControlStatus surfaces the gateway 409 instead of a 500", async () => {
+      // This legacy endpoint is an alias for
+      // PATCH /admin/settings/payment-gateway/processing, so it must inherit its
+      // guard errors. An expected rejection is not a server fault, and reporting
+      // it as 500 would send an operator looking in the wrong place.
+      await prisma.paymentGatewayConfig.deleteMany({ where: { provider: "HUBTEL" } });
+      // A row with no credentials exists but is NOT_CONNECTED, which is the
+      // state that makes enabling invalid.
+      await prisma.paymentGatewayConfig.create({
+        data: { provider: "HUBTEL" },
+      });
+
+      try {
+        const { res, json, status } = createMockRes();
+        const req = {
+          body: { enabled: true },
+          user: { id: testAdminId },
+        } as unknown as Request;
+
+        await controller.updateControlStatus(req, res);
+
+        expect(status).toHaveBeenCalledWith(409);
+        expect(json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            success: false,
+          }),
+        );
+      } finally {
+        await prisma.adminActivityLog.deleteMany({ where: { actorId: testAdminId } });
+        await prisma.paymentGatewayConfig.deleteMany({ where: { provider: "HUBTEL" } });
+      }
+    });
   });
 });

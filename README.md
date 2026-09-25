@@ -1,25 +1,25 @@
 # Diaspora Affairs Ghana (DAGH) — Backend API
 
-REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, payments via Hubtel, and a community video feed that gates full YouTube playback behind a subscribe prompt (with unlock state, funnel analytics, and optional server-side subscription verification via OAuth).
+REST API for the DAGH platform: tour management, visa-on-arrival processing, itinerary generation, membership plans & subscriptions, dating & matching, messaging, voice/video calling, payments via Hubtel (with an admin console for encrypted gateway credentials and a payment master switch), and a community video feed that gates full YouTube playback behind a subscribe prompt (with unlock state, funnel analytics, and optional server-side subscription verification via OAuth).
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Node.js 20 |
-| Framework | Express 5 + Helmet |
-| Language | TypeScript 5.9 (strict) |
-| Database | PostgreSQL + Prisma 7.4 ORM (driver adapter: `@prisma/adapter-pg`, config in `prisma.config.ts`) |
-| Payments | Hubtel (Mobile Money: MTN, Telecel, AT + Cards) |
-| File Storage | Cloudinary |
-| Real-time | Socket.IO 4.8 |
-| Auth | JWT (access + refresh tokens), Passport (Google, Facebook, Apple) |
-| Validation | Zod 4 |
-| Email | Resend |
-| API Docs | Swagger (swagger-jsdoc + swagger-ui-express) at `/api-docs` |
-| Linting | ESLint 10 + Prettier |
+| Layer        | Technology                                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime      | Node.js 20                                                                                                                                     |
+| Framework    | Express 5 + Helmet                                                                                                                             |
+| Language     | TypeScript 5.9 (strict)                                                                                                                        |
+| Database     | PostgreSQL + Prisma 7.4 ORM (driver adapter: `@prisma/adapter-pg`, config in `prisma.config.ts`)                                               |
+| Payments     | Hubtel (Mobile Money: MTN, Telecel, AT + Cards). Credentials encrypted at rest (AES-256-GCM) and configurable at runtime via the admin console |
+| File Storage | Cloudinary                                                                                                                                     |
+| Real-time    | Socket.IO 4.8                                                                                                                                  |
+| Auth         | JWT (access + refresh tokens), Passport (Google, Facebook, Apple)                                                                              |
+| Validation   | Zod 4                                                                                                                                          |
+| Email        | Resend                                                                                                                                         |
+| API Docs     | Swagger (swagger-jsdoc + swagger-ui-express) at `/api-docs`                                                                                    |
+| Linting      | ESLint 10 + Prettier                                                                                                                           |
 
 ---
 
@@ -54,14 +54,14 @@ npm run dev            # development (nodemon + tsx hot reload)
 `npm run db:seed` populates the database with test data for frontend development.
 All demo users are `ACTIVE` and ready to log in via `POST /auth/login`:
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | `admin@dagh.app` | `Admin@12345` |
-| Demo user (bookings, visa, paid subscription) | `demo@dagh.app` | `Demo@12345` |
-| Demo user 2 | `demotwo@dagh.app` | `Demo@12345` |
-| Dating profile (Ama Serwaa) | `dating.demo@dagh.app` | `Demo@12345` |
-| Dating profile (Kwame Boateng) | `dating.demo2@dagh.app` | `Demo@12345` |
-| Dating profile (Nana Yaa) | `dating.demo3@dagh.app` | `Demo@12345` |
+| Role                                          | Email                   | Password      |
+| --------------------------------------------- | ----------------------- | ------------- |
+| Admin                                         | `admin@dagh.app`        | `Admin@12345` |
+| Demo user (bookings, visa, paid subscription) | `demo@dagh.app`         | `Demo@12345`  |
+| Demo user 2                                   | `demotwo@dagh.app`      | `Demo@12345`  |
+| Dating profile (Ama Serwaa)                   | `dating.demo@dagh.app`  | `Demo@12345`  |
+| Dating profile (Kwame Boateng)                | `dating.demo2@dagh.app` | `Demo@12345`  |
+| Dating profile (Nana Yaa)                     | `dating.demo3@dagh.app` | `Demo@12345`  |
 
 The seed also adds 4 tour packages (with locations, itineraries and pricing),
 2 sample bookings, dating matches/conversations/messages, 6 visa-on-arrival
@@ -119,11 +119,27 @@ FIREBASE_PROJECT_ID=
 FIREBASE_PRIVATE_KEY=
 FIREBASE_CLIENT_EMAIL=
 
-# Hubtel (required)
+# Hubtel
+# Credentials may instead be managed at runtime from Admin > Settings > Payment
+# Gateway, which encrypts them at rest. A saved gateway configuration takes
+# precedence; these values are the fallback for deployments that never use the
+# settings screen. HUBTEL_MERCHANT_NUMBER and HUBTEL_BASE_URL are deployment
+# topology, not credentials, so they stay environment-only.
 HUBTEL_CLIENT_ID=
 HUBTEL_CLIENT_SECRET=
 HUBTEL_MERCHANT_NUMBER=
 HUBTEL_BASE_URL=
+# Optional. Overrides the transaction-status host used for payment verification
+# and the settings screen's connection probe. Defaults to Hubtel's public host.
+HUBTEL_STATUS_API_BASE=
+
+# Encrypts payment gateway credentials at rest (AES-256-GCM).
+# REQUIRED in any non-test environment. Exactly 32 bytes, as 64 hex chars or
+# base64. Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Changing this makes stored secrets undecryptable — rotate credentials through
+# the settings screen afterwards.
+PAYMENT_GATEWAY_ENCRYPTION_KEY=
 
 # Cloudinary
 CLOUDINARY_CLOUD_NAME=
@@ -197,11 +213,11 @@ src/
 ├── server.ts                   # Express app setup, middleware, route mounting
 ├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts + 9 membership plans)
 ├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
-├── helpers/                    # OTP, JWT, client refs, ledger, payment, haversine, response, safety, call state machine, call logger, push notifications, presence, livekit
+├── helpers/                    # OTP, JWT, client refs, ledger, payment, encryption, payment gateway logger, admin activity, haversine, response, safety, call state machine, call logger, push notifications, presence, livekit
 ├── jobs/                       # Cron jobs (pending payments, user cleanup, call expiry, push delivery)
-├── middleware/                  # Auth, admin, validation, rate limiting, Cloudinary upload, audio upload, Hubtel callback
+├── middleware/                  # Auth, admin, admin permission scopes, request ID, validation, rate limiting, Cloudinary upload, audio upload, Hubtel callback
 ├── modules/
-│   ├── admin/                  # Admin console (dashboard, visa console, payments console)
+│   ├── admin/                  # Admin console (dashboard, visa console, payments console, payment gateway settings)
 │   ├── authentication/         # Register, login, OAuth, password reset
 │   ├── common/                 # Image upload
 │   ├── data-policy/            # CMS-managed data policy (public read + admin CRUD)
@@ -217,11 +233,11 @@ src/
 │   ├── provider-management/    # Nearby hotels
 │   ├── tour-management/        # Tour CRUD, booking, admin
 │   └── visa-management/        # Visa-on-arrival requests + approval
-├── routes/                     # Express route definitions (26 files)
-├── services/                   # Business logic (membership, payment, matching)
+├── routes/                     # Express route definitions (28 files)
+├── services/                   # Business logic (membership, payment, matching, payment gateway config, Hubtel connection probe)
 ├── sockets/                    # Socket.IO handlers (auth, presence, call signaling)
 ├── types/                      # TypeScript type augmentations (Express.User)
-├── validator/                  # Zod schemas (24 files)
+├── validator/                  # Zod schemas (27 files)
 └── views/                      # HTML/CSS for OAuth/payment callback pages
 ```
 
@@ -235,6 +251,8 @@ src/
 > for the Admin Gateway registration flow, `docs/verification-flow.md` for
 > the identity-verification integration guide, `docs/call-integration-guide.md`
 > for the voice/video calling frontend integration guide,
+> `docs/payment-gateway-settings.md` for the Hubtel gateway settings console
+> (encrypted credentials, connection test, master switch),
 > `docs/payment-control-system.md` for the payment enable/disable toggle
 > (admin API + public status endpoint), and `docs/push-notifications.md` for
 > the push notification architecture. See
@@ -244,6 +262,7 @@ src/
 All endpoints return responses in a standardized envelope:
 
 **Success (single item):**
+
 ```json
 {
   "success": true,
@@ -253,6 +272,7 @@ All endpoints return responses in a standardized envelope:
 ```
 
 **Success (paginated):**
+
 ```json
 {
   "success": true,
@@ -267,6 +287,7 @@ All endpoints return responses in a standardized envelope:
 ```
 
 **Error:**
+
 ```json
 {
   "success": false,
@@ -277,48 +298,48 @@ All endpoints return responses in a standardized envelope:
 
 ### Authentication
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/auth/register` | Public | Register with email/password |
-| POST | `/auth/login` | Public | Login (returns access + refresh tokens) |
-| POST | `/auth/logout` | Bearer | Logout (revokes all refresh tokens) |
-| POST | `/auth/verify-otp` | Public | Verify email OTP |
-| POST | `/auth/resend-otp` | Public | Resend verification OTP |
-| POST | `/auth/refresh-token` | Public | Get new access token |
-| POST | `/auth/request-reset-password` | Public | Request password reset OTP |
-| POST | `/auth/reset-password` | Public | Reset password with OTP |
-| GET | `/auth/google` | Public | Google OAuth redirect |
-| GET | `/auth/google/callback` | Public | Google OAuth callback |
-| GET | `/auth/google/failed` | Public | Google OAuth failure page |
-| GET | `/auth/google/success` | Public | Google OAuth success page |
-| GET | `/auth/facebook` | Public | Facebook OAuth redirect |
-| GET | `/auth/facebook/callback` | Public | Facebook OAuth callback |
-| GET | `/auth/facebook/failed` | Public | Facebook OAuth failure page |
-| GET | `/auth/facebook/success` | Public | Facebook OAuth success page |
-| GET | `/auth/apple` | Public | Apple Sign In redirect |
-| POST | `/auth/apple/callback` | Public | Apple Sign In callback |
-| GET | `/auth/apple/failed` | Public | Apple OAuth failure page |
-| GET | `/auth/apple/success` | Public | Apple OAuth success page |
+| Method | Endpoint                       | Auth   | Description                             |
+| ------ | ------------------------------ | ------ | --------------------------------------- |
+| POST   | `/auth/register`               | Public | Register with email/password            |
+| POST   | `/auth/login`                  | Public | Login (returns access + refresh tokens) |
+| POST   | `/auth/logout`                 | Bearer | Logout (revokes all refresh tokens)     |
+| POST   | `/auth/verify-otp`             | Public | Verify email OTP                        |
+| POST   | `/auth/resend-otp`             | Public | Resend verification OTP                 |
+| POST   | `/auth/refresh-token`          | Public | Get new access token                    |
+| POST   | `/auth/request-reset-password` | Public | Request password reset OTP              |
+| POST   | `/auth/reset-password`         | Public | Reset password with OTP                 |
+| GET    | `/auth/google`                 | Public | Google OAuth redirect                   |
+| GET    | `/auth/google/callback`        | Public | Google OAuth callback                   |
+| GET    | `/auth/google/failed`          | Public | Google OAuth failure page               |
+| GET    | `/auth/google/success`         | Public | Google OAuth success page               |
+| GET    | `/auth/facebook`               | Public | Facebook OAuth redirect                 |
+| GET    | `/auth/facebook/callback`      | Public | Facebook OAuth callback                 |
+| GET    | `/auth/facebook/failed`        | Public | Facebook OAuth failure page             |
+| GET    | `/auth/facebook/success`       | Public | Facebook OAuth success page             |
+| GET    | `/auth/apple`                  | Public | Apple Sign In redirect                  |
+| POST   | `/auth/apple/callback`         | Public | Apple Sign In callback                  |
+| GET    | `/auth/apple/failed`           | Public | Apple OAuth failure page                |
+| GET    | `/auth/apple/success`          | Public | Apple OAuth success page                |
 
 ### Profile Management
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/profile/init` | Bearer | Initialize profile |
-| PATCH | `/profile` | Bearer | Update own `fullName`, `gender`, `dateOfBirth`, `ethnicity` |
-| PATCH | `/profile/ethnicity` | Bearer | Set ethnicity |
+| Method | Endpoint             | Auth   | Description                                                 |
+| ------ | -------------------- | ------ | ----------------------------------------------------------- |
+| POST   | `/profile/init`      | Bearer | Initialize profile                                          |
+| PATCH  | `/profile`           | Bearer | Update own `fullName`, `gender`, `dateOfBirth`, `ethnicity` |
+| PATCH  | `/profile/ethnicity` | Bearer | Set ethnicity                                               |
 
 ### Profile Verification
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/verification/init` | Bearer | Initialize verification |
-| POST | `/verification/phone/send-otp` | Bearer | Send phone verification OTP (returns `challengeId`) |
-| POST | `/verification/phone/verify-otp` | Bearer | Verify phone OTP (requires `challengeId` + `code`) |
-| POST | `/verification/bio_profile_url` | Bearer | Submit bio profile URL |
-| POST | `/verification/bio_document_urls` | Bearer | Submit bio documents |
-| GET | `/verification/status` | Bearer | Full verification status (per-step status, current step, completed steps) |
-| GET | `/verification/validation-step/status` | Bearer | Get current verification step |
+| Method | Endpoint                               | Auth   | Description                                                               |
+| ------ | -------------------------------------- | ------ | ------------------------------------------------------------------------- |
+| POST   | `/verification/init`                   | Bearer | Initialize verification                                                   |
+| POST   | `/verification/phone/send-otp`         | Bearer | Send phone verification OTP (returns `challengeId`)                       |
+| POST   | `/verification/phone/verify-otp`       | Bearer | Verify phone OTP (requires `challengeId` + `code`)                        |
+| POST   | `/verification/bio_profile_url`        | Bearer | Submit bio profile URL                                                    |
+| POST   | `/verification/bio_document_urls`      | Bearer | Submit bio documents                                                      |
+| GET    | `/verification/status`                 | Bearer | Full verification status (per-step status, current step, completed steps) |
+| GET    | `/verification/validation-step/status` | Bearer | Get current verification step                                             |
 
 #### Phone OTP contract
 
@@ -380,36 +401,36 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 
 ### Tour Management
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/tours` | Public | List tours (filterable, paginated) |
-| GET | `/tours/:tourId` | Public | Get tour details |
-| POST | `/tours` | Admin | Create tour |
-| PUT | `/tours/:id` | Admin | Update tour |
-| DELETE | `/tours/:id` | Admin | Delete tour |
-| POST | `/tours/:id/itinerary` | Admin | Create tour itinerary |
-| PUT | `/tours/itinerary/:id` | Admin | Update tour itinerary |
-| DELETE | `/tours/itinerary/:id` | Admin | Delete tour itinerary |
-| POST | `/tours/bookings` | Bearer | Book a tour (Hubtel checkout) |
-| POST | `/tours/initiate-booking-momo` | Bearer | Book a tour (Mobile Money) |
-| POST | `/tours/hubtel-callback` | Hubtel | Hubtel payment callback |
-| GET | `/tours/bookings/my` | Bearer | Get user's bookings |
-| PATCH | `/tours/user-itineraries/:itineraryId` | Bearer | Update user itinerary |
-| DELETE | `/tours/bookings/:bookingId` | Bearer | Cancel booking |
+| Method | Endpoint                               | Auth   | Description                        |
+| ------ | -------------------------------------- | ------ | ---------------------------------- |
+| GET    | `/tours`                               | Public | List tours (filterable, paginated) |
+| GET    | `/tours/:tourId`                       | Public | Get tour details                   |
+| POST   | `/tours`                               | Admin  | Create tour                        |
+| PUT    | `/tours/:id`                           | Admin  | Update tour                        |
+| DELETE | `/tours/:id`                           | Admin  | Delete tour                        |
+| POST   | `/tours/:id/itinerary`                 | Admin  | Create tour itinerary              |
+| PUT    | `/tours/itinerary/:id`                 | Admin  | Update tour itinerary              |
+| DELETE | `/tours/itinerary/:id`                 | Admin  | Delete tour itinerary              |
+| POST   | `/tours/bookings`                      | Bearer | Book a tour (Hubtel checkout)      |
+| POST   | `/tours/initiate-booking-momo`         | Bearer | Book a tour (Mobile Money)         |
+| POST   | `/tours/hubtel-callback`               | Hubtel | Hubtel payment callback            |
+| GET    | `/tours/bookings/my`                   | Bearer | Get user's bookings                |
+| PATCH  | `/tours/user-itineraries/:itineraryId` | Bearer | Update user itinerary              |
+| DELETE | `/tours/bookings/:bookingId`           | Bearer | Cancel booking                     |
 
 ### Itinerary Generation
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/itinerary/sites` | Public | List all Ghana tour sites |
-| POST | `/itinerary/request` | Bearer | Submit tour request with site selections (`casualDatingInterest=true` requires KYC verification) |
-| GET | `/itinerary/requests` | Bearer | Get user's tour requests |
-| GET | `/itinerary/my-itineraries` | Bearer | Get user's generated itineraries |
-| GET | `/itinerary/:tourRequestId` | Bearer | Get generated itinerary by request ID (includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected) |
-| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate itinerary payment (returns top-level `checkoutUrl`) |
-| POST | `/itinerary/payment-callback` | Hubtel | Hubtel payment callback |
-| POST | `/itinerary/:tourRequestId/dating-selections` | Bearer | Select recommended dating profiles to merge into the itinerary (KYC-gated) |
-| GET | `/itinerary/:tourRequestId/dating-selections` | Bearer | List dating profiles merged into a tour's itinerary |
+| Method | Endpoint                                      | Auth   | Description                                                                                                                    |
+| ------ | --------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/itinerary/sites`                            | Public | List all Ghana tour sites                                                                                                      |
+| POST   | `/itinerary/request`                          | Bearer | Submit tour request with site selections (`casualDatingInterest=true` requires KYC verification)                               |
+| GET    | `/itinerary/requests`                         | Bearer | Get user's tour requests                                                                                                       |
+| GET    | `/itinerary/my-itineraries`                   | Bearer | Get user's generated itineraries                                                                                               |
+| GET    | `/itinerary/:tourRequestId`                   | Bearer | Get generated itinerary by request ID (includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected) |
+| POST   | `/itinerary/:tourRequestId/payment`           | Bearer | Initiate itinerary payment (returns top-level `checkoutUrl`)                                                                   |
+| POST   | `/itinerary/payment-callback`                 | Hubtel | Hubtel payment callback                                                                                                        |
+| POST   | `/itinerary/:tourRequestId/dating-selections` | Bearer | Select recommended dating profiles to merge into the itinerary (KYC-gated)                                                     |
+| GET    | `/itinerary/:tourRequestId/dating-selections` | Bearer | List dating profiles merged into a tour's itinerary                                                                            |
 
 #### Payment response
 
@@ -450,53 +471,53 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 
 ### Visa-on-Arrival
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/visa-requests` | Bearer | Create visa request |
-| GET | `/visa-requests` | Bearer | Get user's visa requests |
-| GET | `/visa-requests/:requestId/status` | Bearer | Get visa status |
-| POST | `/visa-requests/:requestId/payment` | Bearer | Initiate visa payment |
-| POST | `/visa-requests/payment-callback` | Hubtel | Hubtel payment callback |
-| GET | `/visa-requests/pricing/:visaType` | Public | Get visa pricing breakdown |
+| Method | Endpoint                            | Auth   | Description                |
+| ------ | ----------------------------------- | ------ | -------------------------- |
+| POST   | `/visa-requests`                    | Bearer | Create visa request        |
+| GET    | `/visa-requests`                    | Bearer | Get user's visa requests   |
+| GET    | `/visa-requests/:requestId/status`  | Bearer | Get visa status            |
+| POST   | `/visa-requests/:requestId/payment` | Bearer | Initiate visa payment      |
+| POST   | `/visa-requests/payment-callback`   | Hubtel | Hubtel payment callback    |
+| GET    | `/visa-requests/pricing/:visaType`  | Public | Get visa pricing breakdown |
 
 ### Payments
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/payment/status` | Public | Check whether payments are currently enabled (frontend uses this to skip payment screens when disabled) |
-| POST | `/payment/initialize` | Bearer | Initialize a payment |
-| GET | `/payment/verify/:reference` | Bearer | Verify payment status |
-| GET | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status |
-| GET | `/payment/processing` | Public | Payment processing page |
-| GET | `/payment/p.js` | Public | Payment redirect script |
+| Method | Endpoint                                  | Auth   | Description                                                                                             |
+| ------ | ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| GET    | `/payment/status`                         | Public | Check whether payments are currently enabled (frontend uses this to skip payment screens when disabled) |
+| POST   | `/payment/initialize`                     | Bearer | Initialize a payment                                                                                    |
+| GET    | `/payment/verify/:reference`              | Bearer | Verify payment status                                                                                   |
+| GET    | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status                                                                                |
+| GET    | `/payment/processing`                     | Public | Payment processing page                                                                                 |
+| GET    | `/payment/p.js`                           | Public | Payment redirect script                                                                                 |
 
 ### Messaging & Chat
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/messages` | Bearer | Send a text or media message (`receiverId`, `content`, `type`, `mediaUrl`, `mediaDuration`) |
-| POST | `/messages/voice-note` | Bearer | Upload and send a voice note (multipart: `audio` file, `receiverId`, `mediaDuration`). Max 15MB. |
-| GET | `/messages/matches` | Bearer | Get active user matches ("New Matches" carousel) |
-| GET | `/messages/conversations` | Bearer | List conversations with unread counts, partner profiles, and `lastActiveAt` |
-| GET | `/messages/conversations/:conversationId` | Bearer | Get messages in a conversation (marks unread as read) |
-| PATCH | `/messages/:messageId/read` | Bearer | Mark a specific message as read |
+| Method | Endpoint                                  | Auth   | Description                                                                                      |
+| ------ | ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| POST   | `/messages`                               | Bearer | Send a text or media message (`receiverId`, `content`, `type`, `mediaUrl`, `mediaDuration`)      |
+| POST   | `/messages/voice-note`                    | Bearer | Upload and send a voice note (multipart: `audio` file, `receiverId`, `mediaDuration`). Max 15MB. |
+| GET    | `/messages/matches`                       | Bearer | Get active user matches ("New Matches" carousel)                                                 |
+| GET    | `/messages/conversations`                 | Bearer | List conversations with unread counts, partner profiles, and `lastActiveAt`                      |
+| GET    | `/messages/conversations/:conversationId` | Bearer | Get messages in a conversation (marks unread as read)                                            |
+| PATCH  | `/messages/:messageId/read`               | Bearer | Mark a specific message as read                                                                  |
 
 ### Safety (Block & Report)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/messages/block` | Bearer | Block a user — prevents messages and calls both ways |
-| DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user |
-| POST | `/messages/report` | Bearer | Report a user (`targetId`, `reason`, `details`) |
+| Method | Endpoint                     | Auth   | Description                                          |
+| ------ | ---------------------------- | ------ | ---------------------------------------------------- |
+| POST   | `/messages/block`            | Bearer | Block a user — prevents messages and calls both ways |
+| DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user                                       |
+| POST   | `/messages/report`           | Bearer | Report a user (`targetId`, `reason`, `details`)      |
 
 ### Devices
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/devices/register` | Bearer | Register or update a device for push notifications (upsert on `userId` + `deviceId`; stores Expo/FCM/APNs/VoIP tokens, updates `lastSeenAt` every launch) |
-| DELETE | `/devices/:deviceId` | Bearer | Unregister a device (also disabled server-side on logout) |
-| GET | `/devices/notifications/preferences` | Bearer | Get notification preferences (e.g. `messagesEnabled`) |
-| PATCH | `/devices/notifications/preferences` | Bearer | Update notification preferences (`{ "messagesEnabled": boolean }`) |
+| Method | Endpoint                             | Auth   | Description                                                                                                                                               |
+| ------ | ------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/devices/register`                  | Bearer | Register or update a device for push notifications (upsert on `userId` + `deviceId`; stores Expo/FCM/APNs/VoIP tokens, updates `lastSeenAt` every launch) |
+| DELETE | `/devices/:deviceId`                 | Bearer | Unregister a device (also disabled server-side on logout)                                                                                                 |
+| GET    | `/devices/notifications/preferences` | Bearer | Get notification preferences (e.g. `messagesEnabled`)                                                                                                     |
+| PATCH  | `/devices/notifications/preferences` | Bearer | Update notification preferences (`{ "messagesEnabled": boolean }`)                                                                                        |
 
 #### Message push notifications
 
@@ -524,22 +545,22 @@ a worker delivers the push in the background:
 
 ### Dating
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/dating/profile` | Bearer | Get your dating profile + discovery preferences |
-| POST | `/dating/profile/init` | Bearer | Initialize your dating profile (accepts the full creation payload) |
-| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) + account fields |
-| GET | `/dating/profile/status` | Bearer | Profile existence + completion status (skip onboarding for returning users) |
-| GET | `/dating/profile/:userId` | Bearer | View another user's public dating profile (blocked users excluded) |
-| GET | `/dating/preferences` | Bearer | Get your discovery preferences |
-| PUT | `/dating/preferences` | Bearer | Set discovery preferences (age/gender/distance filters, visibility) |
-| GET | `/dating/recommendations` | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` (KYC-gated; `?tourRequestId=` restricts to a tour's geofence + schedule window) |
-| POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation. |
-| GET | `/dating/matches` | Bearer | List your active matches |
-| GET | `/dating/likes-received` | Bearer | List users who liked you |
-| GET | `/dating/likes-sent` | Bearer | List outgoing interests you sent (cursor-paginated, newest first) |
-| GET | `/dating/relationship-status/:userId` | Bearer | Get relationship status with a specific user |
-| DELETE | `/dating/matches/:matchId` | Bearer | Unmatch a user |
+| Method | Endpoint                              | Auth   | Description                                                                                                                                                 |
+| ------ | ------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/dating/profile`                     | Bearer | Get your dating profile + discovery preferences                                                                                                             |
+| POST   | `/dating/profile/init`                | Bearer | Initialize your dating profile (accepts the full creation payload)                                                                                          |
+| PATCH  | `/dating/profile`                     | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) + account fields                                    |
+| GET    | `/dating/profile/status`              | Bearer | Profile existence + completion status (skip onboarding for returning users)                                                                                 |
+| GET    | `/dating/profile/:userId`             | Bearer | View another user's public dating profile (blocked users excluded)                                                                                          |
+| GET    | `/dating/preferences`                 | Bearer | Get your discovery preferences                                                                                                                              |
+| PUT    | `/dating/preferences`                 | Bearer | Set discovery preferences (age/gender/distance filters, visibility)                                                                                         |
+| GET    | `/dating/recommendations`             | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` (KYC-gated; `?tourRequestId=` restricts to a tour's geofence + schedule window) |
+| POST   | `/dating/swipe`                       | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation.                                                                                 |
+| GET    | `/dating/matches`                     | Bearer | List your active matches                                                                                                                                    |
+| GET    | `/dating/likes-received`              | Bearer | List users who liked you                                                                                                                                    |
+| GET    | `/dating/likes-sent`                  | Bearer | List outgoing interests you sent (cursor-paginated, newest first)                                                                                           |
+| GET    | `/dating/relationship-status/:userId` | Bearer | Get relationship status with a specific user                                                                                                                |
+| DELETE | `/dating/matches/:matchId`            | Bearer | Unmatch a user                                                                                                                                              |
 
 #### Recommendations with relationship state
 
@@ -606,19 +627,20 @@ Dating discovery and profile selection are gated behind full KYC verification (s
 
 ### Calls
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/calls` | Bearer | Initiate a voice/video call (rate-limited: 5/recipient/10min, 20/caller/hour) |
-| GET | `/calls/history` | Bearer | Get call history (cursor-paginated, last 50) |
-| GET | `/calls/:callId` | Bearer | Get current call state |
-| POST | `/calls/:callId/answer` | Bearer | Answer an incoming call (returns LiveKit token) — receiver only |
-| POST | `/calls/:callId/decline` | Bearer | Decline an incoming call — receiver only |
-| POST | `/calls/:callId/cancel` | Bearer | Cancel an outgoing call — caller only |
-| POST | `/calls/:callId/end` | Bearer | End an active call — either participant |
-| POST | `/calls/:callId/token` | Bearer | Generate a short-lived LiveKit token (120s TTL) |
-| POST | `/calls/token` | Bearer | **[DEPRECATED]** Legacy token generation |
+| Method | Endpoint                 | Auth   | Description                                                                   |
+| ------ | ------------------------ | ------ | ----------------------------------------------------------------------------- |
+| POST   | `/calls`                 | Bearer | Initiate a voice/video call (rate-limited: 5/recipient/10min, 20/caller/hour) |
+| GET    | `/calls/history`         | Bearer | Get call history (cursor-paginated, last 50)                                  |
+| GET    | `/calls/:callId`         | Bearer | Get current call state                                                        |
+| POST   | `/calls/:callId/answer`  | Bearer | Answer an incoming call (returns LiveKit token) — receiver only               |
+| POST   | `/calls/:callId/decline` | Bearer | Decline an incoming call — receiver only                                      |
+| POST   | `/calls/:callId/cancel`  | Bearer | Cancel an outgoing call — caller only                                         |
+| POST   | `/calls/:callId/end`     | Bearer | End an active call — either participant                                       |
+| POST   | `/calls/:callId/token`   | Bearer | Generate a short-lived LiveKit token (120s TTL)                               |
+| POST   | `/calls/token`           | Bearer | **[DEPRECATED]** Legacy token generation                                      |
 
 **Call state machine:**
+
 ```
 INITIATING → RINGING → ANSWERED → ENDED
                       ↘ DECLINED
@@ -626,9 +648,11 @@ INITIATING → RINGING → ANSWERED → ENDED
                       ↘ MISSED (auto-expired, cron)
                       ↘ FAILED
 ```
+
 `RINGING` and `ANSWERED` may also transition to `FAILED`. All transitions are enforced server-side with a compare-and-set update; terminal states are final.
 
 **Behavior:**
+
 - Atomic creation: `POST /calls` locks both user rows, rejects duplicate active calls for either user, and commits a single `RINGING` call (`CallAuditLog` transition records answer/decline/cancel/end/expire)
 - Atomic transitions via `SELECT FOR UPDATE` row locking + audit trail (`CallAuditLog`)
 - Busy check: prevents calls if either party is already in an active call (checked inside the creation transaction, so Answer cannot race Cancel/Decline/timeout)
@@ -642,15 +666,15 @@ INITIATING → RINGING → ANSWERED → ENDED
 
 ### Membership Plans & Tiers
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/membership/plans` | Public | List all active membership plans with pricing, intervals, and features |
-| POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free activates immediately, paid returns checkout URL) |
-| GET | `/membership/my-subscription` | Bearer | Get current user's subscription with plan details and status |
-| POST | `/membership/support` | Bearer | Create a priority support ticket (paid tiers only) |
-| POST | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments (idempotent) |
-| GET | `/membership/payment/return` | Public | HTTPS redirect bridge for mobile deep links (return) |
-| GET | `/membership/payment/cancel` | Public | HTTPS redirect bridge for mobile deep links (cancel) |
+| Method | Endpoint                       | Auth   | Description                                                                 |
+| ------ | ------------------------------ | ------ | --------------------------------------------------------------------------- |
+| GET    | `/membership/plans`            | Public | List all active membership plans with pricing, intervals, and features      |
+| POST   | `/membership/subscribe`        | Bearer | Subscribe to a plan (free activates immediately, paid returns checkout URL) |
+| GET    | `/membership/my-subscription`  | Bearer | Get current user's subscription with plan details and status                |
+| POST   | `/membership/support`          | Bearer | Create a priority support ticket (paid tiers only)                          |
+| POST   | `/membership/payment-callback` | Hubtel | Hubtel payment callback for subscription payments (idempotent)              |
+| GET    | `/membership/payment/return`   | Public | HTTPS redirect bridge for mobile deep links (return)                        |
+| GET    | `/membership/payment/cancel`   | Public | HTTPS redirect bridge for mobile deep links (cancel)                        |
 
 #### Subscribe response
 
@@ -697,13 +721,13 @@ ACTIVE → EXPIRED
 
 #### Stable error codes
 
-| HTTP | Code | Meaning |
-|------|------|---------|
-| 400 | `INVALID_PLAN_ID` | Plan does not exist or is inactive |
-| 400 | `INVALID_RETURN_URL` | Supplied return/cancellation URL is unsupported |
-| 409 | `SUBSCRIPTION_ALREADY_ACTIVE` | User already has the requested active plan |
-| 422 | `CHECKOUT_INITIALIZATION_FAILED` | Provider could not create checkout |
-| 502 | `PAYMENT_PROVIDER_ERROR` | Provider returned an invalid or failed response |
+| HTTP | Code                             | Meaning                                         |
+| ---- | -------------------------------- | ----------------------------------------------- |
+| 400  | `INVALID_PLAN_ID`                | Plan does not exist or is inactive              |
+| 400  | `INVALID_RETURN_URL`             | Supplied return/cancellation URL is unsupported |
+| 409  | `SUBSCRIPTION_ALREADY_ACTIVE`    | User already has the requested active plan      |
+| 422  | `CHECKOUT_INITIALIZATION_FAILED` | Provider could not create checkout              |
+| 502  | `PAYMENT_PROVIDER_ERROR`         | Provider returned an invalid or failed response |
 
 Paid subscriptions initialize a Hubtel checkout and are activated on payment callback
 (idempotent — already-processed callbacks are skipped). Generated Hubtel client
@@ -711,33 +735,33 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 
 ### Image Upload
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/upload` | Bearer | Upload image to Cloudinary |
+| Method | Endpoint  | Auth   | Description                |
+| ------ | --------- | ------ | -------------------------- |
+| POST   | `/upload` | Bearer | Upload image to Cloudinary |
 
 ### Providers
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/providers/nearby-hotels` | Bearer | Find nearby hotels for itinerary |
+| Method | Endpoint                   | Auth   | Description                      |
+| ------ | -------------------------- | ------ | -------------------------------- |
+| GET    | `/providers/nearby-hotels` | Bearer | Find nearby hotels for itinerary |
 
 ### Data Policy
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/data-policy` | Public | Get the current published data policy |
-| GET | `/data-policy/admin/policy` | Admin | Get the full data policy record for editing |
-| PUT | `/data-policy/admin/policy` | Admin | Update the data policy content (auto-increments version) |
+| Method | Endpoint                    | Auth   | Description                                              |
+| ------ | --------------------------- | ------ | -------------------------------------------------------- |
+| GET    | `/data-policy`              | Public | Get the current published data policy                    |
+| GET    | `/data-policy/admin/policy` | Admin  | Get the full data policy record for editing              |
+| PUT    | `/data-policy/admin/policy` | Admin  | Update the data policy content (auto-increments version) |
 
 ### FAQ
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/faq` | Public | Get all published FAQ items |
-| GET | `/faq/admin` | Admin | Get all FAQ items including unpublished |
-| POST | `/faq/admin` | Admin | Create a new FAQ item |
-| PUT | `/faq/admin/:id` | Admin | Update an FAQ item |
-| DELETE | `/faq/admin/:id` | Admin | Delete an FAQ item |
+| Method | Endpoint         | Auth   | Description                             |
+| ------ | ---------------- | ------ | --------------------------------------- |
+| GET    | `/faq`           | Public | Get all published FAQ items             |
+| GET    | `/faq/admin`     | Admin  | Get all FAQ items including unpublished |
+| POST   | `/faq/admin`     | Admin  | Create a new FAQ item                   |
+| PUT    | `/faq/admin/:id` | Admin  | Update an FAQ item                      |
+| DELETE | `/faq/admin/:id` | Admin  | Delete an FAQ item                      |
 
 ### Community (YouTube Video Feed)
 
@@ -745,59 +769,59 @@ Gated video cards that drive app members to the YouTube channel. Full-length
 playback is unlocked per user after a subscribe prompt; every action is logged
 as an analytics event for funnel conversion.
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/community/videos` | Bearer | List published video cards (paginated; each card includes `isUnlocked`) |
-| GET | `/community/videos/:videoId` | Bearer | Get a single video card with the caller's unlock status |
-| GET | `/community/my-unlocks` | Bearer | All unlocked video IDs for the caller — call on app launch to rehydrate state |
-| POST | `/community/videos/:videoId/interact` | Bearer | Log an interaction event (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`) |
-| POST | `/community/videos/:videoId/unlock` | Bearer | Unlock full access (idempotent) — call when the user returns from YouTube |
-| GET | `/community/youtube/start/:videoId` | Bearer | Start server-side subscription verification — returns a Google OAuth authorization URL (optional; requires `YOUTUBE_OAUTH_CLIENT_ID`/`YOUTUBE_OAUTH_CLIENT_SECRET`) |
-| GET | `/community/youtube/callback` | Public | Google OAuth callback — checks the subscription against the configured channel, unlocks the video on success, caches the verdict, redirects back to `YOUTUBE_VERIFY_RETURN_URL` |
-| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock state + the last cached subscription verdict (poll on feed load; never hits the API) |
-| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate (`unlocks / subscribe_intents`) |
-| POST | `/community/admin/videos` | Admin | Create a video card (`title`, `description`, `teaserUrl`, `thumbnailUrl`, `youtubeVideoId`) |
-| PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished` |
-| DELETE | `/community/admin/videos/:videoId` | Admin | Unpublish (soft-delete, sets `isPublished = false`) |
-| POST | `/community/admin/sync-youtube` | Admin | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards (teaser = first 45s of the video; Redis cooldown protects API quota) |
+| Method | Endpoint                               | Auth   | Description                                                                                                                                                                                              |
+| ------ | -------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/community/videos`                    | Bearer | List published video cards (paginated; each card includes `isUnlocked`)                                                                                                                                  |
+| GET    | `/community/videos/:videoId`           | Bearer | Get a single video card with the caller's unlock status                                                                                                                                                  |
+| GET    | `/community/my-unlocks`                | Bearer | All unlocked video IDs for the caller — call on app launch to rehydrate state                                                                                                                            |
+| POST   | `/community/videos/:videoId/interact`  | Bearer | Log an interaction event (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`)                                                                                                              |
+| POST   | `/community/videos/:videoId/unlock`    | Bearer | Unlock full access (idempotent) — call when the user returns from YouTube                                                                                                                                |
+| GET    | `/community/youtube/start/:videoId`    | Bearer | Start server-side subscription verification — returns a Google OAuth authorization URL (optional; requires `YOUTUBE_OAUTH_CLIENT_ID`/`YOUTUBE_OAUTH_CLIENT_SECRET`)                                      |
+| GET    | `/community/youtube/callback`          | Public | Google OAuth callback — checks the subscription against the configured channel, unlocks the video on success, caches the verdict, redirects back to `YOUTUBE_VERIFY_RETURN_URL`                          |
+| GET    | `/community/youtube/status/:videoId`   | Bearer | Durable unlock state + the last cached subscription verdict (poll on feed load; never hits the API)                                                                                                      |
+| GET    | `/community/videos/:videoId/analytics` | Admin  | Interaction counts + conversion rate (`unlocks / subscribe_intents`)                                                                                                                                     |
+| POST   | `/community/admin/videos`              | Admin  | Create a video card (`title`, `description`, `teaserUrl`, `thumbnailUrl`, `youtubeVideoId`)                                                                                                              |
+| PUT    | `/community/admin/videos/:videoId`     | Admin  | Update title, description, URLs, `isPublished`                                                                                                                                                           |
+| DELETE | `/community/admin/videos/:videoId`     | Admin  | Unpublish (soft-delete, sets `isPublished = false`)                                                                                                                                                      |
+| POST   | `/community/admin/sync-youtube`        | Admin  | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards (teaser = first 45s of the video; Redis cooldown protects API quota) |
 
 ### Admin — Dashboard
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/admin/dashboard/summary` | Admin | KPI summary: tours (bulk/custom), pending visa queue, successful payments + MoM %, alerts (pending reports / verifications / failed payments) |
+| Method | Endpoint                   | Auth  | Description                                                                                                                                   |
+| ------ | -------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/dashboard/summary` | Admin | KPI summary: tours (bulk/custom), pending visa queue, successful payments + MoM %, alerts (pending reports / verifications / failed payments) |
 
 ### Admin — User Management
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/admin/users` | Admin | List all users (paginated) |
-| PATCH | `/admin/users/:userId/promote` | Admin | Promote to admin |
-| PATCH | `/admin/users/:userId/demote` | Admin | Demote to user |
-| PATCH | `/admin/users/:userId/suspend` | Admin | Suspend user |
-| PATCH | `/admin/users/:userId/reactivate` | Admin | Reactivate user |
-| DELETE | `/admin/users/:userId` | Admin | Delete user |
+| Method | Endpoint                          | Auth  | Description                |
+| ------ | --------------------------------- | ----- | -------------------------- |
+| GET    | `/admin/users`                    | Admin | List all users (paginated) |
+| PATCH  | `/admin/users/:userId/promote`    | Admin | Promote to admin           |
+| PATCH  | `/admin/users/:userId/demote`     | Admin | Demote to user             |
+| PATCH  | `/admin/users/:userId/suspend`    | Admin | Suspend user               |
+| PATCH  | `/admin/users/:userId/reactivate` | Admin | Reactivate user            |
+| DELETE | `/admin/users/:userId`            | Admin | Delete user                |
 
 ### Admin — Visa Console
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/admin/visa-requests` | Admin | Visa queue (paginated; filters: `status`, `q` passport/purpose/name/email, `from`/`to`) |
-| GET | `/admin/visa-requests/stats` | Admin | Visa KPIs (total, pending review, rejected, approved today, rejection rate) |
-| GET | `/admin/visa-requests/:id` | Admin | Visa detail with user, documents, payment, approval + activity log |
-| POST | `/admin/visa-requests/:id/approve` | Admin | Approve visa (idempotent; optional `note`) — writes approval + activity log |
-| POST | `/admin/visa-requests/:id/reject` | Admin | Reject visa (idempotent; optional `note`) |
-| GET | `/admin/visa-requests/paid` | Admin | List paid visa requests (legacy) |
-| POST | `/admin/visa-requests/approve` | Admin | Approve visa request (legacy, body `{ requestId }`) |
+| Method | Endpoint                           | Auth  | Description                                                                             |
+| ------ | ---------------------------------- | ----- | --------------------------------------------------------------------------------------- |
+| GET    | `/admin/visa-requests`             | Admin | Visa queue (paginated; filters: `status`, `q` passport/purpose/name/email, `from`/`to`) |
+| GET    | `/admin/visa-requests/stats`       | Admin | Visa KPIs (total, pending review, rejected, approved today, rejection rate)             |
+| GET    | `/admin/visa-requests/:id`         | Admin | Visa detail with user, documents, payment, approval + activity log                      |
+| POST   | `/admin/visa-requests/:id/approve` | Admin | Approve visa (idempotent; optional `note`) — writes approval + activity log             |
+| POST   | `/admin/visa-requests/:id/reject`  | Admin | Reject visa (idempotent; optional `note`)                                               |
+| GET    | `/admin/visa-requests/paid`        | Admin | List paid visa requests (legacy)                                                        |
+| POST   | `/admin/visa-requests/approve`     | Admin | Approve visa request (legacy, body `{ requestId }`)                                     |
 
 ### Admin — Payments
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/admin/payments` | Admin | Transaction list (paginated; filters: `status`, `targetType`, `q` reference/user, `from`/`to`) |
-| GET | `/admin/payments/stats` | Admin | Payment KPIs (total revenue, success/pending/failed counts + amounts, success rate) |
-| GET | `/admin/payments/status` | Admin | Current payment control state (`enabled`, `reason`, `updatedAt`, `updatedBy`) |
-| PATCH | `/admin/payments/status` | Admin | Enable/disable the payment system (`{ enabled: boolean, reason?: string }`) — writes an audit log entry |
+| Method | Endpoint                 | Auth  | Description                                                                                             |
+| ------ | ------------------------ | ----- | ------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/payments`        | Admin | Transaction list (paginated; filters: `status`, `targetType`, `q` reference/user, `from`/`to`)          |
+| GET    | `/admin/payments/stats`  | Admin | Payment KPIs (total revenue, success/pending/failed counts + amounts, success rate)                     |
+| GET    | `/admin/payments/status` | Admin | Current payment control state (`enabled`, `reason`, `updatedAt`, `updatedBy`)                           |
+| PATCH  | `/admin/payments/status` | Admin | Enable/disable the payment system (`{ enabled: boolean, reason?: string }`) — writes an audit log entry |
 
 Payment availability is a **database-persisted runtime toggle** (see
 `docs/payment-control-system.md`): admins flip it via `PATCH /admin/payments/status`
@@ -806,15 +830,39 @@ initializations are blocked with `503` while disabled. Callbacks and status
 verification for already-initiated payments keep working. The frontend can poll
 the public `GET /payment/status` to skip payment screens when the toggle is off.
 
+### Admin — Payment Gateway Settings
+
+Encrypted, DB-backed Hubtel credential management. Credentials are stored
+AES-256-GCM encrypted and are **write-only** — the API returns only
+`hasClientSecret` and never the value. **All five endpoints require
+`SUPER_ADMIN`** (enforced by scope, not by the UI).
+
+| Method | Endpoint                                     | Auth        | Description                                                                                               |
+| ------ | -------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/settings/payment-gateway`            | Super Admin | Sanitized config (`credentialSource` is `database` or `environment`)                                      |
+| PUT    | `/admin/settings/payment-gateway`            | Super Admin | Update credentials / `environment`. Blank or omitted = no change; removal needs `clearClientSecret: true` |
+| POST   | `/admin/settings/payment-gateway/test`       | Super Admin | Non-mutating credential check. Empty body tests the stored credentials; `503` = retryable                 |
+| POST   | `/admin/settings/payment-gateway/connect`    | Super Admin | Verify **and** mark connected for the current environment                                                 |
+| PATCH  | `/admin/settings/payment-gateway/processing` | Super Admin | Master switch. `409` when enabling while unconnected; disabling always allowed                            |
+
+See `docs/payment-gateway-settings.md` for the full reference, including the
+state machine, the connection probe, and the encryption design.
+
+**Safety rules:** payment processing cannot be enabled for an environment whose
+connection is unverified (`409`), and changing either the credentials or the
+environment auto-disables it. Hubtel clients read credentials from the database
+(10s cache) and fall back to `HUBTEL_*`, so rotating a secret no longer
+requires a restart. Requires `PAYMENT_GATEWAY_ENCRYPTION_KEY`.
+
 ### Admin — Profile Verification
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/admin/profile-verifications` | Admin | List verification requests |
-| PATCH | `/admin/profile-verifications/:id/bio-data` | Admin | Approve/reject bio data |
-| PATCH | `/admin/profile-verifications/:id/face` | Admin | Approve/reject face verification |
-| PATCH | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents |
-| POST | `/admin/profile-verifications/:id/verify` | Admin | Fully verify user |
+| Method | Endpoint                                     | Auth  | Description                      |
+| ------ | -------------------------------------------- | ----- | -------------------------------- |
+| GET    | `/admin/profile-verifications`               | Admin | List verification requests       |
+| PATCH  | `/admin/profile-verifications/:id/bio-data`  | Admin | Approve/reject bio data          |
+| PATCH  | `/admin/profile-verifications/:id/face`      | Admin | Approve/reject face verification |
+| PATCH  | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents         |
+| POST   | `/admin/profile-verifications/:id/verify`    | Admin | Fully verify user                |
 
 Admin decisions drive the user-facing status endpoint: approving face or documents
 also flips the corresponding `bio_profile_verification`/`document_verification`
@@ -824,18 +872,18 @@ surfaces `REJECTED` with the supplied reason in `verification_message`.
 
 ### Admin — Moderation
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/admin/reports` | Admin | List user reports (filter by `?status=PENDING\|REVIEWING\|RESOLVED\|DISMISSED`) |
-| PATCH | `/admin/reports/:reportId` | Admin | Update report status (`REVIEWING` / `RESOLVED` / `DISMISSED`) with optional note |
-| POST | `/admin/reports/:reportId/suspend` | Admin | Suspend the reported user and resolve the report |
+| Method | Endpoint                           | Auth  | Description                                                                      |
+| ------ | ---------------------------------- | ----- | -------------------------------------------------------------------------------- |
+| GET    | `/admin/reports`                   | Admin | List user reports (filter by `?status=PENDING\|REVIEWING\|RESOLVED\|DISMISSED`)  |
+| PATCH  | `/admin/reports/:reportId`         | Admin | Update report status (`REVIEWING` / `RESOLVED` / `DISMISSED`) with optional note |
+| POST   | `/admin/reports/:reportId/suspend` | Admin | Suspend the reported user and resolve the report                                 |
 
 ### System
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/health` | Public | Health check (uptime, timestamp) |
-| GET | `/api-docs` | Public | Swagger UI |
+| Method | Endpoint    | Auth   | Description                      |
+| ------ | ----------- | ------ | -------------------------------- |
+| GET    | `/health`   | Public | Health check (uptime, timestamp) |
+| GET    | `/api-docs` | Public | Swagger UI                       |
 
 The root path `/` returns API information (name, version, health and docs links).
 Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`.
@@ -844,58 +892,59 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 
 ## Database Schema (Summary)
 
-| Model | Purpose |
-|-------|---------|
-| `User` | Core user account (auth, status, type) |
-| `UserProfile` | Profile URL, phone, bio images, documents |
-| `UserVerification` | Verification level tracking |
-| `ProfileVerification` | Step-by-step verification with admin approval |
-| `otp` | Hashed OTP codes for email/phone verification |
-| `DeviceToken` | Refresh tokens + device info |
-| `UserSubscription` | Subscription status |
-| `BillingHistory` | Subscription payment records |
-| `tour_packages` | Tour catalog |
-| `tour_itineraries` | Default tour itineraries |
-| `itinerary_activities` | Activities per itinerary day |
-| `tour_locations` | Tour locations |
-| `tour_media` | Tour images/videos |
-| `tour_bookings` | User tour bookings |
-| `user_tour_itineraries` | User-customized itineraries |
-| `TourRequest` | Custom itinerary requests (`casualDatingInterest` opts into dating recommendations) |
-| `TourRequestSite` | Selected sites per request |
-| `TourRequestDatingSelection` | Dating profiles merged into a tour's itinerary |
-| `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries |
-| `TourSite` | Ghana tourism sites (seeded: 25 sites) |
-| `MembershipPlan` | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador) |
-| `PrioritySupportRequest` | Priority support tickets from paid-tier members |
-| `VisaOnArrivalRequest` | Visa-on-arrival applications |
-| `VisaOnArrivalData` | Visa applicant data |
-| `VisaApproval` | Admin visa approval |
-| `AdminActivityLog` | Admin console audit trail (who did what, on what entity) |
-| `Payment` | Polymorphic payment records (tour, visa, itinerary) |
-| `HubtelDirectReceiveLog` | Hubtel API response logs |
-| `LedgerAccount` / `LedgerTransaction` | Double-entry ledger |
-| `Message` / `Conversation` | Direct messaging (text, voice notes, images, videos, call logs) |
-| `DatingProfile` | 1:1 dating profile (headline, bio, photos, height, interests, looking-for, location, education/career, cultural background) |
-| `UserSwipe` | Dating swipes (LIKE / SUPER_LIKE / PASS) |
-| `DiscoveryPreference` | Dating discovery filters + profile/online visibility |
-| `UserMatch` | User matching/swiping |
-| `UserBlock` | User blocking (prevents messaging and calls) |
-| `UserReport` | User safety reports |
-| `Call` | Voice/video call records with state machine (INITIATING → RINGING → ANSWERED → ENDED / DECLINED / CANCELLED / MISSED / FAILED) |
-| `CallAuditLog` | Audit trail for all call state transitions |
-| `CallPushDelivery` | Durable push outbox + delivery records: per (call, device, provider) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp |
-| `MessagePushDelivery` | Durable push outbox + delivery records for chat messages: per (message, device) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp |
-| `UserNotificationPreference` | Per-user global notification preferences (e.g. `messagesEnabled`) |
-| `UserDevice` | Device push notification tokens (FCM, Expo, APNs, VoIP), upserted per installation with `lastSeenAt`, `enabled` |
-| `Provider` / `TourGuide` / `CarRental` / `Hotel` | Service providers |
-| `ServiceRequest` / `AuditLog` | Provider service tracking |
-| `DataPolicy` | CMS-managed data policy document (keyed, versioned) |
-| `FaqItem` | FAQ entries with optional category and sort order |
-| `SystemSetting` | Key-value feature flags (`system_settings` table) — currently stores the `PAYMENTS_ENABLED` payment toggle |
-| `CommunityVideo` | Admin-managed YouTube video cards (title, description, teaser/thumbnail URLs, `youtubeVideoId`) |
-| `VideoInteraction` | Append-only analytics log of community actions (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`) |
-| `VideoUnlock` | Per-user unlocked state for a video (`@@unique([userId, videoId])`) — persists full-access unlocks across sessions |
+| Model                                             | Purpose                                                                                                                                                                                                            |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `User`                                            | Core user account (auth, status, type)                                                                                                                                                                             |
+| `UserProfile`                                     | Profile URL, phone, bio images, documents                                                                                                                                                                          |
+| `UserVerification`                                | Verification level tracking                                                                                                                                                                                        |
+| `ProfileVerification`                             | Step-by-step verification with admin approval                                                                                                                                                                      |
+| `otp`                                             | Hashed OTP codes for email/phone verification                                                                                                                                                                      |
+| `DeviceToken`                                     | Refresh tokens + device info                                                                                                                                                                                       |
+| `UserSubscription`                                | Subscription status                                                                                                                                                                                                |
+| `BillingHistory`                                  | Subscription payment records                                                                                                                                                                                       |
+| `tour_packages`                                   | Tour catalog                                                                                                                                                                                                       |
+| `tour_itineraries`                                | Default tour itineraries                                                                                                                                                                                           |
+| `itinerary_activities`                            | Activities per itinerary day                                                                                                                                                                                       |
+| `tour_locations`                                  | Tour locations                                                                                                                                                                                                     |
+| `tour_media`                                      | Tour images/videos                                                                                                                                                                                                 |
+| `tour_bookings`                                   | User tour bookings                                                                                                                                                                                                 |
+| `user_tour_itineraries`                           | User-customized itineraries                                                                                                                                                                                        |
+| `TourRequest`                                     | Custom itinerary requests (`casualDatingInterest` opts into dating recommendations)                                                                                                                                |
+| `TourRequestSite`                                 | Selected sites per request                                                                                                                                                                                         |
+| `TourRequestDatingSelection`                      | Dating profiles merged into a tour's itinerary                                                                                                                                                                     |
+| `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries                                                                                                                                                                                              |
+| `TourSite`                                        | Ghana tourism sites (seeded: 25 sites)                                                                                                                                                                             |
+| `MembershipPlan`                                  | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador)                                                                                                                                        |
+| `PrioritySupportRequest`                          | Priority support tickets from paid-tier members                                                                                                                                                                    |
+| `VisaOnArrivalRequest`                            | Visa-on-arrival applications                                                                                                                                                                                       |
+| `VisaOnArrivalData`                               | Visa applicant data                                                                                                                                                                                                |
+| `VisaApproval`                                    | Admin visa approval                                                                                                                                                                                                |
+| `AdminActivityLog`                                | Admin console audit trail (who did what, on what entity), with optional structured `metadata` JSON                                                                                                                 |
+| `Payment`                                         | Polymorphic payment records (tour, visa, itinerary)                                                                                                                                                                |
+| `HubtelDirectReceiveLog`                          | Hubtel API response logs                                                                                                                                                                                           |
+| `LedgerAccount` / `LedgerTransaction`             | Double-entry ledger                                                                                                                                                                                                |
+| `Message` / `Conversation`                        | Direct messaging (text, voice notes, images, videos, call logs)                                                                                                                                                    |
+| `DatingProfile`                                   | 1:1 dating profile (headline, bio, photos, height, interests, looking-for, location, education/career, cultural background)                                                                                        |
+| `UserSwipe`                                       | Dating swipes (LIKE / SUPER_LIKE / PASS)                                                                                                                                                                           |
+| `DiscoveryPreference`                             | Dating discovery filters + profile/online visibility                                                                                                                                                               |
+| `UserMatch`                                       | User matching/swiping                                                                                                                                                                                              |
+| `UserBlock`                                       | User blocking (prevents messaging and calls)                                                                                                                                                                       |
+| `UserReport`                                      | User safety reports                                                                                                                                                                                                |
+| `Call`                                            | Voice/video call records with state machine (INITIATING → RINGING → ANSWERED → ENDED / DECLINED / CANCELLED / MISSED / FAILED)                                                                                     |
+| `CallAuditLog`                                    | Audit trail for all call state transitions                                                                                                                                                                         |
+| `CallPushDelivery`                                | Durable push outbox + delivery records: per (call, device, provider) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp                          |
+| `MessagePushDelivery`                             | Durable push outbox + delivery records for chat messages: per (message, device) status (PENDING → SENT → DELIVERED/FAILED), provider message/ticket ID, error code, attempt count, receipt timestamp               |
+| `UserNotificationPreference`                      | Per-user global notification preferences (e.g. `messagesEnabled`)                                                                                                                                                  |
+| `UserDevice`                                      | Device push notification tokens (FCM, Expo, APNs, VoIP), upserted per installation with `lastSeenAt`, `enabled`                                                                                                    |
+| `Provider` / `TourGuide` / `CarRental` / `Hotel`  | Service providers                                                                                                                                                                                                  |
+| `ServiceRequest` / `AuditLog`                     | Provider service tracking                                                                                                                                                                                          |
+| `DataPolicy`                                      | CMS-managed data policy document (keyed, versioned)                                                                                                                                                                |
+| `FaqItem`                                         | FAQ entries with optional category and sort order                                                                                                                                                                  |
+| `SystemSetting`                                   | Key-value feature flags (`system_settings` table) — legacy `PAYMENTS_ENABLED` payment toggle, consulted only when no `PaymentGatewayConfig` row exists                                                             |
+| `PaymentGatewayConfig`                            | Payment gateway settings (one row per provider): AES-256-GCM encrypted client id/secret, `environment`, server-derived `connectionStatus`/`connectedEnvironment`, and the `paymentProcessingEnabled` master switch |
+| `CommunityVideo`                                  | Admin-managed YouTube video cards (title, description, teaser/thumbnail URLs, `youtubeVideoId`)                                                                                                                    |
+| `VideoInteraction`                                | Append-only analytics log of community actions (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`)                                                                                                  |
+| `VideoUnlock`                                     | Per-user unlocked state for a video (`@@unique([userId, videoId])`) — persists full-access unlocks across sessions                                                                                                 |
 
 See `prisma/schema.prisma` for the full schema with all fields and relations.
 
@@ -903,12 +952,12 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 
 ## Cron Jobs
 
-| Job | Schedule | Description |
-|-----|----------|-------------|
-| Pending payments check | Every 5 minutes | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries |
-| Unverified user cleanup | Hourly | Deletes `PENDING_VERIFICATION` users older than 24 hours |
-| Call expiry | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants |
-| Push delivery | Every 10 seconds | Sends PENDING `CallPushDelivery` and `MessagePushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
+| Job                     | Schedule         | Description                                                                                                                                                         |
+| ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pending payments check  | Every 5 minutes  | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries                                                                           |
+| Unverified user cleanup | Hourly           | Deletes `PENDING_VERIFICATION` users older than 24 hours                                                                                                            |
+| Call expiry             | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants                                                       |
+| Push delivery           | Every 10 seconds | Sends PENDING `CallPushDelivery` and `MessagePushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
 
 ---
 
@@ -921,16 +970,21 @@ npm run lint:fix       # Auto-fix lint errors
 npm run format         # Format code with Prettier
 npm run format:check   # Check formatting without writing
 npm run db:studio      # Open Prisma Studio GUI
-npm test               # Run unit tests once (Vitest)
+npm test               # Run unit tests once (Vitest, 424 tests)
 npm run test:watch     # Run tests in watch mode
 ```
+
+Tests run against a real local PostgreSQL and a real local HTTP stub where
+applicable, rather than mocked modules. Test files execute sequentially
+(`fileParallelism: false` in `vitest.config.ts`) because they share one
+database and several assert on global singleton rows.
 
 ---
 
 ## API Documentation
 
-Swagger UI available at `/api-docs` when the server is running. 140+ documented
-operations across 26 route files (source of truth: JSDoc annotations in
+Swagger UI available at `/api-docs` when the server is running. 170+ documented
+operations across 28 route files (source of truth: JSDoc annotations in
 `src/routes/*.ts` — update the annotation, not the spec).
 
 ---
@@ -947,7 +1001,13 @@ operations across 26 route files (source of truth: JSDoc annotations in
 - File uploads require authentication
 - Audio uploads restricted to specific MIME types, 15MB max size
 - `passwordHash` never returned in API responses
-- Hubtel config validated at boot time (fails fast if env vars missing)
+- Payment gateway credentials encrypted at rest with AES-256-GCM, bound to a per-field AAD context so a swapped column fails loudly instead of returning garbage
+- `PAYMENT_GATEWAY_ENCRYPTION_KEY` required in non-test environments (fails closed — a missing key throws rather than falling back to a public constant)
+- Client secret is write-only: never returned, logged, audited, or included in error messages; provider response bodies are deliberately not surfaced
+- Payment gateway endpoints gated by six permission scopes (currently `SUPER_ADMIN` only), enforced server-side; an admin with no role row is denied rather than defaulted
+- Payment processing cannot be enabled for an unverified environment, and auto-disables when credentials or environment change
+- Connection testing is a read-only `GET` against a non-existent transaction reference — it cannot move money
+- Hubtel credentials are read from the database at runtime, so a rotation takes effect without a restart
 - Payment flows wrapped in Prisma transactions (atomic write + API call)
 - Visa pricing driven by env vars (not hardcoded)
 - User blocking prevents messaging and calling both directions
@@ -972,6 +1032,10 @@ Deployed on Render via `render.yaml` (native Node). Build command:
 `npm ci && npm run build`; a `preDeployCommand` (`npx prisma migrate deploy`) applies
 pending database migrations before each deploy. Current live instance: <https://dagh-server-fo64.onrender.com>
 (`/health` for a status check, `/api-docs` for Swagger).
+
+Migrations are written to be **re-runnable** — DDL is guarded with
+`IF NOT EXISTS`, so a partially-applied previous attempt can be recovered by
+re-running `migrate deploy`.
 
 ---
 

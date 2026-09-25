@@ -8,13 +8,8 @@
  * Previously this logic was duplicated across payment.controller.ts (static vs instance methods),
  * user-tour.controller.ts, user-visa.controller.ts, and itinerary.payment.controller.ts.
  */
-import {
-  prisma,
-  hubtelClient,
-  hubtelDirectMoneyReceive,
-  isPaymentsEnabled,
-  PAYMENTS_DISABLED_MESSAGE,
-} from "../config/index.js";
+import { prisma, isPaymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from "../config/index.js";
+import { getHubtelClient, getHubtelDirectMoneyReceive } from "../config/hubtel.js";
 import {
   generateClientReference,
   generateClientReference_targetType,
@@ -89,6 +84,7 @@ export async function initializePayment(input: InitPaymentInput): Promise<InitPa
 
   let hubtelResponse;
   try {
+    const hubtelClient = await getHubtelClient();
     hubtelResponse = await hubtelClient.post("/items/initiate", {
       ...hubtelPayload,
       merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
@@ -193,8 +189,9 @@ export async function initializePaymentMOMO(
       },
     });
 
+    const directMoneyReceive = await getHubtelDirectMoneyReceive();
     const response: AxiosResponse<HubtelDirectReceiveResponseSchema> =
-      await hubtelDirectMoneyReceive.post("", {
+      await directMoneyReceive.post("", {
         amount: input.amount,
         customerMsisdn: input.customerPhone,
         primaryCallbackUrl: HUBTEL_CALLBACK_URL,

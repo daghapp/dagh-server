@@ -1,6 +1,7 @@
 import swaggerJSDoc from "swagger-jsdoc";
 import { Application } from "express";
 import swaggerUi from "swagger-ui-express";
+import { SANITIZED_CONFIG_SCHEMA } from "./swagger-schemas.js";
 
 const BackendURL = process.env.API_URL;
 
@@ -32,6 +33,9 @@ const swaggerOptions: swaggerJSDoc.Options = {
           scheme: "bearer",
           bearerFormat: "JWT",
         },
+      },
+      schemas: {
+        SanitizedGatewayConfig: SANITIZED_CONFIG_SCHEMA,
       },
     },
   },

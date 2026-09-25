@@ -9,6 +9,7 @@ import * as Sentry from "@sentry/node";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { connectRedis, getRedisPubClient, getRedisSubClient } from "./config/redis.js";
 import { createRateLimiter } from "./middleware/rateLimit.js";
+import requestId from "./middleware/request-id.js";
 import { router as PasswordRoutes } from "./routes/password.routes.js";
 import passport from "./config/passport.js";
 import { router as OauthRoutes } from "./routes/google-auth.routes.js";
@@ -26,6 +27,7 @@ import { router as AdminRoutes } from "./routes/admin.routes.js";
 import { router as AdminAuthRoutes } from "./routes/admin-auth.routes.js";
 import { router as AdminConsoleRoutes } from "./routes/admin-console.routes.js";
 import { router as AdminProfileRoutes } from "./routes/admin-profile.routes.js";
+import { router as AdminPaymentGatewayRoutes } from "./routes/admin-payment-gateway.routes.js";
 import { router as VisaRoutes } from "./routes/visa.routes.js";
 import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
 import { router as ProviderRoutes } from "./routes/provider.routes.js";
@@ -118,6 +120,9 @@ const authLimiter = createRateLimiter("auth", 15 * 60 * 1000, {
 });
 
 app.use(helmet());
+// Correlation id for every request: echoed as X-Request-Id and recorded on audit
+// rows. Must come before morgan so the id is available to request-scoped logging.
+app.use(requestId);
 app.use(express.json());
 // urlencoded body parsing for the Apple Sign In callback (response_mode=form_post),
 // which posts its auth code/state as application/x-www-form-urlencoded.
@@ -203,6 +208,7 @@ app.use("/admin", AdminRoutes);
 app.use("/admin", AdminAuthRoutes);
 app.use("/admin", AdminConsoleRoutes);
 app.use("/admin", AdminProfileRoutes);
+app.use("/admin", AdminPaymentGatewayRoutes);
 
 app.use("/visa-requests", VisaRoutes);
 

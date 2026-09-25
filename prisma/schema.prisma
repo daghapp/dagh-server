@@ -878,6 +878,10 @@ model AdminActivityLog {
   entityId   String?
   action     String // e.g. "APPROVED", "REJECTED", "NOTE_ADDED", "STATUS_CHANGED"
   note       String?
+  /// Structured, non-secret before/after context for the change (e.g.
+  /// `{ "environment": { "from": "TEST", "to": "LIVE" } }`) plus the acting
+  /// request's correlation id. Never store credentials here.
+  metadata   Json?
   createdAt  DateTime @default(now())
 
   actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
@@ -1501,6 +1505,61 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// ── Payment Gateway Settings ───────────────────────────────────────────────────
+// One row per payment provider. The provider is part of the primary lookup
+// (rather than hardcoding a single "gateway settings" row) so that adding a
+// second provider later is a data change, not a migration of the shape.
+//
+// Credentials are stored only as AES-256-GCM ciphertext (see
+// src/helpers/encryption.ts) and are never selected into any API response — the
+// controller exposes `hasClientId` / `hasClientSecret` presence flags instead.
+//
+// `connectedEnvironment` records *which* environment the last successful
+// verification covered. `connectionStatus` alone is not sufficient: an admin can
+// flip TEST -> LIVE, leaving a stale `CONNECTED` that refers to the old
+// environment. Processing may only be enabled when this field equals
+// `environment`.
+model PaymentGatewayConfig {
+  id        String                  @id @default(uuid())
+  provider  PaymentGatewayProvider  @unique
+  clientIdEncrypted     String?     @db.Text
+  clientSecretEncrypted String?     @db.Text
+  environment           PaymentGatewayEnvironment @default(TEST)
+  connectionStatus      PaymentGatewayConnectionStatus @default(NOT_CONNECTED)
+  connectedEnvironment  PaymentGatewayEnvironment?
+  lastTestedAt          DateTime?
+  lastConnectedAt       DateTime?
+  /// Coarse, non-secret failure classification for support triage
+  /// (e.g. "invalid_credentials", "timeout"). Never a provider error body.
+  lastErrorCategory     String?
+  /// Master switch. Enforced on checkout (503 when false). Only ever settable to
+  /// true when the current environment's connection is verified.
+  paymentProcessingEnabled Boolean  @default(false)
+  /// Why processing was last turned off, surfaced by the legacy
+  /// GET /admin/payments/status alias for backward compatibility.
+  processingDisabledReason String?
+  updatedBy  String?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@map("payment_gateway_configs")
+}
+
+enum PaymentGatewayProvider {
+  HUBTEL
+}
+
+enum PaymentGatewayEnvironment {
+  TEST
+  LIVE
+}
+
+enum PaymentGatewayConnectionStatus {
+  NOT_CONNECTED
+  CONNECTED
+  ERROR
 }
 
 // ── Community Video Feed ──────────────────────────────────────────────────────

@@ -10,6 +10,10 @@ import {
   type QueryValue,
 } from "../../helpers/admin-query.js";
 import { getPaymentControlDetails, setPaymentControlStatus } from "../../config/payments.js";
+// Imported directly rather than via the config barrel: the barrel re-exports
+// ./hubtel, which imports the payment gateway service, which imports
+// helpers/admin-activity, so going through it would create an import cycle.
+import { GatewayConfigError } from "../../services/payment-gateway-config.service.js";
 import { logAdminActivity, AdminEntityType } from "../../helpers/admin-activity.js";
 import { updatePaymentControlSchema } from "../../validator/index.js";
 
@@ -172,6 +176,14 @@ export class AdminPaymentsConsoleController {
         enabled ? "Payment system enabled successfully" : "Payment system disabled successfully",
       );
     } catch (error) {
+      // On the gateway path this endpoint is an alias for
+      // PATCH /admin/settings/payment-gateway/processing, so it inherits its
+      // errors — notably 409 when enabling while the selected environment is
+      // unconnected. Preserving the status keeps the legacy endpoint honest
+      // instead of reporting an expected guard as a server fault.
+      if (error instanceof GatewayConfigError) {
+        return fail(res, error.status, { code: error.code, message: error.message });
+      }
       console.error("Failed to update payment control status:", error);
       return fail(res, 500, "Failed to update payment control status");
     }

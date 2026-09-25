@@ -6,6 +6,21 @@ This replaces the static `PAYMENTS_ENABLED` environment-flag behavior with a
 runtime toggle that admins can flip without redeploying, then enforces it at the
 payment-service layer.
 
+> **Superseded (partially) by
+> [`payment-gateway-settings.md`](./payment-gateway-settings.md).** The toggle
+> documented here is now a thin compatibility layer. When a `PaymentGatewayConfig`
+> row exists, the authoritative state is
+> `payment_gateway_configs.paymentProcessingEnabled`, and
+> `getPaymentControlDetails()` / `setPaymentControlStatus()` read and write
+> through to it. The `PAYMENTS_ENABLED` system setting is still honoured as a
+> fallback for deployments that have never used the settings screen, and
+> `GET`/`PATCH /admin/payments/status` continue to work unchanged.
+>
+> This document remains accurate for the legacy path, the public
+> `GET /payment/status` contract, and the enforcement points (§6). See the
+> gateway document for how the switch is now kept consistent with the gateway
+> credentials.
+
 ---
 
 ## 1. How it works
@@ -85,15 +100,15 @@ npx prisma migrate deploy
 
 ## 3. Config layer — `src/config/payments.ts`
 
-| Export | Type | Purpose |
-|--------|------|---------|
-| `PAYMENT_SETTING_KEY` | `string` | Constant `"PAYMENTS_ENABLED"` |
-| `PAYMENTS_DISABLED_MESSAGE` | `string` | User-facing message returned when blocked |
-| `paymentsEnabled` | `boolean` (mutable) | Module-level snapshot, kept in sync on read/write |
-| `isPaymentsEnabled()` | `Promise<boolean>` | Quick check; hits cache then DB |
-| `getPaymentControlDetails()` | `Promise<PaymentControlDetails>` | Full state incl. `reason`, `updatedAt`, `updatedBy` |
-| `setPaymentControlStatus(input)` | `Promise<PaymentControlDetails>` | Upserts `{ enabled, reason }` and refreshes cache |
-| `_resetPaymentControlCache()` | `void` | Test-only cache reset |
+| Export                           | Type                             | Purpose                                                                                                     |
+| -------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `PAYMENT_SETTING_KEY`            | `string`                         | Constant `"PAYMENTS_ENABLED"`                                                                               |
+| `PAYMENTS_DISABLED_MESSAGE`      | `string`                         | User-facing message returned when blocked                                                                   |
+| `paymentsEnabled`                | `boolean` (mutable)              | Module-level snapshot, kept in sync on read/write                                                           |
+| `isPaymentsEnabled()`            | `Promise<boolean>`               | Quick check; hits cache then DB                                                                             |
+| `getPaymentControlDetails()`     | `Promise<PaymentControlDetails>` | Full state incl. `reason`, `updatedAt`, `updatedBy`                                                         |
+| `setPaymentControlStatus(input)` | `Promise<PaymentControlDetails>` | Writes through to the gateway row when one exists, otherwise upserts `{ enabled, reason }`; refreshes cache |
+| `_resetPaymentControlCache()`    | `void`                           | Test-only cache reset                                                                                       |
 
 `PaymentControlDetails` shape returned by the API:
 
@@ -132,10 +147,10 @@ Enable or disable the payment system.
 
 Request body (validated by `updatePaymentControlSchema`):
 
-| Field | Type | Rules |
-|-------|------|-------|
-| `enabled` | `boolean` | **Required** |
-| `reason` | `string` | Optional, max 500 characters |
+| Field     | Type      | Rules                        |
+| --------- | --------- | ---------------------------- |
+| `enabled` | `boolean` | **Required**                 |
+| `reason`  | `string`  | Optional, max 500 characters |
 
 ```bash
 curl -X PATCH $API_URL/admin/payments/status \
@@ -167,14 +182,19 @@ Success messages: `"Payment system enabled successfully"` /
 the note. The log write is fire-and-forget — a logging failure never fails the
 request.
 
+> On the gateway path this endpoint is an alias: the switch state is enforced
+> against the gateway connection, so enabling through `/admin/payments/status`
+> while the selected environment is unconnected returns `409`. See
+> [`payment-gateway-settings.md`](./payment-gateway-settings.md) §4.
+
 ### Errors
 
-| Code | Case |
-|------|------|
+| Code  | Case                                                              |
+| ----- | ----------------------------------------------------------------- |
 | `400` | Invalid body (missing `enabled`, non-boolean, reason > 500 chars) |
-| `401` | Missing / invalid / expired token |
-| `403` | Non-admin user |
-| `500` | DB write/fetch failure |
+| `401` | Missing / invalid / expired token                                 |
+| `403` | Non-admin user                                                    |
+| `500` | DB write/fetch failure                                            |
 
 ## 5. Public status endpoint
 
@@ -203,7 +223,7 @@ Public — no auth required.
 Frontend pattern:
 
 ```ts
-const { data } = await fetch(`${API_URL}/payment/status`).then(r => r.json());
+const { data } = await fetch(`${API_URL}/payment/status`).then((r) => r.json());
 if (!data.enabled) {
   // skip checkout — show data.reason or data.message and offer re-enable feedback
 } else {
@@ -215,11 +235,11 @@ if (!data.enabled) {
 
 Blocked with HTTP **503** + `PAYMENTS_DISABLED_MESSAGE` when disabled:
 
-| Endpoint / function | Where checked |
-|---------------------|---------------|
-| `initializePayment` (card checkout) | `src/services/payment.service.ts:60` — first operation |
-| `initializePaymentMOMO` (MOMO) | `src/services/payment.service.ts:159` — first operation |
-| `subscriptionPayment` | Inline guard at `payment.controller.ts:65` |
+| Endpoint / function                 | Where checked                                           |
+| ----------------------------------- | ------------------------------------------------------- |
+| `initializePayment` (card checkout) | `src/services/payment.service.ts:60` — first operation  |
+| `initializePaymentMOMO` (MOMO)      | `src/services/payment.service.ts:159` — first operation |
+| `subscriptionPayment`               | Inline guard at `payment.controller.ts:65`              |
 
 Behaviors when disabled:
 
@@ -250,12 +270,12 @@ These remain available so in-flight payments can always be resolved.
 
 `tests/admin-payment-control.test.ts` — Vitest suite (10 tests):
 
-| Group | Covers |
-|-------|--------|
-| Schema Validation | `updatePaymentControlSchema` accept/reject cases incl. 500-char limit |
-| State & Persistence | `setPaymentControlStatus` writes DB, reads back correctly, toggle on/off |
-| Service Integration | `initializePayment` & `initializePaymentMOMO` return the disabled message early |
-| Admin Controller | `getControlStatus` / `updateControlStatus` shapes, 400 on bad body, activity-log write |
+| Group               | Covers                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| Schema Validation   | `updatePaymentControlSchema` accept/reject cases incl. 500-char limit                  |
+| State & Persistence | `setPaymentControlStatus` writes DB, reads back correctly, toggle on/off               |
+| Service Integration | `initializePayment` & `initializePaymentMOMO` return the disabled message early        |
+| Admin Controller    | `getControlStatus` / `updateControlStatus` shapes, 400 on bad body, activity-log write |
 
 ```bash
 npx vitest run tests/admin-payment-control.test.ts

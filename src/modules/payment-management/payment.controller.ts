@@ -1,12 +1,11 @@
 import { Request, Response } from "express";
 import {
   prisma,
-  hubtelClient,
-  hubtelStatusClient,
   isPaymentsEnabled,
   getPaymentControlDetails,
   PAYMENTS_DISABLED_MESSAGE,
 } from "../../config/index.js";
+import { getHubtelClient, getHubtelStatusClient } from "../../config/hubtel.js";
 import { initializePaymentSchema, initializePaymentSchema_momo } from "../../validator/index.js";
 import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
@@ -95,6 +94,7 @@ export class PaymentController {
       const payload = req.body as SubscriptionPaymentSchema;
       const reference = generateClientReference();
 
+      const hubtelClient = await getHubtelClient();
       const hubtelResponse = await hubtelClient.post("/invoice/create", {
         ...payload,
         merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
@@ -141,6 +141,7 @@ export class PaymentController {
     try {
       const { reference } = req.params as { reference: string };
 
+      const hubtelClient = await getHubtelClient();
       const hubtelResponse = await hubtelClient.get(`/items/status/${reference}`);
       const data = hubtelResponse.data;
 
@@ -165,6 +166,7 @@ export class PaymentController {
     try {
       const { posSalesId } = req.params as { posSalesId: string };
 
+      const hubtelStatusClient = await getHubtelStatusClient();
       const hubtelResponse = await hubtelStatusClient.get(`/transactions/${posSalesId}/status`);
       const data = hubtelResponse.data;
 

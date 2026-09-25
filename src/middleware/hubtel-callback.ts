@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { hubtelStatusClient } from "../config/hubtel.js";
+import { getHubtelStatusClient } from "../config/hubtel.js";
 import { fail, ok } from "../helpers/response.js";
 
 /**
@@ -25,6 +25,7 @@ export default async function verifyHubtelCallback(
 
     // Verify the transaction with Hubtel's Transaction Status API
     try {
+      const hubtelStatusClient = await getHubtelStatusClient();
       const statusResponse = await hubtelStatusClient.get(`/${Data.TransactionId}`);
       const statusData = statusResponse.data;
 

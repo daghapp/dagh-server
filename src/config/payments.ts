@@ -1,15 +1,22 @@
 /**
  * Payment availability control.
  *
- * Persisted in the database via SystemSetting (key: "PAYMENTS_ENABLED")
- * with in-memory caching for minimal latency overhead.
- * Falls back to process.env.PAYMENTS_ENABLED === "true" if no database setting is recorded.
+ * Source of truth is the `PaymentGatewayConfig` row for the payment provider
+ * (`paymentProcessingEnabled`), managed through Admin > Settings > Payment
+ * Gateway. That replaced the original standalone `PAYMENTS_ENABLED` system
+ * setting, which is now a legacy fallback: it is still honoured when no gateway
+ * config row exists at all, so a deployment that has never opened the settings
+ * screen keeps its current behaviour.
+ *
+ * Reads are cached in memory for a short TTL to keep this off the hot path;
+ * writes refresh the cache synchronously.
  *
  * When disabled, checkout / MOMO initialization endpoints reject with a 503
  * and PAYMENTS_DISABLED_MESSAGE. Callbacks and status verification for
  * already-initiated payments continue working.
  */
 import { prisma } from "./prisma.js";
+import { setProcessingEnabled } from "../services/payment-gateway-config.service.js";
 
 export const PAYMENT_SETTING_KEY = "PAYMENTS_ENABLED";
 
@@ -70,6 +77,32 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
   }
 
   try {
+    const gateway = await prisma.paymentGatewayConfig.findUnique({
+      where: { provider: "HUBTEL" },
+      select: {
+        paymentProcessingEnabled: true,
+        processingDisabledReason: true,
+        updatedAt: true,
+        updatedBy: true,
+      },
+    });
+
+    if (gateway) {
+      const details: PaymentControlDetails = {
+        enabled: gateway.paymentProcessingEnabled,
+        reason: gateway.processingDisabledReason,
+        updatedAt: gateway.updatedAt,
+        updatedBy: gateway.updatedBy,
+      };
+      cache = { ...details, cachedAt: now };
+      paymentsEnabled = details.enabled;
+      return details;
+    }
+  } catch (error) {
+    console.error("Failed to fetch payment gateway config, using legacy setting:", error);
+  }
+
+  try {
     const record = await prisma.systemSetting.findUnique({
       where: { key: PAYMENT_SETTING_KEY },
     });
@@ -116,13 +149,37 @@ export async function isPaymentsEnabled(): Promise<boolean> {
 }
 
 /**
- * Updates the payment system status in the database and updates cache immediately.
+ * Updates the payment system status and updates cache immediately.
+ *
+ * Writes through to the gateway config row so this stays a single switch. The
+ * `PAYMENTS_ENABLED` system setting is left untouched rather than deleted: it is
+ * only consulted when no gateway row exists, and removing it would silently
+ * change behaviour for any deployment still on the legacy path.
  */
 export async function setPaymentControlStatus(input: {
   enabled: boolean;
   reason?: string | null;
   updatedBy?: string | null;
 }): Promise<PaymentControlDetails> {
+  const gateway = await prisma.paymentGatewayConfig.findUnique({
+    where: { provider: "HUBTEL" },
+    select: { id: true },
+  });
+
+  if (gateway) {
+    const outcome = await setProcessingEnabled({
+      enabled: input.enabled,
+      reason: input.reason ?? undefined,
+      actorId: input.updatedBy ?? null,
+    });
+    return {
+      enabled: outcome.paymentProcessingEnabled,
+      reason: outcome.config.processingDisabledReason,
+      updatedAt: outcome.effectiveAt,
+      updatedBy: outcome.config.updatedBy,
+    };
+  }
+
   const payloadValue = JSON.stringify({
     enabled: input.enabled,
     reason: input.reason ?? null,
