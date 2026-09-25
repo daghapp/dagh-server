@@ -437,6 +437,42 @@ describe("payment processing switch", () => {
     expect(config.connectionStatus).toBe("CONNECTED");
     expect(config.connectedEnvironment).toBe("TEST");
   });
+
+  it("reports the auto-disable reason that actually fired", async () => {
+    const logs: string[] = [];
+    // The logger emits structured JSON via console.warn; capture it so we can
+    // assert an environment-only auto-disable is not mislabelled as a
+    // credential change.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    try {
+      await updateSettings({
+        actorId: superAdminId,
+        clientId: GOOD_CLIENT_ID,
+        clientSecret: GOOD_CLIENT_SECRET,
+      });
+      stubBehaviour = { status: 200 };
+      await connect({ actorId: superAdminId });
+      await setProcessingEnabled({ actorId: superAdminId, enabled: true });
+
+      // Credentials unchanged, environment changed.
+      await updateSettings({ actorId: superAdminId, environment: "LIVE" });
+
+      const autoDisabled = logs
+        .join("")
+        .split("\n")
+        .filter((line) => line.includes("processing_auto_disabled"))
+        .join("");
+
+      expect(autoDisabled).not.toBe("");
+      expect(autoDisabled).toContain('"reason":"environment_changed"');
+      expect(autoDisabled).not.toContain('"reason":"credentials_changed"');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
 
 describe("audit trail", () => {

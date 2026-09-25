@@ -5,8 +5,14 @@ DB-backed credential store, connection verification, and payment master switch
 that let an administrator configure the live payment provider without a
 redeploy or an environment-variable edit.
 
-This document is the implementation record for that work. For the toggle alone,
-see [`payment-control-system.md`](./payment-control-system.md) (the earlier
+This document is the implementation record for that work, aimed at backend
+maintainers. Frontend developers building the settings screen should start with
+[`payment-gateway-frontend-guide.md`](./payment-gateway-frontend-guide.md) —
+it has the API contracts, the UI state machine, the error cases, a reference
+client, and a testing checklist.
+
+For the toggle alone, see
+[`payment-control-system.md`](./payment-control-system.md) (the earlier
 `PAYMENTS_ENABLED` feature that this supersedes at runtime but remains
 supported as a fallback).
 

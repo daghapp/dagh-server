@@ -401,7 +401,9 @@ export async function updateSettings(input: UpdateSettingsInput): Promise<Update
     gatewayLog.logProcessingAutoDisabled({
       actorId: input.actorId,
       requestId: input.requestId ?? null,
-      reason: "credentials_changed",
+      // Report what actually triggered it — a credentials-only change and an
+      // environment-only change are different operational events.
+      reason: credentialsChanged ? "credentials_changed" : "environment_changed",
       environment: nextEnvironment,
     });
   }

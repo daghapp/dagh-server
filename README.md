@@ -252,7 +252,9 @@ src/
 > the identity-verification integration guide, `docs/call-integration-guide.md`
 > for the voice/video calling frontend integration guide,
 > `docs/payment-gateway-settings.md` for the Hubtel gateway settings console
-> (encrypted credentials, connection test, master switch),
+> (encrypted credentials, connection test, master switch) and
+> `docs/payment-gateway-frontend-guide.md` for the **frontend integration
+> guide** (contracts, state machine, error cases, reference client),
 > `docs/payment-control-system.md` for the payment enable/disable toggle
 > (admin API + public status endpoint), and `docs/push-notifications.md` for
 > the push notification architecture. See
@@ -845,8 +847,9 @@ AES-256-GCM encrypted and are **write-only** — the API returns only
 | POST   | `/admin/settings/payment-gateway/connect`    | Super Admin | Verify **and** mark connected for the current environment                                                 |
 | PATCH  | `/admin/settings/payment-gateway/processing` | Super Admin | Master switch. `409` when enabling while unconnected; disabling always allowed                            |
 
-See `docs/payment-gateway-settings.md` for the full reference, including the
-state machine, the connection probe, and the encryption design.
+See `docs/payment-gateway-settings.md` for the implementation reference and
+`docs/payment-gateway-frontend-guide.md` for the **frontend integration guide**
+(contracts, state machine, error cases, reference client, testing checklist).
 
 **Safety rules:** payment processing cannot be enabled for an environment whose
 connection is unverified (`409`), and changing either the credentials or the
