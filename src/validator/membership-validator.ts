@@ -49,3 +49,71 @@ export const createMembershipPlanSchema = z.object({
 export type SubscribeMembershipSchema = z.infer<typeof subscribeMembershipSchema>;
 export type PrioritySupportSchema = z.infer<typeof prioritySupportSchema>;
 export type CreateMembershipPlanSchema = z.infer<typeof createMembershipPlanSchema>;
+
+// ─────────────────────────────────────────
+// Admin access grants (comped membership)
+// ─────────────────────────────────────────
+
+const TIER_CODE_ENUM = [
+  "FREE",
+  "BASELINE",
+  "SENIOR_PIONEER",
+  "SANKOFA_SETTLED",
+  "BASIC",
+  "SILVER",
+  "GOLD_INVESTOR",
+  "ELITE_AMBASSADOR",
+  "FAMILY_PLAN",
+] as const;
+
+/**
+ * Grants a user complimentary access to a tier.
+ *
+ * endDate is optional: omitted means perpetual. Grants never auto-renew, so a
+ * comp either runs to its end date or forever — there is no billing side effect.
+ */
+export const createAccessGrantSchema = z
+  .object({
+    userId: z.string().min(1, "User ID is required"),
+    // FREE is rejected below: a grant must give more than the user already has.
+    tierCode: z.enum(TIER_CODE_ENUM),
+    includePaidPerks: z.boolean().default(false),
+    reason: z.string().min(3, "A reason is required for the audit trail").max(500),
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().nullable().optional(),
+  })
+  .refine((data) => data.tierCode !== "FREE", {
+    message: "A grant must confer a paid tier, not FREE",
+    path: ["tierCode"],
+  })
+  .refine((data) => !data.endDate || !data.startDate || data.endDate > data.startDate, {
+    message: "endDate must be after startDate",
+    path: ["endDate"],
+  });
+
+/** Partial update. Revoking early is done by moving endDate into the past. */
+export const updateAccessGrantSchema = z
+  .object({
+    tierCode: z.enum(TIER_CODE_ENUM).optional(),
+    includePaidPerks: z.boolean().optional(),
+    reason: z.string().min(3).max(500).optional(),
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().nullable().optional(),
+  })
+  .refine((data) => data.tierCode !== "FREE", {
+    message: "A grant must confer a paid tier, not FREE",
+    path: ["tierCode"],
+  })
+  // An empty patch would be a no-op update that still writes an "updated" audit
+  // entry, so reject it rather than record a change that never happened.
+  .refine((data) => Object.values(data).some((v) => v !== undefined), {
+    message: "Provide at least one field to update",
+  });
+
+export const revokeAccessGrantSchema = z.object({
+  reason: z.string().min(3, "A revocation reason is required").max(500).optional(),
+});
+
+export type CreateAccessGrantSchema = z.infer<typeof createAccessGrantSchema>;
+export type UpdateAccessGrantSchema = z.infer<typeof updateAccessGrantSchema>;
+export type RevokeAccessGrantSchema = z.infer<typeof revokeAccessGrantSchema>;

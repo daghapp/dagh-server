@@ -21,7 +21,14 @@ const youtubeVerifyController = new YouTubeVerifyController();
  * /community/videos:
  *   get:
  *     summary: List published community video cards
- *     description: Returns paginated published videos with an isUnlocked flag for the calling user. Each card carries `videoId` (alias of `id`) plus `youtubeVideoId`.
+ *     description: >
+ *       Returns paginated published videos with an isUnlocked flag for the
+ *       calling user. Each card carries `videoId` (alias of `id`) and a
+ *       `channel` object with the subscribe links — the app must not hardcode
+ *       the channel. Locked cards expose only a clipped preview;
+ *       `youtubeVideoId` and `watchUrl` are omitted entirely until the user
+ *       subscribes and unlocks, so the full video link cannot be read off the
+ *       feed.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -65,10 +72,42 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *                         type: string
  *                       teaserUrl:
  *                         type: string
+ *                         description: Clipped preview embed URL (bounded to the preview window) — never the full video
+ *                       previewStartSeconds:
+ *                         type: integer
+ *                         description: Offset the preview clip starts at
+ *                       previewDurationSeconds:
+ *                         type: integer
+ *                         description: Length of the preview clip in seconds
  *                       thumbnailUrl:
  *                         type: string
  *                       youtubeVideoId:
  *                         type: string
+ *                         description: Present only when isUnlocked is true
+ *                       watchUrl:
+ *                         type: string
+ *                         description: Full-length embed URL. Present only when isUnlocked is true
+ *                       requiresSubscription:
+ *                         type: boolean
+ *                       channel:
+ *                         type: object
+ *                         description: Where to send the user to subscribe. Identical on every card; all fields null when no channel is configured
+ *                         properties:
+ *                           channelId:
+ *                             type: string
+ *                             nullable: true
+ *                           handle:
+ *                             type: string
+ *                             nullable: true
+ *                             description: Normalised to include the leading @
+ *                           subscribeUrl:
+ *                             type: string
+ *                             nullable: true
+ *                             description: Web URL for the channel page. The user still taps Subscribe there
+ *                           appUrl:
+ *                             type: string
+ *                             nullable: true
+ *                             description: vnd.youtube:// deep link. Null when only a handle is configured — fall back to subscribeUrl
  *                       isUnlocked:
  *                         type: boolean
  *                       unlockedAt:
@@ -219,11 +258,17 @@ router.post(
  * @swagger
  * /community/videos/{videoId}/unlock:
  *   post:
- *     summary: Mark a video as unlocked for the calling user
+ *     summary: Unlock a video for the calling user
  *     description: >
- *       Idempotent — calling this multiple times for the same user+video is safe.
- *       Call this when the user returns to the app after visiting the YouTube channel.
+ *       Grants full access, but only against a server-confirmed YouTube
+ *       subscription verdict — the client saying "I came back from YouTube" is
+ *       not evidence. Idempotent: an existing unlock is returned untouched and
+ *       never re-checked, so it does not expire with the verdict cache.
  *       Accepts either the internal card id or the YouTube video id.
+ *       Returns 403 SUBSCRIPTION_REQUIRED when there is no positive verdict.
+ *       When YOUTUBE_OAUTH_CLIENT_ID / YOUTUBE_OAUTH_CLIENT_SECRET are unset the
+ *       server cannot verify anything, so the gate fails open and this endpoint
+ *       trusts the client.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -254,6 +299,8 @@ router.post(
  *                       format: date-time
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: SUBSCRIPTION_REQUIRED — no positive subscription verdict on record
  *       404:
  *         description: Video not found
  *       500:
@@ -261,7 +308,7 @@ router.post(
  */
 router.post("/videos/:videoId/unlock", protectedRoute, controller.unlockVideo.bind(controller));
 
-// ── YouTube subscription verification (optional OAuth) ─────────────────────────
+// ── YouTube subscription verification (the gate's key issuer) ─────────────────
 
 /**
  * @swagger
@@ -273,7 +320,9 @@ router.post("/videos/:videoId/unlock", protectedRoute, controller.unlockVideo.bi
  *       grant read-only YouTube access to the account they subscribe with. Once
  *       authorized, Google redirects to /community/youtube/callback, which checks
  *       the subscription against the configured channel and unlocks the video on
- *       success. Requires YOUTUBE_OAUTH_CLIENT_ID / YOUTUBE_OAUTH_CLIENT_SECRET.
+ *       success. Also returns the channel subscribe links, so the app can send
+ *       the user to the channel and start verification in one round-trip.
+ *       Requires YOUTUBE_OAUTH_CLIENT_ID / YOUTUBE_OAUTH_CLIENT_SECRET.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -300,6 +349,22 @@ router.post("/videos/:videoId/unlock", protectedRoute, controller.unlockVideo.bi
  *                       type: string
  *                     expiresIn:
  *                       type: integer
+ *                     channel:
+ *                       type: object
+ *                       description: Same shape as the feed card's `channel` object
+ *                       properties:
+ *                         channelId:
+ *                           type: string
+ *                           nullable: true
+ *                         handle:
+ *                           type: string
+ *                           nullable: true
+ *                         subscribeUrl:
+ *                           type: string
+ *                           nullable: true
+ *                         appUrl:
+ *                           type: string
+ *                           nullable: true
  *       401:
  *         description: Unauthorized
  *       404:
@@ -514,10 +579,19 @@ router.get(
  *                 type: string
  *               teaserUrl:
  *                 type: string
+ *                 description: Clipped preview embed URL. Do not pass the full-length video URL here — it would defeat the gate
  *               thumbnailUrl:
  *                 type: string
  *               youtubeVideoId:
  *                 type: string
+ *               previewStartSeconds:
+ *                 type: integer
+ *                 default: 0
+ *                 description: Offset the preview clip starts at
+ *               previewDurationSeconds:
+ *                 type: integer
+ *                 default: 45
+ *                 description: Length of the preview clip in seconds
  *               isPublished:
  *                 type: boolean
  *                 default: true
@@ -567,8 +641,15 @@ router.post(
  *                 type: string
  *               teaserUrl:
  *                 type: string
+ *                 description: Clipped preview embed URL. Do not set this to the full-length video URL — it would defeat the gate
  *               thumbnailUrl:
  *                 type: string
+ *               previewStartSeconds:
+ *                 type: integer
+ *                 description: Offset the preview clip starts at
+ *               previewDurationSeconds:
+ *                 type: integer
+ *                 description: Length of the preview clip in seconds
  *               isPublished:
  *                 type: boolean
  *     responses:

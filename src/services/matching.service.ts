@@ -1,6 +1,7 @@
 import { prisma } from "../config/index.js";
 import type { Gender, LookingFor } from "../../generated/prisma/enums.js";
 import { haversineDistance, maxPairwiseDistance } from "../helpers/haversine.js";
+import { TIER_VALUE, resolveEffectiveAccess } from "../helpers/membership.js";
 
 // ─────────────────────────────────────────
 // Matching engine — candidate discovery, filtering & scoring
@@ -145,17 +146,9 @@ export function dateRangeOverlapDays(
 }
 
 // Membership tier → discovery boost multiplier (paid tiers rank higher).
-const TIER_BOOST: Record<string, number> = {
-  FREE: 1.0,
-  BASELINE: 1.1,
-  SENIOR_PIONEER: 1.15,
-  SANKOFA_SETTLED: 1.2,
-  BASIC: 1.15,
-  SILVER: 1.25,
-  GOLD_INVESTOR: 1.3,
-  ELITE_AMBASSADOR: 1.4,
-  FAMILY_PLAN: 1.2,
-};
+// Single source of truth lives in helpers/membership so the access resolver and
+// the boost can never disagree about which tier ranks higher.
+const TIER_BOOST: Record<string, number> = TIER_VALUE;
 
 const DEFAULT_FILTERS: Omit<DiscoveryFilters, "genderPreference"> & {
   genderPreference: Gender[];
@@ -367,10 +360,25 @@ export async function getDiscoveryCandidates(
           availableTo: true,
         },
       },
-      subscription: { select: { tierCode: true } },
+      subscription: { select: { tierCode: true, status: true, endDate: true } },
+      // Comped access is resolved in-batch from these rows rather than with a
+      // per-candidate lookup, which would be N+1 across the whole pool.
+      accessGrants: {
+        select: {
+          id: true,
+          tierCode: true,
+          includePaidPerks: true,
+          startDate: true,
+          endDate: true,
+          revokedAt: true,
+          createdAt: true,
+        },
+      },
       profile: { select: { bio_profile_image_url: true } },
     },
   });
+
+  const now = new Date();
 
   const ranked = users.map((u) => {
     const profile = u.datingProfile!;
@@ -416,7 +424,12 @@ export async function getDiscoveryCandidates(
       distanceKm: travel ? travelDistanceKm : null,
       interestsOverlap: profile.interests.filter((i) => myInterests.includes(i)).length,
       score: 0,
-      tierBoost: resolveTierBoost(u.subscription?.tierCode),
+      // Rank by the perks tier, so a comp granted without includePaidPerks
+      // resolves to FREE and does not outrank a paying member.
+      tierBoost: resolveTierBoost(
+        resolveEffectiveAccess({ subscription: u.subscription, grants: u.accessGrants, now })
+          .perksTierCode,
+      ),
       profileImage: u.profile?.bio_profile_image_url ?? null,
       scheduleOverlapDays,
       withinGeofence,

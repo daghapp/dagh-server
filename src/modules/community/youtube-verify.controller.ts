@@ -9,6 +9,7 @@ import * as communityService from "../../services/community.service.js";
 import * as youtubeOauth from "../../services/youtube-oauth.service.js";
 import {
   resolveChannelId,
+  getChannelLinks,
   YouTubeNotConfiguredError,
   YouTubeApiError,
 } from "../../services/youtube.service.js";
@@ -46,14 +47,15 @@ function redirectResult(res: Response, query: Record<string, string | boolean>):
 export class YouTubeVerifyController {
   // ── GET /community/youtube/start/:videoId ─────────────────────────────────
   // Returns the Google authorization URL that will verify the caller's YouTube
-  // subscription to the configured channel before unlocking the video.
+  // subscription to the configured channel before unlocking the video, plus the
+  // channel links the app should send the user to in order to subscribe.
   async start(req: Request, res: Response) {
     const start = started();
     try {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const video = await communityService.getVideo(videoId);
+      const video = await communityService.getVideoRecord(videoId);
       if (!video) {
         logCommunityWarn("community.verify.start.not_found", {
           status: 404,
@@ -75,7 +77,7 @@ export class YouTubeVerifyController {
       });
       return ok(
         res,
-        { authUrl, expiresIn: 15 * 60 },
+        { authUrl, expiresIn: 15 * 60, channel: getChannelLinks() },
         "YouTube authorization URL created. Open authUrl in a browser to verify your subscription.",
       );
     } catch (error) {
@@ -128,16 +130,24 @@ export class YouTubeVerifyController {
       const accessToken = await youtubeOauth.exchangeCodeForToken(code);
       const channelId = await resolveChannelId();
       const subscribed = await youtubeOauth.checkChannelSubscription(accessToken, channelId);
-      await youtubeOauth.setCachedVerification(payload.userId, subscribed);
 
       let unlocked = false;
       if (subscribed) {
-        await communityService.logInteraction(payload.userId, payload.videoId, "SUBSCRIBE_INTENT");
+        // The verdict is cached first: unlockVideo re-reads it as its gate, and
+        // a negative verdict must also be cached so repeat attempts within the
+        // TTL do not burn API quota.
+        await youtubeOauth.setCachedVerification(payload.userId, true);
+
         const result = await communityService.unlockVideo(payload.userId, payload.videoId);
         if (result.success) {
           unlocked = true;
+          // Only UNLOCK is logged here. SUBSCRIBE_INTENT belongs to the client
+          // tap that started this flow — logging it again on success would
+          // double-count the funnel denominator.
           await communityService.logInteraction(payload.userId, payload.videoId, "UNLOCK");
         }
+      } else {
+        await youtubeOauth.setCachedVerification(payload.userId, false);
       }
 
       logCommunity("community.verify.callback", {
@@ -177,7 +187,7 @@ export class YouTubeVerifyController {
 
       // Resolve the canonical card id so the unlock lookup works whether the app
       // passes the internal id or the YouTube video id.
-      const video = await communityService.getVideo(videoId);
+      const video = await communityService.getVideoRecord(videoId);
       const canonicalId = video?.id ?? videoId;
 
       const unlockStatus = await communityService.getUnlockStatus(userId, canonicalId);

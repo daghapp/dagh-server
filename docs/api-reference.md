@@ -404,21 +404,28 @@ Query: `tourSiteId` (required), `radiusKm` (default 30), `limit` (default 10).
 
 ## Community (YouTube Video Feed)
 
-Gated video cards that drive app members to the YouTube channel. A preview teaser
-is freely viewable; full-length playback is unlocked per user after tapping
-"Subscribe to Unlock". Every action is logged server-side as an analytics event
-so you can measure the funnel (card view → subscribe intent → watch).
+Gated video cards that drive app members to the YouTube channel. A clipped
+preview is freely viewable; full-length playback is unlocked per user once the
+server confirms a subscription to the channel. Locked cards withhold the
+YouTube video id and the full watch URL, so the link cannot be scraped from the
+feed, and every card carries server-resolved `channel` subscribe links so the
+app never hardcodes the channel. Every action is logged server-side as an
+analytics event so you can measure the funnel (card view → subscribe intent →
+unlock).
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`. |
-| GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status. |
+| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`, `requiresSubscription` and `channel`, and is gated accordingly. |
+| GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status (same gating and `channel`). |
 | GET | `/community/my-unlocks` | Bearer | Every video ID the caller has unlocked — call on app launch. |
 | POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. |
-| POST | `/community/videos/:videoId/unlock` | Bearer | Unlock full access (idempotent). Call when the user returns from YouTube. |
+| POST | `/community/videos/:videoId/unlock` | Bearer | Grant full access (idempotent). Requires a positive subscription verdict → `403 SUBSCRIPTION_REQUIRED` otherwise. |
+| GET | `/community/voutube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }` so the app can send the user to the channel and verify in one round-trip. |
+| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, unlocks, redirects to the app deep link. |
+| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + last cached verdict (no API call). |
 | GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate. |
 | POST | `/community/admin/videos` | Admin | Create a video card. |
-| PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, `isPublished`. |
+| PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
 | DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
 | POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API and add missing cards to the feed. |
 
@@ -431,9 +438,9 @@ uploads from the channel's uploads playlist.
 
 Only **new** uploads are inserted. Existing cards are never overwritten, so admin
 edits to title/description and soft-deletes (`isPublished = false`) survive a
-sync. Teasers are derived from the video's own embed URL — the app plays the
-first 45 seconds as the preview clip, then surfaces the subscribe /
-"Watch on YouTube" call-to-action that deep-links to the channel.
+sync. Teasers are derived from the video's own embed URL bounded to the first 45
+seconds (`?start=0&end=45&rel=0`), so a freshly synced card can only serve a
+preview until the viewer subscribes. The full-length URL is never stored.
 
 Repeated syncs for the same channel are returned from a Redis-backed cooldown
 cache (`YOUTUBE_SYNC_COOLDOWN_MS`, default 1 hour) instead of re-hitting the
@@ -475,6 +482,8 @@ so the client can render the correct button color/behavior without extra calls.
 `:videoId` path/query param on the other endpoints. `:videoId` also accepts the
 YouTube video id directly (`youtubeVideoId`).
 
+A **locked** card:
+
 ```json
 {
   "success": true,
@@ -484,11 +493,19 @@ YouTube video id directly (`youtubeVideoId`).
       "videoId": "uuid",
       "title": "Two-line bold title",
       "description": "One-sentence value proposition for the full discussion.",
-      "teaserUrl": "https://cdn.../teaser.mp4",
-      "thumbnailUrl": "https://img.youtube.com/vi/<videoId>/hqdefault.jpg",
-      "youtubeVideoId": "dQw4w9WgXcQ",
+      "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=45&rel=0",
+      "previewStartSeconds": 0,
+      "previewDurationSeconds": 45,
+      "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
       "isUnlocked": false,
+      "requiresSubscription": true,
       "unlockedAt": null,
+      "channel": {
+        "channelId": "UC...",
+        "handle": "@diasporaaffairsgh",
+        "subscribeUrl": "https://www.youtube.com/@diasporaaffairsgh",
+        "appUrl": "vnd.youtube://channel/UC..."
+      },
       "publishedAt": "2026-10-01T00:00:00.000Z"
     }
   ],
@@ -496,10 +513,52 @@ YouTube video id directly (`youtubeVideoId`).
 }
 ```
 
+An **unlocked** card additionally carries `youtubeVideoId` and `watchUrl`:
+
+```json
+{
+  "isUnlocked": true,
+  "requiresSubscription": false,
+  "unlockedAt": "2026-10-01T00:00:00.000Z",
+  "youtubeVideoId": "dQw4w9WgXcQ",
+  "watchUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ"
+}
+```
+
+`youtubeVideoId` and `watchUrl` are **absent** (not `null`) while locked — the
+server withholds both rather than gating only playback, because the full link is
+just a string any client could read. `watchUrl` is derived from
+`youtubeVideoId` on demand and never stored.
+
 Non-nullable string fields (`title`, `description`, `thumbnailUrl`, `teaserUrl`)
 are never `null` in the DB (defaulting to `"Untitled"` / `""` and derived YouTube
 URLs respectively), so the client does not need null-guards on them. `unlockedAt`
 is the only nullable field (`null` until unlocked). Timestamps serialize as ISO-8601 strings.
+
+#### `channel` — where to send the user to subscribe
+
+Present on every card (identical each time, so a card stays self-contained for
+the app's per-card action bar) and on the single-card response. Resolved
+server-side from `YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE` — **do not
+hardcode the channel in the app**, or changing the env silently leaves the
+client's subscribe button pointing at a different channel than the one the
+server verifies against, and users get told they are not subscribed after
+subscribing.
+
+| Field | Notes |
+|-------|-------|
+| `channelId` | Stable `UC…` id, or `null` |
+| `handle` | Normalised to include the leading `@`, or `null` |
+| `subscribeUrl` | Web URL for the channel page. Prefers the handle (survives the channel being recreated under a new id), falls back to `/channel/UC…` |
+| `appUrl` | `vnd.youtube://channel/UC…` for the native app. **`null` when only a handle is configured** — the scheme has no handle form, so fall back to `subscribeUrl` |
+
+All four are `null` when neither env var is set, so the app should degrade
+gracefully rather than assume a link exists.
+
+Two things these links deliberately do **not** do: they open the channel page but
+do not complete the subscription (YouTube exposes no link that subscribes on the
+user's behalf — the user still taps Subscribe), and they are resolved from env
+without an API call, so a handle-only setup costs nothing per feed load.
 
 ### GET /community/my-unlocks
 
@@ -520,31 +579,79 @@ lookups). Falls back to `[]` for a user with no unlocks.
 Append-only analytics event. Safe to fire for every user action (client-side
 fire-and-forget). `action` must be one of:
 
-- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock"
-- `PREVIEW_CLIP` — user opened the teaser modal
-- `WATCH_FULL_VIDEO` — user tapped the unlocked "Watch on YouTube" button
-- `UNLOCK` — user returned from YouTube and unlocked full access
+- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock" (logged by the client,
+  before the OAuth round-trip)
+- `PREVIEW_CLIP` — user played the clipped preview on a locked card
+- `WATCH_FULL_VIDEO` — user opened the full video (unlocked users only)
+- `UNLOCK` — server confirmed a subscription and granted the unlock
 
 ```json
 { "action": "SUBSCRIBE_INTENT", "durationMs": 18400 }
 ```
 
 `durationMs` is optional — client-reported watch time in milliseconds (e.g. how far
-the user got into the 45s teaser before leaving the clip or tapping subscribe).
-It must be a non-negative integer.
+the user got into the preview clip before leaving it or tapping subscribe).
+It must be a non-negative integer. It is **client-reported and unverified** —
+YouTube exposes no per-user watch API, so treat it as a hint, not evidence.
 
 `400` for an unknown action or an invalid `durationMs`; `404` if the video doesn't exist.
 
 ### POST /community/videos/:videoId/unlock
 
-Marks the video as unlocked for the caller. Idempotent (`@@unique([userId, videoId])`
-with an upsert) — call it every time the user returns from YouTube; it is a no-op
-if already unlocked. Recommended flow: client calls `unlock`, then refreshes with
-`GET /community/videos` (or updates local state from the response).
+Grants full access to the video. Idempotent (`@@unique([userId, videoId])`), and
+an existing unlock is returned untouched without re-checking YouTube — a granted
+unlock does not expire when the verdict cache lapses.
+
+The grant is gated on a server-confirmed subscription verdict (see below), so
+this is **not** a client-trusted flag. In the normal flow the OAuth callback
+grants the unlock itself; call this afterwards only to re-check after the
+round-trip.
 
 ```json
 { "success": true, "data": { "isUnlocked": true, "unlockedAt": "2026-10-01T00:00:00.000Z" }, "message": "Video unlocked" }
 ```
+
+Errors:
+
+- `404 VIDEO_NOT_FOUND` — no published card for that id.
+- `403 SUBSCRIPTION_REQUIRED` — no positive, unexpired verdict on record:
+
+```json
+{
+  "success": false,
+  "data": {
+    "code": "SUBSCRIPTION_REQUIRED",
+    "message": "Subscribe to the channel to unlock this video",
+    "verifiedAt": null
+  }
+}
+```
+
+An **absent** verdict (never verified, or the `YOUTUBE_VERIFY_CACHE_MS` TTL
+lapsed) counts as not subscribed, so the gate fails closed. Re-run
+`GET /community/youtube/start/:videoId` rather than retrying the unlock.
+
+### Subscription verification (the gate's key issuer)
+
+The gate rests on `GET /community/youtube/start/:videoId` → Google consent →
+`GET /community/youtube/callback`, which checks
+`subscriptions?mine=true&forChannelId=<channel>` and caches the boolean verdict
+(Redis, or in-memory without `REDIS_URL`) for `YOUTUBE_VERIFY_CACHE_MS`. Costs 1
+quota unit per check; the callback caches the verdict *before* the gated unlock
+reads it.
+
+Two things it is worth being explicit about:
+
+- It proves an **explicit subscription on the authorized Google account** — the
+  only thing YouTube exposes. It cannot verify a watch, and it is blind to a
+  subscription made on a different account.
+- It is **not** content protection. The video is public on YouTube, so this gates
+  a link inside our app, not the content itself.
+
+When `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` are unset there is
+no way to verify anything, and the unlock endpoint **fails open** to the legacy
+client-trusted behaviour rather than leaving every video permanently locked.
+Configure these before launch.
 
 ### Cross-origin / network notes
 
@@ -563,11 +670,12 @@ Per-user unlock state and analytics live in dedicated tables (see `community_vid
 `video_unlocks`, `video_interactions` in the schema):
 
 - `VideoUnlock(userId, videoId, unlockedAt)` — one row per user+video
-  (`@@unique([userId, videoId])`), written idempotently by `POST .../unlock`.
-  Read back via `GET /community/my-unlocks` or the `isUnlocked`/`unlockedAt`
-  fields on the feed.
-- `VideoInteraction(userId, videoId, action, createdAt)` — append-only event
-  log written by `POST .../interact`, aggregated by the admin analytics endpoint.
+  (`@@unique([userId, videoId])`), written idempotently by `POST .../unlock` once
+  the gate passes. Read back via `GET /community/my-unlocks` or the
+  `isUnlocked`/`unlockedAt` fields on the feed.
+- `VideoInteraction(userId, videoId, action, durationMs, createdAt)` — append-only
+  event log written by `POST .../interact` and the OAuth callback, aggregated by
+  the admin analytics endpoint.
 
 No client-side state migration is needed; the app rehydrates from
 `GET /community/my-unlocks` on launch.
@@ -615,18 +723,26 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
 {
   "title": "Two-line bold title",
   "description": "One-sentence value proposition.",
-  "teaserUrl": "https://cdn.../teaser.mp4",
-  "thumbnailUrl": "https://img.youtube.com/vi/<videoId>/hqdefault.jpg",
+  "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=45&rel=0",
+  "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   "youtubeVideoId": "dQw4w9WgXcQ",
+  "previewStartSeconds": 0,
+  "previewDurationSeconds": 45,
   "isPublished": true
 }
 ```
+
+`teaserUrl` must be a **clipped** preview, not the full-length video URL —
+storing the full URL there defeats the gate for every locked viewer.
+`previewStartSeconds` (default 0) and `previewDurationSeconds` (default 45) bound
+the clip.
 
 `409` if a card with that `youtubeVideoId` already exists.
 
 ### PUT /community/admin/videos/:videoId (Admin)
 
-Accepts any subset of `title`, `description`, `teaserUrl`, `thumbnailUrl`, `isPublished`.
+Accepts any subset of `title`, `description`, `teaserUrl`, `thumbnailUrl`,
+`previewStartSeconds`, `previewDurationSeconds`, `isPublished`.
 
 ### DELETE /community/admin/videos/:videoId (Admin)
 

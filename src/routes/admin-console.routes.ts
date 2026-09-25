@@ -5,14 +5,22 @@ import { AdminVisaConsoleController } from "../modules/admin/visa-console.contro
 import { AdminPaymentsConsoleController } from "../modules/admin/payments-console.controller.js";
 import { AdminDashboardController } from "../modules/admin/dashboard.controller.js";
 import { AdminPlansConsoleController } from "../modules/admin/plans-console.controller.js";
+import { AdminAccessGrantsConsoleController } from "../modules/admin/access-grants-console.controller.js";
 import { validate } from "../middleware/validation.js";
-import { createMembershipPlanSchema, updatePaymentControlSchema } from "../validator/index.js";
+import {
+  createMembershipPlanSchema,
+  updatePaymentControlSchema,
+  createAccessGrantSchema,
+  updateAccessGrantSchema,
+  revokeAccessGrantSchema,
+} from "../validator/index.js";
 
 const router = express.Router();
 const adminVisa = new AdminVisaConsoleController();
 const adminPayments = new AdminPaymentsConsoleController();
 const adminDashboard = new AdminDashboardController();
 const adminPlans = new AdminPlansConsoleController();
+const adminAccessGrants = new AdminAccessGrantsConsoleController();
 
 /**
  * @swagger
@@ -822,5 +830,243 @@ router.post("/plans/:id/toggle", protectedRoute, requireAdmin, adminPlans.toggle
  *         description: Admin privileges required
  */
 router.delete("/plans/:id", protectedRoute, requireAdmin, adminPlans.remove.bind(adminPlans));
+
+// ─────────────────────────────────────────
+// Complimentary access grants (comped membership)
+// ─────────────────────────────────────────
+// Lets an admin give a named user access to a paid tier without a payment.
+// The grant is stored separately from user_subscriptions, so a comp and a real
+// subscription coexist rather than overwriting one another, and revoking a comp
+// is distinct from a user cancelling. Grants are soft-revoked, never deleted.
+
+/**
+ * @swagger
+ * /admin/access-grants:
+ *   get:
+ *     summary: List complimentary access grants (console)
+ *     description: >
+ *       Lists admin-issued comps. Filter with `status=active|revoked|expired`,
+ *       or narrow by `userId` / `tierCode`. `active` means not revoked, already
+ *       started, and not past endDate.
+ *     tags: [Admin - Access Grants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: tierCode
+ *         schema:
+ *           type: string
+ *           enum: [FREE, BASELINE, SENIOR_PIONEER, SANKOFA_SETTLED, BASIC, SILVER, GOLD_INVESTOR, ELITE_AMBASSADOR, FAMILY_PLAN]
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, revoked, expired]
+ *     responses:
+ *       200:
+ *         description: Access grants listed
+ *       403:
+ *         description: Admin privileges required
+ */
+router.get(
+  "/access-grants",
+  protectedRoute,
+  requireAdmin,
+  adminAccessGrants.list.bind(adminAccessGrants),
+);
+
+/**
+ * @swagger
+ * /admin/access-grants:
+ *   post:
+ *     summary: Comp a user into a paid tier (console)
+ *     description: >
+ *       Grants a user access to a paid tier without a payment, recording who
+ *       approved it and why. Omit `endDate` for a perpetual comp; grants never
+ *       auto-renew. Set `includePaidPerks` to true only when the comp should also
+ *       confer ranking perks (matching boost, priority support) — leave it false
+ *       to waive the fee while keeping the user equivalent to FREE, so comped
+ *       users never outrank paying members. Rejected if the user already has an
+ *       in-force grant for the same tier.
+ *     tags: [Admin - Access Grants]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, tierCode, reason]
+ *             properties:
+ *               userId: { type: string }
+ *               tierCode:
+ *                 type: string
+ *                 enum: [BASELINE, SENIOR_PIONEER, SANKOFA_SETTLED, BASIC, SILVER, GOLD_INVESTOR, ELITE_AMBASSADOR, FAMILY_PLAN]
+ *               includePaidPerks:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Confer matching boost and priority support, not just content access.
+ *               reason:
+ *                 type: string
+ *                 description: Why this comp exists. Kept in the audit trail.
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Defaults to now. Useful for a comp that starts later.
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *                 nullable: true
+ *                 description: Omit or null for a perpetual comp.
+ *     responses:
+ *       201:
+ *         description: Access granted
+ *       400:
+ *         description: Invalid payload
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: An active grant for this tier already exists
+ *       403:
+ *         description: Admin privileges required
+ */
+router.post(
+  "/access-grants",
+  protectedRoute,
+  requireAdmin,
+  validate(createAccessGrantSchema),
+  adminAccessGrants.create.bind(adminAccessGrants),
+);
+
+/**
+ * @swagger
+ * /admin/access-grants/{id}:
+ *   patch:
+ *     summary: Amend an access grant (console)
+ *     description: >
+ *       Updates tier, perks flag, reason, or dates. Setting `endDate` to a past
+ *       date is an early revoke that preserves the grant record. Revoked grants
+ *       cannot be modified.
+ *     tags: [Admin - Access Grants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tierCode:
+ *                 type: string
+ *                 enum: [BASELINE, SENIOR_PIONEER, SANKOFA_SETTLED, BASIC, SILVER, GOLD_INVESTOR, ELITE_AMBASSADOR, FAMILY_PLAN]
+ *               includePaidPerks: { type: boolean }
+ *               reason: { type: string }
+ *               startDate: { type: string, format: date-time }
+ *               endDate: { type: string, format: date-time, nullable: true }
+ *     responses:
+ *       200:
+ *         description: Grant updated
+ *       400:
+ *         description: Invalid payload or date range
+ *       404:
+ *         description: Grant not found
+ *       409:
+ *         description: Grant already revoked
+ *       403:
+ *         description: Admin privileges required
+ */
+router.patch(
+  "/access-grants/:id",
+  protectedRoute,
+  requireAdmin,
+  validate(updateAccessGrantSchema),
+  adminAccessGrants.update.bind(adminAccessGrants),
+);
+
+/**
+ * @swagger
+ * /admin/access-grants/{id}/revoke:
+ *   post:
+ *     summary: Revoke an access grant (console)
+ *     description: >
+ *       Soft revoke. The grant row is retained so the decision stays explainable
+ *       in the audit trail; the user's access is withdrawn immediately.
+ *     tags: [Admin - Access Grants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Optional note recorded against the revocation.
+ *     responses:
+ *       200:
+ *         description: Grant revoked
+ *       404:
+ *         description: Grant not found
+ *       409:
+ *         description: Grant already revoked
+ *       403:
+ *         description: Admin privileges required
+ */
+router.post(
+  "/access-grants/:id/revoke",
+  protectedRoute,
+  requireAdmin,
+  validate(revokeAccessGrantSchema),
+  adminAccessGrants.revoke.bind(adminAccessGrants),
+);
+
+/**
+ * @swagger
+ * /admin/users/{userId}/access:
+ *   get:
+ *     summary: A user's effective access and grant history (console)
+ *     description: >
+ *       Shows the access the user actually has right now, which record produced
+ *       it, and their full grant history — the answer to "why does this person
+ *       have access?" without inferring intent from tier codes.
+ *     tags: [Admin - Access Grants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Effective access with grant history
+ *       404:
+ *         description: User not found
+ *       403:
+ *         description: Admin privileges required
+ */
+router.get(
+  "/users/:userId/access",
+  protectedRoute,
+  requireAdmin,
+  adminAccessGrants.userAccess.bind(adminAccessGrants),
+);
 
 export { router };

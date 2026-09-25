@@ -259,7 +259,9 @@ src/
 > (admin API + public status endpoint), and `docs/push-notifications.md` for
 > the push notification architecture. See
 > `docs/youtube-video-feed-setup.md` for the credentials and steps required to
-> populate the community YouTube video feed.
+> populate the community YouTube video feed, and
+> `docs/access-grants.md` for **complimentary (comped) membership** — how an
+> admin grants a specific user paid-tier access without a payment.
 
 All endpoints return responses in a standardized envelope:
 
@@ -678,6 +680,23 @@ INITIATING → RINGING → ANSWERED → ENDED
 | GET    | `/membership/payment/return`   | Public | HTTPS redirect bridge for mobile deep links (return)                        |
 | GET    | `/membership/payment/cancel`   | Public | HTTPS redirect bridge for mobile deep links (cancel)                        |
 
+#### Complimentary access (admin)
+
+An admin can comp a specific user into a paid tier without a payment. Grants live
+in their own table, so a comp and a real subscription coexist instead of
+overwriting each other, and revoking a comp is distinct from a cancellation.
+`includePaidPerks` controls whether the comp also confers matching boost and
+priority support, so a fee waiver never outranks paying members. See
+[`docs/access-grants.md`](docs/access-grants.md).
+
+| Method | Endpoint                        | Auth   | Description                                              |
+| ------ | ------------------------------- | ------ | -------------------------------------------------------- |
+| GET    | `/admin/access-grants`          | Admin  | List grants; filter by `userId`, `tierCode`, `status`     |
+| POST   | `/admin/access-grants`          | Admin  | Comp a user into a paid tier (`reason` required)          |
+| PATCH  | `/admin/access-grants/{id}`     | Admin  | Amend tier, perks flag, reason, or dates                  |
+| POST   | `/admin/access-grants/{id}/revoke` | Admin | Soft revoke; the record is kept for the audit trail    |
+| GET    | `/admin/users/{userId}/access`  | Admin  | Effective access now, plus grant history                  |
+
 #### Subscribe response
 
 Free plans activate immediately:
@@ -767,25 +786,28 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 
 ### Community (YouTube Video Feed)
 
-Gated video cards that drive app members to the YouTube channel. Full-length
-playback is unlocked per user after a subscribe prompt; every action is logged
-as an analytics event for funnel conversion.
+Gated video cards that drive app members to the YouTube channel. Locked cards
+expose only a clipped preview — the YouTube video id and the full watch URL are
+withheld until the server confirms a subscription, so the link cannot be read off
+the feed. Every card also carries server-resolved `channel` subscribe links, so
+the app never hardcodes the channel. Every action is logged as an analytics event
+for funnel conversion.
 
 | Method | Endpoint                               | Auth   | Description                                                                                                                                                                                              |
 | ------ | -------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/community/videos`                    | Bearer | List published video cards (paginated; each card includes `isUnlocked`)                                                                                                                                  |
-| GET    | `/community/videos/:videoId`           | Bearer | Get a single video card with the caller's unlock status                                                                                                                                                  |
+| GET    | `/community/videos`                    | Bearer | List published video cards (paginated; each card includes `isUnlocked`, `requiresSubscription` and `channel`; locked cards omit `youtubeVideoId`/`watchUrl`)                                                 |
+| GET    | `/community/videos/:videoId`           | Bearer | Get a single video card with the caller's unlock status (same gating and `channel` as the feed)                                                                                                          |
 | GET    | `/community/my-unlocks`                | Bearer | All unlocked video IDs for the caller — call on app launch to rehydrate state                                                                                                                            |
 | POST   | `/community/videos/:videoId/interact`  | Bearer | Log an interaction event (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`)                                                                                                              |
-| POST   | `/community/videos/:videoId/unlock`    | Bearer | Unlock full access (idempotent) — call when the user returns from YouTube                                                                                                                                |
-| GET    | `/community/youtube/start/:videoId`    | Bearer | Start server-side subscription verification — returns a Google OAuth authorization URL (optional; requires `YOUTUBE_OAUTH_CLIENT_ID`/`YOUTUBE_OAUTH_CLIENT_SECRET`)                                      |
+| POST   | `/community/videos/:videoId/unlock`    | Bearer | Grant full access (idempotent). Requires a positive subscription verdict, else `403 SUBSCRIPTION_REQUIRED`; falls open to client-trust when `YOUTUBE_OAUTH_*` is unset |
+| GET    | `/community/youtube/start/:videoId`    | Bearer | Start server-side subscription verification — returns `{ authUrl, expiresIn, channel }` (requires `YOUTUBE_OAUTH_CLIENT_ID`/`YOUTUBE_OAUTH_CLIENT_SECRET`)                                                   |
 | GET    | `/community/youtube/callback`          | Public | Google OAuth callback — checks the subscription against the configured channel, unlocks the video on success, caches the verdict, redirects back to `YOUTUBE_VERIFY_RETURN_URL`                          |
 | GET    | `/community/youtube/status/:videoId`   | Bearer | Durable unlock state + the last cached subscription verdict (poll on feed load; never hits the API)                                                                                                      |
 | GET    | `/community/videos/:videoId/analytics` | Admin  | Interaction counts + conversion rate (`unlocks / subscribe_intents`)                                                                                                                                     |
-| POST   | `/community/admin/videos`              | Admin  | Create a video card (`title`, `description`, `teaserUrl`, `thumbnailUrl`, `youtubeVideoId`)                                                                                                              |
-| PUT    | `/community/admin/videos/:videoId`     | Admin  | Update title, description, URLs, `isPublished`                                                                                                                                                           |
+| POST   | `/community/admin/videos`              | Admin  | Create a video card (`title`, `description`, `teaserUrl` = **clipped** preview, `thumbnailUrl`, `youtubeVideoId`, optional `previewStartSeconds`/`previewDurationSeconds`)                              |
+| PUT    | `/community/admin/videos/:videoId`     | Admin  | Update title, description, URLs, preview bounds, `isPublished`                                                                                                                                           |
 | DELETE | `/community/admin/videos/:videoId`     | Admin  | Unpublish (soft-delete, sets `isPublished = false`)                                                                                                                                                      |
-| POST   | `/community/admin/sync-youtube`        | Admin  | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards (teaser = first 45s of the video; Redis cooldown protects API quota) |
+| POST   | `/community/admin/sync-youtube`        | Admin  | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards (teaser is a clipped first-45s embed; Redis cooldown protects API quota) |
 
 ### Admin — Dashboard
 

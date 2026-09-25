@@ -32,9 +32,35 @@ export interface YouTubeCard {
   youtubeVideoId: string;
   title: string;
   description: string;
-  teaserUrl: string; // embed URL used as the 45-second preview source in the app
+  teaserUrl: string; // CLIPPED preview embed URL — never the full-length video
+  previewStartSeconds: number;
+  previewDurationSeconds: number;
   thumbnailUrl: string;
   publishedAt: Date;
+}
+
+// Default preview window handed to locked viewers: the first 45s of the upload.
+export const DEFAULT_PREVIEW_START_SECONDS = 0;
+export const DEFAULT_PREVIEW_DURATION_SECONDS = 45;
+
+// YouTube's embed player honours `start`/`end` query params, which is the only
+// way to serve a bounded preview from the Data API without hosting our own clip
+// files. `rel=0` drops the "more videos" sidebar so the preview cannot be used
+// to hop to other uploads.
+export function buildPreviewEmbedUrl(
+  videoId: string,
+  startSeconds: number = DEFAULT_PREVIEW_START_SECONDS,
+  durationSeconds: number = DEFAULT_PREVIEW_DURATION_SECONDS,
+): string {
+  const start = Math.max(0, Math.floor(startSeconds));
+  const end = start + Math.max(1, Math.floor(durationSeconds));
+  return `https://www.youtube.com/embed/${videoId}?start=${start}&end=${end}&rel=0`;
+}
+
+// The full-length watch URL. Derived on demand and only returned to callers who
+// already hold an unlock — never persisted, so it cannot leak from a feed read.
+export function buildFullWatchUrl(videoId: string): string {
+  return `https://www.youtube.com/embed/${videoId}`;
 }
 
 export function isYouTubeConfigured(): boolean {
@@ -49,6 +75,58 @@ export function getYouTubeChannelId(): string | null {
 export function getYouTubeChannelHandle(): string | null {
   const handle = process.env.YOUTUBE_CHANNEL_HANDLE?.trim();
   return handle || null;
+}
+
+// ── Channel links ─────────────────────────────────────────────────────────────
+// Where the "Subscribe to Unlock" call-to-action should send the user. Resolved
+// from env so the app never has to hardcode the channel — otherwise changing
+// YOUTUBE_CHANNEL_* leaves the client pointing at the old channel while the
+// server verifies against the new one, and the user is told they are not
+// subscribed after subscribing.
+//
+// Pure env reads, no API call: the feed is a hot path and a handle→id lookup
+// costs a quota unit. A handle-only configuration therefore reports
+// `appUrl: null` rather than paying for a resolution on every feed load; the
+// OAuth callback resolves the id on its own, once per consent.
+
+export interface ChannelLinks {
+  /** Stable `UC…` id, when configured. */
+  channelId: string | null;
+  /** `@handle` with the leading `@` normalised in, when configured. */
+  handle: string | null;
+  /**
+   * Web URL that lands on the channel page. The user still has to tap Subscribe
+   * there — YouTube offers no link that completes a subscription directly, so
+   * treat this as "get them to the channel", not "subscribe them".
+   */
+  subscribeUrl: string | null;
+  /**
+   * `vnd.youtube://` deep link for the native app. The scheme has no handle
+   * form, so this is null when only a handle is configured — fall back to
+   * `subscribeUrl`.
+   */
+  appUrl: string | null;
+}
+
+export function getChannelLinks(): ChannelLinks {
+  const channelId = getYouTubeChannelId();
+  const rawHandle = getYouTubeChannelHandle();
+  const handle = rawHandle ? (rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`) : null;
+
+  // Prefer the handle for the web URL: it is human-readable and survives the
+  // channel being recreated under a different UC… id.
+  const subscribeUrl = handle
+    ? `https://www.youtube.com/${handle}`
+    : channelId
+      ? `https://www.youtube.com/channel/${channelId}`
+      : null;
+
+  return {
+    channelId,
+    handle,
+    subscribeUrl,
+    appUrl: channelId ? `vnd.youtube://channel/${channelId}` : null,
+  };
 }
 
 async function apiRequest(path: string, params: Record<string, string>): Promise<unknown> {
@@ -143,7 +221,9 @@ export function cardFromPlaylistItem(item: Record<string, unknown>): YouTubeCard
     youtubeVideoId: videoId,
     title,
     description,
-    teaserUrl: `https://www.youtube.com/embed/${videoId}`,
+    teaserUrl: buildPreviewEmbedUrl(videoId),
+    previewStartSeconds: DEFAULT_PREVIEW_START_SECONDS,
+    previewDurationSeconds: DEFAULT_PREVIEW_DURATION_SECONDS,
     thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
     publishedAt,
   };

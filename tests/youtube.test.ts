@@ -3,7 +3,10 @@ import {
   isYouTubeConfigured,
   getYouTubeChannelId,
   getYouTubeChannelHandle,
+  getChannelLinks,
   cardFromPlaylistItem,
+  buildPreviewEmbedUrl,
+  buildFullWatchUrl,
   resolveChannelId,
   fetchLatestCards,
   fetchChannelLatestCards,
@@ -73,6 +76,56 @@ describe("channel env getters", () => {
   });
 });
 
+describe("getChannelLinks", () => {
+  it("returns all nulls when no channel is configured", () => {
+    expect(getChannelLinks()).toEqual({
+      channelId: null,
+      handle: null,
+      subscribeUrl: null,
+      appUrl: null,
+    });
+  });
+
+  it("builds both links from the channel id alone", () => {
+    vi.stubEnv("YOUTUBE_CHANNEL_ID", "UC123");
+
+    expect(getChannelLinks()).toEqual({
+      channelId: "UC123",
+      handle: null,
+      subscribeUrl: "https://www.youtube.com/channel/UC123",
+      appUrl: "vnd.youtube://channel/UC123",
+    });
+  });
+
+  it("prefers the handle for the web URL but keeps the id deep link", () => {
+    vi.stubEnv("YOUTUBE_CHANNEL_ID", "UC123");
+    vi.stubEnv("YOUTUBE_CHANNEL_HANDLE", "@diasporaaffairsgh");
+
+    expect(getChannelLinks()).toEqual({
+      channelId: "UC123",
+      handle: "@diasporaaffairsgh",
+      subscribeUrl: "https://www.youtube.com/@diasporaaffairsgh",
+      appUrl: "vnd.youtube://channel/UC123",
+    });
+  });
+
+  it("normalises a handle written without the leading @", () => {
+    vi.stubEnv("YOUTUBE_CHANNEL_HANDLE", "diasporaaffairsgh");
+
+    expect(getChannelLinks().handle).toBe("@diasporaaffairsgh");
+    expect(getChannelLinks().subscribeUrl).toBe("https://www.youtube.com/@diasporaaffairsgh");
+  });
+
+  it("omits the app deep link for a handle-only config, since the scheme has no handle form", () => {
+    vi.stubEnv("YOUTUBE_CHANNEL_HANDLE", "@diasporaaffairsgh");
+
+    const links = getChannelLinks();
+    expect(links.channelId).toBeNull();
+    expect(links.appUrl).toBeNull();
+    expect(links.subscribeUrl).toBe("https://www.youtube.com/@diasporaaffairsgh");
+  });
+});
+
 describe("cardFromPlaylistItem", () => {
   it("derives all card fields from the snippet", () => {
     const card = cardFromPlaylistItem(playlistItem("abc123", "My Video"));
@@ -80,7 +133,9 @@ describe("cardFromPlaylistItem", () => {
       youtubeVideoId: "abc123",
       title: "My Video",
       description: "desc",
-      teaserUrl: "https://www.youtube.com/embed/abc123",
+      teaserUrl: "https://www.youtube.com/embed/abc123?start=0&end=45&rel=0",
+      previewStartSeconds: 0,
+      previewDurationSeconds: 45,
       thumbnailUrl: "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
       publishedAt: new Date("2026-01-01T00:00:00Z"),
     });
@@ -94,6 +149,35 @@ describe("cardFromPlaylistItem", () => {
     const card = cardFromPlaylistItem({ snippet: { resourceId: { videoId: "x" } } });
     expect(card?.title).toBe("Untitled");
     expect(card?.description).toBe("");
+  });
+});
+
+describe("buildPreviewEmbedUrl", () => {
+  it("bounds the embed to the requested window", () => {
+    expect(buildPreviewEmbedUrl("abc123", 30, 60)).toBe(
+      "https://www.youtube.com/embed/abc123?start=30&end=90&rel=0",
+    );
+  });
+
+  it("defaults to the first 45 seconds", () => {
+    expect(buildPreviewEmbedUrl("abc123")).toBe(
+      "https://www.youtube.com/embed/abc123?start=0&end=45&rel=0",
+    );
+  });
+
+  it("clamps negative or fractional bounds instead of emitting invalid params", () => {
+    expect(buildPreviewEmbedUrl("abc123", -10, 0)).toBe(
+      "https://www.youtube.com/embed/abc123?start=0&end=1&rel=0",
+    );
+    expect(buildPreviewEmbedUrl("abc123", 10.9, 20.4)).toBe(
+      "https://www.youtube.com/embed/abc123?start=10&end=30&rel=0",
+    );
+  });
+});
+
+describe("buildFullWatchUrl", () => {
+  it("returns the unbounded embed URL", () => {
+    expect(buildFullWatchUrl("abc123")).toBe("https://www.youtube.com/embed/abc123");
   });
 });
 

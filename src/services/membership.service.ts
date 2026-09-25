@@ -11,8 +11,10 @@ import {
   PaymentStatus,
   PaymentTargetType,
   SubscriptionStatus,
+  type MembershipTierCode,
 } from "../../generated/prisma/client.js";
 import type { SubscribeMembershipSchema, PrioritySupportSchema } from "../validator/index.js";
+import { getEffectiveAccess } from "../helpers/membership.js";
 
 // Generates a random member code in the format "89345-SGF" and checks uniqueness in the DB.
 // Retries up to 5 times on collision before throwing.
@@ -371,26 +373,47 @@ export async function renewSubscriptions(): Promise<number> {
 }
 
 // Returns the current user's subscription with the associated plan details
-// If no subscription exists yet, returns a virtual FREE-tier response
+// If no subscription exists yet, returns a virtual FREE-tier response.
+// An admin comp is surfaced here too (accessSource / accessGrant) so the
+// subscription screen doesn't tell a comped user to go and pay.
 export async function getUserSubscription(userId: string) {
+  const access = await getEffectiveAccess(userId);
   const subscription = await prisma.userSubscription.findUnique({
     where: { userId },
     include: { plan: true },
   });
 
   if (!subscription) {
-    const freePlan = await prisma.membershipPlan.findUnique({
-      where: { code: "FREE" },
-    });
+    const freePlan =
+      access.source === "GRANT"
+        ? await prisma.membershipPlan.findUnique({
+            where: { code: access.tierCode as MembershipTierCode },
+          })
+        : await prisma.membershipPlan.findUnique({ where: { code: "FREE" } });
+
+    const governingGrant = access.grantId
+      ? await prisma.subscriptionAccessGrant.findUnique({ where: { id: access.grantId } })
+      : null;
 
     return {
-      tierCode: "FREE" as const,
+      tierCode: access.tierCode,
       plan: freePlan || null,
       memberCode: null,
-      activatedAt: null,
-      endDate: null,
-      status: "ACTIVE",
+      activatedAt: governingGrant?.startDate ?? null,
+      endDate: governingGrant?.endDate ?? null,
+      status: "ACTIVE" as const,
       autoRenew: false,
+      accessSource: access.source,
+      accessGrant: governingGrant
+        ? {
+            id: governingGrant.id,
+            tierCode: governingGrant.tierCode,
+            reason: governingGrant.reason,
+            includePaidPerks: governingGrant.includePaidPerks,
+            startDate: governingGrant.startDate,
+            endDate: governingGrant.endDate,
+          }
+        : null,
     };
   }
 
@@ -411,27 +434,44 @@ export async function getUserSubscription(userId: string) {
     ...rest,
     activatedAt: subscription.startDate,
     paymentReference: latestPayment?.reference ?? null,
+    accessSource: access.source,
+    // Non-null when a comp outranks the user's own subscription, so the app can
+    // explain why their tier looks higher than the plan they picked.
+    accessGrantId: access.source === "GRANT" ? access.grantId : null,
   };
 }
 
-// Creates a priority support ticket for active paid-tier members
-// Throws if the user is on FREE tier or their subscription is not active
+// Creates a priority support ticket for active paid-tier members.
+// Access may come from a paid subscription or an admin comp that carries
+// includePaidPerks; a comp without that flag waives the fee but not the perk.
 export async function createPrioritySupportRequest(userId: string, payload: PrioritySupportSchema) {
-  const subscription = await prisma.userSubscription.findUnique({
-    where: { userId },
-  });
+  // Priority support is a paid perk, so it keys off the perks tier rather than
+  // the entitlement tier: a comp granted with includePaidPerks=false waives the
+  // fee but does not confer this privilege.
+  const access = await getEffectiveAccess(userId);
 
-  if (!subscription || subscription.tierCode === "FREE") {
+  if (access.perksTierCode === "FREE") {
     throw new Error("Priority support is only available for paid tier members");
   }
 
-  if (subscription.status !== SubscriptionStatus.ACTIVE) {
+  // Resolving via the subscription row keeps the existing FK attribution for
+  // paying members; a comped user may have no subscription row at all.
+  const subscriptionId =
+    access.source === "GRANT"
+      ? null
+      : ((await prisma.userSubscription.findUnique({ where: { userId }, select: { id: true } }))
+          ?.id ?? null);
+
+  if (access.source !== "GRANT" && !subscriptionId) {
     throw new Error("Your subscription is not active");
   }
 
   const request = await prisma.prioritySupportRequest.create({
     data: {
-      subscriptionId: subscription.id,
+      // Attribute the ticket to whichever record actually authorised it: the
+      // subscription, or the grant when the access came from a comp.
+      subscriptionId: access.source === "SUBSCRIPTION" ? subscriptionId : null,
+      accessGrantId: access.source === "GRANT" ? access.grantId : null,
       userId,
       subject: payload.subject,
       message: payload.message,

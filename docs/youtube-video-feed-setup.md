@@ -12,9 +12,10 @@ the mobile app must implement to display the videos.
 | Step | Who does it | Where |
 |------|-------------|-------|
 | Latest uploads are pulled from the channel | Admin sync call | `POST /community/admin/sync-youtube` |
-| Video cards are stored | Backend DB | `CommunityVideo` table |
-| App shows gated cards with a 45s teaser | Mobile app | `GET /community/videos` |
-| User subscribes on YouTube, returns → unlock | Mobile app | `POST /community/videos/:id/unlock` |
+| Video cards are stored (preview clip only) | Backend DB | `CommunityVideo` table |
+| App shows gated cards with a 45s preview | Mobile app | `GET /community/videos` |
+| User subscribes on YouTube, returns → unlock | Mobile app | `GET /community/youtube/start/:id` |
+| Server confirms the subscription, grants access | OAuth callback | `GET /community/youtube/callback` |
 | Every tap is logged for funnel analytics | Mobile app | `POST /community/videos/:id/interact` |
 
 ---
@@ -22,8 +23,12 @@ the mobile app must implement to display the videos.
 ## 2. What you need (checklist)
 
 ### Required
-- **`YOUTUBE_API_KEY`** — the only mandatory credential. Without it the sync
-  endpoint returns `503` (`YOUTUBE_NOT_CONFIGURED`).
+- **`YOUTUBE_API_KEY`** — needed for the sync endpoint. Without it that endpoint
+  returns `503` (`YOUTUBE_NOT_CONFIGURED`).
+- **`YOUTUBE_OAUTH_CLIENT_ID`** + **`YOUTUBE_OAUTH_CLIENT_SECRET`** — needed to
+  verify a subscription. Without them the unlock endpoint **fails open** and
+  trusts the client, so the gate is effectively off. Set these before launch
+  (see [section 8](#8-server-side-subscription-verification--the-unlock-gate)).
 
 ### Optional (but recommended)
 - **`YOUTUBE_CHANNEL_ID`** (e.g. `UC...`) **or** **`YOUTUBE_CHANNEL_HANDLE`**
@@ -31,13 +36,15 @@ the mobile app must implement to display the videos.
   the sync endpoint resolves the channel ID automatically via the API.
   `YOUTUBE_CHANNEL_HANDLE=@diasporaaffairsgh` is already pre-filled in
   `.env.example`.
+- **`YOUTUBE_VERIFY_RETURN_URL`** — the app deep link the OAuth browser returns
+  to (default `daghapp://youtube/verify`).
+- **`YOUTUBE_VERIFY_CACHE_MS`** — how long a verdict is trusted before the next
+  check (default `3600000` = 1h).
 
 ### Not required
-- No YouTube OAuth / user tokens. By default the unlock is a client-triggered
-  flag after the user returns from YouTube. **Optional:** you can enable
-  **server-side subscription verification** so a video only unlocks when the
-  YouTube Data API confirms the user is actually subscribed to the channel
-  (see [section 8](#8-optional-server-side-subscription-verification)).
+- No per-user YouTube tokens are stored. The OAuth access token is exchanged and
+  used for a single subscription check, then discarded; only the boolean verdict
+  is cached (Redis, or in-memory without `REDIS_URL`).
 
 ---
 
@@ -132,8 +139,10 @@ Example response:
 Behavior guarantees:
 - Only **new** uploads are inserted. Existing cards are never overwritten, so
   admin edits and unpublishing (soft-delete) survive syncs.
-- Each synced card gets `teaserUrl = https://www.youtube.com/embed/<videoId>`
-  and `thumbnailUrl = https://i.ytimg.com/vi/<videoId>/hqdefault.jpg`.
+- Each synced card gets a **clipped** teaser
+  `https://www.youtube.com/embed/<videoId>?start=0&end=45&rel=0` and
+  `thumbnailUrl = https://i.ytimg.com/vi/<videoId>/hqdefault.jpg`. The
+  full-length URL is never stored on a card.
 
 **Wrong callbacks you may see:**
 
@@ -153,31 +162,68 @@ designed funnel:
 
 1. **Community Video Card** (`GET /community/videos`):
    - 16:9 media area: autoplay a muted loop, or show the thumbnail with a play
-     overlay. Card includes `title`, `description`, `teaserUrl`,
-     `thumbnailUrl`, `youtubeVideoId`, `isUnlocked`.
+     overlay. Card includes `title`, `description`, `teaserUrl`, `thumbnailUrl`,
+     `previewStartSeconds`, `previewDurationSeconds`, `isUnlocked`,
+     `requiresSubscription`, and `channel` (the subscribe links — see step 3).
+     `youtubeVideoId` and `watchUrl` are only present once unlocked — do not
+     assume they exist.
    - Bottom action bar: prominent red **"Subscribe to Unlock"** + secondary
      **"Preview Clip"** when `isUnlocked === false`; a green
      **"Watch Full Video on YouTube"** when `isUnlocked === true`.
 
 2. **Preview modal — the 45-second teaser:**
    - Tapping the thumbnail opens a bottom-sheet that plays `teaserUrl`.
-   - Play only the **first 45 seconds**, then freeze with a persistent overlay
-     prompting to subscribe for the full version.
+   - The clip is already bounded server-side, but also stop at
+     `previewStartSeconds + previewDurationSeconds` and then freeze with a
+     persistent overlay prompting to subscribe for the full version.
    - Log `PREVIEW_CLIP` when it opens, `SUBSCRIBE_INTENT` when "Subscribe to
      Unlock" is tapped.
 
-3. **Deep link to the channel:**
-   - "Subscribe to Unlock" → open the channel in the native YouTube app:
-     `vnd.youtube://channel/<channelId>` (fallback `https://www.youtube.com/@diasporaaffairsgh`).
+3. **Deep link to the channel — take it from the API, do not hardcode it:**
+   - Every card carries a `channel` object, and `GET /community/youtube/start/:videoId`
+     returns the same one alongside `authUrl`:
+
+     ```json
+     {
+       "channelId": "UC...",
+       "handle": "@diasporaaffairsgh",
+       "subscribeUrl": "https://www.youtube.com/@diasporaaffairsgh",
+       "appUrl": "vnd.youtube://channel/UC..."
+     }
+     ```
+
+   - "Subscribe to Unlock" → open `channel.appUrl` if non-null, else
+     `channel.subscribeUrl` as the browser fallback. `appUrl` is `null` for a
+     handle-only configuration, because the `vnd.youtube://channel/` scheme has
+     no handle form.
    - "Watch Full Video on YouTube" → `vnd.youtube://<youtubeVideoId>`
-     (fallback `https://www.youtube.com/watch?v=<youtubeVideoId>`).
+     (fallback `https://www.youtube.com/watch?v=<youtubeVideoId>`). This action
+     only exists for unlocked cards, so the id is guaranteed present.
+   - All four fields are `null` when neither `YOUTUBE_CHANNEL_ID` nor
+     `YOUTUBE_CHANNEL_HANDLE` is set — handle that state rather than assuming a
+     link exists.
+
+   **Why this matters:** these used to be hardcoded in the app as
+   `@diasporaaffairsgh`. That duplicates server config into the client, so
+   changing the env var silently points the subscribe button at one channel while
+   the server verifies against another — the user subscribes, is told they are
+   not subscribed, and nothing in the response tells them where to go. Use the
+   server's links.
+
+   Note that neither link *completes* the subscription — they open the channel
+   page and the user still taps Subscribe. YouTube exposes no link that subscribes
+   on the user's behalf.
 
 4. **Unlock + rehydrate:**
-   - When the user returns to the app, call
-     `POST /community/videos/:videoId/unlock` (idempotent) and log `UNLOCK`.
-   - If **server-side verification** is enabled (section 8), "Subscribe to
-     Unlock" opens the OAuth flow instead — the callback unlocks the video only
-     after the API confirms the subscription.
+   - "Subscribe to Unlock" should run the OAuth flow
+     (`GET /community/youtube/start/:videoId` → `authUrl`, section 8). The
+     callback confirms the subscription and unlocks server-side; the browser
+     lands back on your deep link with `?subscribed=…&unlocked=…`.
+   - `POST /community/videos/:videoId/unlock` is **not** a client-trusted grant.
+     With the gate closed it returns `403 SUBSCRIPTION_REQUIRED` unless the
+     callback already cached a positive verdict, so call it only to *re-check*
+     after the round-trip (it is idempotent) — do not treat a 200 as the only
+     way to unlock.
    - On app launch, call `GET /community/my-unlocks` (or
      `GET /community/youtube/status/:videoId` for a single card) to rehydrate
      all unlocked IDs and render buttons green without re-fetching every card.
@@ -188,12 +234,14 @@ Keep a persisted map so buttons render instantly and stay green across launches:
 
 - **Key:** the card's `videoId` (the internal uuid returned by the feed, aliased
   from `id`). Store `videoId → unlockedAt` in AsyncStorage/encrypted storage.
-  Keep `youtubeVideoId` separately — it is only used for deep links.
+  Keep `youtubeVideoId` separately once unlocked — it is only used for deep
+  links, and it is only sent to you after unlocking.
 - **On launch:** call `GET /community/my-unlocks` and merge the response into
   the map (`{ unlocks: [{ videoId, unlockedAt }] }`). Merge, don't replace, so
   unlocks made offline/other devices aren't lost.
 - **On unlock:** `POST /community/videos/:videoId/unlock` → on success set
-  `map[videoId] = unlockedAt` from the response (or `Date.now()`).
+  `map[videoId] = unlockedAt` from the response. On `403
+  SUBSCRIPTION_REQUIRED` re-run the OAuth flow rather than retrying the unlock.
 - **Render:** green state when `map[videoId]` is truthy OR the feed card says
   `isUnlocked: true`; otherwise the red "Subscribe to Unlock" state.
 - A stale `videoId` (e.g. a card later unpublished) simply never renders — the
@@ -210,7 +258,7 @@ Keep a persisted map so buttons render instantly and stay green across launches:
 
 ### API payload contract (what the feed returns)
 
-Every card in `GET /community/videos` is:
+A **locked** card in `GET /community/videos` is:
 
 ```json
 {
@@ -218,12 +266,32 @@ Every card in `GET /community/videos` is:
   "videoId": "uuid",
   "title": "string",
   "description": "string",
-  "teaserUrl": "string",
+  "teaserUrl": "https://www.youtube.com/embed/VIDEO?start=0&end=45&rel=0",
+  "previewStartSeconds": 0,
+  "previewDurationSeconds": 45,
   "thumbnailUrl": "string",
-  "youtubeVideoId": "string",
-  "isUnlocked": "boolean",
-  "unlockedAt": "ISO-8601 | null",
+  "isUnlocked": false,
+  "requiresSubscription": true,
+  "unlockedAt": null,
+  "channel": {
+    "channelId": "UC...",
+    "handle": "@diasporaaffairsgh",
+    "subscribeUrl": "https://www.youtube.com/@diasporaaffairsgh",
+    "appUrl": "vnd.youtube://channel/UC..."
+  },
   "publishedAt": "ISO-8601"
+}
+```
+
+An **unlocked** card is the same shape plus:
+
+```json
+{
+  "isUnlocked": true,
+  "requiresSubscription": false,
+  "unlockedAt": "ISO-8601",
+  "youtubeVideoId": "string",
+  "watchUrl": "https://www.youtube.com/embed/VIDEO"
 }
 ```
 
@@ -233,6 +301,17 @@ Every card in `GET /community/videos` is:
   directly, so deep links from YouTube never 404.
 - `title`, `description`, `thumbnailUrl`, `teaserUrl` are **never null** (DB
   defaults / derived YouTube URLs). `unlockedAt` is the only nullable field.
+
+#### Why `youtubeVideoId` and `watchUrl` are omitted while locked
+
+Gating only the *playback* is theatre: the full-length link is just a string, so
+any client that can read the feed can read the video. The server therefore
+withholds the two fields that reconstruct it and derives the full watch URL on
+demand, only for callers who already hold a `VideoUnlock`. Locked viewers get
+`teaserUrl` (bounded to the preview window by YouTube's own `start`/`end` embed
+params) and `thumbnailUrl` — enough to sample the content, not enough to watch
+it in full. `teaserUrl` is stored clipped, so even a client that ignores
+`isUnlocked` cannot pull the whole upload out of that field.
 
 ### CORS / network headers
 
@@ -247,7 +326,9 @@ Every card in `GET /community/videos` is:
 ### Persisted user state (unlock tracking)
 
 - `video_unlocks` — `(userId, videoId, unlockedAt)` with `@@unique([userId, videoId])`,
-  written idempotently by `POST /community/videos/:videoId/unlock`.
+  written idempotently by `POST /community/videos/:videoId/unlock` once the
+  subscription gate passes. Unlocks are durable and are never revoked when the
+  verdict cache expires.
 - `video_interactions` — append-only analytics rows per user action.
 - Rehydrate on app launch with `GET /community/my-unlocks` — no client-side
   state migration needed.
@@ -261,14 +342,32 @@ Each feed/unlock/interact call logs one structured JSON line
 
 ---
 
-## 8. Optional — server-side subscription verification
+## 8. Server-side subscription verification — the unlock gate
 
-The default flow trusts the client when it says the user returned from YouTube.
-If you want an actual **server-side check**, enable the OAuth verification
-route. It uses Google OAuth (not just the API key) to ask the YouTube Data API
-whether the authorized account is subscribed to the configured channel.
+A full-length video is the reward for subscribing to the channel, so the unlock
+must rest on something the client cannot assert. Google OAuth (not just the API
+key) is used to ask the YouTube Data API whether the authorized account is
+actually subscribed.
 
-Flow:
+### What this can and cannot prove
+
+Worth being explicit, because the API's limits shape the design:
+
+- It proves an **explicit subscription** exists on the authorized Google account.
+  That is the only thing YouTube exposes.
+- It **cannot** prove a user watched anything. There is no per-user watch API —
+  YouTube Analytics is channel-owner-side and aggregate only. Anything in the
+  app claiming a verified "watch" is client-reported and should be treated as a
+  hint, not evidence.
+- It cannot see a subscription made on a **different account** than the one
+  authorized, and a user can revoke it at any time (our verdict cache just
+  expires and the next unlock re-opens the gate).
+- Verifying a subscription is **not** the same as being able to watch without
+  one. A locked card stays locked; this is a funnel, not an access-control
+  boundary. The full video is public on YouTube by design, so treat this as
+  *gating a link inside our app*, not as protecting content.
+
+### Flow
 
 ```
 App                    Server                           Google / YouTube
@@ -280,8 +379,12 @@ App                    Server                           Google / YouTube
  │                                                     │ token exchange│
  │                                                     │ subscriptions │
  │                                                     │ mine+channel  │
+ │                          cache verdict ──▶ gate ──▶ unlock + UNLOCK  │
  │ ◀──────────── 302 → daghapp://youtube/verify?subscribed=true...     │
 ```
+
+The callback caches the verdict **before** calling the unlock, because the
+unlock reads that cache as its gate.
 
 ### Requirements
 
@@ -301,7 +404,7 @@ OAuth client ID → Web application**, then add the redirect URI.
 
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| GET | `/community/youtube/start/:videoId` | Bearer | Returns `{ authUrl, expiresIn }` — the state token inside encodes the user + video for 15 min |
+| GET | `/community/youtube/start/:videoId` | Bearer | Returns `{ authUrl, expiresIn, channel }` — the state token inside encodes the user + video for 15 min, and `channel` carries the subscribe links so the app needs no second call |
 | GET | `/community/youtube/callback` | Public | Google redirect target. Exchanges the code, checks `subscriptions?mine=true&forChannelId=<channel>`, unlocks + logs `SUBSCRIBE_INTENT`/`UNLOCK` when subscribed, caches the verdict, redirects to the return URL |
 | GET | `/community/youtube/status/:videoId` | Bearer | `{ isUnlocked, verifiedSubscribed, verifiedAt, cached }` — durable unlock + last cached verdict |
 
@@ -314,8 +417,20 @@ Behavior notes:
   deployments (no `REDIS_URL`).
 - **CSRF-safe:** the `state` is a signed JWT (`JWT_ACCESS_SECRET`), so an
   attacker cannot forge whose account is being verified or which video unlocks.
-- **Optional by design:** none of the existing client-triggered unlock flows
-  change when these env vars are not set — they simply never unlock server-side.
+- **The gate:** `POST /community/videos/:videoId/unlock` requires a positive,
+  unexpired verdict and otherwise returns `403 SUBSCRIPTION_REQUIRED`. An absent
+  verdict (never verified, or the TTL lapsed) counts as not subscribed, so it
+  fails closed. An **existing** unlock is returned untouched and never
+  re-checked, so a granted unlock does not expire with the cache.
+- **Fail-open when unconfigured:** with no `YOUTUBE_OAUTH_CLIENT_ID` /
+  `YOUTUBE_OAUTH_CLIENT_SECRET` the server has no way to verify anything, and
+  failing closed would leave every video permanently ununlockable (including on
+  local/dev). In that configuration the unlock endpoint falls back to trusting
+  the client. **Configuring the OAuth env vars closes the gate** — do this
+  before launch.
+- **Analytics:** the callback logs only `UNLOCK`. `SUBSCRIBE_INTENT` is the
+  client logging the tap that started the flow; logging it again on success
+  would double-count the funnel denominator and understate `conversionRate`.
 
 ### App wording for the consent screen scope
 
@@ -329,16 +444,26 @@ an instant redirect.
 
 - [ ] `YOUTUBE_API_KEY` in env, YouTube Data API v3 enabled
 - [ ] Channel ID **or** handle set (`@diasporaaffairsgh` pre-filled)
+- [ ] `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` set — **required
+      in production**, otherwise the unlock gate fails open
 - [ ] Admin runs `POST /community/admin/sync-youtube` → `created > 0`
-- [ ] `GET /community/videos` returns cards with `videoId`, `thumbnailUrl`, `title`, `description`, `isUnlocked: false`
-- [ ] `POST /community/videos/:videoId/unlock` works with the `videoId` from a card **and** with `youtubeVideoId` directly
+- [ ] `GET /community/videos` returns cards with `videoId`, `thumbnailUrl`, `title`, `description`, `isUnlocked: false`, `requiresSubscription: true`
+- [ ] A **locked** card has no `youtubeVideoId` and no `watchUrl` anywhere in the
+      payload, and its `teaserUrl` carries `start`/`end` bounds
+- [ ] `POST /community/videos/:videoId/unlock` with no prior verification returns
+      `403 SUBSCRIPTION_REQUIRED` (gate closed)
+- [ ] `POST /community/videos/:videoId/unlock` works with the `videoId` from a card **and** with the `youtubeVideoId` of an unlocked card
 - [ ] Web-view origin is in `ALLOWED_ORIGINS` (native requests need no origin)
 - [ ] Server logs show a `community.feed.list` line per request and `community.feed.*.not_found` / `*.error` lines on failures
-- [ ] App plays 45s teaser, then shows subscribe overlay — logs `PREVIEW_CLIP`
-- [ ] "Subscribe to Unlock" opens YouTube app — logs `SUBSCRIBE_INTENT`
-- [ ] Returning to app calls `/unlock` → button turns green — logs `UNLOCK`
+- [ ] App plays the clipped preview, then shows subscribe overlay — logs `PREVIEW_CLIP`
+- [ ] "Subscribe to Unlock" opens `channel.appUrl` (falling back to `channel.subscribeUrl`) — **no hardcoded handle in the app**
+- [ ] Changing `YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE` changes the link the app shows, with no app release
+- [ ] "Subscribe to Unlock" starts the OAuth flow — logs `SUBSCRIBE_INTENT` **once**
+- [ ] Consent → callback confirms the subscription, unlocks, logs `UNLOCK` once
+- [ ] The unlocked card now carries `youtubeVideoId` + `watchUrl`
 - [ ] "Watch Full Video on YouTube" opens the video — logs `WATCH_FULL_VIDEO`
 - [ ] Relaunching the app preserves green state via `GET /community/my-unlocks`
-- [ ] *(Optional)* `YOUTUBE_OAUTH_*` configured; `/community/youtube/start/:videoId` returns an `authUrl`
-- [ ] *(Optional)* Completing consent unlocks only when actually subscribed; `/community/youtube/status/:videoId` reflects it
-- [ ] Admin analytics endpoint shows the funnel numbers
+- [ ] An existing unlock survives verdict-cache expiry (call `/unlock` again after
+      `YOUTUBE_VERIFY_CACHE_MS` — still 200)
+- [ ] Admin analytics endpoint shows the funnel numbers, and
+      `SUBSCRIBE_INTENT` is not double-counted

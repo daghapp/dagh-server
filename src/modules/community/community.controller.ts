@@ -61,14 +61,15 @@ export class CommunityController {
   }
 
   // ── GET /community/videos/:videoId ────────────────────────────────────────
-  // Returns a single video with its unlock status for the calling user.
+  // Returns a single video with its unlock status for the calling user. Locked
+  // cards carry the clipped preview only — no youtubeVideoId, no watchUrl.
   async getVideo(req: Request, res: Response) {
     const start = started();
     try {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const video = await communityService.getVideo(videoId);
+      const video = await communityService.getVideoForUser(userId, videoId);
       if (!video) {
         logCommunityWarn("community.feed.get.not_found", {
           status: 404,
@@ -79,16 +80,14 @@ export class CommunityController {
         return fail(res, 404, "Video not found");
       }
 
-      const unlockStatus = await communityService.getUnlockStatus(userId, video.id);
-
       logCommunity("community.feed.get", {
         status: 200,
         userId,
-        videoId: video.id,
-        isUnlocked: unlockStatus.isUnlocked,
+        videoId: video.videoId,
+        isUnlocked: video.isUnlocked,
         durationMs: Date.now() - start,
       });
-      return ok(res, { ...video, ...unlockStatus });
+      return ok(res, video);
     } catch (error) {
       logCommunityError("community.feed.get.error", {
         status: 500,
@@ -186,7 +185,8 @@ export class CommunityController {
   }
 
   // ── POST /community/videos/:videoId/unlock ────────────────────────────────
-  // Marks a video as unlocked for this user. Idempotent — safe to call repeatedly.
+  // Grants full access to a video, but only against a server-confirmed YouTube
+  // subscription verdict. Idempotent — safe to call repeatedly.
   async unlockVideo(req: Request, res: Response) {
     const start = started();
     try {
@@ -196,6 +196,21 @@ export class CommunityController {
       const result = await communityService.unlockVideo(userId, videoId);
 
       if (!result.success) {
+        if (result.code === "SUBSCRIPTION_REQUIRED") {
+          logCommunityWarn("community.unlock.subscription_required", {
+            status: 403,
+            userId,
+            videoId,
+            verifiedAt: result.verifiedAt,
+            durationMs: Date.now() - start,
+          });
+          return fail(res, 403, {
+            code: "SUBSCRIPTION_REQUIRED",
+            message: "Subscribe to the channel to unlock this video",
+            verifiedAt: result.verifiedAt,
+          });
+        }
+
         logCommunityWarn("community.unlock.not_found", {
           status: 404,
           userId,
