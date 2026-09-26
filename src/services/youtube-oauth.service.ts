@@ -108,7 +108,23 @@ export function buildAuthUrl(state: string): string {
 
 // ── Token exchange ────────────────────────────────────────────────────────────
 
-export async function exchangeCodeForToken(code: string): Promise<string> {
+export interface TokenGrant {
+  /** Short-lived (~1h) credential, used for the immediate subscription check. */
+  accessToken: string;
+  /**
+   * Long-lived credential used to mint future access tokens, so a granted
+   * channel subscription can be re-checked long after this round-trip.
+   *
+   * Null when Google did not return one. With `access_type=offline` Google issues
+   * a refresh token on the first authorization for a given client/account pair
+   * and may omit it afterwards, so a returning subscriber can legitimately
+   * exchange a code and get none. Callers must treat null as "this grant cannot
+   * be re-verified", not as "this user is not subscribed".
+   */
+  refreshToken: string | null;
+}
+
+export async function exchangeCodeForToken(code: string): Promise<TokenGrant> {
   if (!isYouTubeOAuthConfigured()) {
     throw new YouTubeNotConfiguredError("YouTube OAuth is not configured");
   }
@@ -133,6 +149,7 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
     });
     const data = (await res.json().catch(() => null)) as {
       access_token?: string;
+      refresh_token?: string;
       error?: string;
     } | null;
 
@@ -145,7 +162,62 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
       );
     }
 
-    return data.access_token;
+    return {
+      accessToken: data.access_token,
+      refreshToken: typeof data.refresh_token === "string" ? data.refresh_token : null,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Token refresh ─────────────────────────────────────────────────────────────
+// The subscription grant outlives the access token issued alongside it, so the
+// sweep that re-checks for cancellations mints a fresh one from the stored
+// refresh token. Google normally omits refresh_token from a refresh response, so
+// the caller's existing token is carried through untouched.
+
+export async function refreshAccessToken(refreshToken: string): Promise<TokenGrant> {
+  if (!isYouTubeOAuthConfigured()) {
+    throw new YouTubeNotConfiguredError("YouTube OAuth is not configured");
+  }
+
+  const body = new URLSearchParams({
+    refresh_token: refreshToken,
+    client_id: process.env.YOUTUBE_OAUTH_CLIENT_ID!.trim(),
+    client_secret: process.env.YOUTUBE_OAUTH_CLIENT_SECRET!.trim(),
+    grant_type: "refresh_token",
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: controller.signal,
+    });
+    const data = (await res.json().catch(() => null)) as {
+      access_token?: string;
+      refresh_token?: string;
+      error?: string;
+    } | null;
+
+    if (!res.ok || !data?.access_token) {
+      throw new YouTubeApiError(
+        data?.error
+          ? `Google token refresh failed: ${data.error}`
+          : `Google token refresh failed with ${res.status}`,
+        res.status || 502,
+      );
+    }
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: typeof data.refresh_token === "string" ? data.refresh_token : refreshToken,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -201,6 +273,14 @@ export function verificationCacheKey(userId: string): string {
 
 export function getVerificationCacheTtlMs(): number {
   return Number(process.env.YOUTUBE_VERIFY_CACHE_MS || 60 * 60 * 1000);
+}
+
+// How long a channel grant may go unconfirmed before the sweep re-checks it.
+// This is the window in which a user who unsubscribes keeps access, so it trades
+// detection latency against YouTube quota: one re-check per grant per window,
+// and each check costs a token refresh plus 1 quota unit. Default 24h.
+export function getChannelReverifyIntervalMs(): number {
+  return Number(process.env.YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS || 24 * 60 * 60 * 1000);
 }
 
 export interface CachedVerification {

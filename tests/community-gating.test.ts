@@ -171,11 +171,7 @@ describe("listVideosForUser", () => {
     prismaMock.videoUnlock.findMany.mockResolvedValue([]);
     prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
 
-    const { videos, hasChannelAccess, channelAccess } = await listVideosForUser(
-      "user-1",
-      1,
-      20,
-    );
+    const { videos, hasChannelAccess, channelAccess } = await listVideosForUser("user-1", 1, 20);
 
     expect(hasChannelAccess).toBe(true);
     expect(channelAccess?.channelId).toBe("UC123");
@@ -357,10 +353,39 @@ describe("unlockVideo", () => {
 
       expect(prismaMock.channelUnlock.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          create: { userId: "user-1", channelId: "UC123", verifiedAt },
+          create: {
+            userId: "user-1",
+            channelId: "UC123",
+            verifiedAt,
+            refreshToken: null,
+            lastVerifiedAt: verifiedAt,
+          },
         }),
       );
       expect(result).toEqual(expect.objectContaining({ success: true, channelGranted: true }));
+    });
+
+    it("persists the refresh token so the grant can be re-verified later", async () => {
+      // Without a stored refresh token the sweep cannot re-check the
+      // subscription, so the grant would stay permanent — the exact behaviour
+      // this token exists to end.
+      oauthMock.getCachedVerification.mockResolvedValue({
+        subscribed: true,
+        verifiedAt: "2026-02-01T00:00:00.000Z",
+      });
+      const verifiedAt = new Date("2026-02-01T00:00:00Z");
+
+      await unlockVideo("user-1", "abc123", {
+        channelId: "UC123",
+        verifiedAt,
+        refreshToken: "refresh-abc",
+      });
+
+      expect(prismaMock.channelUnlock.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ refreshToken: "refresh-abc" }),
+        }),
+      );
     });
 
     it("does not write a channel grant when no channel id is supplied", async () => {

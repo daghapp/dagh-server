@@ -562,10 +562,12 @@ present and authoritative, so a client can render from the cards alone.
 `channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock"
 call to action at once instead of deriving the state card by card — otherwise a
 subscriber sees subscribe prompts on cards the server has already opened.
-`verifiedAt` is when the subscription was last confirmed and is informational
-only: the grant is never re-checked and never expires, so a subscriber who
-later unsubscribes keeps access (see
-[YouTube channel unlocks](youtube-video-feed-setup.md#how-access-is-granted)).
+`verifiedAt` is when the subscription was last confirmed. The grant is
+re-checked on a schedule (see
+[YouTube channel unlocks](youtube-video-feed-setup.md#how-access-is-granted)),
+so a subscriber who later unsubscribes loses access within
+`YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS`. Between sweeps the grant still stands —
+treat `hasChannelAccess` as current-enough for UI, not as a guarantee.
 
 #### `channel` — where to send the user to subscribe
 

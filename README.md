@@ -984,6 +984,7 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 | Unverified user cleanup | Hourly           | Deletes `PENDING_VERIFICATION` users older than 24 hours                                                                                                            |
 | Call expiry             | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants                                                       |
 | Push delivery           | Every 10 seconds | Sends PENDING `CallPushDelivery` and `MessagePushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
+| Channel grant re-verify | Daily (03:17)    | Re-confirms YouTube channel grants past `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` and revokes those whose subscription was cancelled. Fails open — only a definite negative verdict revokes, so a YouTube outage never locks out subscribers |
 
 ---
 

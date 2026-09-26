@@ -15,7 +15,13 @@ import {
   type ChannelLinks,
   DEFAULT_PREVIEW_DURATION_SECONDS,
 } from "./youtube.service.js";
-import { isYouTubeOAuthConfigured, getCachedVerification } from "./youtube-oauth.service.js";
+import {
+  isYouTubeOAuthConfigured,
+  getCachedVerification,
+  checkChannelSubscription,
+  refreshAccessToken,
+  getChannelReverifyIntervalMs,
+} from "./youtube-oauth.service.js";
 
 // ── Card payload gating ───────────────────────────────────────────────────────
 // Locked videos must not hand out the full-length video. The YouTube video id
@@ -122,14 +128,19 @@ async function resolvePublishedVideo(identifier: string) {
 // stayed locked, and the app had to re-run the whole OAuth round-trip for each
 // one once the verdict cache lapsed (the gate fails closed on an absent verdict).
 //
-// The grant is permanent: written once on a positive server-side verdict and
-// never re-checked. That matches the per-video unlock it replaces ("an existing
-// unlock is never re-checked") and is what makes the feed free to browse after a
-// single OAuth round-trip.
+// The grant is re-confirmed rather than permanent: it is written once on a
+// positive server-side verdict, then re-checked on a schedule
+// (YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS, default 24h) so that unsubscribing on
+// YouTube revokes it. That is the whole point of storing the OAuth refresh token
+// — the grant outlives the ~1h access token it was issued with, and without a
+// long-lived credential there is nothing to re-check with.
 //
 // Per-video VideoUnlock rows are deliberately kept alongside this. They answer a
 // question a channel grant cannot — how many people unlocked *this* card, and
-// what the SUBSCRIBE_INTENT → UNLOCK conversion funnel looks like.
+// what the SUBSCRIBE_INTENT → UNLOCK conversion funnel looks like. They are not,
+// however, an independent grant: they are the same subscription restated per
+// card, which is why revoking a channel grant deletes them (see
+// revokeChannelAccess).
 
 export interface ChannelAccess {
   channelId: string;
@@ -138,7 +149,11 @@ export interface ChannelAccess {
 }
 
 /**
- * The caller's channel grant, or null.
+ * The caller's active channel grant, or null.
+ *
+ * Revoked grants are invisible here: `revokedAt` is set by reverifyChannelGrants
+ * when the sweep sees the subscription cancelled, and a cancelled subscription
+ * must close the feed immediately rather than at the next sweep.
  *
  * Queried by userId alone rather than (userId, channelId): resolving a channel
  * id from a bare handle costs a YouTube API call, and the read sits on the feed
@@ -149,7 +164,7 @@ export interface ChannelAccess {
  */
 export async function getChannelAccess(userId: string): Promise<ChannelAccess | null> {
   const row = await prisma.channelUnlock.findFirst({
-    where: { userId },
+    where: { userId, revokedAt: null },
     select: { channelId: true, unlockedAt: true, verifiedAt: true },
   });
 
@@ -158,25 +173,228 @@ export async function getChannelAccess(userId: string): Promise<ChannelAccess | 
 }
 
 /**
- * Records a confirmed subscription. Idempotent: `update` is an empty no-op, so
- * a repeat call returns the original grant and never moves `unlockedAt`.
+ * Records a confirmed subscription. Idempotent against a live grant: `unlockedAt`
+ * is never rewritten, so re-running the flow does not erase the original audit
+ * timestamp.
+ *
+ * A grant previously revoked by the sweep is revived in place rather than
+ * duplicated — the (userId, channelId) unique constraint means this is the same
+ * row — so a user who cancels and later resubscribes regains the feed without
+ * any second grant, and the stored refresh token is replaced with the one from
+ * the fresh round-trip.
  */
 export async function grantChannelAccess(
   userId: string,
-  input: { channelId: string; verifiedAt?: Date | null },
+  input: { channelId: string; verifiedAt?: Date | null; refreshToken?: string | null },
 ): Promise<ChannelAccess> {
   const row = await prisma.channelUnlock.upsert({
     where: { userId_channelId: { userId, channelId: input.channelId } },
-    update: {}, // permanent — a re-grant must not rewrite the audit timestamp
+    update: {
+      // A live grant is left alone apart from refreshing the credentials the
+      // sweep needs; a revoked one is revived.
+      ...(input.refreshToken ? { refreshToken: input.refreshToken } : {}),
+      lastVerifiedAt: input.verifiedAt ?? new Date(),
+      revokedAt: null,
+      revokedReason: null,
+    },
     create: {
       userId,
       channelId: input.channelId,
       verifiedAt: input.verifiedAt ?? null,
+      refreshToken: input.refreshToken ?? null,
+      lastVerifiedAt: input.verifiedAt ?? new Date(),
     },
     select: { channelId: true, unlockedAt: true, verifiedAt: true },
   });
 
   return { channelId: row.channelId, unlockedAt: row.unlockedAt, verifiedAt: row.verifiedAt };
+}
+
+// ── Revocation ────────────────────────────────────────────────────────────────
+// A grant is no longer permanent: the sweep below re-checks it against the
+// subscriptions API and closes it if the user cancelled. Revocation is a soft
+// flag rather than a delete so the row remains the audit record of a
+// subscription that was once held.
+
+export type RevokeReason = "UNSUBSCRIBED" | "MANUAL";
+
+/**
+ * Closes a channel grant. Also removes the per-video unlock rows it implies:
+ * those rows are the same reward restated per card, and leaving them behind
+ * would let a cancelled subscriber keep watching the individual videos they
+ * unlocked — the exact leak this revocation exists to close. The append-only
+ * VideoInteraction rows are untouched, so funnel analytics survive.
+ *
+ * `notVerifiedAfter` guards a race: a grant re-confirmed by an OAuth callback
+ * after the sweep started already holds fresher evidence than the sweep's stale
+ * negative verdict (YouTube's own propagation lag makes a negative that old
+ * unreliable), so such a grant is left alone and the next pass re-decides it.
+ * Returns false when nothing was revoked.
+ */
+export async function revokeChannelAccess(
+  userId: string,
+  channelId: string,
+  reason: RevokeReason = "UNSUBSCRIBED",
+  notVerifiedAfter?: Date,
+): Promise<boolean> {
+  const { count } = await prisma.channelUnlock.updateMany({
+    where: {
+      userId,
+      channelId,
+      revokedAt: null,
+      ...(notVerifiedAfter ? { lastVerifiedAt: { lte: notVerifiedAfter } } : {}),
+    },
+    data: { revokedAt: new Date(), revokedReason: reason },
+  });
+
+  if (count === 0) return false;
+
+  await prisma.videoUnlock.deleteMany({ where: { userId } });
+
+  return true;
+}
+
+// ── Re-verification sweep ─────────────────────────────────────────────────────
+// A YouTube subscription is mutable from outside our system, so a grant written
+// once cannot stay authoritative forever. This sweep re-confirms each grant and
+// revokes the ones whose subscription is gone, which is what makes an unsubscribe
+// on YouTube actually cost the user access.
+//
+// Two deliberate asymmetries:
+//
+//   - It runs on a schedule, not on the read path. Revoking inside a feed load
+//     would put a YouTube round-trip on the hot path, and would make a slow
+//     response indistinguishable from a revoked one.
+//   - It fails OPEN. Only a definite negative verdict revokes. A thrown error
+//     means "could not check" — a Google outage or an expired refresh token must
+//     not lock out a paying subscriber, so the grant is left alone and retried
+//     on the next pass.
+//
+// Grants with no stored refresh token are skipped entirely. They predate token
+// persistence and cannot be re-checked; revoking them would close access on the
+// strength of a credential we simply failed to save, which is our bug and not
+// the user's.
+
+const REVERIFY_BATCH_SIZE = 200;
+
+export interface ReverifySummary {
+  checked: number;
+  stillSubscribed: number;
+  revoked: number;
+  /**
+   * Rows reported a negative verdict but skipped by the race guard because an
+   * OAuth callback re-confirmed them after this pass began. The next pass
+   * re-decides them.
+   */
+  superseded: number;
+  /** Rows skipped because they carry no refresh token and cannot be re-checked. */
+  unverifiable: number;
+  /** Rows where the check could not be completed; grant left intact. */
+  failed: number;
+}
+
+export interface ReverifyOptions {
+  now?: Date;
+  /**
+   * Gate consulted once per due grant, before any API call. Returning false
+   * skips the row. The scheduled job passes a distributed claim here so a run
+   * that overlaps a previous one — or a second instance — cannot check the same
+   * grant twice and spend the quota twice.
+   */
+  shouldProcess?: (grantId: string) => Promise<boolean>;
+}
+
+export async function reverifyChannelGrants(
+  options: ReverifyOptions = {},
+): Promise<ReverifySummary> {
+  const now = options.now ?? new Date();
+  const { shouldProcess } = options;
+
+  const summary: ReverifySummary = {
+    checked: 0,
+    stillSubscribed: 0,
+    revoked: 0,
+    superseded: 0,
+    unverifiable: 0,
+    failed: 0,
+  };
+
+  if (!isYouTubeOAuthConfigured()) {
+    return summary;
+  }
+
+  const intervalMs = getChannelReverifyIntervalMs();
+  const dueBefore = new Date(now.getTime() - intervalMs);
+
+  const [due, unverifiable] = await Promise.all([
+    // Active, re-checkable, and not already confirmed within the interval.
+    prisma.channelUnlock.findMany({
+      where: {
+        revokedAt: null,
+        refreshToken: { not: null },
+        OR: [{ lastVerifiedAt: null }, { lastVerifiedAt: { lte: dueBefore } }],
+      },
+      select: { id: true, userId: true, channelId: true, refreshToken: true },
+      orderBy: { lastVerifiedAt: { sort: "asc", nulls: "first" } },
+      take: REVERIFY_BATCH_SIZE,
+    }),
+    prisma.channelUnlock.count({
+      where: { revokedAt: null, refreshToken: null },
+    }),
+  ]);
+
+  summary.unverifiable = unverifiable;
+
+  for (const grant of due) {
+    if (shouldProcess && !(await shouldProcess(grant.id))) {
+      continue;
+    }
+
+    summary.checked += 1;
+
+    try {
+      const token = await refreshAccessToken(grant.refreshToken!);
+      const subscribed = await checkChannelSubscription(token.accessToken, grant.channelId);
+
+      if (!subscribed) {
+        // The only path that revokes. Bounded by `now` so a grant re-confirmed
+        // by a concurrent OAuth callback is not closed on a stale verdict.
+        const revoked = await revokeChannelAccess(
+          grant.userId,
+          grant.channelId,
+          "UNSUBSCRIBED",
+          now,
+        );
+        if (revoked) {
+          summary.revoked += 1;
+        } else {
+          summary.superseded += 1;
+        }
+        continue;
+      }
+
+      await prisma.channelUnlock.update({
+        where: { id: grant.id },
+        data: {
+          lastVerifiedAt: now,
+          // Google rotates the refresh token on some refreshes; keep the newest
+          // so the next pass does not use a spent credential.
+          ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
+        },
+      });
+      summary.stillSubscribed += 1;
+    } catch (error) {
+      // "Could not check" — not a negative verdict. Leave the grant alone.
+      summary.failed += 1;
+      console.error(
+        `[Channel Reverify] Could not re-verify grant ${grant.id} (user ${grant.userId}); ` +
+          `leaving access intact:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  return summary;
 }
 
 // ── List published videos with per-user unlock state ─────────────────────────
@@ -205,7 +423,9 @@ export async function listVideosForUser(userId: string, page: number, limit: num
       select: { videoId: true, unlockedAt: true },
     }),
     prisma.channelUnlock.findFirst({
-      where: { userId },
+      // Mirrors getChannelAccess: a revoked grant is inert, so the feed falls
+      // back to per-card state for this user.
+      where: { userId, revokedAt: null },
       select: { channelId: true, unlockedAt: true, verifiedAt: true },
     }),
   ]);
@@ -326,6 +546,12 @@ export interface UnlockOptions {
    */
   channelId?: string | null;
   verifiedAt?: Date | null;
+  /**
+   * Google's long-lived credential from the same round-trip. Persisted with the
+   * grant so the sweep can later detect an unsubscribe; without it the grant is
+   * permanent, which is the pre-migration behaviour.
+   */
+  refreshToken?: string | null;
 }
 
 export async function unlockVideo(
@@ -394,12 +620,14 @@ export async function unlockVideo(
   });
 
   // The verified subscription is to the channel, so grant the channel too. This
-  // is what stops the next video from needing another OAuth round-trip.
+  // is what stops the next video from needing another OAuth round-trip, and it
+  // carries the refresh token the sweep needs to notice a later cancellation.
   let channelGranted = false;
   if (options.channelId) {
     await grantChannelAccess(userId, {
       channelId: options.channelId,
       verifiedAt: options.verifiedAt ?? null,
+      refreshToken: options.refreshToken ?? null,
     });
     channelGranted = true;
   }

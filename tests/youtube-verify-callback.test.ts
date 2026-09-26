@@ -63,7 +63,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   oauthMock.getVerifyReturnUrl.mockReturnValue("daghapp://youtube/verify");
   oauthMock.verifyStateToken.mockReturnValue(STATE);
-  oauthMock.exchangeCodeForToken.mockResolvedValue("access-token");
+  oauthMock.exchangeCodeForToken.mockResolvedValue({
+    accessToken: "access-token",
+    refreshToken: "refresh-token",
+  });
   oauthMock.checkChannelSubscription.mockResolvedValue(true);
   oauthMock.setCachedVerification.mockResolvedValue(undefined);
   communityMock.unlockVideo.mockResolvedValue({
@@ -104,6 +107,21 @@ describe("YouTubeVerifyController.callback", () => {
       "user-1",
       "card-1",
       expect.objectContaining({ channelId: "UC-channel" }),
+    );
+  });
+
+  it("forwards the refresh token so the grant can later be re-verified", async () => {
+    // The grant is only re-checkable while a long-lived credential is stored
+    // against it. If the callback drops the token, an unsubscribe is never
+    // detected and the feed stays open.
+    const { res } = mockRes();
+    await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
+
+    expect(oauthMock.checkChannelSubscription).toHaveBeenCalledWith("access-token", "UC-channel");
+    expect(communityMock.unlockVideo).toHaveBeenCalledWith(
+      "user-1",
+      "card-1",
+      expect.objectContaining({ refreshToken: "refresh-token" }),
     );
   });
 

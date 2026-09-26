@@ -4,9 +4,11 @@ import {
   signVerifyState,
   verifyStateToken,
   exchangeCodeForToken,
+  refreshAccessToken,
   checkChannelSubscription,
   getCachedVerification,
   setCachedVerification,
+  getChannelReverifyIntervalMs,
 } from "../src/services/youtube-oauth.service.js";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -84,13 +86,33 @@ describe("exchangeCodeForToken", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const token = await exchangeCodeForToken("code-abc");
-    expect(token).toBe("tok-1");
+    expect(token).toEqual({ accessToken: "tok-1", refreshToken: null });
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("https://oauth2.googleapis.com/token");
     expect(String(init.body)).toContain("code=code-abc");
     expect(String(init.body)).toContain("grant_type=authorization_code");
     expect(String(init.body)).toContain("client_id=client-123");
+  });
+
+  it("returns the refresh token when Google issues one", async () => {
+    // The refresh token is what makes a channel grant re-verifiable, so it must
+    // survive the exchange rather than being dropped on the floor.
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_ID", "client-123");
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_SECRET", "secret-123");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ access_token: "tok-1", refresh_token: "refresh-1", expires_in: 3600 }),
+        ),
+    );
+
+    await expect(exchangeCodeForToken("code-abc")).resolves.toEqual({
+      accessToken: "tok-1",
+      refreshToken: "refresh-1",
+    });
   });
 
   it("throws when Google rejects the exchange", async () => {
@@ -144,6 +166,76 @@ describe("checkChannelSubscription", () => {
       status: 401,
       message: "nope",
     });
+  });
+});
+
+describe("refreshAccessToken", () => {
+  it("mints a new access token from a stored refresh token", async () => {
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_ID", "client-123");
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_SECRET", "secret-123");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ access_token: "tok-2", expires_in: 3600 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(refreshAccessToken("refresh-1")).resolves.toEqual({
+      accessToken: "tok-2",
+      // Google normally omits refresh_token on a refresh, so the caller's
+      // credential must be carried through or the next sweep has nothing to use.
+      refreshToken: "refresh-1",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://oauth2.googleapis.com/token");
+    expect(String(init.body)).toContain("refresh_token=refresh-1");
+    expect(String(init.body)).toContain("grant_type=refresh_token");
+  });
+
+  it("adopts a rotated refresh token when Google returns one", async () => {
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_ID", "client-123");
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_SECRET", "secret-123");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ access_token: "tok-2", refresh_token: "refresh-2" })),
+    );
+
+    await expect(refreshAccessToken("refresh-1")).resolves.toEqual({
+      accessToken: "tok-2",
+      refreshToken: "refresh-2",
+    });
+  });
+
+  it("throws when Google rejects the refresh", async () => {
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_ID", "client-123");
+    vi.stubEnv("YOUTUBE_OAUTH_CLIENT_SECRET", "secret-123");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ error: "invalid_grant" }, 400)),
+    );
+
+    // The sweep treats this as "could not check" and keeps access intact.
+    await expect(refreshAccessToken("spent")).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("invalid_grant"),
+    });
+  });
+
+  it("throws when OAuth credentials are missing", async () => {
+    await expect(refreshAccessToken("refresh-1")).rejects.toThrow(/not configured/i);
+  });
+});
+
+describe("getChannelReverifyIntervalMs", () => {
+  it("defaults to 24 hours", () => {
+    vi.stubEnv("YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS", "");
+    expect(getChannelReverifyIntervalMs()).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it("honours an override", () => {
+    vi.stubEnv("YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS", "60000");
+    expect(getChannelReverifyIntervalMs()).toBe(60000);
   });
 });
 

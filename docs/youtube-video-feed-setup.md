@@ -341,18 +341,31 @@ it in full. `teaserUrl` is stored clipped, so even a client that ignores
 A YouTube subscription is to the **channel**, not to an individual video, so
 access is recorded at both levels:
 
-- `channel_unlocks` — `(userId, channelId, unlockedAt, verifiedAt)` with
-  `@@unique([userId, channelId])`. This is the row that actually opens the feed:
-  once it exists, **every** card is unlocked, including videos published after
-  the grant. Written by the OAuth callback on a positive subscription check.
-  Durable and never re-checked, so a subscriber who later unsubscribes keeps
-  access — see [how access is granted](#how-access-is-granted).
+- `channel_unlocks` — `(userId, channelId, unlockedAt, verifiedAt, refreshToken,
+  lastVerifiedAt, revokedAt, revokedReason)` with `@@unique([userId, channelId])`.
+  This is the row that actually opens the feed: once it exists and is not
+  revoked, **every** card is unlocked, including videos published after the
+  grant. Written by the OAuth callback on a positive subscription check, and
+  re-confirmed by a daily sweep that revokes it if the subscription was
+  cancelled — see [how access is granted](#how-access-is-granted). `refreshToken`
+  is what makes that re-check possible; `revokedAt` non-null means the grant is
+  inert and every read path filters it out.
 - `video_unlocks` — `(userId, videoId, unlockedAt)` with
   `@@unique([userId, videoId])`. Still written for the video the user actually
   unlocked, because it is what the per-video analytics count
   (`WATCH_FULL_VIDEO`, conversion rate) reports on. **Not** the access
   authority — a subscriber who never opened a given card has no row for it, and
-  is still served that card.
+  is still served that card. It is also not an *independent* grant: it is the
+  same subscription restated per card, so revoking a channel grant deletes
+  these rows too. `video_interactions` is append-only and is left intact, so
+  funnel analytics survive a revocation.
+
+The `20261007_add_channel_unlocks` migration backfilled one channel row per user
+from their existing `video_unlocks`, so pre-existing subscribers were not
+re-gated by the move to channel-level access. Those backfilled rows have no
+`refreshToken` (the round-trip that could have captured one predates the
+column), so they are never re-verified and keep working — see the sweep's
+fail-open rules below.
 - `video_interactions` — append-only analytics rows per user action.
 - Rehydrate on app launch with `GET /community/my-unlocks` — no client-side
   state migration needed. Branch on `hasChannelAccess` first: when it is `true`
@@ -389,8 +402,8 @@ Worth being explicit, because the API's limits shape the design:
   app claiming a verified "watch" is client-reported and should be treated as a
   hint, not evidence.
 - It cannot see a subscription made on a **different account** than the one
-  authorized, and a user can revoke it at any time (our verdict cache just
-  expires and the next unlock re-opens the gate).
+  authorized, and a user can revoke it at any time — the re-verification sweep
+  picks that up and closes the grant.
 - Verifying a subscription is **not** the same as being able to watch without
   one. A locked card stays locked; this is a funnel, not an access-control
   boundary. The full video is public on YouTube by design, so treat this as
@@ -432,19 +445,40 @@ without opening them is served all twenty.
 
 Two consequences worth designing around:
 
-- **The grant is permanent and never re-verified.** The cached verdict expires
-  (Redis TTL, default 24h), but the grant does not — it is a durable
-  entitlement, not a cache entry. Someone who unsubscribes keeps access until an
-  admin revokes the row. This is deliberate: revocation would need a reliable
-  "unsubscribed" signal that the API does not offer (the verdict only goes
-  stale, it does not flip), so silently re-locking paying supporters on a cache
-  miss would be worse than the alternative. Delete the `channel_unlocks` row to
-  revoke access manually.
+- **The grant is re-verified, and unsubscribing costs access.** A YouTube
+  subscription is mutable from outside our system, so a grant written once
+  cannot stay authoritative forever. The OAuth round-trip stores Google's
+  refresh token alongside the grant, and a daily sweep
+  (`channel-grant-reverify`) re-runs the subscriptions check for every grant
+  that has gone unconfirmed for `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS`
+  (default 24h). A cancelled subscription revokes the grant, which also deletes
+  the per-video unlock rows it implies — otherwise a cancelled subscriber would
+  keep the individual videos they had already opened.
+
+  Two deliberate asymmetries in the sweep:
+
+  - It **fails open**. Only a definite negative verdict (the API returning an
+    empty `items` list) revokes. A thrown error means "could not check", so a
+    Google outage, a quota exhaustion, or a spent refresh token leaves the grant
+    intact and retries on the next pass. Silently re-locking paying supporters
+    on a transient error would be far worse than briefly over-granting.
+  - Grants with **no stored refresh token** are skipped, never revoked. Rows
+    created before token persistence cannot be re-checked, and revoking them
+    would close access to a still-valid subscription purely because we failed to
+    save a credential. They become re-verifiable the next time the user re-runs
+    the flow.
+
+  The upshot for the app: revocation is not instant. A user who unsubscribes
+  keeps access for up to one interval, so do not treat `hasChannelAccess` as a
+  real-time signal — it is for hiding subscribe CTAs, not for gating anything the
+  user pays for.
 - **The channel id comes from the callback, never from the client.** The unlock
   endpoint returns `channelGranted: false` on its own, because only the callback
   knows which channel it just verified. A client cannot ask for a grant on an
   arbitrary channel, and the row is `@@unique([userId, channelId])` so a repeat
-  verification is a no-op.
+  verification is a no-op. A grant revoked by the sweep is revived in place by
+  that same upsert, so a user who resubscribes regains the feed without a second
+  grant row.
 
 The app reads this as three flags, all in the API response:
 `meta.hasChannelAccess` on the feed, `hasChannelAccess` on
@@ -463,6 +497,7 @@ unlock reads that cache as its gate.
 | `YOUTUBE_OAUTH_REDIRECT_URI` | HTTPS callback; **must** be added to the client's Authorized redirect URIs in the Google console. Defaults to `<API_URL>/community/youtube/callback` when using `API_URL`. |
 | `YOUTUBE_VERIFY_RETURN_URL` | App deep link the browser returns to (default `daghapp://youtube/verify`) |
 | `YOUTUBE_VERIFY_CACHE_MS` | How long a verdict is cached before a re-check (default `3600000` = 1h). Reads are served from cache so feed loads / status polls never hit the API. |
+| `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` | How long a channel grant may go unconfirmed before the daily sweep re-checks it (default `86400000` = 24h). This is the window in which a user who unsubscribes keeps access; lower it to detect cancellations faster at the cost of YouTube quota. |
 
 The same Google Cloud project needs **YouTube Data API v3** enabled. Create the
 OAuth client under **APIs & Services → Credentials → Create credentials →

@@ -127,9 +127,9 @@ export class YouTubeVerifyController {
     }
 
     try {
-      const accessToken = await youtubeOauth.exchangeCodeForToken(code);
+      const token = await youtubeOauth.exchangeCodeForToken(code);
       const channelId = await resolveChannelId();
-      const subscribed = await youtubeOauth.checkChannelSubscription(accessToken, channelId);
+      const subscribed = await youtubeOauth.checkChannelSubscription(token.accessToken, channelId);
 
       let unlocked = false;
       let channelGranted = false;
@@ -142,6 +142,10 @@ export class YouTubeVerifyController {
         const result = await communityService.unlockVideo(payload.userId, payload.videoId, {
           channelId,
           verifiedAt: new Date(),
+          // Carried into the grant so the sweep can later re-check this
+          // subscription. Null when Google reuses an existing grant and omits
+          // it, which leaves the grant un-re-verified but working.
+          refreshToken: token.refreshToken,
         });
         if (result.success) {
           unlocked = true;

@@ -1680,10 +1680,13 @@ model VideoUnlock {
 // answers a per-video question — how many people unlocked *this* video, and what
 // the per-video conversion funnel looks like — which a channel grant cannot.
 //
-// A grant is permanent: it is written once, on a positive server-side verdict,
-// and never re-checked against the YouTube API. That is the same permanence the
-// per-video unlock already had, and it is what makes the feed free to browse
-// after a single OAuth round-trip.
+// A grant is re-confirmed, not permanent. It is written once on a positive
+// server-side verdict and then re-checked against the YouTube API on a schedule
+// (see reverifyChannelGrants), which revokes it if the subscription is later
+// cancelled. Re-checking needs a long-lived credential, so the OAuth refresh
+// token is persisted alongside the grant — a grant without one is left alone
+// rather than revoked, because an un-refreshable token is a gap in our OAuth
+// setup, not evidence the user unsubscribed.
 model ChannelUnlock {
   id         String   @id @default(uuid())
   userId     String
@@ -1694,11 +1697,28 @@ model ChannelUnlock {
   // for the user to open the feed), and the two timestamps answer different
   // questions when auditing the funnel.
   verifiedAt DateTime?
+  // Google's long-lived credential, captured during the OAuth round-trip
+  // (access_type=offline). Needed because the re-verification sweep runs long
+  // after the ~1h access token issued alongside it has expired. Null on rows
+  // granted before this column existed: those grants are never re-verified.
+  refreshToken String?
+  // When the verdict was last confirmed positive. Drives which rows the sweep
+  // is due to re-check, so a re-verified grant is not polled again until the
+  // interval lapses.
+  lastVerifiedAt DateTime?
+  // Set when the sweep observed the subscription is gone. Non-null means the
+  // grant is inert: every read path filters it out. The row is kept rather than
+  // deleted because it is the audit record of a subscription that was once
+  // held and later cancelled.
+  revokedAt     DateTime?
+  revokedReason String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, channelId])
-  @@index([userId])
+  @@index([userId, revokedAt])
+  // Sweep index: active rows only, ordered by staleness.
+  @@index([revokedAt, lastVerifiedAt])
   @@map("channel_unlocks")
 }
 
