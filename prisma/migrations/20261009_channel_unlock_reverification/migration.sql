@@ -23,24 +23,27 @@
 -- survives as the audit record of a subscription that was once held.
 
 -- AlterTable
+-- IF NOT EXISTS throughout so a partially-applied previous attempt can be
+-- recovered by re-running `migrate deploy`, per the repo convention.
 ALTER TABLE "channel_unlocks"
-ADD COLUMN     "refreshToken" TEXT,
-ADD COLUMN     "lastVerifiedAt" TIMESTAMP(3),
-ADD COLUMN     "revokedAt" TIMESTAMP(3),
-ADD COLUMN     "revokedReason" TEXT;
+ADD COLUMN IF NOT EXISTS "refreshToken" TEXT,
+ADD COLUMN IF NOT EXISTS "lastVerifiedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "revokedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "revokedReason" TEXT;
 
 -- Grants written before this migration were confirmed once and never re-checked.
 -- Stamp lastVerifiedAt so the sweep does not treat the whole existing table as
 -- overdue and spend the YouTube quota budget in a single run.
+-- Re-runnable: on a second pass every row is already stamped, so this is a no-op.
 UPDATE "channel_unlocks"
 SET "lastVerifiedAt" = COALESCE("verifiedAt", "unlockedAt")
 WHERE "lastVerifiedAt" IS NULL;
 
 -- DropIndex
-DROP INDEX "channel_unlocks_userId_idx";
+DROP INDEX IF EXISTS "channel_unlocks_userId_idx";
 
 -- CreateIndex
-CREATE INDEX "channel_unlocks_userId_revokedAt_idx" ON "channel_unlocks"("userId", "revokedAt");
+CREATE INDEX IF NOT EXISTS "channel_unlocks_userId_revokedAt_idx" ON "channel_unlocks"("userId", "revokedAt");
 
 -- CreateIndex
-CREATE INDEX "channel_unlocks_revokedAt_lastVerifiedAt_idx" ON "channel_unlocks"("revokedAt", "lastVerifiedAt");
+CREATE INDEX IF NOT EXISTS "channel_unlocks_revokedAt_lastVerifiedAt_idx" ON "channel_unlocks"("revokedAt", "lastVerifiedAt");

@@ -95,6 +95,13 @@ export class AuthAdminController {
   }
 
   // Delete user from app
+  //
+  // `admin_activity_logs.actorId` is ON DELETE RESTRICT, so the target's audit
+  // rows are purged in the same transaction before the user row goes. Without
+  // this, deleting any admin — or anyone who has ever performed an admin action
+  // — aborts on P2003 and returns a 500 with the user still present. Every other
+  // owned row cascades; this is the only restrict left on users, since
+  // subscription_access_grants.grantedById now nulls out.
   async deleteUser(req: Request, res: Response) {
     try {
       const unauthorizedResponse = ensureAdmin(req, res);
@@ -110,17 +117,18 @@ export class AuthAdminController {
         return fail(res, 404, "User not found");
       }
 
-      await prisma.user.delete({ where: { id: userId } });
+      await prisma.$transaction([
+        prisma.adminActivityLog.deleteMany({ where: { actorId: userId } }),
+        prisma.user.delete({ where: { id: userId } }),
+      ]);
 
       return ok(res, null as never, "User deleted successfully");
     } catch (error) {
+      // Log the detail, return none of it: the previous version passed
+      // error.message straight to the client, which leaked the Prisma error code
+      // and the failing table/column names.
       console.error("Delete user error:", error);
-      return fail(
-        res,
-        500,
-        "Failed to delete user",
-        error instanceof Error ? error.message : "Unknown error",
-      );
+      return fail(res, 500, "Failed to delete user");
     }
   }
 

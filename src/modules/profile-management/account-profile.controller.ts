@@ -130,7 +130,10 @@ export async function updateAccountProfile(req: Request, res: Response) {
  * passwordHash) are deleted on authentication alone.
  *
  * `AdminActivityLog.actor` has an `onDelete: Restrict` FK, so the user's audit
- * rows are purged before the user row itself (all other owned rows cascade).
+ * rows are purged before the user row itself (every other owned row cascades).
+ * This is the only restrict left on users — `SubscriptionAccessGrant.grantedBy`
+ * nulls out, so issuing a comp no longer blocks the issuer from deleting their
+ * own account, and the comps they issued stay in force for their recipients.
  */
 export async function deleteAccount(req: Request, res: Response) {
   try {

@@ -206,7 +206,9 @@ model UserSubscription {
 // other, and revoking a comp cannot be mistaken for a cancellation.
 //
 // Grants are soft-revoked (revokedAt/revokedBy) and never deleted: the row is
-// the audit record explaining why someone had access.
+// the audit record explaining why someone had access. For the same reason both
+// actor FKs null out rather than restrict, so an admin can delete their own
+// account without either losing the comps they issued or being blocked by them.
 model SubscriptionAccessGrant {
   id               String             @id @default(uuid())
   userId           String
@@ -219,14 +221,18 @@ model SubscriptionAccessGrant {
   startDate        DateTime           @default(now())
   /// null means perpetual. Grants never auto-renew; they run to endDate or forever.
   endDate          DateTime?
-  grantedById      String
+  /// null once the admin who issued the comp deletes their own account. The
+  /// comp stays in force for the grantee — one admin closing their account must
+  /// not silently revoke someone else's access — but the row no longer says who
+  /// issued it. Matches revokedById below.
+  grantedById      String?
   revokedAt        DateTime?
   revokedById      String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
   user            User                     @relation("AccessGrantSubject", fields: [userId], references: [id], onDelete: Cascade)
-  grantedBy       User                     @relation("AccessGrantIssuer", fields: [grantedById], references: [id], onDelete: Restrict)
+  grantedBy       User?                    @relation("AccessGrantIssuer", fields: [grantedById], references: [id], onDelete: SetNull)
   revokedBy       User?                    @relation("AccessGrantRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
   supportRequests PrioritySupportRequest[]
 
@@ -1688,20 +1694,20 @@ model VideoUnlock {
 // rather than revoked, because an un-refreshable token is a gap in our OAuth
 // setup, not evidence the user unsubscribed.
 model ChannelUnlock {
-  id         String   @id @default(uuid())
-  userId     String
-  channelId  String
-  unlockedAt DateTime @default(now())
+  id             String    @id @default(uuid())
+  userId         String
+  channelId      String
+  unlockedAt     DateTime  @default(now())
   // When the subscription verdict was obtained. Separate from unlockedAt
   // because the grant may be granted later than the check (e.g. the app waits
   // for the user to open the feed), and the two timestamps answer different
   // questions when auditing the funnel.
-  verifiedAt DateTime?
+  verifiedAt     DateTime?
   // Google's long-lived credential, captured during the OAuth round-trip
   // (access_type=offline). Needed because the re-verification sweep runs long
   // after the ~1h access token issued alongside it has expired. Null on rows
   // granted before this column existed: those grants are never re-verified.
-  refreshToken String?
+  refreshToken   String?
   // When the verdict was last confirmed positive. Drives which rows the sweep
   // is due to re-check, so a re-verified grant is not polled again until the
   // interval lapses.
@@ -1710,8 +1716,8 @@ model ChannelUnlock {
   // grant is inert: every read path filters it out. The row is kept rather than
   // deleted because it is the audit record of a subscription that was once
   // held and later cancelled.
-  revokedAt     DateTime?
-  revokedReason String?
+  revokedAt      DateTime?
+  revokedReason  String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
