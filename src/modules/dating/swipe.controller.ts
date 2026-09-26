@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import { prisma } from "../../config/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
+import { getEffectiveAccess } from "../../helpers/membership.js";
 import {
   getDiscoveryCandidates,
   resolveTourTravelContext,
@@ -361,18 +362,18 @@ export const getMyMatches = async (req: Request, res: Response) => {
  * List users who liked the current user (potential matches awaiting a response).
  * FREE tier users receive only a count; paid-tier users see the full list.
  * Response shape is always { count: number, profiles: Profile[] } for consistency.
+ *
+ * Access resolves through getEffectiveAccess rather than reading
+ * user_subscriptions directly, so a comped user and a user in free mode are
+ * both recognised as entitled. Reading the subscription row directly silently
+ * denied both.
  */
 export const getLikesReceived = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { subscription: { select: { tierCode: true } } },
-    });
-
-    const tierCode = user?.subscription?.tierCode ?? "FREE";
-    const isPaidTier = tierCode !== "FREE";
+    const access = await getEffectiveAccess(userId);
+    const isPaidTier = access.tierCode !== "FREE";
 
     const likes = await prisma.userSwipe.findMany({
       where: {

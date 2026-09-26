@@ -6,6 +6,12 @@ exception for.
 
 Every decision is made per grant, by an admin, and is recorded in the audit trail.
 
+> **Not the same as free mode.** Turning the payment system off grants *everyone*
+> the highest active paid plan automatically — see
+> [`disabling-payments.md`](./disabling-payments.md) §4. Grants remain the tool
+> for exempting a *specific* person while payments are on, and the only way to
+> give someone access permanently or at a tier above the top plan.
+
 ---
 
 ## How it works

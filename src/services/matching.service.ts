@@ -1,7 +1,7 @@
 import { prisma } from "../config/index.js";
 import type { Gender, LookingFor } from "../../generated/prisma/enums.js";
 import { haversineDistance, maxPairwiseDistance } from "../helpers/haversine.js";
-import { TIER_VALUE, resolveEffectiveAccess } from "../helpers/membership.js";
+import { TIER_VALUE, applyFreeMode, getFreeModeTierCode, resolveEffectiveAccess } from "../helpers/membership.js";
 
 // ─────────────────────────────────────────
 // Matching engine — candidate discovery, filtering & scoring
@@ -379,6 +379,9 @@ export async function getDiscoveryCandidates(
   });
 
   const now = new Date();
+  // Resolved once per request, not per candidate: free mode applies to the whole
+  // pool, and a per-candidate lookup would be an N+1 against every candidate.
+  const freeModeTier = await getFreeModeTierCode();
 
   const ranked = users.map((u) => {
     const profile = u.datingProfile!;
@@ -425,10 +428,14 @@ export async function getDiscoveryCandidates(
       interestsOverlap: profile.interests.filter((i) => myInterests.includes(i)).length,
       score: 0,
       // Rank by the perks tier, so a comp granted without includePaidPerks
-      // resolves to FREE and does not outrank a paying member.
+      // resolves to FREE and does not outrank a paying member. Free mode lifts
+      // the whole pool, which is why it is applied here rather than inside
+      // resolveEffectiveAccess.
       tierBoost: resolveTierBoost(
-        resolveEffectiveAccess({ subscription: u.subscription, grants: u.accessGrants, now })
-          .perksTierCode,
+        applyFreeMode(
+          resolveEffectiveAccess({ subscription: u.subscription, grants: u.accessGrants, now }),
+          freeModeTier,
+        ).perksTierCode,
       ),
       profileImage: u.profile?.bio_profile_image_url ?? null,
       scheduleOverlapDays,

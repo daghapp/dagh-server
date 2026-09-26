@@ -384,8 +384,11 @@ export async function getUserSubscription(userId: string) {
   });
 
   if (!subscription) {
+    // GRANT and FREE_MODE both resolve a tier the user has no subscription row
+    // for, so the plan has to be looked up by that tier. Falling through to the
+    // FREE plan here would report "GOLD_INVESTOR" alongside a plan named FREE.
     const freePlan =
-      access.source === "GRANT"
+      access.source === "GRANT" || access.source === "FREE_MODE"
         ? await prisma.membershipPlan.findUnique({
             where: { code: access.tierCode as MembershipTierCode },
           })

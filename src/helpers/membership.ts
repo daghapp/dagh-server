@@ -1,4 +1,8 @@
 import { prisma } from "../config/prisma.js";
+// Imported directly rather than through the config barrel: the barrel re-exports
+// ./payments, which pulls in the payment gateway service, and going through it
+// risks an import cycle on the access-resolver path.
+import { isPaymentsEnabled } from "../config/payments.js";
 import { SubscriptionStatus } from "../../generated/prisma/client.js";
 
 /**
@@ -29,7 +33,7 @@ export function tierValue(tierCode: string | null | undefined): number {
   return TIER_VALUE[tierCode] ?? TIER_VALUE.FREE;
 }
 
-export type AccessSource = "SUBSCRIPTION" | "GRANT" | "FREE";
+export type AccessSource = "SUBSCRIPTION" | "GRANT" | "FREE" | "FREE_MODE";
 
 export interface EffectiveAccess {
   /** Tier the user is entitled to. Drives content/paywall gating. */
@@ -171,6 +175,85 @@ export function resolveEffectiveAccess(input: {
   };
 }
 
+// ─────────────────────────────────────────
+// Free mode
+// ─────────────────────────────────────────
+// When the payment system is switched off, no one can pay — so the paid tier
+// stops being a thing anyone can acquire, and requiring one would lock the
+// whole app behind a checkout that cannot be completed. Free mode makes the
+// highest active paid plan available to everyone for the duration.
+//
+// It is deliberately automatic and derived from the payment switch rather than
+// being a second control: the failure this guards against is an admin pulling
+// the payment kill switch during a provider incident and finding a dead paywall
+// behind it. The cost of that choice is that free mode cannot be separated from
+// an outage — see docs/disabling-payments.md.
+
+/** Short cache: the tier is read on access resolution, and plan edits should show up promptly. */
+let freeModeCache: { tierCode: string | null; cachedAt: number } | null = null;
+const FREE_MODE_CACHE_TTL_MS = 10_000;
+
+/**
+ * The tier free mode grants, or null when payments are enabled.
+ *
+ * Resolved as the most expensive *active paid* plan, so a deactivating the
+ * top plan during an outage degrades the grant rather than silently keeping
+ * everyone at a tier that is no longer for sale.
+ */
+export async function getFreeModeTierCode(): Promise<string | null> {
+  const now = Date.now();
+  if (freeModeCache && now - freeModeCache.cachedAt < FREE_MODE_CACHE_TTL_MS) {
+    return freeModeCache.tierCode;
+  }
+
+  let tierCode: string | null = null;
+
+  try {
+    if (!(await isPaymentsEnabled())) {
+      const plan = await prisma.membershipPlan.findFirst({
+        where: { isActive: true, price: { gt: 0 }, code: { not: "FREE" } },
+        orderBy: { price: "desc" },
+        select: { code: true },
+      });
+      tierCode = plan?.code ?? null;
+    }
+  } catch (error) {
+    // Free mode must never be the reason somebody loses access. If the lookup
+    // fails, resolve their real entitlement rather than guessing.
+    console.error("[FREE_MODE] failed to resolve free-mode tier, using real access:", error);
+    return null;
+  }
+
+  freeModeCache = { tierCode, cachedAt: now };
+  return tierCode;
+}
+
+/**
+ * Applies the free-mode grant on top of a resolved entitlement.
+ *
+ * Pure so the in-batch discovery path can apply it without a per-candidate
+ * lookup, and so the rule is testable without a database.
+ *
+ * Free mode only ever adds access. Someone whose own entitlement already ranks
+ * above the free tier — a comp to a tier above the top active plan — keeps
+ * exactly what they had, including the perks setting on their grant.
+ */
+export function applyFreeMode(access: EffectiveAccess, freeModeTier: string | null): EffectiveAccess {
+  if (!freeModeTier) return access;
+  if (tierValue(freeModeTier) <= tierValue(access.tierCode)) return access;
+
+  return {
+    tierCode: freeModeTier,
+    source: "FREE_MODE",
+    grantId: null,
+    // Free mode grants the tier in full, paid perks included, so discovery
+    // ranking and priority support are open too. It is the same promise as the
+    // tier itself: nobody can buy the perk, so nobody is held to it.
+    includePaidPerks: true,
+    perksTierCode: freeModeTier,
+  };
+}
+
 /**
  * Loads the user's subscription and in-force grants, then resolves. This is the
  * function feature code should call instead of reading user_subscriptions
@@ -179,7 +262,7 @@ export function resolveEffectiveAccess(input: {
 export async function getEffectiveAccess(userId: string): Promise<EffectiveAccess> {
   const now = new Date();
 
-  const [subscription, grants] = await Promise.all([
+  const [subscription, grants, freeModeTier] = await Promise.all([
     prisma.userSubscription.findUnique({
       where: { userId },
       select: { tierCode: true, status: true, endDate: true },
@@ -196,19 +279,23 @@ export async function getEffectiveAccess(userId: string): Promise<EffectiveAcces
         createdAt: true,
       },
     }),
+    getFreeModeTierCode(),
   ]);
 
-  return resolveEffectiveAccess({
-    subscription: subscription
-      ? {
-          tierCode: subscription.tierCode,
-          status: subscription.status,
-          endDate: subscription.endDate,
-        }
-      : null,
-    grants,
-    now,
-  });
+  return applyFreeMode(
+    resolveEffectiveAccess({
+      subscription: subscription
+        ? {
+            tierCode: subscription.tierCode,
+            status: subscription.status,
+            endDate: subscription.endDate,
+          }
+        : null,
+      grants,
+      now,
+    }),
+    freeModeTier,
+  );
 }
 
 /**
@@ -228,4 +315,13 @@ export const hasPaidActiveMembership = async (userId: string): Promise<boolean> 
 export async function getPerksTierCode(userId: string): Promise<string> {
   const access = await getEffectiveAccess(userId);
   return access.perksTierCode;
+}
+
+/**
+ * Test-only reset of the free-mode tier cache. Clear this alongside
+ * `_resetPaymentControlCache()` after changing payment state, or the resolver
+ * will keep serving the previous answer for up to the cache TTL.
+ */
+export function _resetFreeModeCache(): void {
+  freeModeCache = null;
 }
