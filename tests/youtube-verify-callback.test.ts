@@ -70,6 +70,7 @@ beforeEach(() => {
     success: true,
     isUnlocked: true,
     unlockedAt: new Date("2026-02-01T00:00:00Z"),
+    channelGranted: true,
   });
   communityMock.logInteraction.mockResolvedValue({ success: true });
 });
@@ -82,7 +83,7 @@ describe("YouTubeVerifyController.callback", () => {
     });
     communityMock.unlockVideo.mockImplementation(async () => {
       order.push("unlock");
-      return { success: true, isUnlocked: true, unlockedAt: new Date() };
+      return { success: true, isUnlocked: true, unlockedAt: new Date(), channelGranted: true };
     });
 
     const { res } = mockRes();
@@ -90,6 +91,20 @@ describe("YouTubeVerifyController.callback", () => {
 
     expect(order).toEqual(["cache", "unlock"]);
     expect(oauthMock.setCachedVerification).toHaveBeenCalledWith("user-1", true);
+  });
+
+  it("hands the resolved channel id to the unlock so the grant is channel-wide", async () => {
+    // The whole point: a YouTube subscription is per channel, so the callback
+    // must pass the channel it verified against. Omitting it would leave the
+    // feed gated per-video and force another OAuth round-trip for the next card.
+    const { res } = mockRes();
+    await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
+
+    expect(communityMock.unlockVideo).toHaveBeenCalledWith(
+      "user-1",
+      "card-1",
+      expect.objectContaining({ channelId: "UC-channel" }),
+    );
   });
 
   it("logs only UNLOCK, leaving SUBSCRIBE_INTENT to the client tap", async () => {
@@ -110,7 +125,8 @@ describe("YouTubeVerifyController.callback", () => {
     expect(communityMock.unlockVideo).not.toHaveBeenCalled();
     expect(communityMock.logInteraction).not.toHaveBeenCalled();
     expect(redirect).toHaveBeenCalledWith(
-      "daghapp://youtube/verify?subscribed=false&videoId=card-1&unlocked=false",
+      "daghapp://youtube/verify?subscribed=false&videoId=card-1&unlocked=false" +
+        "&channelGranted=false&hasChannelAccess=false",
     );
   });
 
@@ -119,7 +135,28 @@ describe("YouTubeVerifyController.callback", () => {
     await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
 
     expect(redirect).toHaveBeenCalledWith(
-      "daghapp://youtube/verify?subscribed=true&videoId=card-1&unlocked=true",
+      "daghapp://youtube/verify?subscribed=true&videoId=card-1&unlocked=true" +
+        "&channelGranted=true&hasChannelAccess=true",
+    );
+  });
+
+  it("still reports the video as unlocked when only a legacy per-video grant existed", async () => {
+    // A pre-existing per-video unlock short-circuits before the channel grant is
+    // written (channelGranted: false). The card must still read as unlocked, or
+    // a returning subscriber would see it re-lock.
+    communityMock.unlockVideo.mockResolvedValue({
+      success: true,
+      isUnlocked: true,
+      unlockedAt: new Date("2026-01-15T00:00:00Z"),
+      channelGranted: false,
+    });
+
+    const { res, redirect } = mockRes();
+    await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
+
+    expect(redirect).toHaveBeenCalledWith(
+      "daghapp://youtube/verify?subscribed=true&videoId=card-1&unlocked=true" +
+        "&channelGranted=false&hasChannelAccess=false",
     );
   });
 

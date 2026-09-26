@@ -132,15 +132,20 @@ export class YouTubeVerifyController {
       const subscribed = await youtubeOauth.checkChannelSubscription(accessToken, channelId);
 
       let unlocked = false;
+      let channelGranted = false;
       if (subscribed) {
         // The verdict is cached first: unlockVideo re-reads it as its gate, and
         // a negative verdict must also be cached so repeat attempts within the
         // TTL do not burn API quota.
         await youtubeOauth.setCachedVerification(payload.userId, true);
 
-        const result = await communityService.unlockVideo(payload.userId, payload.videoId);
+        const result = await communityService.unlockVideo(payload.userId, payload.videoId, {
+          channelId,
+          verifiedAt: new Date(),
+        });
         if (result.success) {
           unlocked = true;
+          channelGranted = result.channelGranted;
           // Only UNLOCK is logged here. SUBSCRIBE_INTENT belongs to the client
           // tap that started this flow — logging it again on success would
           // double-count the funnel denominator.
@@ -155,8 +160,17 @@ export class YouTubeVerifyController {
         videoId: payload.videoId,
         subscribed,
         unlocked,
+        channelGranted,
       });
-      return redirectResult(res, { subscribed, videoId: payload.videoId, unlocked });
+      // channelGranted is the meaningful signal for the app: the subscription is
+      // to the channel, so it unlocked the whole feed, not just this card.
+      return redirectResult(res, {
+        subscribed,
+        videoId: payload.videoId,
+        unlocked,
+        channelGranted,
+        hasChannelAccess: channelGranted,
+      });
     } catch (error) {
       if (error instanceof YouTubeNotConfiguredError || error instanceof YouTubeApiError) {
         logCommunityWarn("community.verify.callback.warn", {
@@ -198,6 +212,8 @@ export class YouTubeVerifyController {
         userId,
         videoId: canonicalId,
         isUnlocked: unlockStatus.isUnlocked,
+        via: unlockStatus.via,
+        hasChannelAccess: unlockStatus.hasChannelAccess,
         verifiedSubscribed: cached?.subscribed ?? null,
         cached: Boolean(cached),
         durationMs: Date.now() - start,
@@ -208,6 +224,12 @@ export class YouTubeVerifyController {
           videoId: canonicalId,
           isUnlocked: unlockStatus.isUnlocked,
           unlockedAt: unlockStatus.unlockedAt,
+          // Which record opened the gate: CHANNEL for a subscriber, VIDEO for a
+          // legacy per-video unlock, null when still locked.
+          via: unlockStatus.via,
+          // Durable channel grant. Unlike verifiedSubscribed this never expires,
+          // because the grant is never re-checked — it is not a cache.
+          hasChannelAccess: unlockStatus.hasChannelAccess,
           verifiedSubscribed: cached?.subscribed ?? null,
           verifiedAt: cached?.verifiedAt ?? null,
           cached: Boolean(cached),

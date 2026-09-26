@@ -417,12 +417,12 @@ unlock).
 |--------|----------|------|--------------|
 | GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`, `requiresSubscription` and `channel`, and is gated accordingly. |
 | GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status (same gating and `channel`). |
-| GET | `/community/my-unlocks` | Bearer | Every video ID the caller has unlocked — call on app launch. |
+| GET | `/community/my-unlocks` | Bearer | Durable channel grant + individually unlocked video IDs — call on app launch. |
 | POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. |
-| POST | `/community/videos/:videoId/unlock` | Bearer | Grant full access (idempotent). Requires a positive subscription verdict → `403 SUBSCRIPTION_REQUIRED` otherwise. |
-| GET | `/community/voutube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }` so the app can send the user to the channel and verify in one round-trip. |
-| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, unlocks, redirects to the app deep link. |
-| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + last cached verdict (no API call). |
+| POST | `/community/videos/:videoId/unlock` | Bearer | Grant full access to the video and the channel (idempotent). Requires a positive subscription verdict → `403 SUBSCRIPTION_REQUIRED` otherwise. |
+| GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }` so the app can send the user to the channel and verify in one round-trip. |
+| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, grants the **channel**, redirects to the app deep link. |
+| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + channel grant + last cached verdict (no API call). |
 | GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate. |
 | POST | `/community/admin/videos` | Admin | Create a video card. |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
@@ -535,6 +535,38 @@ are never `null` in the DB (defaulting to `"Untitled"` / `""` and derived YouTub
 URLs respectively), so the client does not need null-guards on them. `unlockedAt`
 is the only nullable field (`null` until unlocked). Timestamps serialize as ISO-8601 strings.
 
+#### `meta.hasChannelAccess` — the feed-level unlock flag
+
+A YouTube subscription is to the **channel**, not to an individual video, so one
+successful verification unlocks the whole feed — including videos published
+later. `meta` describes the page as a whole; the per-card `isUnlocked` is still
+present and authoritative, so a client can render from the cards alone.
+
+```json
+{
+  "success": true,
+  "data": [ /* …cards… */ ],
+  "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 },
+  "meta": {
+    "hasChannelAccess": true,
+    "channelAccess": {
+      "channelId": "UC...",
+      "unlockedAt": "2026-10-01T00:00:00.000Z",
+      "verifiedAt": "2026-10-01T00:00:00.000Z"
+    }
+  }
+}
+```
+
+`hasChannelAccess` is `true` when the caller holds a durable channel grant, and
+`channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock"
+call to action at once instead of deriving the state card by card — otherwise a
+subscriber sees subscribe prompts on cards the server has already opened.
+`verifiedAt` is when the subscription was last confirmed and is informational
+only: the grant is never re-checked and never expires, so a subscriber who
+later unsubscribes keeps access (see
+[YouTube channel unlocks](youtube-video-feed-setup.md#how-access-is-granted)).
+
 #### `channel` — where to send the user to subscribe
 
 Present on every card (identical each time, so a card stays self-contained for
@@ -563,16 +595,31 @@ without an API call, so a handle-only setup costs nothing per feed load.
 ### GET /community/my-unlocks
 
 Rehydrates local `isSubscribed`/unlock state on app launch (avoid per-card
-lookups). Falls back to `[]` for a user with no unlocks.
+lookups). Returns the durable channel grant alongside the per-video rows.
 
 ```json
 {
   "success": true,
   "data": {
+    "hasChannelAccess": true,
+    "channelAccess": {
+      "channelId": "UC...",
+      "unlockedAt": "2026-10-01T00:00:00.000Z",
+      "verifiedAt": "2026-10-01T00:00:00.000Z"
+    },
     "unlocks": [{ "videoId": "uuid", "unlockedAt": "2026-10-01T00:00:00.000Z" }]
   }
 }
 ```
+
+`channelAccess` is `null` and `hasChannelAccess` is `false` for a user with no
+grant; `unlocks` is then `[]` for a user who has never unlocked anything.
+
+`unlocks` is deliberately **not** expanded to every video id when a channel
+grant exists. A subscriber has access to the whole feed, so materialising one row
+per video would grow without bound as the channel keeps publishing, and the app
+only needs to know "this user has everything". Branch on `hasChannelAccess` and
+treat the feed as fully unlocked; otherwise use `unlocks`.
 
 ### POST /community/videos/:videoId/interact
 
@@ -598,18 +645,36 @@ YouTube exposes no per-user watch API, so treat it as a hint, not evidence.
 
 ### POST /community/videos/:videoId/unlock
 
-Grants full access to the video. Idempotent (`@@unique([userId, videoId])`), and
-an existing unlock is returned untouched without re-checking YouTube — a granted
-unlock does not expire when the verdict cache lapses.
+Grants full access to the video **and to the channel**, because a YouTube
+subscription is channel-scoped. Idempotent, and an existing grant is returned
+untouched without re-checking YouTube — access does not expire when the verdict
+cache lapses.
 
 The grant is gated on a server-confirmed subscription verdict (see below), so
 this is **not** a client-trusted flag. In the normal flow the OAuth callback
-grants the unlock itself; call this afterwards only to re-check after the
-round-trip.
+grants it itself; call this afterwards only to re-check after the round-trip.
 
 ```json
-{ "success": true, "data": { "isUnlocked": true, "unlockedAt": "2026-10-01T00:00:00.000Z" }, "message": "Video unlocked" }
+{
+  "success": true,
+  "data": {
+    "isUnlocked": true,
+    "unlockedAt": "2026-10-01T00:00:00.000Z",
+    "channelGranted": true
+  },
+  "message": "Video unlocked"
+}
 ```
+
+`channelGranted` is `true` when this call recorded the channel grant, and
+`false` when the user was already unlocked — either by a channel grant or by a
+legacy per-video row. Both cases return `isUnlocked: true`; the flag exists so
+the app knows whether the whole feed is now open, not just this card.
+
+`channelGranted` is `false` for every direct call to this endpoint, because the
+channel id is only known to the OAuth callback, which resolves it from the
+subscription it just checked. Unlocking from here still records the per-video
+row; the feed stays gated per-video until a verification completes.
 
 Errors:
 
@@ -639,6 +704,13 @@ The gate rests on `GET /community/youtube/start/:videoId` → Google consent →
 (Redis, or in-memory without `REDIS_URL`) for `YOUTUBE_VERIFY_CACHE_MS`. Costs 1
 quota unit per check; the callback caches the verdict *before* the gated unlock
 reads it.
+
+The callback redirects to the app deep link with
+`?subscribed=&videoId=&unlocked=&channelGranted=&hasChannelAccess=`. On success
+`channelGranted=true` and `hasChannelAccess=true`, which is the app's signal that
+the **whole feed** is now open — not just the card that was tapped. A subscriber
+who taps unlock on a later video hits the grant immediately, with no second
+round-trip.
 
 Two things it is worth being explicit about:
 

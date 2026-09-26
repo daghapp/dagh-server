@@ -35,7 +35,8 @@ export class CommunityController {
       const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
       const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
 
-      const { videos, total } = await communityService.listVideosForUser(userId, page, limit);
+      const { videos, total, hasChannelAccess, channelAccess } =
+        await communityService.listVideosForUser(userId, page, limit);
 
       logCommunity("community.feed.list", {
         status: 200,
@@ -44,9 +45,20 @@ export class CommunityController {
         limit,
         count: videos.length,
         total,
+        hasChannelAccess,
         durationMs: Date.now() - start,
       });
-      return paginated(res, videos, total, page, limit, "Community videos retrieved");
+      // hasChannelAccess rides in `meta` so the app can hide every "Subscribe to
+      // Unlock" call to action at once instead of deriving it from the cards.
+      return paginated(
+        res,
+        videos,
+        total,
+        page,
+        limit,
+        "Community videos retrieved",
+        { hasChannelAccess, channelAccess },
+      );
     } catch (error) {
       logCommunityError("community.feed.list.error", {
         status: 500,
@@ -246,20 +258,21 @@ export class CommunityController {
   }
 
   // ── GET /community/my-unlocks ─────────────────────────────────────────────
-  // Returns the list of videoIds unlocked by the calling user.
-  // Called on app launch to rehydrate local isSubscribed state.
+  // Returns the videoIds the calling user has unlocked, plus the feed-level
+  // channel grant. Called on app launch to rehydrate local isSubscribed state.
   async getMyUnlocks(req: Request, res: Response) {
     const start = started();
     try {
-      const userId = req.user?.id as string;
-      const unlocks = await communityService.getUserUnlocks(userId);
+      const userId = req.user!.id as string;
+      const result = await communityService.getUserUnlocks(userId);
       logCommunity("community.my_unlocks", {
         status: 200,
         userId,
-        count: unlocks.length,
+        count: result.unlocks.length,
+        hasChannelAccess: result.hasChannelAccess,
         durationMs: Date.now() - start,
       });
-      return ok(res, { unlocks }, "User unlocks retrieved");
+      return ok(res, result, "User unlocks retrieved");
     } catch (error) {
       logCommunityError("community.my_unlocks.error", {
         status: 500,

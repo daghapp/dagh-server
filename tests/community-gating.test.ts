@@ -18,6 +18,10 @@ const prismaMock = {
     findMany: vi.fn(),
     upsert: vi.fn(),
   },
+  channelUnlock: {
+    findFirst: vi.fn(),
+    upsert: vi.fn(),
+  },
   videoInteraction: {
     create: vi.fn(),
     groupBy: vi.fn(),
@@ -35,7 +39,7 @@ vi.mock("../src/config/prisma.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/services/youtube-oauth.service.js", () => oauthMock);
 
-const { toCardPayload, unlockVideo, listVideosForUser } =
+const { toCardPayload, unlockVideo, listVideosForUser, getUnlockStatus, getUserUnlocks } =
   await import("../src/services/community.service.js");
 
 const CARD = {
@@ -50,12 +54,22 @@ const CARD = {
   publishedAt: new Date("2026-01-01T00:00:00Z"),
 };
 
+/** A durable channel grant: one confirmed subscription to the channel. */
+const CHANNEL_GRANT = {
+  channelId: "UC123",
+  unlockedAt: new Date("2026-02-01T00:00:00Z"),
+  verifiedAt: new Date("2026-02-01T00:00:00Z"),
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.$transaction.mockImplementation((ops: unknown[]) => Promise.all(ops));
   prismaMock.communityVideo.findFirst.mockResolvedValue({ id: "card-1" });
   prismaMock.videoUnlock.findUnique.mockResolvedValue(null);
   prismaMock.videoUnlock.upsert.mockResolvedValue({ unlockedAt: new Date("2026-02-01T00:00:00Z") });
+  // Default: no channel grant, so each test opts in explicitly.
+  prismaMock.channelUnlock.findFirst.mockResolvedValue(null);
+  prismaMock.channelUnlock.upsert.mockResolvedValue(CHANNEL_GRANT);
   vi.stubEnv("YOUTUBE_CHANNEL_ID", "UC123");
   vi.stubEnv("YOUTUBE_CHANNEL_HANDLE", "@diasporaaffairsgh");
 });
@@ -137,14 +151,108 @@ describe("listVideosForUser", () => {
       { videoId: "card-2", unlockedAt: new Date() },
     ]);
 
-    const { videos, total } = await listVideosForUser("user-1", 1, 20);
+    const { videos, total, hasChannelAccess } = await listVideosForUser("user-1", 1, 20);
 
     expect(total).toBe(2);
+    expect(hasChannelAccess).toBe(false);
     expect(videos[0].isUnlocked).toBe(false);
     expect(videos[0]).not.toHaveProperty("youtubeVideoId");
     expect(videos[0].channel).toEqual(CHANNEL);
     expect(videos[1].isUnlocked).toBe(true);
     expect(videos[1].youtubeVideoId).toBe("def456");
+  });
+
+  it("unlocks every card and reports the grant once, from the channel row", async () => {
+    // The channel grant is the single source of truth here: no per-video row
+    // exists for either card, which is exactly the state a subscriber is in
+    // after unlocking video one and then browsing forward.
+    prismaMock.communityVideo.findMany.mockResolvedValue([CARD, { ...CARD, id: "card-2" }]);
+    prismaMock.communityVideo.count.mockResolvedValue(2);
+    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
+    prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
+
+    const { videos, hasChannelAccess, channelAccess } = await listVideosForUser(
+      "user-1",
+      1,
+      20,
+    );
+
+    expect(hasChannelAccess).toBe(true);
+    expect(channelAccess?.channelId).toBe("UC123");
+    expect(videos.every((v) => v.isUnlocked)).toBe(true);
+    expect(videos.every((v) => v.requiresSubscription === false)).toBe(true);
+    // No per-video row was needed to unlock them.
+    expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("getUnlockStatus", () => {
+  it("reports CHANNEL for a subscriber so the client can hide subscribe CTAs", async () => {
+    prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
+
+    await expect(getUnlockStatus("user-1", "card-1")).resolves.toEqual({
+      isUnlocked: true,
+      unlockedAt: CHANNEL_GRANT.unlockedAt,
+      via: "CHANNEL",
+      hasChannelAccess: true,
+    });
+  });
+
+  it("falls back to VIDEO for a legacy per-video unlock", async () => {
+    const unlockedAt = new Date("2026-01-15T00:00:00Z");
+    prismaMock.videoUnlock.findUnique.mockResolvedValue({ unlockedAt });
+
+    await expect(getUnlockStatus("user-1", "card-1")).resolves.toEqual({
+      isUnlocked: true,
+      unlockedAt,
+      via: "VIDEO",
+      hasChannelAccess: false,
+    });
+  });
+
+  it("reports a locked card without touching the per-video table when a grant exists", async () => {
+    prismaMock.channelUnlock.findFirst.mockResolvedValue(null);
+    prismaMock.videoUnlock.findUnique.mockResolvedValue(null);
+
+    await expect(getUnlockStatus("user-1", "card-1")).resolves.toEqual({
+      isUnlocked: false,
+      unlockedAt: null,
+      via: null,
+      hasChannelAccess: false,
+    });
+  });
+});
+
+describe("getUserUnlocks", () => {
+  it("returns the channel grant alongside the per-video rows", async () => {
+    // Reported as a flag, not expanded into one row per video: the app needs to
+    // know "you have everything" and the channel keeps publishing.
+    prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
+    prismaMock.videoUnlock.findMany.mockResolvedValue([
+      { videoId: "card-1", unlockedAt: new Date("2026-02-01T00:00:00Z") },
+    ]);
+
+    const result = await getUserUnlocks("user-1");
+
+    expect(result.hasChannelAccess).toBe(true);
+    expect(result.channelAccess).toEqual({
+      channelId: "UC123",
+      unlockedAt: CHANNEL_GRANT.unlockedAt,
+      verifiedAt: CHANNEL_GRANT.verifiedAt,
+    });
+    expect(result.unlocks).toEqual([
+      { videoId: "card-1", unlockedAt: new Date("2026-02-01T00:00:00Z") },
+    ]);
+  });
+
+  it("reports no grant for a non-subscriber", async () => {
+    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
+
+    const result = await getUserUnlocks("user-1");
+
+    expect(result.hasChannelAccess).toBe(false);
+    expect(result.channelAccess).toBeNull();
+    expect(result.unlocks).toEqual([]);
   });
 });
 
@@ -226,7 +334,59 @@ describe("unlockVideo", () => {
 
       const result = await unlockVideo("user-1", "abc123");
 
-      expect(result).toEqual({ success: true, isUnlocked: true, unlockedAt });
+      expect(result).toEqual({
+        success: true,
+        isUnlocked: true,
+        unlockedAt,
+        channelGranted: false,
+      });
+      expect(oauthMock.getCachedVerification).not.toHaveBeenCalled();
+      expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
+    });
+
+    it("grants the channel so later videos need no further verification", async () => {
+      // A YouTube subscription is to the channel, so one confirmation must cover
+      // the whole feed — including videos published after the grant.
+      oauthMock.getCachedVerification.mockResolvedValue({
+        subscribed: true,
+        verifiedAt: "2026-02-01T00:00:00.000Z",
+      });
+      const verifiedAt = new Date("2026-02-01T00:00:00Z");
+
+      const result = await unlockVideo("user-1", "abc123", { channelId: "UC123", verifiedAt });
+
+      expect(prismaMock.channelUnlock.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: { userId: "user-1", channelId: "UC123", verifiedAt },
+        }),
+      );
+      expect(result).toEqual(expect.objectContaining({ success: true, channelGranted: true }));
+    });
+
+    it("does not write a channel grant when no channel id is supplied", async () => {
+      oauthMock.getCachedVerification.mockResolvedValue({
+        subscribed: true,
+        verifiedAt: "2026-02-01T00:00:00.000Z",
+      });
+
+      const result = await unlockVideo("user-1", "abc123");
+
+      expect(prismaMock.channelUnlock.upsert).not.toHaveBeenCalled();
+      expect(result).toEqual(expect.objectContaining({ channelGranted: false }));
+    });
+
+    it("short-circuits on an existing channel grant without re-checking YouTube", async () => {
+      prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
+
+      const result = await unlockVideo("user-1", "abc123");
+
+      expect(result).toEqual({
+        success: true,
+        isUnlocked: true,
+        unlockedAt: CHANNEL_GRANT.unlockedAt,
+        channelGranted: true,
+      });
+      // Re-reading a grant that is never re-checked would be wasted quota.
       expect(oauthMock.getCachedVerification).not.toHaveBeenCalled();
       expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
     });

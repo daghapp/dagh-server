@@ -59,6 +59,7 @@ model User {
   // Community video interactions & unlocks
   videoInteractions VideoInteraction[]
   videoUnlocks      VideoUnlock[]
+  channelUnlocks    ChannelUnlock[]
 
   adminActivityLogs AdminActivityLog[]
   adminProfile      AdminProfile?
@@ -1670,6 +1671,35 @@ model VideoUnlock {
 
   @@unique([userId, videoId])
   @@map("video_unlocks")
+}
+
+// ChannelUnlock: a confirmed subscription to a YouTube channel.
+//
+// A YouTube subscription is granted per CHANNEL, not per video, so this is the
+// row that actually unlocks the feed. VideoUnlock (above) is retained because it
+// answers a per-video question — how many people unlocked *this* video, and what
+// the per-video conversion funnel looks like — which a channel grant cannot.
+//
+// A grant is permanent: it is written once, on a positive server-side verdict,
+// and never re-checked against the YouTube API. That is the same permanence the
+// per-video unlock already had, and it is what makes the feed free to browse
+// after a single OAuth round-trip.
+model ChannelUnlock {
+  id         String   @id @default(uuid())
+  userId     String
+  channelId  String
+  unlockedAt DateTime @default(now())
+  // When the subscription verdict was obtained. Separate from unlockedAt
+  // because the grant may be granted later than the check (e.g. the app waits
+  // for the user to open the feed), and the two timestamps answer different
+  // questions when auditing the funnel.
+  verifiedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@map("channel_unlocks")
 }
 
 enum VideoInteractionType {

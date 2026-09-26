@@ -35,6 +35,12 @@ export interface PaginatedResponse<T = unknown> {
     limit: number;
     totalPages: number;
   };
+  /**
+   * Row-level context that describes the page as a whole rather than its items
+   * — e.g. the community feed's `hasChannelAccess`, which tells the app the
+   * whole page is unlocked without it having to inspect every card.
+   */
+  meta?: Record<string, unknown>;
   message?: string;
 }
 
@@ -63,6 +69,7 @@ export function paginated<T>(
   page: number,
   limit: number,
   message?: string,
+  meta?: Record<string, unknown>,
 ): Response {
   const body: PaginatedResponse<T> = {
     success: true,
@@ -75,5 +82,6 @@ export function paginated<T>(
     },
   };
   if (message) body.message = message;
+  if (meta) body.meta = meta;
   return res.json(body);
 }

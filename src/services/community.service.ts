@@ -112,15 +112,85 @@ async function resolvePublishedVideo(identifier: string) {
   });
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Channel-level access
+// ──────────────────────────────────────────────────────────────────────────
+// A YouTube subscription is granted per CHANNEL, not per video, so the record
+// that unlocks the feed is channel-scoped. Before this existed the only access
+// record was per-video, which meant confirming a subscription unlocked exactly
+// the card the user happened to tap — every other video from the same channel
+// stayed locked, and the app had to re-run the whole OAuth round-trip for each
+// one once the verdict cache lapsed (the gate fails closed on an absent verdict).
+//
+// The grant is permanent: written once on a positive server-side verdict and
+// never re-checked. That matches the per-video unlock it replaces ("an existing
+// unlock is never re-checked") and is what makes the feed free to browse after a
+// single OAuth round-trip.
+//
+// Per-video VideoUnlock rows are deliberately kept alongside this. They answer a
+// question a channel grant cannot — how many people unlocked *this* card, and
+// what the SUBSCRIBE_INTENT → UNLOCK conversion funnel looks like.
+
+export interface ChannelAccess {
+  channelId: string;
+  unlockedAt: Date;
+  verifiedAt: Date | null;
+}
+
+/**
+ * The caller's channel grant, or null.
+ *
+ * Queried by userId alone rather than (userId, channelId): resolving a channel
+ * id from a bare handle costs a YouTube API call, and the read sits on the feed
+ * hot path. Safe today because CommunityVideo carries no channelId — every card
+ * belongs to the one configured channel. If multi-channel support lands, add
+ * channelId to CommunityVideo and filter on it here, or a grant for one channel
+ * would unlock another's videos.
+ */
+export async function getChannelAccess(userId: string): Promise<ChannelAccess | null> {
+  const row = await prisma.channelUnlock.findFirst({
+    where: { userId },
+    select: { channelId: true, unlockedAt: true, verifiedAt: true },
+  });
+
+  if (!row) return null;
+  return { channelId: row.channelId, unlockedAt: row.unlockedAt, verifiedAt: row.verifiedAt };
+}
+
+/**
+ * Records a confirmed subscription. Idempotent: `update` is an empty no-op, so
+ * a repeat call returns the original grant and never moves `unlockedAt`.
+ */
+export async function grantChannelAccess(
+  userId: string,
+  input: { channelId: string; verifiedAt?: Date | null },
+): Promise<ChannelAccess> {
+  const row = await prisma.channelUnlock.upsert({
+    where: { userId_channelId: { userId, channelId: input.channelId } },
+    update: {}, // permanent — a re-grant must not rewrite the audit timestamp
+    create: {
+      userId,
+      channelId: input.channelId,
+      verifiedAt: input.verifiedAt ?? null,
+    },
+    select: { channelId: true, unlockedAt: true, verifiedAt: true },
+  });
+
+  return { channelId: row.channelId, unlockedAt: row.unlockedAt, verifiedAt: row.verifiedAt };
+}
+
 // ── List published videos with per-user unlock state ─────────────────────────
 // Used by GET /community/videos so the response already includes isUnlocked per
 // card. Each card is run through the payload gate, so locked videos expose only
 // their clipped preview.
+//
+// A channel grant unlocks every card at once, so the whole page is gated on one
+// boolean and the per-video unlock query is skipped entirely for a subscriber.
 
 export async function listVideosForUser(userId: string, page: number, limit: number) {
   const skip = (page - 1) * limit;
 
-  const [videos, total, unlocks] = await prisma.$transaction([
+  const [videos, total, unlocks, channelAccess] = await prisma.$transaction([
     prisma.communityVideo.findMany({
       where: { isPublished: true },
       orderBy: { publishedAt: "desc" },
@@ -134,15 +204,36 @@ export async function listVideosForUser(userId: string, page: number, limit: num
       where: { userId },
       select: { videoId: true, unlockedAt: true },
     }),
+    prisma.channelUnlock.findFirst({
+      where: { userId },
+      select: { channelId: true, unlockedAt: true, verifiedAt: true },
+    }),
   ]);
 
   const unlockedMap = new Map(unlocks.map((u) => [u.videoId, u.unlockedAt]));
 
   const enriched = videos.map((v) =>
-    toCardPayload(v, unlockedMap.has(v.id), unlockedMap.get(v.id) ?? null),
+    // The subscription covers the whole channel, so every card is unlocked and
+    // carries the grant's timestamp — including cards published since.
+    channelAccess
+      ? toCardPayload(v, true, channelAccess.unlockedAt)
+      : toCardPayload(v, unlockedMap.has(v.id), unlockedMap.get(v.id) ?? null),
   );
 
-  return { videos: enriched, total };
+  return {
+    videos: enriched,
+    total,
+    // Feed-level flag so the app can hide every "Subscribe to Unlock" call to
+    // action at once instead of evaluating the CTA per card.
+    hasChannelAccess: Boolean(channelAccess),
+    channelAccess: channelAccess
+      ? {
+          channelId: channelAccess.channelId,
+          unlockedAt: channelAccess.unlockedAt,
+          verifiedAt: channelAccess.verifiedAt,
+        }
+      : null,
+  };
 }
 
 // ── Get a single published video ─────────────────────────────────────────────
@@ -166,10 +257,31 @@ export async function getVideoForUser(userId: string, videoId: string) {
   const { isUnlocked, unlockedAt } = await getUnlockStatus(userId, video.id);
   return toCardPayload(video, isUnlocked, unlockedAt);
 }
-
 // ── Get unlock status for a single video ─────────────────────────────────────
 
-export async function getUnlockStatus(userId: string, videoId: string) {
+export interface UnlockStatus {
+  isUnlocked: boolean;
+  unlockedAt: Date | null;
+  /** Which record produced the answer — tells the app why a card is open. */
+  via: "CHANNEL" | "VIDEO" | null;
+  hasChannelAccess: boolean;
+}
+
+export async function getUnlockStatus(userId: string, videoId: string): Promise<UnlockStatus> {
+  // A channel subscription already covers this video, so the per-video row is
+  // never consulted for a subscriber. Checking the channel first also keeps the
+  // common case to a single indexed query.
+  const channelAccess = await getChannelAccess(userId);
+
+  if (channelAccess) {
+    return {
+      isUnlocked: true,
+      unlockedAt: channelAccess.unlockedAt,
+      via: "CHANNEL",
+      hasChannelAccess: true,
+    };
+  }
+
   const record = await prisma.videoUnlock.findUnique({
     where: { userId_videoId: { userId, videoId } },
     select: { unlockedAt: true },
@@ -178,6 +290,8 @@ export async function getUnlockStatus(userId: string, videoId: string) {
   return {
     isUnlocked: Boolean(record),
     unlockedAt: record?.unlockedAt ?? null,
+    via: record ? "VIDEO" : null,
+    hasChannelAccess: false,
   };
 }
 
@@ -186,17 +300,55 @@ export async function getUnlockStatus(userId: string, videoId: string) {
 // requires a server-confirmed subscription verdict — the client saying "I came
 // back from YouTube" is not evidence of anything. Idempotent: an existing unlock
 // is returned untouched and never re-checked against the YouTube API.
+//
+// Because the subscription is channel-scoped, a successful verification also
+// records a channel grant, which unlocks the whole feed from that point on —
+// including videos published later. The per-video row is still written, because
+// it is what the per-video analytics count.
 
 export type UnlockResult =
   | { success: false; code: "VIDEO_NOT_FOUND" }
   | { success: false; code: "SUBSCRIPTION_REQUIRED"; verifiedAt: string | null }
-  | { success: true; isUnlocked: true; unlockedAt: Date };
+  | {
+      success: true;
+      isUnlocked: true;
+      unlockedAt: Date;
+      /** True when this call also recorded the channel-wide grant. */
+      channelGranted: boolean;
+    };
 
-export async function unlockVideo(userId: string, videoId: string): Promise<UnlockResult> {
+export interface UnlockOptions {
+  /**
+   * Channel the subscription was verified against. Supplied by the OAuth
+   * callback, which has already resolved it. Omitted when OAuth is not
+   * configured, so the fail-open dev path grants the video without inventing a
+   * channel grant.
+   */
+  channelId?: string | null;
+  verifiedAt?: Date | null;
+}
+
+export async function unlockVideo(
+  userId: string,
+  videoId: string,
+  options: UnlockOptions = {},
+): Promise<UnlockResult> {
   const video = await resolvePublishedVideo(videoId);
 
   if (!video) {
     return { success: false, code: "VIDEO_NOT_FOUND" as const };
+  }
+
+  // Already covered by a channel grant: report unlocked without touching the
+  // YouTube API or the database at all.
+  const existingChannelAccess = await getChannelAccess(userId);
+  if (existingChannelAccess) {
+    return {
+      success: true,
+      isUnlocked: true,
+      unlockedAt: existingChannelAccess.unlockedAt,
+      channelGranted: true,
+    };
   }
 
   const existing = await prisma.videoUnlock.findUnique({
@@ -205,7 +357,12 @@ export async function unlockVideo(userId: string, videoId: string): Promise<Unlo
   });
 
   if (existing) {
-    return { success: true, isUnlocked: true, unlockedAt: existing.unlockedAt };
+    return {
+      success: true,
+      isUnlocked: true,
+      unlockedAt: existing.unlockedAt,
+      channelGranted: false,
+    };
   }
 
   // Gate on a positive, unexpired verification verdict. An absent verdict
@@ -236,7 +393,18 @@ export async function unlockVideo(userId: string, videoId: string): Promise<Unlo
     select: { unlockedAt: true },
   });
 
-  return { success: true, isUnlocked: true, unlockedAt: record.unlockedAt };
+  // The verified subscription is to the channel, so grant the channel too. This
+  // is what stops the next video from needing another OAuth round-trip.
+  let channelGranted = false;
+  if (options.channelId) {
+    await grantChannelAccess(userId, {
+      channelId: options.channelId,
+      verifiedAt: options.verifiedAt ?? null,
+    });
+    channelGranted = true;
+  }
+
+  return { success: true, isUnlocked: true, unlockedAt: record.unlockedAt, channelGranted };
 }
 
 // ── Log an interaction event ──────────────────────────────────────────────────
@@ -260,15 +428,33 @@ export async function logInteraction(
 
 // ── Get all unlocked video IDs for a user ─────────────────────────────────────
 // Used by GET /community/my-unlocks to rehydrate local state on app launch.
+//
+// A channel grant means the whole feed is open, so it is reported alongside the
+// per-video rows rather than being expanded into one row per video: the app
+// needs to know "you have everything" in order to stop showing subscribe CTAs,
+// and materialising every video id would grow without bound as the channel does.
 
 export async function getUserUnlocks(userId: string) {
-  const unlocks = await prisma.videoUnlock.findMany({
-    where: { userId },
-    select: { videoId: true, unlockedAt: true },
-    orderBy: { unlockedAt: "desc" },
-  });
+  const [unlocks, channelAccess] = await Promise.all([
+    prisma.videoUnlock.findMany({
+      where: { userId },
+      select: { videoId: true, unlockedAt: true },
+      orderBy: { unlockedAt: "desc" },
+    }),
+    getChannelAccess(userId),
+  ]);
 
-  return unlocks.map((u) => ({ videoId: u.videoId, unlockedAt: u.unlockedAt }));
+  return {
+    hasChannelAccess: Boolean(channelAccess),
+    channelAccess: channelAccess
+      ? {
+          channelId: channelAccess.channelId,
+          unlockedAt: channelAccess.unlockedAt,
+          verifiedAt: channelAccess.verifiedAt,
+        }
+      : null,
+    unlocks: unlocks.map((u) => ({ videoId: u.videoId, unlockedAt: u.unlockedAt })),
+  };
 }
 
 // ── Admin: get interaction counts for a video ─────────────────────────────────
