@@ -423,11 +423,11 @@ unlock).
 | GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }` so the app can send the user to the channel and verify in one round-trip. |
 | GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, grants the **channel**, redirects to the app deep link. |
 | GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + channel grant + last cached verdict (no API call). |
-| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate. |
+| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate, plus the YouTube counters the feed sorts use. |
 | POST | `/community/admin/videos` | Admin | Create a video card. |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
 | DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
-| POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API and add missing cards to the feed. |
+| POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API, add missing cards, and refresh the view/like counters on existing ones. |
 
 ### POST /community/admin/sync-youtube (Admin)
 
@@ -436,11 +436,19 @@ via `YOUTUBE_CHANNEL_ID` or `YOUTUBE_CHANNEL_HANDLE` (e.g. `@diasporaaffairsgh`)
 or an explicit `channelId` / `handle` in the request body, then fetches the latest
 uploads from the channel's uploads playlist.
 
-Only **new** uploads are inserted. Existing cards are never overwritten, so admin
-edits to title/description and soft-deletes (`isPublished = false`) survive a
-sync. Teasers are derived from the video's own embed URL bounded to the first 45
-seconds (`?start=0&end=45&rel=0`), so a freshly synced card can only serve a
-preview until the viewer subscribes. The full-length URL is never stored.
+Only **new** uploads are inserted. On an existing card the sync rewrites the
+YouTube view/like counters and nothing else, so admin edits to
+title/description and soft-deletes (`isPublished = false`) survive a sync while
+the engagement rankings still move. Teasers are derived from the video's own
+embed URL bounded to the first 45 seconds (`?start=0&end=45&rel=0`), so a freshly
+synced card can only serve a preview until the viewer subscribes. The
+full-length URL is never stored.
+
+`playlistItems` cannot return view/like counts, so the counters come from one
+extra `videos?part=statistics` call covering the whole batch (1 quota point).
+That call is allowed to fail: the uploads are still synced, just carrying their
+previous counts, because losing the ranking signal should not cost us the upload
+list we already paid for.
 
 Repeated syncs for the same channel are returned from a Redis-backed cooldown
 cache (`YOUTUBE_SYNC_COOLDOWN_MS`, default 1 hour) instead of re-hitting the
@@ -465,12 +473,16 @@ Response:
     "channelId": "UC...",
     "fetched": 6,
     "created": 4,
+    "updated": 2,
     "alreadyPresent": 2,
     "syncedAt": "2026-10-01T00:00:00.000Z",
     "cached": false
   }
 }
 ```
+
+`updated` counts existing cards whose counters were refreshed; `alreadyPresent` is
+a deprecated alias of it, kept so older clients keep parsing.
 
 `503` if `YOUTUBE_API_KEY` is not configured; `502` if the YouTube API call fails.
 
@@ -481,6 +493,14 @@ so the client can render the correct button color/behavior without extra calls.
 `videoId` is an alias of `id` — both are stable identifiers you can use as the
 `:videoId` path/query param on the other endpoints. `:videoId` also accepts the
 YouTube video id directly (`youtubeVideoId`).
+
+**Query params**
+
+| Param | Values | Default | Notes |
+|-------|--------|---------|-------|
+| `page` | integer ≥ 1 | `1` | |
+| `limit` | 1–50 | `20` | |
+| `sort` | `newest`, `most_watched`, `most_liked` | `newest` | Case-insensitive. An unrecognised value falls back to `newest` rather than erroring; the order actually applied is echoed in `meta.sort` |
 
 A **locked** card:
 
@@ -497,6 +517,8 @@ A **locked** card:
       "previewStartSeconds": 0,
       "previewDurationSeconds": 45,
       "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      "viewCount": 12480,
+      "likeCount": 932,
       "isUnlocked": false,
       "requiresSubscription": true,
       "unlockedAt": null,
@@ -509,7 +531,8 @@ A **locked** card:
       "publishedAt": "2026-10-01T00:00:00.000Z"
     }
   ],
-  "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 }
+  "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 },
+  "meta": { "hasChannelAccess": false, "channelAccess": null, "sort": "NEWEST" }
 }
 ```
 
@@ -534,6 +557,38 @@ Non-nullable string fields (`title`, `description`, `thumbnailUrl`, `teaserUrl`)
 are never `null` in the DB (defaulting to `"Untitled"` / `""` and derived YouTube
 URLs respectively), so the client does not need null-guards on them. `unlockedAt`
 is the only nullable field (`null` until unlocked). Timestamps serialize as ISO-8601 strings.
+
+#### `sort` — ranking the feed by engagement
+
+`?sort=most_watched` and `?sort=most_liked` reorder the feed by YouTube's public
+view and like counts, which lets the app offer "Most Liked" / "Most Watched" tabs
+alongside the default chronological feed.
+
+| Sort | Ordering |
+|------|----------|
+| `newest` (default) | `publishedAt` desc |
+| `most_watched` | `viewCount` desc, then `publishedAt` desc |
+| `most_liked` | `likeCount` desc, then `publishedAt` desc |
+
+The counts come from the channel sync (`POST /community/admin/sync-youtube`), not
+from this server's own interaction log — those rows only see activity inside this
+app, so they cannot report what happened on the channel. They are refreshed each
+sync run, so a long-standing popular video can legitimately outrank a newer one,
+and a video that goes viral climbs the ranking over time rather than staying
+where it was first published.
+
+Every ordering ends in the same deterministic tie-break chain, so paging through
+a sorted feed (`?sort=most_liked&page=2`) cannot repeat or drop a card the way an
+unordered tie would.
+
+`viewCount` / `likeCount` ride on **every** card, locked included — they describe
+the video rather than granting access to it, so there is no reason to withhold
+them. Read them straight off the response to label a tab; no extra request needed.
+A `0` means either genuinely unwatched or never synced, so treat it as "no signal
+yet" rather than "nobody watched this".
+
+`meta.sort` echoes the applied order in upper case (`NEWEST`, `MOST_WATCHED`,
+`MOST_LIKED`) so a client can confirm what the server did with its request.
 
 #### `meta.hasChannelAccess` — the feed-level unlock flag
 
@@ -780,6 +835,11 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
     "youtubeVideoId": "dQw4w9WgXcQ",
     "interactions": { "SUBSCRIBE_INTENT": 40, "PREVIEW_CLIP": 300, "WATCH_FULL_VIDEO": 22, "UNLOCK": 18 },
     "totalUnlocks": 18,
+    "youtube": {
+      "viewCount": 12480,
+      "likeCount": 932,
+      "statsSyncedAt": "2026-10-01T00:00:00.000Z"
+    },
     "conversionRate": 0.45,
     "totalWatchTimeMs": 5420000,
     "avgWatchTimeMs": 28942
@@ -790,6 +850,14 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
 `totalWatchTimeMs` / `avgWatchTimeMs` aggregate the client-reported `durationMs`
 (milliseconds) across interactions; they are `null` until clients start sending
 `durationMs` with `POST /community/videos/:videoId/interact`.
+
+`youtube` reports the channel-wide counters the feed's `most_watched` /
+`most_liked` sorts are built on. They are deliberately kept apart from
+`interactions`: the latter only covers activity inside this app, so a high
+`likeCount` alongside a low `PREVIEW_CLIP` count says the audience already cares
+about a video the feed is not surfacing. `statsSyncedAt` is `null` when the card
+predates the counters or the last sync could not read them, which distinguishes a
+stale ranking from a genuinely unwatched video.
 
 ### POST /community/admin/videos (Admin)
 
@@ -802,7 +870,9 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
   "youtubeVideoId": "dQw4w9WgXcQ",
   "previewStartSeconds": 0,
   "previewDurationSeconds": 45,
-  "isPublished": true
+  "isPublished": true,
+  "viewCount": 0,
+  "likeCount": 0
 }
 ```
 
@@ -810,6 +880,10 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
 storing the full URL there defeats the gate for every locked viewer.
 `previewStartSeconds` (default 0) and `previewDurationSeconds` (default 45) bound
 the clip.
+
+`viewCount` / `likeCount` are optional (default 0) and only worth setting for a
+hand-made card that would otherwise sit at the bottom of the engagement-sorted
+feeds until the next channel sync sees it. Any later sync overwrites both.
 
 `409` if a card with that `youtubeVideoId` already exists.
 

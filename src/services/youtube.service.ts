@@ -28,7 +28,12 @@ export class YouTubeApiError extends Error {
   }
 }
 
-export interface YouTubeCard {
+export interface YouTubeStatistics {
+  viewCount: number;
+  likeCount: number;
+}
+
+export interface YouTubeCard extends YouTubeStatistics {
   youtubeVideoId: string;
   title: string;
   description: string;
@@ -204,7 +209,20 @@ export async function fetchUploadsPlaylistId(channelId: string): Promise<string>
 
 // ── Mapping ──────────────────────────────────────────────────────────────────
 
-export function cardFromPlaylistItem(item: Record<string, unknown>): YouTubeCard | null {
+/**
+ * YouTube returns counters as strings, and omits the whole `statistics` object
+ * for private/age-restricted/removed videos. Anything unparseable or negative
+ * becomes 0 so a malformed value can never reach an ORDER BY or the client.
+ */
+function toCount(value: unknown): number {
+  const n = typeof value === "string" ? Number(value) : typeof value === "number" ? value : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+export function cardFromPlaylistItem(
+  item: Record<string, unknown>,
+  statistics?: YouTubeStatistics,
+): YouTubeCard | null {
   const snippet = (item?.snippet ?? {}) as Record<string, unknown>;
   const resourceId = (snippet.resourceId ?? {}) as Record<string, unknown>;
   const videoId = resourceId.videoId;
@@ -214,8 +232,6 @@ export function cardFromPlaylistItem(item: Record<string, unknown>): YouTubeCard
   const title =
     typeof snippet.title === "string" && snippet.title.trim() ? snippet.title.trim() : "Untitled";
   const description = typeof snippet.description === "string" ? snippet.description.trim() : "";
-  const publishedAt =
-    typeof snippet.publishedAt === "string" ? new Date(snippet.publishedAt) : new Date();
 
   return {
     youtubeVideoId: videoId,
@@ -225,8 +241,51 @@ export function cardFromPlaylistItem(item: Record<string, unknown>): YouTubeCard
     previewStartSeconds: DEFAULT_PREVIEW_START_SECONDS,
     previewDurationSeconds: DEFAULT_PREVIEW_DURATION_SECONDS,
     thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    publishedAt,
+    publishedAt:
+      typeof snippet.publishedAt === "string" ? new Date(snippet.publishedAt) : new Date(),
+    viewCount: statistics?.viewCount ?? 0,
+    likeCount: statistics?.likeCount ?? 0,
   };
+}
+
+// ── Public engagement counters ───────────────────────────────────────────────
+// `playlistItems.list` cannot return them: its parts are contentDetails, id,
+// snippet and status, so viewCount/likeCount are only readable from `videos`.
+// That costs one extra request, but the whole batch rides in a single call —
+// `videos.list` accepts up to 50 comma-separated ids for 1 quota point, so the
+// marginal cost is 1 point per sync regardless of how many uploads we pull.
+//
+// The feed needs these to rank "most watched" / "most liked", and the only
+// other signal available in-process (VideoInteraction) sees just our own app's
+// activity, not the channel's audience.
+
+const STATISTICS_BATCH_SIZE = 50;
+
+export async function fetchVideoStatistics(
+  videoIds: string[],
+): Promise<Map<string, YouTubeStatistics>> {
+  const unique = [...new Set(videoIds.filter((id) => typeof id === "string" && id))];
+  const stats = new Map<string, YouTubeStatistics>();
+
+  if (unique.length === 0) return stats;
+
+  for (let i = 0; i < unique.length; i += STATISTICS_BATCH_SIZE) {
+    const batch = unique.slice(i, i + STATISTICS_BATCH_SIZE);
+    const data = await apiRequest("/videos", { part: "statistics", id: batch.join(",") });
+    const items = (data as { items?: Array<Record<string, unknown>> })?.items ?? [];
+
+    for (const item of items) {
+      const id = item?.id;
+      if (typeof id !== "string") continue;
+      const statistics = (item.statistics ?? {}) as Record<string, unknown>;
+      stats.set(id, {
+        viewCount: toCount(statistics.viewCount),
+        likeCount: toCount(statistics.likeCount),
+      });
+    }
+  }
+
+  return stats;
 }
 
 export async function fetchLatestCards(
@@ -243,9 +302,29 @@ export async function fetchLatestCards(
   });
 
   const items = (data as { items?: Array<Record<string, unknown>> })?.items ?? [];
-  return items
+  const cards = items
     .map((item) => cardFromPlaylistItem(item))
     .filter((card: YouTubeCard | null): card is YouTubeCard => card !== null);
+
+  // Fails soft on purpose. A statistics error (quota, transient 5xx) must not
+  // cost us the upload list we already paid for: new videos still get added,
+  // they just rank as 0 until the next sync picks the counters up. The card's
+  // statsSyncedAt stays null, which is how the app tells "nobody has watched
+  // this" apart from "we have never checked".
+  let stats = new Map<string, YouTubeStatistics>();
+  try {
+    stats = await fetchVideoStatistics(cards.map((card) => card.youtubeVideoId));
+  } catch (error) {
+    console.error(
+      "[YouTube Sync] Could not read view/like counts; syncing cards without them:",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  return cards.map((card) => ({
+    ...card,
+    ...(stats.get(card.youtubeVideoId) ?? { viewCount: 0, likeCount: 0 }),
+  }));
 }
 
 export async function fetchChannelLatestCards(

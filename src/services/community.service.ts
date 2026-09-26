@@ -5,7 +5,11 @@
 // basic analytics aggregation, and YouTube channel sync for the admin.
 
 import { prisma } from "../config/index.js";
-import { VideoInteractionType, type CommunityVideo } from "../../generated/prisma/client.js";
+import {
+  Prisma,
+  VideoInteractionType,
+  type CommunityVideo,
+} from "../../generated/prisma/client.js";
 import {
   fetchChannelLatestCards,
   getCachedSync,
@@ -42,6 +46,8 @@ const CARD_SELECT = {
   thumbnailUrl: true,
   youtubeVideoId: true,
   publishedAt: true,
+  viewCount: true,
+  likeCount: true,
 } as const;
 
 type CardRecord = {
@@ -54,6 +60,8 @@ type CardRecord = {
   thumbnailUrl: string;
   youtubeVideoId: string;
   publishedAt: Date;
+  viewCount: number;
+  likeCount: number;
 };
 
 export interface CardPayload {
@@ -67,6 +75,12 @@ export interface CardPayload {
   isUnlocked: boolean;
   unlockedAt: Date | null;
   requiresSubscription: boolean;
+  // YouTube's public counters, refreshed by the channel sync. Safe to expose on
+  // a locked card: they describe the video, not grant access to it. Zero means
+  // either genuinely unwatched or not yet synced — the feed is still usable
+  // either way, so the app can render them unconditionally.
+  viewCount: number;
+  likeCount: number;
   // Where the "Subscribe to Unlock" call-to-action should send the user. Resolved
   // server-side so the app never hardcodes the channel. All fields are null when
   // YOUTUBE_CHANNEL_ID / YOUTUBE_CHANNEL_HANDLE are unset.
@@ -91,6 +105,8 @@ export function toCardPayload(
     isUnlocked,
     unlockedAt,
     requiresSubscription: !isUnlocked,
+    viewCount: record.viewCount,
+    likeCount: record.likeCount,
     channel: getChannelLinks(),
   };
 
@@ -397,6 +413,36 @@ export async function reverifyChannelGrants(
   return summary;
 }
 
+// ── Feed ordering ────────────────────────────────────────────────────────────
+// The feed is ordered by one of three signals, all resolved from columns on
+// community_videos so the sort stays a single indexed query — no in-memory
+// ranking, no join against the interaction log.
+//
+//   NEWEST        publication date — the historical default
+//   MOST_WATCHED  YouTube viewCount
+//   MOST_LIKED    YouTube likeCount
+//
+// Engagement sorts put the channel's biggest draws first, which is a different
+// (and deliberately non-chronological) feed: a two-year-old video can outrank
+// last week's upload. Every ordering is given the same tie-break chain so
+// LIMIT/OFFSET paging is stable — without it, rows sharing a count can shuffle
+// between requests and a card appears on two pages or none at all.
+
+export const VIDEO_SORTS = ["NEWEST", "MOST_WATCHED", "MOST_LIKED"] as const;
+export type VideoSort = (typeof VIDEO_SORTS)[number];
+export const DEFAULT_VIDEO_SORT: VideoSort = "NEWEST";
+
+const VIDEO_ORDER_BY: Record<VideoSort, Prisma.CommunityVideoOrderByWithRelationInput[]> = {
+  NEWEST: [{ publishedAt: "desc" }, { id: "desc" }],
+  MOST_WATCHED: [{ viewCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }],
+  MOST_LIKED: [{ likeCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }],
+};
+
+export interface ListVideosOptions {
+  /** Falls back to NEWEST for an absent or unrecognised value. */
+  sort?: VideoSort;
+}
+
 // ── List published videos with per-user unlock state ─────────────────────────
 // Used by GET /community/videos so the response already includes isUnlocked per
 // card. Each card is run through the payload gate, so locked videos expose only
@@ -405,13 +451,19 @@ export async function reverifyChannelGrants(
 // A channel grant unlocks every card at once, so the whole page is gated on one
 // boolean and the per-video unlock query is skipped entirely for a subscriber.
 
-export async function listVideosForUser(userId: string, page: number, limit: number) {
+export async function listVideosForUser(
+  userId: string,
+  page: number,
+  limit: number,
+  options: ListVideosOptions = {},
+) {
   const skip = (page - 1) * limit;
+  const sort: VideoSort = options.sort ?? DEFAULT_VIDEO_SORT;
 
   const [videos, total, unlocks, channelAccess] = await prisma.$transaction([
     prisma.communityVideo.findMany({
       where: { isPublished: true },
-      orderBy: { publishedAt: "desc" },
+      orderBy: VIDEO_ORDER_BY[sort],
       skip,
       take: limit,
       select: CARD_SELECT,
@@ -443,6 +495,9 @@ export async function listVideosForUser(userId: string, page: number, limit: num
   return {
     videos: enriched,
     total,
+    // Echoed so a client that pages through a sorted feed can confirm the server
+    // honoured its `sort` — an unrecognised value silently becomes NEWEST.
+    sort,
     // Feed-level flag so the app can hide every "Subscribe to Unlock" call to
     // action at once instead of evaluating the CTA per card.
     hasChannelAccess: Boolean(channelAccess),
@@ -690,7 +745,14 @@ export async function getUserUnlocks(userId: string) {
 export async function getVideoAnalytics(videoId: string) {
   const video = await prisma.communityVideo.findUnique({
     where: { id: videoId },
-    select: { id: true, title: true, youtubeVideoId: true },
+    select: {
+      id: true,
+      title: true,
+      youtubeVideoId: true,
+      viewCount: true,
+      likeCount: true,
+      statsSyncedAt: true,
+    },
   });
 
   if (!video) {
@@ -730,6 +792,17 @@ export async function getVideoAnalytics(videoId: string) {
     youtubeVideoId: video.youtubeVideoId,
     interactions: counts,
     totalUnlocks,
+    // Channel-wide engagement from YouTube, kept separate from the in-app
+    // `interactions` above: the gap between the two is the whole point of the
+    // panel — a high likeCount with few in-app previews means the feed is not
+    // surfacing a video the audience already cares about.
+    youtube: {
+      viewCount: video.viewCount,
+      likeCount: video.likeCount,
+      // null when the card predates the counters or the last sync could not read
+      // them, so a stale ranking is distinguishable from a genuinely unwatched one.
+      statsSyncedAt: video.statsSyncedAt,
+    },
     conversionRate:
       counts.SUBSCRIBE_INTENT > 0 ? Number((totalUnlocks / counts.SUBSCRIBE_INTENT).toFixed(4)) : 0,
     totalWatchTimeMs: watchTime._sum.durationMs ?? null,
@@ -748,12 +821,22 @@ export interface CreateVideoPayload {
   previewStartSeconds?: number;
   previewDurationSeconds?: number;
   isPublished?: boolean;
+  // Seed engagement for a hand-made card so it is not buried under the
+  // engagement sorts until the next channel sync sees it. Overwritten by any
+  // later sync, which is the authority on these numbers.
+  viewCount?: number;
+  likeCount?: number;
 }
 
 // Explicit discriminated union so callers can narrow on result.success. Without
 // it TS widens both arms to `success: boolean` and `data` stays `| undefined`.
 export type CreateVideoResult =
   { success: false; code: "DUPLICATE_VIDEO_ID" } | { success: true; data: CommunityVideo };
+
+/** Counters arrive from an admin request body, so clamp rather than trust. */
+function countOrZero(value: number | undefined): number {
+  return Number.isFinite(value) && (value as number) > 0 ? Math.floor(value as number) : 0;
+}
 
 export async function adminCreateVideo(payload: CreateVideoPayload): Promise<CreateVideoResult> {
   const existing = await prisma.communityVideo.findUnique({
@@ -775,6 +858,13 @@ export async function adminCreateVideo(payload: CreateVideoPayload): Promise<Cre
       previewStartSeconds: payload.previewStartSeconds ?? 0,
       previewDurationSeconds: payload.previewDurationSeconds ?? DEFAULT_PREVIEW_DURATION_SECONDS,
       isPublished: payload.isPublished ?? true,
+      viewCount: countOrZero(payload.viewCount),
+      likeCount: countOrZero(payload.likeCount),
+      // A hand-seeded count has not been confirmed by YouTube, so it does not
+      // claim a sync that never happened.
+      ...(payload.viewCount === undefined && payload.likeCount === undefined
+        ? {}
+        : { statsSyncedAt: new Date() }),
     },
   });
 
@@ -839,9 +929,14 @@ export async function adminDeleteVideo(videoId: string) {
 
 // ── Admin: sync latest uploads from the configured YouTube channel ────────────
 // Fetches the channel's most recent uploads via the YouTube Data API and adds
-// any missing videos to the feed. Existing cards are never overwritten, so
-// admin edits (title/description) and soft-deletes (isPublished=false) are
-// preserved across sync runs.
+// any missing videos to the feed. Cards that already exist keep their
+// admin-edited content (title/description, teaser bounds) and their soft-delete
+// (isPublished=false) — only the engagement counters are refreshed, because
+// those belong to YouTube rather than to us.
+//
+// That refresh is what makes the engagement rankings mean anything: a
+// never-updated row keeps the counts it had the day it was first seen, so a
+// video that has since gone viral would never climb the "most watched" feed.
 //
 // Teasers are derived from the video's own embed URL bounded to the first 45
 // seconds, so a freshly synced card can only ever serve a preview until the
@@ -866,14 +961,16 @@ export async function syncVideosFromChannel(payload: SyncVideosPayload) {
       channelId: sourceChannelId,
       fetched: 0,
       created: 0,
+      updated: 0,
       alreadyPresent: 0,
       syncedAt: cached.syncedAt,
       cached: true,
     };
   }
 
+  const syncedAt = new Date();
   let created = 0;
-  let alreadyPresent = 0;
+  let updated = 0;
 
   for (const card of cards) {
     const existing = await prisma.communityVideo.findUnique({
@@ -881,12 +978,20 @@ export async function syncVideosFromChannel(payload: SyncVideosPayload) {
       select: { id: true },
     });
 
+    const engagement = {
+      viewCount: card.viewCount,
+      likeCount: card.likeCount,
+      statsSyncedAt: syncedAt,
+    };
+
     if (existing) {
-      alreadyPresent += 1;
+      // Counters only — everything else on the row is ours to curate.
+      await prisma.communityVideo.update({ where: { id: existing.id }, data: engagement });
+      updated += 1;
       continue;
     }
 
-    await prisma.communityVideo.create({ data: { ...card } });
+    await prisma.communityVideo.create({ data: { ...card, ...engagement } });
     created += 1;
   }
 
@@ -894,8 +999,11 @@ export async function syncVideosFromChannel(payload: SyncVideosPayload) {
     channelId: sourceChannelId,
     fetched: cards.length,
     created,
-    alreadyPresent,
-    syncedAt: new Date().toISOString(),
+    updated,
+    // Kept in the summary for backwards compatibility with the original response
+    // shape; `created + updated` is the number of cards the run touched.
+    alreadyPresent: updated,
+    syncedAt: syncedAt.toISOString(),
     cached: false,
   };
 

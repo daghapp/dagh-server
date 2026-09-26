@@ -52,6 +52,8 @@ const CARD = {
   thumbnailUrl: "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
   youtubeVideoId: "abc123",
   publishedAt: new Date("2026-01-01T00:00:00Z"),
+  viewCount: 1200,
+  likeCount: 85,
 };
 
 /** A durable channel grant: one confirmed subscription to the channel. */
@@ -142,6 +144,22 @@ describe("card channel links", () => {
   });
 });
 
+describe("card engagement counters", () => {
+  it("exposes the YouTube counts on a locked card — they reveal nothing about the video", () => {
+    const payload = toCardPayload(CARD, false, null);
+
+    expect(payload.viewCount).toBe(1200);
+    expect(payload.likeCount).toBe(85);
+  });
+
+  it("exposes the same counts once unlocked", () => {
+    const payload = toCardPayload(CARD, true, new Date());
+
+    expect(payload.viewCount).toBe(1200);
+    expect(payload.likeCount).toBe(85);
+  });
+});
+
 describe("listVideosForUser", () => {
   it("gates each card individually based on that user's unlocks", async () => {
     const second = { ...CARD, id: "card-2", youtubeVideoId: "def456" };
@@ -179,6 +197,79 @@ describe("listVideosForUser", () => {
     expect(videos.every((v) => v.requiresSubscription === false)).toBe(true);
     // No per-video row was needed to unlock them.
     expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("listVideosForUser ordering", () => {
+  // The Prisma call is issued inside $transaction, so the query object is
+  // whatever findMany received. Asserting on orderBy keeps these tests about the
+  // contract the feed promises rather than about Postgres' use of the indexes.
+  function findManyCall() {
+    return prismaMock.communityVideo.findMany.mock.calls.at(-1)?.[0] as {
+      orderBy: unknown;
+      skip: number;
+      take: number;
+    };
+  }
+
+  beforeEach(() => {
+    prismaMock.communityVideo.findMany.mockResolvedValue([CARD]);
+    prismaMock.communityVideo.count.mockResolvedValue(1);
+    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
+  });
+
+  it("defaults to newest-first, the pre-existing feed order", async () => {
+    const { sort } = await listVideosForUser("user-1", 1, 20);
+
+    expect(sort).toBe("NEWEST");
+    expect(findManyCall().orderBy).toEqual([{ publishedAt: "desc" }, { id: "desc" }]);
+  });
+
+  it("ranks by view count for MOST_WATCHED", async () => {
+    const { sort } = await listVideosForUser("user-1", 1, 20, { sort: "MOST_WATCHED" });
+
+    expect(sort).toBe("MOST_WATCHED");
+    expect(findManyCall().orderBy).toEqual([
+      { viewCount: "desc" },
+      { publishedAt: "desc" },
+      { id: "desc" },
+    ]);
+  });
+
+  it("ranks by like count for MOST_LIKED", async () => {
+    const { sort } = await listVideosForUser("user-1", 1, 20, { sort: "MOST_LIKED" });
+
+    expect(sort).toBe("MOST_LIKED");
+    expect(findManyCall().orderBy).toEqual([
+      { likeCount: "desc" },
+      { publishedAt: "desc" },
+      { id: "desc" },
+    ]);
+  });
+
+  it("breaks ties deterministically so paging a sorted feed cannot drop a card", async () => {
+    await listVideosForUser("user-1", 2, 20, { sort: "MOST_LIKED" });
+
+    // Two cards on the same like count would otherwise be free to swap places
+    // between requests, showing up on both pages or neither.
+    const orderBy = findManyCall().orderBy as Record<string, unknown>[];
+    expect(orderBy.at(-1)).toEqual({ id: "desc" });
+  });
+
+  it("keeps the same page window when the order changes", async () => {
+    await listVideosForUser("user-1", 3, 10, { sort: "MOST_WATCHED" });
+
+    expect(findManyCall().skip).toBe(20);
+    expect(findManyCall().take).toBe(10);
+  });
+
+  it("never widens the filter — a sort must not surface unpublished cards", async () => {
+    await listVideosForUser("user-1", 1, 20, { sort: "MOST_LIKED" });
+
+    const args = prismaMock.communityVideo.findMany.mock.calls.at(-1)?.[0] as {
+      where: unknown;
+    };
+    expect(args.where).toEqual({ isPublished: true });
   });
 });
 

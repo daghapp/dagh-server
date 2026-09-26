@@ -29,6 +29,14 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *       `youtubeVideoId` and `watchUrl` are omitted entirely until the user
  *       subscribes and unlocks, so the full video link cannot be read off the
  *       feed.
+ *
+ *       Pass `sort` to reorder the feed — e.g. `?sort=most_liked` or
+ *       `?sort=most_watched` to rank by YouTube engagement instead of
+ *       recency. The counts behind those orderings travel on every card as
+ *       `viewCount` / `likeCount`, so the app can label a tab without a second
+ *       request. Values are case-insensitive; an unrecognised `sort` falls back
+ *       to `newest` rather than erroring, and the applied order is echoed back
+ *       in `meta.sort`.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -46,6 +54,19 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *           default: 20
  *           maximum: 50
  *         description: Results per page (max 50)
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [newest, most_watched, most_liked]
+ *           default: newest
+ *         description: >
+ *           Feed ordering. `newest` = publication date (default);
+ *           `most_watched` / `most_liked` rank by YouTube viewCount / likeCount
+ *           as last refreshed by the channel sync, so a long-standing popular
+ *           video can outrank a newer one. Ties break by publication date, then
+ *           by id, so paging through a sorted feed never repeats or drops a card.
+ *         example: most_liked
  *     responses:
  *       200:
  *         description: Paginated community videos
@@ -89,6 +110,16 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *                         description: Full-length embed URL. Present only when isUnlocked is true
  *                       requiresSubscription:
  *                         type: boolean
+ *                       viewCount:
+ *                         type: integer
+ *                         description: >
+ *                           YouTube's public view count, last refreshed by the
+ *                           channel sync. 0 means either genuinely unwatched or
+ *                           never synced — present on locked cards too, since it
+ *                           reveals nothing about the video's contents
+ *                       likeCount:
+ *                         type: integer
+ *                         description: YouTube's public like count. Same caveats as viewCount
  *                       channel:
  *                         type: object
  *                         description: Where to send the user to subscribe. Identical on every card; all fields null when no channel is configured
@@ -128,6 +159,17 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *                       type: integer
  *                     totalPages:
  *                       type: integer
+ *                 meta:
+ *                   type: object
+ *                   description: Page-level context, not per-item
+ *                   properties:
+ *                     hasChannelAccess:
+ *                       type: boolean
+ *                       description: True when a channel subscription unlocks the whole feed
+ *                     sort:
+ *                       type: string
+ *                       enum: [NEWEST, MOST_WATCHED, MOST_LIKED]
+ *                       description: The ordering actually applied — reflects the fallback if an unrecognised sort was requested
  *       401:
  *         description: Unauthorized
  *       500:
@@ -484,7 +526,13 @@ router.get(
  * /community/videos/{videoId}/analytics:
  *   get:
  *     summary: Get interaction analytics for a video (admin)
- *     description: Returns interaction counts by type and a conversion rate (unlocks / subscribe_intents).
+ *     description: >
+ *       Returns interaction counts by type and a conversion rate (unlocks /
+ *       subscribe_intents), alongside the YouTube view/like counters the feed's
+ *       engagement sorts are built on. The two are reported separately on
+ *       purpose: `interactions` only covers activity inside this app, while
+ *       `youtube` covers the whole channel, and the gap between them shows
+ *       whether the feed is surfacing videos the audience already cares about.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -524,6 +572,19 @@ router.get(
  *                           type: integer
  *                     totalUnlocks:
  *                       type: integer
+ *                     youtube:
+ *                       type: object
+ *                       description: Channel-wide counters from YouTube, as opposed to the in-app `interactions` above
+ *                       properties:
+ *                         viewCount:
+ *                           type: integer
+ *                         likeCount:
+ *                           type: integer
+ *                         statsSyncedAt:
+ *                           type: string
+ *                           format: date-time
+ *                           nullable: true
+ *                           description: When the counters were last refreshed. Null when the card predates them or the last sync could not read them
  *                     conversionRate:
  *                       type: number
  *                       format: float
@@ -595,6 +656,16 @@ router.get(
  *               isPublished:
  *                 type: boolean
  *                 default: true
+ *               viewCount:
+ *                 type: integer
+ *                 minimum: 0
+ *                 default: 0
+ *                 description: Seed the YouTube view count for a hand-made card so it is not buried under `sort=most_watched`. Overwritten by the next channel sync
+ *               likeCount:
+ *                 type: integer
+ *                 minimum: 0
+ *                 default: 0
+ *                 description: Seed the YouTube like count. Overwritten by the next channel sync
  *     responses:
  *       201:
  *         description: Video card created
@@ -716,13 +787,21 @@ router.delete(
  *       the latest uploads via the YouTube Data API, and adds any missing videos
  *       to the feed.
  *
- *       Existing cards are never overwritten, so admin edits and soft-deletes are
- *       preserved across sync runs. Teasers are derived from the video's own
- *       embed URL — the app plays the first 45 seconds as the preview clip and
- *       then surfaces the "Watch on YouTube" / subscribe call-to-action.
+ *       Cards that already exist keep their admin-edited content (title,
+ *       description, teaser bounds) and their soft-delete — only the YouTube
+ *       view/like counters are refreshed, since those back the feed's
+ *       `sort=most_watched` / `most_liked` orderings and would otherwise freeze
+ *       at whatever they were the day the card was first synced.
+ *
+ *       Teasers are derived from the video's own embed URL — the app plays the
+ *       first 45 seconds as the preview clip and then surfaces the "Watch on
+ *       YouTube" / subscribe call-to-action.
  *
  *       A single sync is rate-limited per channel by a Redis-backed cooldown
- *       (YOUTUBE_SYNC_COOLDOWN_MS, default 1 hour) to protect API quota.
+ *       (YOUTUBE_SYNC_COOLDOWN_MS, default 1 hour) to protect API quota. The
+ *       counters cost one extra YouTube request per run (the whole batch rides
+ *       in a single `videos` call), and a failure there is non-fatal: the
+ *       uploads are still synced, just with their previous counts.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -764,8 +843,13 @@ router.delete(
  *                       type: integer
  *                     created:
  *                       type: integer
+ *                     updated:
+ *                       type: integer
+ *                       description: Existing cards whose view/like counters were refreshed
  *                     alreadyPresent:
  *                       type: integer
+ *                       deprecated: true
+ *                       description: Alias of `updated`, kept so older clients keep parsing
  *                     syncedAt:
  *                       type: string
  *                       format: date-time

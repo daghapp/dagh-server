@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as communityService from "../../services/community.service.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
+import { parseEnum, type QueryValue } from "../../helpers/admin-query.js";
 import {
   logCommunity,
   logCommunityWarn,
@@ -34,15 +35,24 @@ export class CommunityController {
       const userId = req.user?.id as string;
       const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
       const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
+      // Unrecognised values fall back to NEWEST rather than 400: a client asking
+      // for a sort this server does not know about should still get the feed.
+      const sort =
+        parseEnum(
+          req.query as unknown as Record<string, QueryValue>,
+          "sort",
+          communityService.VIDEO_SORTS,
+        ) ?? communityService.DEFAULT_VIDEO_SORT;
 
       const { videos, total, hasChannelAccess, channelAccess } =
-        await communityService.listVideosForUser(userId, page, limit);
+        await communityService.listVideosForUser(userId, page, limit, { sort });
 
       logCommunity("community.feed.list", {
         status: 200,
         userId,
         page,
         limit,
+        sort,
         count: videos.length,
         total,
         hasChannelAccess,
@@ -50,21 +60,18 @@ export class CommunityController {
       });
       // hasChannelAccess rides in `meta` so the app can hide every "Subscribe to
       // Unlock" call to action at once instead of deriving it from the cards.
-      return paginated(
-        res,
-        videos,
-        total,
-        page,
-        limit,
-        "Community videos retrieved",
-        { hasChannelAccess, channelAccess },
-      );
+      return paginated(res, videos, total, page, limit, "Community videos retrieved", {
+        hasChannelAccess,
+        channelAccess,
+        sort,
+      });
     } catch (error) {
       logCommunityError("community.feed.list.error", {
         status: 500,
         userId: req.user?.id,
         page: req.query.page,
         limit: req.query.limit,
+        sort: req.query.sort,
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - start,
       });

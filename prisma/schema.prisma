@@ -1635,12 +1635,28 @@ model CommunityVideo {
   youtubeVideoId         String   @unique // used to build deep links on mobile
   isPublished            Boolean  @default(true)
   publishedAt            DateTime @default(now())
+  // YouTube's own public counters, refreshed by the channel sync. Denormalised
+  // because there is nowhere else to read them from: VideoInteraction only sees
+  // in-app activity (previews played, full videos opened, unlocks) and cannot
+  // report what happened on the channel itself. The feed ranks on these
+  // (sort=most_watched / most_liked), so they are stored rather than recomputed.
+  viewCount              Int      @default(0)
+  likeCount              Int      @default(0)
+  // When the two counters above were last refreshed. Null on rows predating the
+  // columns and on cards published by hand, so the app can tell "nobody has
+  // watched this" apart from "we have never checked".
+  statsSyncedAt          DateTime?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
   interactions VideoInteraction[]
   unlocks      VideoUnlock[]
 
+  // Feed indexes: every feed read filters on isPublished and then orders by one
+  // of these three, so each ordering gets its own composite index.
+  @@index([isPublished, publishedAt])
+  @@index([isPublished, viewCount])
+  @@index([isPublished, likeCount])
   @@map("community_videos")
 }
 

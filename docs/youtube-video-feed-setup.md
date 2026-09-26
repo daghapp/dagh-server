@@ -163,13 +163,18 @@ designed funnel:
 1. **Community Video Card** (`GET /community/videos`):
    - 16:9 media area: autoplay a muted loop, or show the thumbnail with a play
      overlay. Card includes `title`, `description`, `teaserUrl`, `thumbnailUrl`,
-     `previewStartSeconds`, `previewDurationSeconds`, `isUnlocked`,
-     `requiresSubscription`, and `channel` (the subscribe links — see step 3).
-     `youtubeVideoId` and `watchUrl` are only present once unlocked — do not
-     assume they exist.
+     `previewStartSeconds`, `previewDurationSeconds`, `viewCount`, `likeCount`,
+     `isUnlocked`, `requiresSubscription`, and `channel` (the subscribe links —
+     see step 3). `youtubeVideoId` and `watchUrl` are only present once unlocked
+     — do not assume they exist.
    - Bottom action bar: prominent red **"Subscribe to Unlock"** + secondary
      **"Preview Clip"** when `isUnlocked === false`; a green
      **"Watch Full Video on YouTube"** when `isUnlocked === true`.
+   - Optional sort tabs: pass `?sort=most_watched` or `?sort=most_liked` to rank
+     the feed by YouTube engagement instead of recency (default `newest`). The
+     ordering applied is echoed in `meta.sort`. The counts are already on every
+     card, so the tabs need no extra request — see
+     [Ranking the feed by engagement](api-reference.md#sort--ranking-the-feed-by-engagement).
 
 2. **Preview modal — the 45-second teaser:**
    - Tapping the thumbnail opens a bottom-sheet that plays `teaserUrl`.
@@ -283,6 +288,8 @@ A **locked** card in `GET /community/videos` is:
   "previewStartSeconds": 0,
   "previewDurationSeconds": 45,
   "thumbnailUrl": "string",
+  "viewCount": 12480,
+  "likeCount": 932,
   "isUnlocked": false,
   "requiresSubscription": true,
   "unlockedAt": null,
@@ -314,6 +321,13 @@ An **unlocked** card is the same shape plus:
   directly, so deep links from YouTube never 404.
 - `title`, `description`, `thumbnailUrl`, `teaserUrl` are **never null** (DB
   defaults / derived YouTube URLs). `unlockedAt` is the only nullable field.
+- `viewCount` / `likeCount` are YouTube's public counters, refreshed by the admin
+  channel sync. They are present on locked cards too — they describe the video
+  rather than unlocking it. A `0` means either genuinely unwatched or never
+  synced, so render it as "no signal yet" rather than asserting nobody watched.
+- Pass `?sort=most_watched` / `?sort=most_liked` to order the feed by those
+  counts; an unrecognised value falls back to `newest` and `meta.sort` reports
+  what was actually applied.
 
 #### Why `youtubeVideoId` and `watchUrl` are omitted while locked
 
@@ -551,6 +565,11 @@ an instant redirect.
       in production**, otherwise the unlock gate fails open
 - [ ] Admin runs `POST /community/admin/sync-youtube` → `created > 0`
 - [ ] `GET /community/videos` returns cards with `videoId`, `thumbnailUrl`, `title`, `description`, `isUnlocked: false`, `requiresSubscription: true`
+- [ ] `GET /community/videos?sort=most_watched` and `?sort=most_liked` return
+      cards ordered by `viewCount` / `likeCount` descending, and `meta.sort`
+      reports the applied order
+- [ ] Cards carry non-zero `viewCount` / `likeCount` after a sync (a fresh channel
+      whose first sync reported 0 means the statistics call is failing)
 - [ ] A **locked** card has no `youtubeVideoId` and no `watchUrl` anywhere in the
       payload, and its `teaserUrl` carries `start`/`end` bounds
 - [ ] `POST /community/videos/:videoId/unlock` with no prior verification returns
