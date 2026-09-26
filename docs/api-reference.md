@@ -37,7 +37,7 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 | POST | `/auth/login` | Public | Log in; returns `accessToken` + `refreshToken`. |
 | POST | `/auth/verify-otp` | Public | Verify an email OTP (email verification or password reset). |
 | POST | `/auth/resend-otp` | Public | Resend the email-verification OTP (rate-limited, 1/min). |
-| POST | `/auth/refresh-token` | Public | Exchange a refresh token for a new access token. |
+| POST | `/auth/refresh-token` | Public | Exchange a refresh token for a new access token + the signed-in user (same shape as login). |
 | POST | `/auth/request-reset-password` | Public | Send a password-reset OTP to an email. |
 | POST | `/auth/reset-password` | Bearer | Verify OTP + old password, then set a new password. |
 | POST | `/auth/logout` | Bearer | Log out; invalidates all of the user's refresh tokens. |
@@ -78,8 +78,33 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 { "email": "user@example.com", "password": "Password123!" }
 ```
 
-Returns `data: { id, email, fullName, accountType, accessToken, refreshToken }`.
+Returns `data: { id, email, fullName, accountType, ethnicity, accessToken, refreshToken }`.
 `403` if the email is not yet verified.
+
+`ethnicity` is `null` until the user chooses one — the column is nullable and
+nothing in the auth flow requires it, so treat `null` as "not answered yet"
+rather than invalid.
+
+### POST /auth/refresh-token
+
+```json
+{ "refreshToken": "..." }
+```
+
+Returns `data: { id, email, fullName, accountType, ethnicity, accessToken }` — the
+**same user shape as `POST /auth/login`**, minus `refreshToken` (the caller
+already holds it; the token is not rotated).
+
+This matters more than it looks. Clients call this whenever the access token
+expires mid-session, so it is the response most often used to rebuild in-memory
+session state. It used to return the access token alone, which meant a client
+rehydrating from it lost every profile field the login response had supplied —
+most visibly `ethnicity`, which then read as unset and re-prompted the user on
+every resume. **Clients should treat login and refresh as the same payload and
+keep one session handler for both.**
+
+`401` if the refresh token is missing, invalid, expired, or no longer in the
+device store; `403` if the account is no longer active; `404` if the user is gone.
 
 ---
 

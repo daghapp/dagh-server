@@ -133,6 +133,15 @@ router.patch("/", protectedRoute, validate(profileSettingsSchema), updateOwnProf
  *                       type: string
  *                       format: date
  *                       nullable: true
+ *                     ethnicity:
+ *                       type: string
+ *                       nullable: true
+ *                       enum: [African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other]
+ *                       description: >
+ *                         Optional. Writable via `PATCH /profile` and
+ *                         `PATCH /profile/ethnicity`, and readable here so the
+ *                         value survives a round-trip instead of looking unset.
+ *                         Null means never chosen, not invalid.
  *                     authProvider:
  *                       type: string
  *                     accountStatus:

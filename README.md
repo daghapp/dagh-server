@@ -309,7 +309,7 @@ All endpoints return responses in a standardized envelope:
 | POST   | `/auth/logout`                 | Bearer | Logout (revokes all refresh tokens)     |
 | POST   | `/auth/verify-otp`             | Public | Verify email OTP                        |
 | POST   | `/auth/resend-otp`             | Public | Resend verification OTP                 |
-| POST   | `/auth/refresh-token`          | Public | Get new access token                    |
+| POST   | `/auth/refresh-token`          | Public | New access token + the signed-in user (same shape as `/auth/login`, so one client session handler covers both) |
 | POST   | `/auth/request-reset-password` | Public | Request password reset OTP              |
 | POST   | `/auth/reset-password`         | Public | Reset password with OTP                 |
 | GET    | `/auth/google`                 | Public | Google OAuth redirect                   |

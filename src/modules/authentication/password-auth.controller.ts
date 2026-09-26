@@ -17,6 +17,7 @@ import {
   generateRefreshToken,
 } from "../../helpers/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
+import { toAuthUser } from "../../helpers/auth-user.js";
 import { disableAllUserDevices } from "../devices/devices.controller.js";
 
 export class PasswordAuthController {
@@ -125,11 +126,7 @@ export class PasswordAuthController {
         accountType: user.accountType,
       });
       return ok(res, {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        accountType: user.accountType,
-        ethnicity: user.ethnicity ?? null,
+        ...toAuthUser(user),
         accessToken,
         refreshToken,
       });
@@ -225,7 +222,19 @@ export class PasswordAuthController {
         accountType: user.accountType,
       });
 
-      return ok(res, { accessToken: newAccessToken });
+      // The user row is already loaded (it was needed for the accountStatus
+      // check above), so returning it costs no extra query. It is not optional
+      // decoration: this endpoint is what a client calls when its access token
+      // expires mid-session, and it used to answer with the token alone. A
+      // client rehydrating its cached session from this response therefore lost
+      // every profile field the login response had given it — most visibly
+      // ethnicity, which then looked unset and re-prompted the user on every
+      // resume. Same flat shape as `login`, so one client-side session handler
+      // covers both.
+      return ok(res, {
+        ...toAuthUser(user),
+        accessToken: newAccessToken,
+      });
     } catch (error) {
       console.error("Token refresh error:", error);
       return fail(res, 500, "Failed to refresh token");
