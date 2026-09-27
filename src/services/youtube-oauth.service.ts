@@ -326,6 +326,29 @@ export function getChannelReverifyIntervalMs(): number {
   return envNumber("YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS", 24 * 60 * 60 * 1000, 60_000);
 }
 
+/**
+ * How stale a channel grant may be before a *read* re-checks it live.
+ *
+ * YouTube publishes no event when a user unsubscribes, so revocation latency is
+ * set purely by how often we ask. The nightly sweep bounds it for dormant users;
+ * this bounds it for everyone who is actually using the app, by re-checking on
+ * the first read after the floor passes.
+ *
+ * This is a dedup window, not a polling interval: cost is one quota unit per
+ * floor window *per user who opens the app*, so an inactive subscriber costs
+ * nothing and an active one is re-checked as often as they read. At the 5-minute
+ * default a user who opens the app a handful of times a day spends a handful of
+ * units, which is what makes this affordable where a global interval is not —
+ * a 5-minute global interval would need 288 units/user/day against a 10,000/day
+ * budget, i.e. ~34 users total.
+ *
+ * Also the deduplication bound: a read inside the floor is served from the row
+ * without a call, so a client polling every few seconds cannot multiply cost.
+ */
+export function getReadReverifyFloorMs(): number {
+  return envNumber("YOUTUBE_READ_REVERIFY_FLOOR_MS", 5 * 60 * 1000, 0);
+}
+
 export interface CachedVerification {
   subscribed: boolean;
   verifiedAt: string;

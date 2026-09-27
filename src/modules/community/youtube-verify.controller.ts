@@ -245,7 +245,13 @@ export class YouTubeVerifyController {
       const video = await communityService.getVideoRecord(videoId);
       const canonicalId = video?.id ?? videoId;
 
-      const unlockStatus = await communityService.getUnlockStatus(userId, canonicalId);
+      // The app calls this on launch, so it is the best place to notice an
+      // unsubscribe: the grant is re-checked live if stale, and this response
+      // already carries the corrected state rather than the next one.
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const unlockStatus = await communityService.getUnlockStatus(userId, canonicalId, {
+        channelAccess: access,
+      });
       const cached = await youtubeOauth.getCachedVerification(userId);
 
       logCommunity("community.verify.status", {

@@ -496,10 +496,38 @@ Two consequences worth designing around:
   budget" when it stops with grants still due; that warning is the signal to
   raise the budget, not to retry.
 
-  The upshot for the app: revocation is not instant. A user who unsubscribes
-  keeps access for up to one interval, plus whatever is left over from a budget-
-  truncated pass, so do not treat `hasChannelAccess` as a real-time signal — it
-  is for hiding subscribe CTAs, not for gating anything the user pays for.
+#### Locking on read — why the sweep is not the whole answer
+
+YouTube publishes **no event when a user unsubscribes**. There is no webhook and
+no Pub/Sub topic for it; the only mechanism is polling, at 1 quota unit per
+check. So revocation latency is set entirely by how often we are willing to ask.
+
+The daily sweep alone means a cancelled subscriber keeps access for up to a full
+interval. That is fine for a dormant account and wrong for an active one, so the
+grant is **also re-checked on the read path**: the first request after
+`YOUTUBE_READ_REVERIFY_FLOOR_MS` (default 5 min) spends one unit, and the
+response the user is looking at is already correct. The feed, the single card,
+`my-unlocks`, the unlock endpoint and the status poll all go through the same
+gate, so a user who cancelled is locked on their next app open — not on the next
+nightly run.
+
+Two properties make this affordable rather than ruinous:
+
+- **The floor is a dedup window, not a polling interval.** Cost is one unit per
+  window *per user who opens the app*. An inactive subscriber costs nothing, so
+  spend tracks active users rather than the total base. A 5-minute *global*
+  interval would need 288 units/user/day against the 10,000/day budget — about 34
+  users total. At the default, a user who opens the app a handful of times a day
+  spends a handful of units.
+- **A grant with no usable credential is never re-checked**, because the answer
+  cannot change. No stored token, or one that cannot be decrypted after a key
+  rotation, is skipped without a call — on the read path and in the sweep alike.
+
+The sweep stays as the backstop for the accounts the read path never sees.
+
+The upshot for the app: `hasChannelAccess` is current for anyone using the app,
+and up to one interval stale for anyone who has not opened it recently. It is
+for hiding subscribe CTAs, not for gating anything the user pays for.
 - **The channel id comes from the callback, never from the client.** The unlock
   endpoint returns `channelGranted: false` on its own, because only the callback
   knows which channel it just verified. A client cannot ask for a grant on an
@@ -525,7 +553,8 @@ unlock reads that cache as its gate.
 | `YOUTUBE_OAUTH_REDIRECT_URI` | HTTPS callback; **must** be added to the client's Authorized redirect URIs in the Google console. Defaults to `<API_URL>/community/youtube/callback` when using `API_URL`. |
 | `YOUTUBE_VERIFY_RETURN_URL` | App deep link the browser returns to (default `daghapp://youtube/verify`). Must be parseable by `new URL()`; if it is not, the browser gets a plain HTML page stating the real outcome instead. |
 | `YOUTUBE_VERIFY_CACHE_MS` | How long a verdict is cached before a re-check (default `3600000` = 1h). Reads are served from cache so feed loads / status polls never hit the API. |
-| `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` | How long a channel grant may go unconfirmed before the daily sweep re-checks it (default `86400000` = 24h). This is the window in which a user who unsubscribes keeps access; lower it to detect cancellations faster at the cost of YouTube quota. |
+| `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` | How long a channel grant may go unconfirmed before the daily sweep re-checks it (default `86400000` = 24h). The backstop for users who never reopen the app. |
+| `YOUTUBE_READ_REVERIFY_FLOOR_MS` | How stale a grant may be before the first read re-checks it live (default `300000` = 5 min). This is what locks a user out while they are still using the app. Dedup window, not a polling interval — see below. |
 | `YOUTUBE_REVERIFY_BUDGET_MS` | Wall-clock budget for one sweep pass (default `600000` = 10 min, clamped to [1 min, 13 min]). The pass drains the due queue until it is empty or this runs out. |
 | `PAYMENT_GATEWAY_ENCRYPTION_KEY` | Seals the refresh token stored on each grant, under its own AAD context. Shared with the payment-gateway credentials — see [the note in `.env.example`](../.env.example) before rotating it. |
 

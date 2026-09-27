@@ -43,6 +43,7 @@ const {
   reverifyChannelGrants,
   revokeChannelAccess,
   getChannelAccess,
+  resolveChannelAccessForRead,
   listVideosForUser,
   listChannelGrants,
   reencryptLegacyRefreshTokens,
@@ -600,5 +601,226 @@ describe("reencryptLegacyRefreshTokens", () => {
       vi.stubEnv("NODE_ENV", "test");
       _resetEncryptionKeyCache();
     }
+  });
+});
+
+/**
+ * On-read re-verification. YouTube publishes no event when a user unsubscribes,
+ * so the only way to shorten the window between "cancelled on YouTube" and
+ * "locked in the app" is to re-check the grant while the user is actually using
+ * it. The daily sweep cannot do this — it only runs once, and a dormant
+ * subscriber's grant is not due again until the interval elapses.
+ *
+ * The economics are the point: a stale check costs 1 quota unit, so the floor
+ * must be a dedup window rather than a polling interval. A grant inside the floor
+ * must never cost anything, or the read path stops being free and the app cannot
+ * afford to serve the feed at all.
+ */
+describe("resolveChannelAccessForRead", () => {
+  const FLOOR = 5 * 60 * 1000;
+  const NOW = new Date("2026-03-01T12:00:00Z");
+
+  function grant(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "grant-1",
+      userId: "user-1",
+      channelId: "UC123",
+      unlockedAt: new Date("2026-02-01T00:00:00Z"),
+      verifiedAt: new Date("2026-02-01T00:00:00Z"),
+      // Stale by default: outside the floor, so these tests exercise the re-check.
+      lastVerifiedAt: new Date(NOW.getTime() - FLOOR - 1000),
+      refreshToken: "refresh-1",
+      ...overrides,
+    };
+  }
+
+  function read(row: ReturnType<typeof grant> | null, floorMs = FLOOR) {
+    prismaMock.channelUnlock.findFirst.mockResolvedValue(row);
+    return resolveChannelAccessForRead("user-1", { floorMs, now: NOW });
+  }
+
+  beforeEach(() => {
+    prismaMock.channelUnlock.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.channelUnlock.update.mockResolvedValue({});
+    oauthMock.checkChannelSubscription.mockResolvedValue(true);
+  });
+
+  it("returns no access, and spends nothing, for a user with no grant", async () => {
+    await expect(read(null)).resolves.toEqual({ access: null, checked: false });
+    expect(oauthMock.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("serves a grant inside the read floor without calling YouTube", async () => {
+    // The single most important property: without it every feed load costs a
+    // quota unit and the whole read path stops being free.
+    const fresh = grant({ lastVerifiedAt: new Date(NOW.getTime() - FLOOR + 60_000) });
+
+    const result = await read(fresh);
+
+    expect(result.access?.channelId).toBe("UC123");
+    expect(result.checked).toBe(false);
+    expect(oauthMock.refreshAccessToken).not.toHaveBeenCalled();
+    expect(prismaMock.channelUnlock.update).not.toHaveBeenCalled();
+  });
+
+  it("treats a grant exactly on the floor boundary as stale", async () => {
+    // Off-by-one here would silently double the quota cost of every active user.
+    const boundary = grant({ lastVerifiedAt: new Date(NOW.getTime() - FLOOR) });
+
+    const result = await read(boundary);
+
+    expect(result.checked).toBe(true);
+  });
+
+  it("re-checks a stale grant and keeps access when still subscribed", async () => {
+    const result = await read(grant());
+
+    expect(result.access?.channelId).toBe("UC123");
+    expect(result.checked).toBe(true);
+    expect(prismaMock.channelUnlock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "grant-1" },
+        data: expect.objectContaining({ lastVerifiedAt: NOW }),
+      }),
+    );
+  });
+
+  it("revokes and drops access when the subscription is gone", async () => {
+    // The whole point of the change: the user who cancelled is locked on the
+    // request they make after cancelling, not on the next nightly sweep.
+    oauthMock.checkChannelSubscription.mockResolvedValue(false);
+
+    const result = await read(grant());
+
+    expect(result.access).toBeNull();
+    expect(result.checked).toBe(true);
+    expect(prismaMock.videoUnlock.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+  });
+
+  it("keeps access when the check errors — a Google outage is not an unsubscribe", async () => {
+    oauthMock.refreshAccessToken.mockRejectedValue(new Error("network down"));
+
+    const result = await read(grant());
+
+    expect(result.access?.channelId).toBe("UC123");
+    expect(prismaMock.channelUnlock.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps access when the check errors at the subscription call", async () => {
+    oauthMock.checkChannelSubscription.mockRejectedValue(new Error("403 quotaExceeded"));
+
+    const result = await read(grant());
+
+    expect(result.access?.channelId).toBe("UC123");
+    expect(prismaMock.videoUnlock.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("spends nothing on a grant that holds no refresh token", async () => {
+    // The sweep cannot close this grant either, so asking is a guaranteed no-op
+    // that still costs a token refresh.
+    const result = await read(grant({ refreshToken: null }));
+
+    expect(result.access?.channelId).toBe("UC123");
+    expect(result.checked).toBe(false);
+    expect(oauthMock.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("spends nothing on a grant whose token cannot be decrypted", async () => {
+    // A rotated encryption key produces exactly this: a sealed payload the
+    // current key cannot read. It is a permanent condition, not a transient one,
+    // so retrying per read would burn quota forever for no change.
+    const result = await read(grant({ refreshToken: sealUnderForeignKey() }));
+
+    expect(result.access?.channelId).toBe("UC123");
+    expect(result.checked).toBe(false);
+    expect(oauthMock.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("leaves a superseded grant's access alone rather than locking on a stale verdict", async () => {
+    // revokeChannelAccess returns false when the grant was re-confirmed after this
+    // read began. That means fresher evidence exists than the negative we just got.
+    oauthMock.checkChannelSubscription.mockResolvedValue(false);
+    prismaMock.channelUnlock.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await read(grant());
+
+    expect(result.access?.channelId).toBe("UC123");
+  });
+
+  it("re-seals a rotated refresh token on a successful re-check", async () => {
+    // Google rotates refresh tokens; storing the returned one raw would put
+    // cleartext back into a column that is supposed to be sealed.
+    oauthMock.refreshAccessToken.mockResolvedValue({
+      accessToken: "access-1",
+      refreshToken: "refresh-rotated",
+    });
+
+    await read(grant());
+
+    const args = prismaMock.channelUnlock.update.mock.calls[0][0];
+    expect(args.data.refreshToken).toMatch(/^v1:/);
+    expect(decryptSecret(args.data.refreshToken, "youtube:refreshToken")).toBe("refresh-rotated");
+  });
+
+  it("does not rewrite the token when Google returns none", async () => {
+    oauthMock.refreshAccessToken.mockResolvedValue({ accessToken: "access-1" });
+
+    await read(grant());
+
+    const args = prismaMock.channelUnlock.update.mock.calls[0][0];
+    expect("refreshToken" in args.data).toBe(false);
+  });
+
+  it("honours a zero floor by checking on every read", async () => {
+    // Zero is the escape hatch for a deployment that wants no dedup at all, and
+    // envNumber is given a 0 minimum precisely so it stays reachable.
+    const fresh = grant({ lastVerifiedAt: NOW });
+
+    const result = await read(fresh, 0);
+
+    expect(result.checked).toBe(true);
+  });
+
+  it("passes the read's own clock to the revoke, so a fresher grant is spared", async () => {
+    oauthMock.checkChannelSubscription.mockResolvedValue(false);
+
+    await read(grant());
+
+    expect(prismaMock.channelUnlock.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ lastVerifiedAt: { lte: NOW } }),
+        data: expect.objectContaining({ revokedReason: "UNSUBSCRIBED" }),
+      }),
+    );
+  });
+});
+
+describe("the feed uses the read-resolved access", () => {
+  beforeEach(() => {
+    prismaMock.communityVideo.findMany.mockResolvedValue([]);
+    prismaMock.communityVideo.count.mockResolvedValue(0);
+    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
+  });
+
+  it("does not re-query the grant the read gate already resolved", async () => {
+    // The feed is the hottest read in the app; re-reading a grant we just
+    // re-verified is a wasted indexed query on every page load.
+    const resolved = {
+      channelId: "UC123",
+      unlockedAt: new Date("2026-02-01T00:00:00Z"),
+      verifiedAt: new Date("2026-02-01T00:00:00Z"),
+    };
+
+    await listVideosForUser("user-1", 1, 20, { channelAccess: resolved });
+
+    expect(prismaMock.channelUnlock.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("falls back to its own lookup when no access was resolved", async () => {
+    await listVideosForUser("user-1", 1, 20, {});
+
+    expect(prismaMock.channelUnlock.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: "user-1", revokedAt: null } }),
+    );
   });
 });

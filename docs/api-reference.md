@@ -648,14 +648,23 @@ present and authoritative, so a client can render from the cards alone.
 `channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock"
 call to action at once instead of deriving the state card by card — otherwise a
 subscriber sees subscribe prompts on cards the server has already opened.
-`verifiedAt` is when the subscription was last confirmed. The grant is
-re-checked on a schedule (see
-[YouTube channel unlocks](youtube-video-feed-setup.md#how-access-is-granted)),
-so a subscriber who later unsubscribes loses access within
-`YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` — plus whatever a budget-truncated sweep
-pass leaves over, since each pass is bounded by `YOUTUBE_REVERIFY_BUDGET_MS`.
-Between sweeps the grant still stands — treat `hasChannelAccess` as
-current-enough for UI, not as a guarantee.
+`verifiedAt` is when the subscription was last confirmed. YouTube publishes no
+event for an unsubscribe, so the grant is re-checked two ways (see
+[YouTube channel unlocks](youtube-video-feed-setup.md#locking-on-read--why-the-sweep-is-not-the-whole-answer)):
+
+- **On read.** The first feed / card / `my-unlocks` / `status` / `unlock` call
+  after `YOUTUBE_READ_REVERIFY_FLOOR_MS` (default 5 min) re-checks live, and
+  *that response* is already correct. A subscriber who cancelled is locked on
+  their next app open.
+- **Nightly sweep.** Catches the accounts the read path never sees, within
+  `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` (default 24h) plus whatever a
+  budget-truncated pass leaves over.
+
+So the state is current for anyone using the app and up to a day stale for anyone
+who has not opened it recently — and permanently stale for a grant with no usable
+refresh token, which is never re-checkable and shows up in the admin listing as
+`unverifiable`. Treat `hasChannelAccess` as current-enough for UI, not as a
+guarantee.
 
 #### `channel` — where to send the user to subscribe
 

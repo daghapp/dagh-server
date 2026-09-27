@@ -60,8 +60,17 @@ export class CommunityController {
           communityService.VIDEO_SORTS,
         ) ?? communityService.DEFAULT_VIDEO_SORT;
 
+      // Re-checks a stale channel grant against YouTube before the page is
+      // built, so an unsubscribed user sees the feed locked on this request
+      // rather than on the next one. A grant inside the read floor costs nothing.
+      const { access, checked } =
+        await communityService.resolveChannelAccessForRead(userId);
+
       const { videos, total, hasChannelAccess, channelAccess } =
-        await communityService.listVideosForUser(userId, page, limit, { sort });
+        await communityService.listVideosForUser(userId, page, limit, {
+          sort,
+          channelAccess: access,
+        });
 
       logCommunity("community.feed.list", {
         status: 200,
@@ -72,6 +81,9 @@ export class CommunityController {
         count: videos.length,
         total,
         hasChannelAccess,
+        // True when this request spent a YouTube unit re-checking the grant.
+        // False for a grant inside the read floor, which is the common case.
+        reverified: checked,
         durationMs: Date.now() - start,
       });
       // hasChannelAccess rides in `meta` so the app can hide every "Subscribe to
@@ -104,7 +116,10 @@ export class CommunityController {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const video = await communityService.getVideoForUser(userId, videoId);
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const video = await communityService.getVideoForUser(userId, videoId, {
+        channelAccess: access,
+      });
       if (!video) {
         logCommunityWarn("community.feed.get.not_found", {
           status: 404,
@@ -228,7 +243,10 @@ export class CommunityController {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const result = await communityService.unlockVideo(userId, videoId);
+      // Re-checked for the same reason as the feed: an unsubscribed user must not
+      // be told "unlocked" by a stale grant just because they asked again.
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const result = await communityService.unlockVideo(userId, videoId, { channelAccess: access });
 
       if (!result.success) {
         if (result.code === "SUBSCRIPTION_REQUIRED") {
@@ -287,7 +305,9 @@ export class CommunityController {
     const start = started();
     try {
       const userId = req.user!.id as string;
-      const result = await communityService.getUserUnlocks(userId);
+      const result = await communityService.getUserUnlocks(userId, {
+        channelAccess: (await communityService.resolveChannelAccessForRead(userId)).access,
+      });
       logCommunity("community.my_unlocks", {
         status: 200,
         userId,

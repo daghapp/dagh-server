@@ -33,6 +33,7 @@ import {
   checkChannelSubscription,
   refreshAccessToken,
   getChannelReverifyIntervalMs,
+  getReadReverifyFloorMs,
 } from "./youtube-oauth.service.js";
 
 // ── Card payload gating ───────────────────────────────────────────────────────
@@ -250,6 +251,111 @@ export async function getChannelAccess(userId: string): Promise<ChannelAccess | 
 
   if (!row) return null;
   return { channelId: row.channelId, unlockedAt: row.unlockedAt, verifiedAt: row.verifiedAt };
+}
+
+export interface ReadChannelAccess {
+  access: ChannelAccess | null;
+  /** True when a live YouTube call was actually made for this read. */
+  checked: boolean;
+}
+
+/**
+ * Resolves a user's channel access for a *read*, re-checking it live if it has
+ * gone stale.
+ *
+ * `getChannelAccess` is a pure indexed lookup on purpose: it is called from the
+ * feed hot path several times per request, and a durable grant is the whole point
+ * of the design — it is what makes reads free. The cost is that a grant never
+ * notices an unsubscribe on its own, so revocation latency was the full
+ * re-verify interval, up to a day.
+ *
+ * This closes that gap for anyone actually using the app: the first read after
+ * the floor passes spends 1 quota unit to re-check, and the response the user
+ * sees is already correct. `checked` lets callers avoid re-resolving, and tells
+ * the caller whether a network call happened (for logging and tests).
+ *
+ * Fails open, exactly like the sweep: a check that could not be completed leaves
+ * access intact. Only a definite negative closes the grant.
+ */
+export async function resolveChannelAccessForRead(
+  userId: string,
+  options: { floorMs?: number; now?: Date } = {},
+): Promise<ReadChannelAccess> {
+  const floorMs = options.floorMs ?? getReadReverifyFloorMs();
+  const now = options.now ?? new Date();
+
+  const grant = await prisma.channelUnlock.findFirst({
+    where: { userId, revokedAt: null },
+    select: {
+      id: true,
+      channelId: true,
+      unlockedAt: true,
+      verifiedAt: true,
+      lastVerifiedAt: true,
+      refreshToken: true,
+    },
+  });
+
+  if (!grant) return { access: null, checked: false };
+
+  const access: ChannelAccess = {
+    channelId: grant.channelId,
+    unlockedAt: grant.unlockedAt,
+    verifiedAt: grant.verifiedAt,
+  };
+
+  // Already fresh enough. This is the branch that keeps the read path free:
+  // without it every feed load would cost a quota unit.
+  if (grant.lastVerifiedAt && now.getTime() - grant.lastVerifiedAt.getTime() < floorMs) {
+    return { access, checked: false };
+  }
+
+  const refreshToken = unsealRefreshToken(grant.refreshToken);
+  if (!refreshToken) {
+    // No usable credential. The sweep cannot close this grant either, so asking
+    // would burn a token refresh on a call that cannot change the answer.
+    return { access, checked: false };
+  }
+
+  try {
+    const token = await refreshAccessToken(refreshToken);
+    const subscribed = await checkChannelSubscription(token.accessToken, grant.channelId);
+
+    if (!subscribed) {
+      // Bounded by `now` for the same reason the sweep is: a grant re-confirmed
+      // by an OAuth callback after this call started already holds fresher
+      // evidence than this verdict, and YouTube's propagation lag makes a stale
+      // negative unreliable. It is left for the next read to re-decide.
+      const revoked = await revokeChannelAccess(
+        userId,
+        grant.channelId,
+        "UNSUBSCRIBED",
+        now,
+      );
+      // Not revoked means superseded — report the access we already had rather
+      // than locking a user out on evidence we know to be stale.
+      return { access: revoked ? null : access, checked: true };
+    }
+
+    await prisma.channelUnlock.update({
+      where: { id: grant.id },
+      data: {
+        lastVerifiedAt: now,
+        // Google rotates the refresh token on some refreshes; keep the newest so
+        // the next read does not use a spent credential. Re-sealing here also
+        // migrates a legacy plaintext row on first successful re-check.
+        ...(token.refreshToken ? { refreshToken: sealRefreshToken(token.refreshToken) } : {}),
+      },
+    });
+    return { access, checked: true };
+  } catch (error) {
+    console.error(
+      `[Channel Access] Could not re-check grant ${grant.id} for user ${userId}; ` +
+        `leaving access intact:`,
+      error instanceof Error ? error.message : String(error),
+    );
+    return { access, checked: true };
+  }
 }
 
 /**
@@ -820,6 +926,12 @@ const VIDEO_ORDER_BY: Record<VideoSort, Prisma.CommunityVideoOrderByWithRelation
 export interface ListVideosOptions {
   /** Falls back to NEWEST for an absent or unrecognised value. */
   sort?: VideoSort;
+  /**
+   * Access already resolved by `resolveChannelAccessForRead`. Passed in so the
+   * feed does not re-query the grant it just re-verified — the feed is the
+   * hottest read in the app and this lookup is on it.
+   */
+  channelAccess?: ChannelAccess | null;
 }
 
 // ── List published videos with per-user unlock state ─────────────────────────
@@ -838,8 +950,12 @@ export async function listVideosForUser(
 ) {
   const skip = (page - 1) * limit;
   const sort: VideoSort = options.sort ?? DEFAULT_VIDEO_SORT;
+  // Resolved by the caller via resolveChannelAccessForRead, which re-checks a
+  // stale grant against YouTube before the page is built. Omitted only by
+  // internal callers that have not gone through the read gate.
+  const resolvedAccess = options.channelAccess;
 
-  const [videos, total, unlocks, channelAccess] = await prisma.$transaction([
+  const [videos, total, unlocks] = await prisma.$transaction([
     prisma.communityVideo.findMany({
       where: { isPublished: true },
       orderBy: VIDEO_ORDER_BY[sort],
@@ -853,14 +969,12 @@ export async function listVideosForUser(
       where: { userId },
       select: { videoId: true, unlockedAt: true },
     }),
-    prisma.channelUnlock.findFirst({
-      // Mirrors getChannelAccess: a revoked grant is inert, so the feed falls
-      // back to per-card state for this user.
-      where: { userId, revokedAt: null },
-      select: { channelId: true, unlockedAt: true, verifiedAt: true },
-    }),
   ]);
 
+  // getChannelAccess filters revokedAt, so a revoked grant is inert here too and
+  // the feed falls back to per-card state for that user.
+  const channelAccess =
+    resolvedAccess !== undefined ? resolvedAccess : await getChannelAccess(userId);
   const unlockedMap = new Map(unlocks.map((u) => [u.videoId, u.unlockedAt]));
 
   const enriched = videos.map((v) =>
@@ -902,13 +1016,17 @@ export async function getVideoRecord(videoId: string) {
   });
 }
 
-export async function getVideoForUser(userId: string, videoId: string) {
+export async function getVideoForUser(
+  userId: string,
+  videoId: string,
+  options: { channelAccess?: ChannelAccess | null } = {},
+) {
   const video = await getVideoRecord(videoId);
   if (!video) {
     return null;
   }
 
-  const { isUnlocked, unlockedAt } = await getUnlockStatus(userId, video.id);
+  const { isUnlocked, unlockedAt } = await getUnlockStatus(userId, video.id, options);
   return toCardPayload(video, isUnlocked, unlockedAt);
 }
 // ── Get unlock status for a single video ─────────────────────────────────────
@@ -921,11 +1039,16 @@ export interface UnlockStatus {
   hasChannelAccess: boolean;
 }
 
-export async function getUnlockStatus(userId: string, videoId: string): Promise<UnlockStatus> {
+export async function getUnlockStatus(
+  userId: string,
+  videoId: string,
+  options: { channelAccess?: ChannelAccess | null } = {},
+): Promise<UnlockStatus> {
   // A channel subscription already covers this video, so the per-video row is
   // never consulted for a subscriber. Checking the channel first also keeps the
   // common case to a single indexed query.
-  const channelAccess = await getChannelAccess(userId);
+  const channelAccess =
+    options.channelAccess !== undefined ? options.channelAccess : await getChannelAccess(userId);
 
   if (channelAccess) {
     return {
@@ -986,6 +1109,11 @@ export interface UnlockOptions {
    * permanent, which is the pre-migration behaviour.
    */
   refreshToken?: string | null;
+  /**
+   * Access already resolved by `resolveChannelAccessForRead`. When supplied, an
+   * unlock request does no channel lookup of its own.
+   */
+  channelAccess?: ChannelAccess | null;
 }
 
 export async function unlockVideo(
@@ -999,9 +1127,11 @@ export async function unlockVideo(
     return { success: false, code: "VIDEO_NOT_FOUND" as const };
   }
 
-  // Already covered by a channel grant: report unlocked without touching the
-  // YouTube API or the database at all.
-  const existingChannelAccess = await getChannelAccess(userId);
+  // Already covered by a channel grant: report unlocked without writing anything.
+  // A stale grant must not short-circuit here, or an unsubscribed user would keep
+  // asking and keep being told yes — so the read gate resolves it first.
+  const existingChannelAccess =
+    options.channelAccess !== undefined ? options.channelAccess : await getChannelAccess(userId);
   if (existingChannelAccess) {
     return {
       success: true,
@@ -1096,14 +1226,18 @@ export async function logInteraction(
 // needs to know "you have everything" in order to stop showing subscribe CTAs,
 // and materialising every video id would grow without bound as the channel does.
 
-export async function getUserUnlocks(userId: string) {
+export async function getUserUnlocks(
+  userId: string,
+  options: { channelAccess?: ChannelAccess | null } = {},
+) {
+  const usingResolved = options.channelAccess !== undefined;
   const [unlocks, channelAccess] = await Promise.all([
     prisma.videoUnlock.findMany({
       where: { userId },
       select: { videoId: true, unlockedAt: true },
       orderBy: { unlockedAt: "desc" },
     }),
-    getChannelAccess(userId),
+    usingResolved ? Promise.resolve(options.channelAccess ?? null) : getChannelAccess(userId),
   ]);
 
   return {

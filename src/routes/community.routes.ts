@@ -37,6 +37,12 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *       request. Values are case-insensitive; an unrecognised `sort` falls back
  *       to `newest` rather than erroring, and the applied order is echoed back
  *       in `meta.sort`.
+ *
+ *       If the caller's channel grant is older than
+ *       YOUTUBE_READ_REVERIFY_FLOOR_MS (default 5 min) it is re-checked against
+ *       the YouTube subscriptions API before this page is built, so a user who
+ *       unsubscribed sees `meta.hasChannelAccess: false` on this request. A
+ *       grant inside the window costs no quota.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -468,6 +474,14 @@ router.get("/youtube/callback", youtubeVerifyController.callback.bind(youtubeVer
  *       server-side verification verdict (cached up to YOUTUBE_VERIFY_CACHE_MS).
  *       Call on feed load / app resume to rehydrate buttons without re-running
  *       the OAuth flow.
+ *
+ *       YouTube publishes no event when a user unsubscribes, so this endpoint
+ *       re-checks the channel grant live if it is older than
+ *       YOUTUBE_READ_REVERIFY_FLOOR_MS (default 5 min) and returns the corrected
+ *       state in this same response — a user who cancelled is locked here rather
+ *       than after the nightly sweep. A grant inside the window costs no YouTube
+ *       quota. The same gate backs the feed, the single-card read, `my-unlocks`
+ *       and `unlock`.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
