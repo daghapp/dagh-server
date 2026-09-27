@@ -200,3 +200,88 @@ describe("YouTubeVerifyController.callback", () => {
     expect(redirect).toHaveBeenCalledWith("daghapp://youtube/verify?subscribed=false&videoId=");
   });
 });
+
+describe("redirect fallback when the return URL is unparseable", () => {
+  // The fallback page is what a user sees when YOUTUBE_VERIFY_RETURN_URL cannot be
+  // parsed by `new URL()`. It used to say "subscription verified" for every
+  // outcome, so a single bad env var turned every failed verification into a
+  // user-facing success.
+
+  function unparseableReturnUrl() {
+    // A bare host with no scheme — the realistic shape of this bug (someone drops
+    // the colon when setting the deep link). Note `daghapp:/verify` with a single
+    // slash does parse, so it would not exercise the fallback.
+    oauthMock.getVerifyReturnUrl.mockReturnValue("daghapp.youtube/verify");
+  }
+
+  function fallbackRes(): { res: Response; redirect: ReturnType<typeof vi.fn> } {
+    const redirect = vi.fn();
+    const send = vi.fn();
+    // The fallback page chains `.type().send()`, which real Express supports by
+    // returning `res` — the shared mockRes above does not, so use a chainable one.
+    const res = {
+      redirect,
+      type: vi.fn(() => res),
+      send,
+    } as unknown as Response;
+    return { res, redirect };
+  }
+
+  function htmlSent(res: Response): string {
+    return (res.send as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+  }
+
+  it("reports success when the subscription really was verified", async () => {
+    unparseableReturnUrl();
+    const { res, redirect } = fallbackRes();
+    await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(htmlSent(res)).toContain("subscription verified");
+  });
+
+  it("does not claim success when the user declined consent", async () => {
+    unparseableReturnUrl();
+    const { res } = fallbackRes();
+    await controller.callback(callbackReq({ error: "access_denied" }), res);
+
+    const html = htmlSent(res);
+    expect(html).not.toContain("subscription verified");
+    expect(html).toContain("could not confirm");
+    expect(html).toContain("Nothing has been unlocked");
+  });
+
+  it("does not claim success when the account is not subscribed", async () => {
+    unparseableReturnUrl();
+    oauthMock.checkChannelSubscription.mockResolvedValue(false);
+    const { res } = fallbackRes();
+    await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
+
+    expect(htmlSent(res)).not.toContain("subscription verified");
+  });
+
+  it("does not claim success when the exchange itself failed", async () => {
+    unparseableReturnUrl();
+    oauthMock.exchangeCodeForToken.mockRejectedValue(new Error("invalid_grant"));
+    const { res } = fallbackRes();
+    await controller.callback(callbackReq({ code: "code", state: "state-token" }), res);
+
+    const html = htmlSent(res);
+    expect(html).not.toContain("subscription verified");
+    expect(html).toContain("Nothing has been unlocked");
+  });
+
+  it("escapes the outcome text so the page cannot be used for injection", async () => {
+    unparseableReturnUrl();
+    oauthMock.checkChannelSubscription.mockResolvedValue(false);
+    // videoId flows from a signed state token, not raw input, but the fallback
+    // page is the one place server strings get interpolated into HTML.
+    const { res } = fallbackRes();
+    await controller.callback(
+      callbackReq({ code: "code", state: "state-token" }),
+      res,
+    );
+
+    expect(htmlSent(res)).not.toContain("<script");
+  });
+});

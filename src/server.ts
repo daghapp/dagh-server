@@ -53,6 +53,7 @@ import { setupSocketHandlers } from "./sockets/socketHandlers.js";
 import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
 import { subscriptionExpiryJob } from "./jobs/subscription-expiry.js";
 import { channelGrantReverifyJob } from "./jobs/channel-grant-reverify.js";
+import { logYouTubeGateStatus } from "./services/youtube-oauth.service.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
 import { setIoInstance as setCallIoInstance } from "./modules/messages/calls.controller.js";
 import { setIoInstance as setDatingIoInstance } from "./modules/dating/swipe.controller.js";
@@ -149,6 +150,7 @@ deleteInactiveUsersJob();
 checkPendingPaymentsJob();
 subscriptionExpiryJob();
 channelGrantReverifyJob();
+logYouTubeGateStatus();
 setupSwagger(app);
 
 /**

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { decryptSecret, isEncryptedPayload } from "../src/helpers/encryption.js";
 
 /**
  * Unit tests for the community video unlock gate.
@@ -472,11 +473,13 @@ describe("unlockVideo", () => {
         refreshToken: "refresh-abc",
       });
 
-      expect(prismaMock.channelUnlock.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: expect.objectContaining({ refreshToken: "refresh-abc" }),
-        }),
-      );
+      // Sealed on the way in: a refresh token is a live credential, so a database
+      // dump must not hand over a replayable grant for every subscriber.
+      const args = prismaMock.channelUnlock.upsert.mock.calls[0][0];
+      const stored = args.create.refreshToken as string;
+      expect(isEncryptedPayload(stored)).toBe(true);
+      expect(stored).not.toContain("refresh-abc");
+      expect(decryptSecret(stored, "youtube:refreshToken")).toBe("refresh-abc");
     });
 
     it("does not write a channel grant when no channel id is supplied", async () => {

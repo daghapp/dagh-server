@@ -23,6 +23,34 @@ function started(): number {
   return Date.now();
 }
 
+// Anything interpolated into the fallback page below. The values come from a
+// signed state payload, but the page is built with string concatenation and
+// should not depend on that holding.
+function escapeHtml(value: unknown): string {
+  return String(value).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
+  );
+}
+
+// What actually happened, for the case where the app deep link cannot be
+// reached. The previous version of this page said "subscription verified" for
+// every outcome including total failure, so a malformed
+// YOUTUBE_VERIFY_RETURN_URL turned every failed verification into a user-facing
+// success message.
+function describeOutcome(query: Record<string, string | boolean>): string {
+  if (query.subscribed === true) {
+    return "YouTube subscription verified. You can close this window and return to the app.";
+  }
+  if (query.subscribed === false) {
+    return "We could not confirm a YouTube subscription. Nothing has been unlocked — " +
+      "return to the app and try again, or subscribe to the channel first.";
+  }
+  return "Subscription verification did not complete. Nothing has been unlocked — " +
+    "return to the app and try again.";
+}
+
 // Redirects the browser back to the app deep link with the verification outcome,
 // mirroring the membership payment return/cancel bridge.
 function redirectResult(res: Response, query: Record<string, string | boolean>): void {
@@ -33,12 +61,21 @@ function redirectResult(res: Response, query: Record<string, string | boolean>):
       urlObj.searchParams.set(key, String(value));
     }
     res.redirect(urlObj.toString());
-  } catch {
+  } catch (error) {
+    // Reaching here means YOUTUBE_VERIFY_RETURN_URL is not parseable by `new URL`,
+    // so the app never receives the verdict at all. That is a misconfiguration,
+    // not a user error, so it is logged at warn with the offending value.
+    logCommunityWarn("community.verify.redirect_fallback", {
+      returnUrl: base,
+      outcome: query.subscribed ?? "unknown",
+      message: error instanceof Error ? error.message : String(error),
+    });
+
     res
       .type("html")
       .send(
         '<html><body style="font-family:sans-serif;text-align:center;padding-top:60px">' +
-          "<h2>YouTube subscription verified — you can close this window and return to the app.</h2>" +
+          `<h2>${escapeHtml(describeOutcome(query))}</h2>` +
           "</body></html>",
       );
   }
@@ -231,8 +268,10 @@ export class YouTubeVerifyController {
           // Which record opened the gate: CHANNEL for a subscriber, VIDEO for a
           // legacy per-video unlock, null when still locked.
           via: unlockStatus.via,
-          // Durable channel grant. Unlike verifiedSubscribed this never expires,
-          // because the grant is never re-checked — it is not a cache.
+          // Durable channel grant. Unlike verifiedSubscribed it does not expire on
+          // a TTL — but it is not permanent either: the nightly sweep re-checks
+          // it and closes it on a cancelled subscription, so treat it as
+          // current-enough for UI rather than a guarantee.
           hasChannelAccess: unlockStatus.hasChannelAccess,
           verifiedSubscribed: cached?.subscribed ?? null,
           verifiedAt: cached?.verifiedAt ?? null,

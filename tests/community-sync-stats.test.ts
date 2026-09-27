@@ -20,7 +20,8 @@ const prismaMock = {
 };
 
 const youtubeMock = {
-  fetchChannelLatestCards: vi.fn(),
+  resolveChannelId: vi.fn(async () => "UC123"),
+  fetchLatestCards: vi.fn(),
   getCachedSync: vi.fn(),
   setCachedSync: vi.fn(),
   buildFullWatchUrl: (id: string) => `https://www.youtube.com/embed/${id}`,
@@ -30,6 +31,7 @@ const youtubeMock = {
     subscribeUrl: "https://www.youtube.com/@diasporaaffairsgh",
     appUrl: "vnd.youtube://channel/UC123",
   }),
+  DEFAULT_MAX_RESULTS: 6,
   DEFAULT_PREVIEW_DURATION_SECONDS: 45,
 };
 
@@ -62,10 +64,8 @@ beforeEach(() => {
   prismaMock.communityVideo.update.mockResolvedValue({});
   youtubeMock.getCachedSync.mockResolvedValue(null);
   youtubeMock.setCachedSync.mockResolvedValue(undefined);
-  youtubeMock.fetchChannelLatestCards.mockResolvedValue({
-    channelId: "UC123",
-    cards: [card()],
-  });
+  youtubeMock.resolveChannelId.mockResolvedValue("UC123");
+  youtubeMock.fetchLatestCards.mockResolvedValue([card()]);
 });
 
 describe("syncVideosFromChannel", () => {
@@ -114,16 +114,41 @@ describe("syncVideosFromChannel", () => {
     prismaMock.communityVideo.findUnique
       .mockResolvedValueOnce({ id: "card-1" })
       .mockResolvedValueOnce(null);
-    youtubeMock.fetchChannelLatestCards.mockResolvedValue({
-      channelId: "UC123",
-      cards: [card(), card({ youtubeVideoId: "def456" })],
-    });
+    youtubeMock.fetchLatestCards.mockResolvedValue([card(), card({ youtubeVideoId: "def456" })]);
 
     const summary = await syncVideosFromChannel({});
 
     expect(summary.fetched).toBe(2);
     expect(summary.created).toBe(1);
     expect(summary.updated).toBe(1);
+  });
+
+  it("checks the cooldown before it spends any quota", async () => {
+    // Regression: the cooldown used to be consulted *after* the uploads fetch, so
+    // it suppressed the database writes but not the ~22-point API call. A sync
+    // repeated inside the window then cost exactly as much quota as the first
+    // one, and the cooldown protected nothing.
+    const order: string[] = [];
+    youtubeMock.getCachedSync.mockImplementation(async () => {
+      order.push("cooldown");
+      return { syncedAt: "2026-02-01T00:00:00.000Z" };
+    });
+    youtubeMock.fetchLatestCards.mockImplementation(async () => {
+      order.push("fetch");
+      return [card()];
+    });
+
+    const summary = await syncVideosFromChannel({});
+
+    expect(summary.cached).toBe(true);
+    expect(order).toEqual(["cooldown"]);
+    expect(youtubeMock.fetchLatestCards).not.toHaveBeenCalled();
+  });
+
+  it("forwards the requested page size to the uploads fetch", async () => {
+    await syncVideosFromChannel({ maxResults: 20 });
+
+    expect(youtubeMock.fetchLatestCards).toHaveBeenCalledWith("UC123", 20);
   });
 
   it("serves the cooldown cache without touching the database", async () => {

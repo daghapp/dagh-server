@@ -20,6 +20,7 @@ import jwt from "jsonwebtoken";
 import { getRedisClient } from "../config/redis.js";
 import type { RedisClientType } from "redis";
 import { YouTubeNotConfiguredError, YouTubeApiError } from "./youtube.service.js";
+import { envNumber } from "../helpers/env-number.js";
 
 const OAUTH_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -58,6 +59,48 @@ export function getYouTubeOAuthRedirectUri(): string {
 // completes (default daghapp://youtube/verify, overridable via env).
 export function getVerifyReturnUrl(): string {
   return process.env.YOUTUBE_VERIFY_RETURN_URL?.trim() || "daghapp://youtube/verify";
+}
+
+/**
+ * Reports the state of the unlock gate at boot.
+ *
+ * `unlockVideo` skips its subscription check entirely when the OAuth client is
+ * unconfigured and falls back to the legacy client-trusted behaviour. That is
+ * the right call for local dev — failing closed would make every video
+ * permanently ununlockable — but in production it means any authenticated caller
+ * can unlock any video with one request, silently. Nothing else in the request
+ * path says so, so it is stated here, once, at startup.
+ */
+export function logYouTubeGateStatus(): void {
+  const missing: string[] = [];
+  if (!process.env.YOUTUBE_OAUTH_CLIENT_ID?.trim()) missing.push("YOUTUBE_OAUTH_CLIENT_ID");
+  if (!process.env.YOUTUBE_OAUTH_CLIENT_SECRET?.trim()) missing.push("YOUTUBE_OAUTH_CLIENT_SECRET");
+  if (missing.length === 0) return;
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(
+      `[YouTube] OAuth not configured (${missing.join(", ")}). The unlock gate is OPEN — ` +
+        `expected outside production.`,
+    );
+    return;
+  }
+
+  console.warn(
+    [
+      "",
+      "  ==============================================================",
+      "  !!  YOUTUBE SUBSCRIPTION GATE IS OPEN IN PRODUCTION",
+      "  ==============================================================",
+      `  Missing: ${missing.join(", ")}`,
+      "",
+      "  The subscription check in unlockVideo is skipped entirely when the OAuth",
+      "  client is unconfigured, so any authenticated caller can unlock any video",
+      "  without subscribing. The re-verification sweep also becomes a no-op, so no",
+      "  grant would ever be revoked.",
+      "  ==============================================================",
+      "",
+    ].join("\n"),
+  );
 }
 
 // ── OAuth state ────────────────────────────────────────────────────────────────
@@ -272,7 +315,7 @@ export function verificationCacheKey(userId: string): string {
 }
 
 export function getVerificationCacheTtlMs(): number {
-  return Number(process.env.YOUTUBE_VERIFY_CACHE_MS || 60 * 60 * 1000);
+  return envNumber("YOUTUBE_VERIFY_CACHE_MS", 60 * 60 * 1000, 1);
 }
 
 // How long a channel grant may go unconfirmed before the sweep re-checks it.
@@ -280,7 +323,7 @@ export function getVerificationCacheTtlMs(): number {
 // detection latency against YouTube quota: one re-check per grant per window,
 // and each check costs a token refresh plus 1 quota unit. Default 24h.
 export function getChannelReverifyIntervalMs(): number {
-  return Number(process.env.YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS || 24 * 60 * 60 * 1000);
+  return envNumber("YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS", 24 * 60 * 60 * 1000, 60_000);
 }
 
 export interface CachedVerification {

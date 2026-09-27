@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import * as communityService from "../../services/community.service.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
-import { parseEnum, type QueryValue } from "../../helpers/admin-query.js";
+import { parseEnum, parsePagination, parseSearch, type QueryValue } from "../../helpers/admin-query.js";
 import {
   logCommunity,
   logCommunityWarn,
@@ -24,6 +24,22 @@ function param(value: string | string[]): string {
 
 function started(): number {
   return Date.now();
+}
+
+/**
+ * Reads the grant listing's `status` filter, where "all" is a meaningful value
+ * rather than a synonym for "unset". Anything unrecognised falls back to
+ * "active" so a typo cannot silently return the whole table.
+ */
+function parseGrantStatus(query: Record<string, QueryValue>): communityService.ChannelGrantStatus {
+  const raw = (Array.isArray(query.status) ? query.status[0] : query.status)
+    ?.trim()
+    .toLowerCase();
+  return communityService.CHANNEL_GRANT_STATUSES.includes(
+    raw as communityService.ChannelGrantStatus,
+  )
+    ? (raw as communityService.ChannelGrantStatus)
+    : "active";
 }
 
 export class CommunityController {
@@ -497,6 +513,131 @@ export class CommunityController {
         durationMs: Date.now() - start,
       });
       return fail(res, 500, "Failed to sync community videos");
+    }
+  }
+
+  // ── GET /community/admin/youtube-grants (admin) ───────────────────────────
+  // The grant table is otherwise unreachable: the only reads on it are the
+  // per-user lookups behind the feed gate. This answers "does this account still
+  // have access, and can we still prove it?" without touching the database by
+  // hand. Refresh tokens are never returned — only whether one is present and
+  // sealed.
+  async adminListChannelGrants(req: Request, res: Response) {
+    const start = started();
+    try {
+      const query = req.query as Record<string, QueryValue>;
+      const { page, limit } = parsePagination(query);
+      // Not parseEnum(): that helper maps "all" to undefined, which here would
+      // silently widen the request to every grant instead of the default
+      // "active" — the opposite of what an operator typing status=all expects.
+      const status = parseGrantStatus(query);
+
+      const result = await communityService.listChannelGrants({
+        status,
+        page,
+        limit,
+        search: parseSearch(query),
+      });
+
+      logCommunity("community.admin.grants.list", {
+        status: 200,
+        adminId: req.user?.id,
+        statusFilter: status,
+        total: result.total,
+        ...result.summary,
+        durationMs: Date.now() - start,
+      });
+
+      return paginated(
+        res,
+        result.rows,
+        result.total,
+        page,
+        limit,
+        "YouTube channel grants",
+        { summary: result.summary },
+      );
+    } catch (error) {
+      logCommunityError("community.admin.grants.list.error", {
+        status: 500,
+        adminId: req.user?.id,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to list YouTube channel grants");
+    }
+  }
+
+  // ── POST /community/admin/youtube-grants/:userId/revoke (admin) ───────────
+  // Closes a grant without consulting YouTube — the escape hatch for a support
+  // request, a refund, or an account that must not keep feed access. Recoverable:
+  // the user re-authorising revives the same row.
+  async adminRevokeChannelGrant(req: Request, res: Response) {
+    const start = started();
+    try {
+      const adminId = req.user?.id as string;
+      const userId = param(req.params.userId);
+
+      const revoked = await communityService.revokeChannelGrantManually(userId);
+
+      if (!revoked) {
+        logCommunityWarn("community.admin.grants.revoke.not_found", {
+          status: 404,
+          adminId,
+          userId,
+          durationMs: Date.now() - start,
+        });
+        return fail(res, 404, "No active channel grant for that user");
+      }
+
+      logCommunity("community.admin.grants.revoke", {
+        status: 200,
+        adminId,
+        userId,
+        durationMs: Date.now() - start,
+      });
+      return ok(res, { userId, revoked: true }, "Channel grant revoked");
+    } catch (error) {
+      logCommunityError("community.admin.grants.revoke.error", {
+        status: 500,
+        adminId: req.user?.id,
+        userId: param(req.params.userId),
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to revoke channel grant");
+    }
+  }
+
+  // ── POST /community/admin/youtube-grants/re-encrypt (admin) ───────────────
+  // One-shot backfill for grants whose refresh token predates sealing. New writes
+  // and any successful re-check already re-seal, so this is normally a no-op; it
+  // exists so a deploy does not need shell access to the database.
+  async adminReencryptGrantTokens(req: Request, res: Response) {
+    const start = started();
+    try {
+      const adminId = req.user?.id as string;
+      const result = await communityService.reencryptLegacyRefreshTokens();
+
+      logCommunity("community.admin.grants.reencrypt", {
+        status: 200,
+        adminId,
+        ...result,
+        durationMs: Date.now() - start,
+      });
+      return ok(
+        res,
+        result,
+        `Re-sealed ${result.sealed} of ${result.scanned} stored refresh tokens`,
+      );
+    } catch (error) {
+      logCommunityError("community.admin.grants.reencrypt.error", {
+        status: 500,
+        adminId: req.user?.id,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to re-encrypt refresh tokens");
     }
   }
 }

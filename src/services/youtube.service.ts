@@ -11,9 +11,10 @@
 
 import { getRedisClient } from "../config/redis.js";
 import type { RedisClientType } from "redis";
+import { envNumber } from "../helpers/env-number.js";
 
 const API_BASE = "https://www.googleapis.com/youtube/v3";
-const DEFAULT_MAX_RESULTS = 6;
+export const DEFAULT_MAX_RESULTS = 6;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export class YouTubeNotConfiguredError extends Error {}
@@ -327,6 +328,15 @@ export async function fetchLatestCards(
   }));
 }
 
+/**
+ * Resolve + fetch in one call.
+ *
+ * Callers that consult the sync cooldown must NOT use this: the cooldown key is
+ * the channel id, so the check can only happen after `resolveChannelId` and
+ * before the uploads fetch — and this function does both in one step, which
+ * forces the quota to be spent first. `syncVideosFromChannel` therefore drives
+ * the two primitives directly.
+ */
 export async function fetchChannelLatestCards(
   channelId?: string,
   handle?: string,
@@ -345,25 +355,40 @@ export function syncCacheKey(channelId: string): string {
   return `${SYNC_CACHE_PREFIX}${channelId}`;
 }
 
+/**
+ * Returns the cached sync timestamp, or null when there is nothing usable.
+ *
+ * Redis-only by design — there is no in-memory fallback, so a deployment without
+ * REDIS_URL has no cooldown at all and every admin click reaches YouTube. That is
+ * acceptable for a single-instance dev box but must not be true in production.
+ *
+ * An unparseable value is deleted rather than left in place: this key gates the
+ * quota-spending fetch, so a poisoned entry would otherwise suppress every sync
+ * for the rest of its TTL.
+ */
 export async function getCachedSync(channelId: string): Promise<{ syncedAt: string } | null> {
   const redis = getRedisClient() as RedisClientType | null;
   if (!redis) return null;
 
-  const raw = await redis.get(syncCacheKey(channelId));
+  const key = syncCacheKey(channelId);
+  const raw = await redis.get(key);
   if (!raw) return null;
 
   try {
     const parsed = JSON.parse(raw) as { syncedAt?: string };
-    return parsed.syncedAt ? { syncedAt: parsed.syncedAt } : null;
+    if (parsed.syncedAt) return { syncedAt: parsed.syncedAt };
   } catch {
-    return null;
+    // fall through to the delete below
   }
+
+  await redis.del(key);
+  return null;
 }
 
 export async function setCachedSync(channelId: string, summary: unknown): Promise<void> {
   const redis = getRedisClient() as RedisClientType | null;
   if (!redis) return;
 
-  const cooldownMs = Number(process.env.YOUTUBE_SYNC_COOLDOWN_MS || 60 * 60 * 1000);
+  const cooldownMs = envNumber("YOUTUBE_SYNC_COOLDOWN_MS", 60 * 60 * 1000, 1);
   await redis.set(syncCacheKey(channelId), JSON.stringify(summary), { PX: cooldownMs });
 }

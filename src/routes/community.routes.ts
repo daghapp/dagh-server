@@ -799,7 +799,10 @@ router.delete(
  *
  *       A single sync is rate-limited per channel by a Redis-backed cooldown
  *       (YOUTUBE_SYNC_COOLDOWN_MS, default 1 hour) to protect API quota. The
- *       counters cost one extra YouTube request per run (the whole batch rides
+ *       cooldown is consulted after the channel is resolved and before the
+ *       uploads are fetched, so a sync inside the window costs no quota at all —
+ *       at most the 1-point handle→id resolution on a handle-only configuration.
+ *       The counters cost one extra YouTube request per run (the whole batch rides
  *       in a single `videos` call), and a failure there is non-fatal: the
  *       uploads are still synced, just with their previous counts.
  *     tags: [Community]
@@ -875,6 +878,139 @@ router.post(
   requireAdmin,
   validate(syncCommunityVideosSchema),
   controller.adminSyncChannel.bind(controller),
+);
+
+/**
+ * @swagger
+ * /community/admin/youtube-grants:
+ *   get:
+ *     summary: List YouTube channel grants (admin)
+ *     description: >
+ *       The grant table is otherwise unreachable from outside the process: the
+ *       only reads on it are the per-user lookups behind the feed gate, and the
+ *       only writer besides the OAuth callback is the nightly re-verification
+ *       sweep. Use this to answer "does this account still have feed access, and
+ *       can we still prove it?" without going to the database.
+ *
+ *       Refresh tokens are never returned. Each row reports only `hasRefreshToken`
+ *       and `tokenEncrypted`, so the console can show how many grants are still
+ *       stored in the clear or hold a credential the current key cannot read.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, revoked, all]
+ *           default: active
+ *         description: Which grants to list
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 25
+ *           maximum: 100
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive match on the user's email or name
+ *     responses:
+ *       200:
+ *         description: Grants, plus a table-wide summary in `meta.summary`
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin)
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/admin/youtube-grants",
+  protectedRoute,
+  requireAdmin,
+  controller.adminListChannelGrants.bind(controller),
+);
+
+/**
+ * @swagger
+ * /community/admin/youtube-grants/{userId}/revoke:
+ *   post:
+ *     summary: Revoke a user's YouTube channel grant (admin)
+ *     description: >
+ *       Closes the grant without consulting YouTube — the escape hatch for a
+ *       support request, a refund, or an account that must not keep feed access
+ *       while its subscription check is stuck. Also removes that user's per-video
+ *       unlock rows, so the individual videos they had opened stop playing.
+ *
+ *       Recorded with reason `MANUAL`, which is what distinguishes it from the
+ *       sweep's `UNSUBSCRIBED`. Recoverable: if the user re-runs the OAuth flow,
+ *       the same row is revived in place.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Grant revoked
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin)
+ *       404:
+ *         description: The user has no active channel grant
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/admin/youtube-grants/:userId/revoke",
+  protectedRoute,
+  requireAdmin,
+  controller.adminRevokeChannelGrant.bind(controller),
+);
+
+/**
+ * @swagger
+ * /community/admin/youtube-grants/re-encrypt:
+ *   post:
+ *     summary: Re-seal any refresh token still stored in the clear (admin)
+ *     description: >
+ *       One-shot backfill for grants whose refresh token predates encryption.
+ *       New grants are sealed on write and the sweep re-seals a row the first
+ *       time it successfully re-checks it, so this is normally a no-op. It exists
+ *       so the backfill does not require shell access to the database.
+ *
+ *       Idempotent — safe to run repeatedly.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Backfill result
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin)
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/admin/youtube-grants/re-encrypt",
+  protectedRoute,
+  requireAdmin,
+  controller.adminReencryptGrantTokens.bind(controller),
 );
 
 export { router };

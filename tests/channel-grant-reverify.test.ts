@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createCipheriv, randomBytes } from "node:crypto";
+import { decryptSecret, isEncryptedPayload, _resetEncryptionKeyCache } from "../src/helpers/encryption.js";
 
 /**
  * A YouTube subscription is mutable from outside our system, so a grant written
@@ -37,8 +39,47 @@ vi.mock("../src/config/prisma.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/services/youtube-oauth.service.js", () => oauthMock);
 
-const { reverifyChannelGrants, revokeChannelAccess, getChannelAccess, listVideosForUser } =
-  await import("../src/services/community.service.js");
+const {
+  reverifyChannelGrants,
+  revokeChannelAccess,
+  getChannelAccess,
+  listVideosForUser,
+  listChannelGrants,
+  reencryptLegacyRefreshTokens,
+} = await import("../src/services/community.service.js");
+
+/**
+ * A payload that looks sealed but was sealed under a different key — what a
+ * rotated `PAYMENT_GATEWAY_ENCRYPTION_KEY` leaves behind in the table. Built by
+ * hand rather than via the service, because the service cannot produce one: its
+ * own sealer always uses the live key.
+ */
+function sealUnderForeignKey(value = "refresh-1"): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", randomBytes(32), iv);
+  cipher.setAAD(Buffer.from("youtube:refreshToken", "utf8"));
+  const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return [
+    "v1",
+    iv.toString("base64url"),
+    body.toString("base64url"),
+    cipher.getAuthTag().toString("base64url"),
+  ].join(":");
+}
+
+/**
+ * Produces a genuinely sealed token by having the service seal one and
+ * capturing what it wrote, so the admin read-back exercises the real crypto
+ * rather than a re-implementation that could drift from it.
+ */
+async function sealViaService(value = "refresh-1"): Promise<string> {
+  prismaMock.channelUnlock.findMany.mockResolvedValue([
+    { id: "g", userId: "user-1", channelId: "UC123", refreshToken: value },
+  ]);
+  prismaMock.channelUnlock.update.mockResolvedValue({});
+  await reencryptLegacyRefreshTokens();
+  return prismaMock.channelUnlock.update.mock.calls[0][0].data.refreshToken as string;
+}
 
 /** An active, re-verifiable grant: a stored refresh token and a stale verdict. */
 const GRANT = {
@@ -124,10 +165,14 @@ describe("reverifyChannelGrants", () => {
     expect(summary.revoked).toBe(0);
     expect(prismaMock.channelUnlock.updateMany).not.toHaveBeenCalled();
     // The staleness marker is what stops the next run re-checking this grant.
-    expect(prismaMock.channelUnlock.update).toHaveBeenCalledWith({
-      where: { id: "grant-1" },
-      data: { lastVerifiedAt: NOW, refreshToken: "refresh-1" },
-    });
+    const args = prismaMock.channelUnlock.update.mock.calls[0][0];
+    expect(args.where).toEqual({ id: "grant-1" });
+    expect(args.data.lastVerifiedAt).toBe(NOW);
+    // Re-sealed on the way back in, so a row is migrated off plaintext storage
+    // the first time the sweep successfully re-checks it.
+    expect(isEncryptedPayload(args.data.refreshToken)).toBe(true);
+    expect(args.data.refreshToken).not.toContain("refresh-1");
+    expect(decryptSecret(args.data.refreshToken, "youtube:refreshToken")).toBe("refresh-1");
   });
 
   it("keeps access when the check errors — a Google outage is not an unsubscribe", async () => {
@@ -196,10 +241,11 @@ describe("reverifyChannelGrants", () => {
 
     await reverifyChannelGrants({ now: NOW });
 
-    expect(prismaMock.channelUnlock.update).toHaveBeenCalledWith({
-      where: { id: "grant-1" },
-      data: { lastVerifiedAt: NOW, refreshToken: "refresh-2" },
-    });
+    const args = prismaMock.channelUnlock.update.mock.calls[0][0];
+    expect(args.where).toEqual({ id: "grant-1" });
+    // Google rotates the refresh token on some refreshes, so the newest one is
+    // what gets stored — otherwise the next pass would spend a spent credential.
+    expect(decryptSecret(args.data.refreshToken, "youtube:refreshToken")).toBe("refresh-2");
   });
 
   it("skips a grant the caller declines to process, without spending quota", async () => {
@@ -217,15 +263,92 @@ describe("reverifyChannelGrants", () => {
 
     const summary = await reverifyChannelGrants({ now: NOW });
 
+    // `configured: false` is what lets the job tell "cannot run at all" apart
+    // from "queue was empty" — otherwise a misconfigured deploy reports a
+    // healthy no-op sweep forever and no grant is ever revoked.
     expect(summary).toEqual({
+      configured: false,
       checked: 0,
       stillSubscribed: 0,
       revoked: 0,
       superseded: 0,
       unverifiable: 0,
+      undecryptable: 0,
       failed: 0,
+      budgetExhausted: false,
     });
     expect(prismaMock.channelUnlock.findMany).not.toHaveBeenCalled();
+  });
+
+  it("leaves a grant alone when its stored token cannot be decrypted", async () => {
+    // A rotated or missing encryption key must read as "no usable credential",
+    // not as a negative verdict. Revoking here would close access on a
+    // still-valid subscription because of our own key problem.
+    prismaMock.channelUnlock.findMany.mockResolvedValue([
+      { ...GRANT, refreshToken: "v1:aaaa:bbbb:cccc" },
+    ]);
+
+    const summary = await reverifyChannelGrants({ now: NOW });
+
+    expect(summary.undecryptable).toBe(1);
+    expect(summary.checked).toBe(1);
+    expect(summary.revoked).toBe(0);
+    expect(oauthMock.refreshAccessToken).not.toHaveBeenCalled();
+    expect(prismaMock.channelUnlock.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("drains every due grant, not just the first batch", async () => {
+    // The pass used to stop at a flat 200 grants, which made 200/day a hard
+    // ceiling: past that the revocation window silently grew past the configured
+    // interval. It now keeps pulling batches until the queue is empty.
+    const batch = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `${prefix}-${i}`,
+        userId: `user-${prefix}-${i}`,
+        channelId: "UC123",
+        refreshToken: `refresh-${prefix}-${i}`,
+      }));
+
+    prismaMock.channelUnlock.findMany
+      .mockResolvedValueOnce(batch("a", 200))
+      .mockResolvedValueOnce(batch("b", 200))
+      .mockResolvedValueOnce(batch("c", 5))
+      .mockResolvedValueOnce([]);
+
+    const summary = await reverifyChannelGrants({ now: NOW });
+
+    expect(summary.checked).toBe(405);
+    expect(summary.stillSubscribed).toBe(405);
+    expect(summary.budgetExhausted).toBe(false);
+    // The already-seen ids are excluded from later rounds, otherwise a grant
+    // whose check failed — and so keeps its old lastVerifiedAt — would come back
+    // on every iteration and the pass would spin until the budget expired.
+    expect(prismaMock.channelUnlock.findMany).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { notIn: expect.any(Array) } }),
+      }),
+    );
+  });
+
+  it("stops on the time budget and says so", async () => {
+    // budgetMs: 0 is already expired, so the pass must not check anything and
+    // must report that grants are still due — that is the signal that revocation
+    // latency has outgrown one pass.
+    const summary = await reverifyChannelGrants({ now: NOW, budgetMs: 0 });
+
+    expect(summary.budgetExhausted).toBe(true);
+    expect(summary.checked).toBe(0);
+    expect(prismaMock.channelUnlock.findMany).not.toHaveBeenCalled();
+  });
+
+  it("never re-checks a grant it already handled this pass", async () => {
+    // The mock ignores the `notIn` filter and keeps returning the same row, so
+    // the drain check is what stops the loop from spinning.
+    const summary = await reverifyChannelGrants({ now: NOW });
+
+    expect(summary.stillSubscribed).toBe(1);
+    expect(oauthMock.checkChannelSubscription).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -267,5 +390,215 @@ describe("revoked grants are invisible to readers", () => {
     expect(prismaMock.channelUnlock.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: "user-1", revokedAt: null } }),
     );
+  });
+});
+
+/**
+ * The grant table has no other admin-readable surface, so this listing is how an
+ * operator answers "does this account still have feed access, and can we still
+ * prove it?". The one property that must never regress is that a refresh token
+ * — the credential that can read and re-subscribe a user's whole YouTube
+ * account — is never in the response.
+ */
+describe("listChannelGrants", () => {
+  const ROW = {
+    id: "grant-1",
+    userId: "user-1",
+    user: { id: "user-1", email: "a@b.c", fullName: "A B" },
+    channelId: "UC123",
+    unlockedAt: new Date("2026-02-01T00:00:00Z"),
+    verifiedAt: new Date("2026-02-01T00:00:00Z"),
+    // Recent, so the row is not due — the "is it due" cases below move this
+    // explicitly rather than depending on how old the fixture is.
+    lastVerifiedAt: new Date(),
+    revokedAt: null,
+    revokedReason: null,
+    refreshToken: "refresh-1",
+  };
+
+  /** Emulates the 7-way $transaction the service issues, per-call. */
+  function stubTransaction({ rows = [ROW], tokens = [{ refreshToken: "refresh-1" }] } = {}) {
+    prismaMock.$transaction.mockImplementation((ops: Array<() => Promise<unknown>>) =>
+      Promise.all(
+        ops.map((op, index) => {
+          if (index === 0) return Promise.resolve(rows);
+          if (index === 1) return Promise.resolve(rows.length);
+          if (index === 2) return Promise.resolve(rows.filter((r) => !r.revokedAt).length);
+          if (index === 3) return Promise.resolve(rows.filter((r) => r.revokedAt).length);
+          if (index === 4) return Promise.resolve(0);
+          if (index === 5) return Promise.resolve(tokens);
+          return Promise.resolve(0);
+        }),
+      ),
+    );
+  }
+
+  beforeEach(() => {
+    prismaMock.channelUnlock.update.mockResolvedValue({});
+    stubTransaction();
+  });
+
+  it("never returns a refresh token, sealed or not", async () => {
+    const { rows } = await listChannelGrants();
+
+    expect(JSON.stringify(rows)).not.toContain("refresh-1");
+    // The operator still learns what they need: is there one, and is it sealed?
+    expect(rows[0].hasRefreshToken).toBe(true);
+    expect(rows[0].tokenEncrypted).toBe(false);
+  });
+
+  it("reports a sealed token as encrypted and re-verifiable", async () => {
+    const sealed = await sealViaService();
+    stubTransaction({
+      rows: [{ ...ROW, refreshToken: sealed }],
+      tokens: [{ refreshToken: sealed }],
+    });
+
+    const { rows, summary } = await listChannelGrants();
+
+    expect(rows[0].tokenEncrypted).toBe(true);
+    expect(rows[0].unverifiable).toBe(false);
+    expect(summary.unencrypted).toBe(0);
+  });
+
+  it("counts a sealed-but-unreadable token as unverifiable, not as healthy", async () => {
+    // What a rotated encryption key looks like from the admin's side: the payload
+    // is well-formed, so only actually decrypting it reveals the problem.
+    const foreign = sealUnderForeignKey();
+    stubTransaction({
+      rows: [{ ...ROW, refreshToken: foreign }],
+      tokens: [{ refreshToken: foreign }],
+    });
+
+    const { rows, summary } = await listChannelGrants();
+
+    expect(rows[0].tokenEncrypted).toBe(false);
+    expect(rows[0].unverifiable).toBe(true);
+    expect(summary.unverifiable).toBe(1);
+  });
+
+  it("counts plaintext active tokens so the backfill is discoverable", async () => {
+    const { summary } = await listChannelGrants();
+
+    expect(summary.unencrypted).toBe(1);
+  });
+
+  it("marks a grant with no stored credential as unverifiable but still accessible", async () => {
+    stubTransaction({ rows: [{ ...ROW, refreshToken: null as unknown as string }], tokens: [] });
+
+    const { rows } = await listChannelGrants();
+
+    expect(rows[0].hasRefreshToken).toBe(false);
+    expect(rows[0].tokenEncrypted).toBeNull();
+    expect(rows[0].unverifiable).toBe(true);
+  });
+
+  it("defaults to active grants and can widen to all", async () => {
+    await listChannelGrants();
+    // `toHaveBeenCalledWith`, not `…LastCalledWith`: the same findMany mock also
+    // serves the table-wide token scan, which is issued after the page query.
+    expect(prismaMock.channelUnlock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { revokedAt: null } }),
+    );
+
+    await listChannelGrants({ status: "all" });
+    expect(prismaMock.channelUnlock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, take: 25, skip: 0 }),
+    );
+  });
+
+  it("filters revoked rows when asked", async () => {
+    await listChannelGrants({ status: "revoked" });
+    expect(prismaMock.channelUnlock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { revokedAt: { not: null } } }),
+    );
+  });
+
+  it("searches case-insensitively across email and name", async () => {
+    await listChannelGrants({ search: " ADA " });
+    expect(prismaMock.channelUnlock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user: {
+            OR: [
+              { email: { contains: "ADA", mode: "insensitive" } },
+              { fullName: { contains: "ADA", mode: "insensitive" } },
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("clamps the page size and passes the offset through", async () => {
+    await listChannelGrants({ page: 3, limit: 5000 });
+
+    expect(prismaMock.channelUnlock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100, skip: 200 }),
+    );
+  });
+
+  it("marks a grant re-verified within the interval as not due", async () => {
+    const { rows } = await listChannelGrants();
+
+    expect(rows[0].dueForReverify).toBe(false);
+  });
+
+  it("marks a grant older than the interval as due", async () => {
+    const stale = { ...ROW, lastVerifiedAt: new Date(Date.now() - 48 * 60 * 60 * 1000) };
+    stubTransaction({ rows: [stale], tokens: [{ refreshToken: "refresh-1" }] });
+
+    const { rows } = await listChannelGrants();
+
+    expect(rows[0].dueForReverify).toBe(true);
+  });
+});
+
+describe("reencryptLegacyRefreshTokens", () => {
+  it("re-seals a plaintext token and reports the work done", async () => {
+    prismaMock.channelUnlock.findMany.mockResolvedValue([GRANT]);
+    prismaMock.channelUnlock.update.mockResolvedValue({});
+
+    await expect(reencryptLegacyRefreshTokens()).resolves.toEqual({ scanned: 1, sealed: 1 });
+
+    expect(prismaMock.channelUnlock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "grant-1" },
+        data: { refreshToken: expect.stringMatching(/^v1:/) },
+      }),
+    );
+  });
+
+  it("leaves an already-sealed token untouched, so the call is idempotent", async () => {
+    const sealed = await sealViaService();
+    // sealViaService deliberately performs one write; clear it so the assertion
+    // below is about the second pass, not about the helper.
+    prismaMock.channelUnlock.update.mockClear();
+    prismaMock.channelUnlock.findMany.mockResolvedValue([{ ...GRANT, refreshToken: sealed }]);
+
+    await expect(reencryptLegacyRefreshTokens()).resolves.toEqual({ scanned: 1, sealed: 0 });
+    expect(prismaMock.channelUnlock.update).not.toHaveBeenCalled();
+  });
+
+  it("does not count a row as sealed when it could only be rewritten in the clear", async () => {
+    // With no encryption key the service deliberately stores plaintext so the
+    // grant stays re-verifiable. Reporting that as `sealed: 1` would tell an
+    // operator the migration is done while the rows are still readable in a dump.
+    // encryption.ts memoises the key and only throws on a missing key outside
+    // NODE_ENV=test, so the fallback needs the cache dropped and the env faked.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    _resetEncryptionKeyCache();
+    vi.stubEnv("PAYMENT_GATEWAY_ENCRYPTION_KEY", "");
+    vi.stubEnv("NODE_ENV", "production");
+    prismaMock.channelUnlock.findMany.mockResolvedValue([GRANT]);
+
+    try {
+      await expect(reencryptLegacyRefreshTokens()).resolves.toEqual({ scanned: 1, sealed: 0 });
+      expect(prismaMock.channelUnlock.update).not.toHaveBeenCalled();
+    } finally {
+      // Leave the memoized key alone for the rest of the suite.
+      vi.stubEnv("NODE_ENV", "test");
+      _resetEncryptionKeyCache();
+    }
   });
 });

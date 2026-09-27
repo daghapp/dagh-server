@@ -58,10 +58,13 @@ the mobile app must implement to display the videos.
    **API key**.
 5. Copy the key string. Keep it server-side only — never ship it in the app.
 
-> **Quota note:** the sync uses the `channels` (1 point) and `playlistItems`
-> (1 point/item) endpoints. A max-results sync of 20 costs ~22 points out of
-> the default 10,000/day — the Redis cooldown (default 1h) prevents accidental
-> quota burn.
+> **Quota note:** the sync uses the `channels` (1 point), `playlistItems`
+> (1 point/item) and `videos?part=statistics` (1 point per batch of 50) endpoints.
+> A max-results sync of 20 costs ~23 points out of the default 10,000/day — the
+> Redis cooldown (default 1h) is checked after the channel is resolved and before
+> the uploads are fetched, so a sync inside the window costs no quota at all. It is
+> Redis-backed only: with no `REDIS_URL` there is no cooldown and every call
+> reaches YouTube.
 
 ---
 
@@ -124,6 +127,7 @@ Example response:
     "channelId": "UC...",
     "fetched": 6,
     "created": 4,
+    "updated": 2,
     "alreadyPresent": 2,
     "syncedAt": "2026-09-23T10:00:00.000Z",
     "cached": false
@@ -132,13 +136,17 @@ Example response:
 ```
 
 - **`created`** = new cards added to the feed.
-- **`alreadyPresent`** = already in the DB (not re-created).
+- **`updated`** = existing cards whose YouTube view/like counters were refreshed.
+  This is what lets a video that has since gone viral climb the
+  `sort=most_watched` / `most_liked` feeds.
+- **`alreadyPresent`** = deprecated alias of `updated`, kept for older clients.
 - **`cached: true`** = still inside the Redis cooldown window, so nothing was
-  re-fetched from YouTube.
+  re-fetched from YouTube and no quota was spent.
 
 Behavior guarantees:
-- Only **new** uploads are inserted. Existing cards are never overwritten, so
-  admin edits and unpublishing (soft-delete) survive syncs.
+- Only **new** uploads are inserted. On a card that already exists the sync writes
+  **only** `viewCount`, `likeCount` and `statsSyncedAt`, so admin edits and
+  unpublishing (soft-delete) survive syncs.
 - Each synced card gets a **clipped** teaser
   `https://www.youtube.com/embed/<videoId>?start=0&end=45&rel=0` and
   `thumbnailUrl = https://i.ytimg.com/vi/<videoId>/hqdefault.jpg`. The
@@ -385,10 +393,6 @@ fail-open rules below.
   state migration needed. Branch on `hasChannelAccess` first: when it is `true`
   the whole feed is open, and `unlocks` only lists the cards they opened.
 
-The `20261007_add_channel_unlocks` migration backfilled one channel row per user
-from their existing `video_unlocks`, so pre-existing subscribers were not
-re-gated by the move to channel-level access.
-
 ### Server-side logging
 
 Each feed/unlock/interact call logs one structured JSON line
@@ -475,17 +479,27 @@ Two consequences worth designing around:
     empty `items` list) revokes. A thrown error means "could not check", so a
     Google outage, a quota exhaustion, or a spent refresh token leaves the grant
     intact and retries on the next pass. Silently re-locking paying supporters
-    on a transient error would be far worse than briefly over-granting.
+    on a transient error would be far worse than briefly over-granting. The same
+    holds for a token that cannot be decrypted: it counts as `undecryptable` and
+    is left intact.
   - Grants with **no stored refresh token** are skipped, never revoked. Rows
     created before token persistence cannot be re-checked, and revoking them
     would close access to a still-valid subscription purely because we failed to
     save a credential. They become re-verifiable the next time the user re-runs
     the flow.
 
+  A pass is **budget-bounded, not count-bounded**. It drains the due queue in
+  batches of 200 until the queue is empty or `YOUTUBE_REVERIFY_BUDGET_MS`
+  (default 10 min) runs out, so throughput tracks the subscriber base — the
+  earlier flat 200-per-day cap silently pushed the real revocation window past
+  the configured interval once the base grew past that. The job logs "Ran out of
+  budget" when it stops with grants still due; that warning is the signal to
+  raise the budget, not to retry.
+
   The upshot for the app: revocation is not instant. A user who unsubscribes
-  keeps access for up to one interval, so do not treat `hasChannelAccess` as a
-  real-time signal — it is for hiding subscribe CTAs, not for gating anything the
-  user pays for.
+  keeps access for up to one interval, plus whatever is left over from a budget-
+  truncated pass, so do not treat `hasChannelAccess` as a real-time signal — it
+  is for hiding subscribe CTAs, not for gating anything the user pays for.
 - **The channel id comes from the callback, never from the client.** The unlock
   endpoint returns `channelGranted: false` on its own, because only the callback
   knows which channel it just verified. A client cannot ask for a grant on an
@@ -509,9 +523,11 @@ unlock reads that cache as its gate.
 | `YOUTUBE_OAUTH_CLIENT_ID` | Google Cloud **OAuth 2.0 Client ID** (Web application) |
 | `YOUTUBE_OAUTH_CLIENT_SECRET` | Matching client secret |
 | `YOUTUBE_OAUTH_REDIRECT_URI` | HTTPS callback; **must** be added to the client's Authorized redirect URIs in the Google console. Defaults to `<API_URL>/community/youtube/callback` when using `API_URL`. |
-| `YOUTUBE_VERIFY_RETURN_URL` | App deep link the browser returns to (default `daghapp://youtube/verify`) |
+| `YOUTUBE_VERIFY_RETURN_URL` | App deep link the browser returns to (default `daghapp://youtube/verify`). Must be parseable by `new URL()`; if it is not, the browser gets a plain HTML page stating the real outcome instead. |
 | `YOUTUBE_VERIFY_CACHE_MS` | How long a verdict is cached before a re-check (default `3600000` = 1h). Reads are served from cache so feed loads / status polls never hit the API. |
 | `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` | How long a channel grant may go unconfirmed before the daily sweep re-checks it (default `86400000` = 24h). This is the window in which a user who unsubscribes keeps access; lower it to detect cancellations faster at the cost of YouTube quota. |
+| `YOUTUBE_REVERIFY_BUDGET_MS` | Wall-clock budget for one sweep pass (default `600000` = 10 min, clamped to [1 min, 13 min]). The pass drains the due queue until it is empty or this runs out. |
+| `PAYMENT_GATEWAY_ENCRYPTION_KEY` | Seals the refresh token stored on each grant, under its own AAD context. Shared with the payment-gateway credentials — see [the note in `.env.example`](../.env.example) before rotating it. |
 
 The same Google Cloud project needs **YouTube Data API v3** enabled. Create the
 OAuth client under **APIs & Services → Credentials → Create credentials →

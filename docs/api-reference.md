@@ -453,6 +453,9 @@ unlock).
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
 | DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
 | POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API, add missing cards, and refresh the view/like counters on existing ones. |
+| GET | `/community/admin/youtube-grants` | Admin | List channel grants with a table-wide health summary. Never returns a refresh token. |
+| POST | `/community/admin/youtube-grants/:userId/revoke` | Admin | Close a grant without consulting YouTube (reason `MANUAL`). |
+| POST | `/community/admin/youtube-grants/re-encrypt` | Admin | Re-seal any refresh token still stored in the clear. Idempotent. |
 
 ### POST /community/admin/sync-youtube (Admin)
 
@@ -477,7 +480,10 @@ list we already paid for.
 
 Repeated syncs for the same channel are returned from a Redis-backed cooldown
 cache (`YOUTUBE_SYNC_COOLDOWN_MS`, default 1 hour) instead of re-hitting the
-YouTube API, protecting quota.
+YouTube API, protecting quota. The cooldown is consulted after the channel id is
+resolved and before the uploads are fetched, so a sync inside the window spends
+no quota at all. The cooldown is Redis-backed only — without `REDIS_URL` there is
+none, and every call reaches YouTube.
 
 Body (all optional):
 
@@ -646,8 +652,10 @@ subscriber sees subscribe prompts on cards the server has already opened.
 re-checked on a schedule (see
 [YouTube channel unlocks](youtube-video-feed-setup.md#how-access-is-granted)),
 so a subscriber who later unsubscribes loses access within
-`YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS`. Between sweeps the grant still stands —
-treat `hasChannelAccess` as current-enough for UI, not as a guarantee.
+`YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` — plus whatever a budget-truncated sweep
+pass leaves over, since each pass is bounded by `YOUTUBE_REVERIFY_BUDGET_MS`.
+Between sweeps the grant still stands — treat `hasChannelAccess` as
+current-enough for UI, not as a guarantee.
 
 #### `channel` — where to send the user to subscribe
 
@@ -921,6 +929,81 @@ Accepts any subset of `title`, `description`, `teaserUrl`, `thumbnailUrl`,
 
 Soft-delete — sets `isPublished = false`. The card and its analytics/ unlock
 rows are preserved.
+
+### GET /community/admin/youtube-grants (Admin)
+
+The grant table is otherwise unreachable: the only reads on it are the per-user
+lookups behind the feed gate, and the only writer besides the OAuth callback is
+the nightly sweep. Use this to answer "does this account still have feed access,
+and can we still prove it?" without going to the database.
+
+Query: `status` (`active` default / `revoked` / `all`), `page`, `limit`
+(default 25, max 100), `q` (case-insensitive match on the user's email or name).
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "…",
+      "userId": "…",
+      "user": { "id": "…", "email": "…", "fullName": "…" },
+      "channelId": "UC…",
+      "unlockedAt": "2026-09-01T00:00:00.000Z",
+      "verifiedAt": "2026-09-01T00:00:00.000Z",
+      "lastVerifiedAt": "2026-09-20T03:17:00.000Z",
+      "revokedAt": null,
+      "revokedReason": null,
+      "hasRefreshToken": true,
+      "tokenEncrypted": true,
+      "unverifiable": false,
+      "dueForReverify": false
+    }
+  ],
+  "pagination": { "total": 1, "page": 1, "limit": 25, "totalPages": 1 },
+  "meta": {
+    "summary": {
+      "active": 1,
+      "revoked": 0,
+      "unverifiable": 0,
+      "unencrypted": 0,
+      "due": 0
+    }
+  }
+}
+```
+
+- **Refresh tokens are never returned.** `hasRefreshToken` and `tokenEncrypted`
+  report only whether a credential is present and sealed.
+- `unverifiable` — the grant works but can no longer be re-checked, so an
+  unsubscribe would not be caught. Either no credential was ever stored, or the
+  stored one cannot be decrypted (e.g. the encryption key was rotated). The user
+  re-running the OAuth flow repairs it.
+- `unencrypted` — active grants still holding a **plaintext** refresh token. This
+  should be `0`; anything else means a grant was written before sealing landed
+  and has not been re-checked since. Run
+  `POST /community/admin/youtube-grants/re-encrypt` to clear it.
+- `due` — active grants past `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` and waiting
+  for the next sweep. Persistently non-zero means the subscriber base has
+  outgrown one pass; check the sweep log for "Ran out of budget".
+- The `summary` counts are table-wide, not page-scoped.
+
+### POST /community/admin/youtube-grants/:userId/revoke (Admin)
+
+Closes the user's active grant with reason `MANUAL` and deletes their per-video
+unlock rows, without consulting YouTube. This is the escape hatch for a support
+request, a refund, or an account that must not keep feed access while its
+subscription check is stuck. `404` when the user has no active grant.
+
+Recoverable — if the user re-runs the OAuth flow, the same row is revived in
+place.
+
+### POST /community/admin/youtube-grants/re-encrypt (Admin)
+
+Re-seals any refresh token still stored in the clear, returning
+`{ scanned, sealed }`. New grants are sealed on write and the sweep re-seals a row
+the first time it successfully re-checks it, so this is normally a no-op. It
+exists so the backfill does not need shell access to the database. Idempotent.
 
 ---
 
