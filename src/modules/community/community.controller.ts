@@ -153,7 +153,7 @@ export class CommunityController {
   // ── POST /community/videos/:videoId/interact ──────────────────────────────
   // Logs a user interaction event (analytics). Fire-and-forget from the client.
   // Optional body field `durationMs` (integer ms ≥ 0) records client-reported
-  // watch time, e.g. how far the user got into the 45s teaser before leaving.
+  // watch time, e.g. how far the user got into the 30s teaser before leaving.
   async logInteraction(req: Request, res: Response) {
     const start = started();
     try {

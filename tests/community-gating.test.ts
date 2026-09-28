@@ -94,8 +94,14 @@ describe("toCardPayload", () => {
 
     expect(payload.youtubeVideoId).toBeUndefined();
     expect(payload.watchUrl).toBeUndefined();
+    expect(payload.watchAppUrl).toBeUndefined();
+    expect(payload.watchWebUrl).toBeUndefined();
     expect(payload).not.toHaveProperty("youtubeVideoId");
     expect(payload).not.toHaveProperty("watchUrl");
+    // Every string that reconstructs the full video stays off a locked card —
+    // the deep link is just another one of them.
+    expect(payload).not.toHaveProperty("watchAppUrl");
+    expect(payload).not.toHaveProperty("watchWebUrl");
     expect(payload.isUnlocked).toBe(false);
     expect(payload.requiresSubscription).toBe(true);
   });
@@ -118,6 +124,15 @@ describe("toCardPayload", () => {
     expect(payload.isUnlocked).toBe(true);
     expect(payload.requiresSubscription).toBe(false);
     expect(payload.unlockedAt).toBe(unlockedAt);
+  });
+
+  it("resolves the end-of-preview call-to-action deep link server-side once unlocked", () => {
+    const payload = toCardPayload(CARD, true, new Date("2026-02-01T00:00:00Z"));
+
+    // Both forms, so the app falls back to the web when YouTube is not installed
+    // rather than having to know the scheme itself.
+    expect(payload.watchAppUrl).toBe("vnd.youtube://watch?v=abc123");
+    expect(payload.watchWebUrl).toBe("https://www.youtube.com/watch?v=abc123");
   });
 });
 

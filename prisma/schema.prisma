@@ -1630,7 +1630,7 @@ model CommunityVideo {
   description            String
   teaserUrl              String // CLIPPED preview embed URL (or animated thumbnail)
   previewStartSeconds    Int      @default(0)
-  previewDurationSeconds Int      @default(45)
+  previewDurationSeconds Int      @default(30)
   thumbnailUrl           String
   youtubeVideoId         String   @unique // used to build deep links on mobile
   isPublished            Boolean  @default(true)
@@ -1663,7 +1663,7 @@ model CommunityVideo {
 // VideoInteraction: append-only analytics event log.
 // One row per user action; used to measure funnel conversion.
 // durationMs is client-reported time (ms) the user spent on the event source
-// (e.g. seconds into the 45s teaser before leaving) — null when not reported.
+// (e.g. seconds into the 30s teaser before leaving) — null when not reported.
 model VideoInteraction {
   id         String               @id @default(uuid())
   userId     String

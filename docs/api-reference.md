@@ -443,9 +443,10 @@ unlock).
 | GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`, `requiresSubscription` and `channel`, and is gated accordingly. |
 | GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status (same gating and `channel`). |
 | GET | `/community/my-unlocks` | Bearer | Durable channel grant + individually unlocked video IDs — call on app launch. |
-| POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. |
+| POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. `SUBSCRIBE_INTENT` is still accepted for older clients, but new clients should use [`/subscribe-intent`](#post-communityvideovidsubscribe-intent) — which logs it as a side effect — and not send it here, or the conversion-rate denominator is double-counted. |
+| POST | `/community/videos/:videoId/subscribe-intent` | Bearer | The locked card's subscribe button, in one call: logs `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }`. |
 | POST | `/community/videos/:videoId/unlock` | Bearer | Grant full access to the video and the channel (idempotent). Requires a positive subscription verdict → `403 SUBSCRIPTION_REQUIRED` otherwise. |
-| GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }` so the app can send the user to the channel and verify in one round-trip. |
+| GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }`. Superseded by `subscribe-intent` for the tap — kept for re-running the flow without recording a new intent. |
 | GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, grants the **channel**, redirects to the app deep link. |
 | GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + channel grant + last cached verdict (no API call). |
 | GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate, plus the YouTube counters the feed sorts use. |
@@ -468,7 +469,7 @@ Only **new** uploads are inserted. On an existing card the sync rewrites the
 YouTube view/like counters and nothing else, so admin edits to
 title/description and soft-deletes (`isPublished = false`) survive a sync while
 the engagement rankings still move. Teasers are derived from the video's own
-embed URL bounded to the first 45 seconds (`?start=0&end=45&rel=0`), so a freshly
+embed URL bounded to the first 30 seconds (`?start=0&end=30&rel=0`), so a freshly
 synced card can only serve a preview until the viewer subscribes. The
 full-length URL is never stored.
 
@@ -544,9 +545,9 @@ A **locked** card:
       "videoId": "uuid",
       "title": "Two-line bold title",
       "description": "One-sentence value proposition for the full discussion.",
-      "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=45&rel=0",
+      "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=30&rel=0",
       "previewStartSeconds": 0,
-      "previewDurationSeconds": 45,
+      "previewDurationSeconds": 30,
       "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
       "viewCount": 12480,
       "likeCount": 932,
@@ -567,7 +568,7 @@ A **locked** card:
 }
 ```
 
-An **unlocked** card additionally carries `youtubeVideoId` and `watchUrl`:
+An **unlocked** card additionally carries `youtubeVideoId`, `watchUrl`, `watchAppUrl` and `watchWebUrl`:
 
 ```json
 {
@@ -575,14 +576,23 @@ An **unlocked** card additionally carries `youtubeVideoId` and `watchUrl`:
   "requiresSubscription": false,
   "unlockedAt": "2026-10-01T00:00:00.000Z",
   "youtubeVideoId": "dQw4w9WgXcQ",
-  "watchUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ"
+  "watchUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+  "watchAppUrl": "vnd.youtube://watch?v=dQw4w9WgXcQ",
+  "watchWebUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 }
 ```
 
-`youtubeVideoId` and `watchUrl` are **absent** (not `null`) while locked — the
-server withholds both rather than gating only playback, because the full link is
-just a string any client could read. `watchUrl` is derived from
-`youtubeVideoId` on demand and never stored.
+All four are **absent** (not `null`) while locked — the server withholds them
+rather than gating only playback, because the full link is just a string any
+client could read. `watchAppUrl` and `watchWebUrl` are the same link in two
+shapes, so sending one while withholding the other would gate nothing. All are
+derived from `youtubeVideoId` on demand and never stored.
+
+Use `watchAppUrl` for the "Watch Full Video on YouTube" call-to-action and fall
+back to `watchWebUrl` when the deep link cannot be opened (no YouTube app
+installed). Do not assemble either from `youtubeVideoId` — the same rule as
+`channel` below. `watchUrl` is the *embed* address for the full video, for an
+in-app web player; it is not a YouTube-app or mobile-site destination.
 
 Non-nullable string fields (`title`, `description`, `thumbnailUrl`, `teaserUrl`)
 are never `null` in the DB (defaulting to `"Untitled"` / `""` and derived YouTube
@@ -691,6 +701,30 @@ do not complete the subscription (YouTube exposes no link that subscribes on the
 user's behalf — the user still taps Subscribe), and they are resolved from env
 without an API call, so a handle-only setup costs nothing per feed load.
 
+#### `watchAppUrl` / `watchWebUrl` — where to send an unlocked viewer
+
+Present only on unlocked cards, and the destination for the end-of-preview
+"Watch Full Video on YouTube" call-to-action. Resolved server-side for the same
+reason as `channel`: the app should not be assembling YouTube URL schemes itself.
+
+| Field | Notes |
+|-------|-------|
+| `watchAppUrl` | `vnd.youtube://watch?v=<id>` deep link — opens the native app on the full video |
+| `watchWebUrl` | `https://www.youtube.com/watch?v=<id>` — fallback for a device with no YouTube app |
+
+Both are always present together and never `null` on an unlocked card. Open
+`watchAppUrl`, and fall back to `watchWebUrl` when the deep link cannot be
+opened — on some platforms a `vnd.youtube://` URL aimed at a missing app fails
+silently rather than erroring.
+
+`watchUrl` is a third, separate field: the *embed* address
+(`https://www.youtube.com/embed/<id>`), for an in-app web player. It is not a
+substitute for either link above.
+
+The full client-side contract for the end-of-preview overlay — trigger, copy,
+per-state behaviour and the analytics to log — is in
+[App integration](youtube-video-feed-setup.md#2-preview-modal--the-teaser-then-the-end-of-preview-cta-overlay).
+
 ### GET /community/my-unlocks
 
 Rehydrates local `isSubscribed`/unlock state on app launch (avoid per-card
@@ -741,6 +775,67 @@ It must be a non-negative integer. It is **client-reported and unverified** —
 YouTube exposes no per-user watch API, so treat it as a hint, not evidence.
 
 `400` for an unknown action or an invalid `durationMs`; `404` if the video doesn't exist.
+
+### POST /community/videos/:videoId/subscribe-intent
+
+The locked card's **"Subscribe to Unlock"** button, in one round-trip. Records
+the `SUBSCRIBE_INTENT` event and returns the Google authorization URL plus the
+channel subscribe links.
+
+```json
+{
+  "success": true,
+  "data": {
+    "videoId": "uuid",
+    "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?...",
+    "channel": {
+      "channelId": "UC...",
+      "handle": "@diasporaaffairsgh",
+      "subscribeUrl": "https://www.youtube.com/@diasporaaffairsgh",
+      "appUrl": "vnd.youtube://channel/UC..."
+    }
+  }
+}
+```
+
+`videoId` in the response is the canonical internal card id, even when the
+request passed a YouTube video id.
+
+| Field | Notes |
+|-------|-------|
+| `authUrl` | Open in a browser to let the user grant read-only YouTube access. **`null`** when `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` are unset |
+| `channel` | Same object as on every feed card. Send the user to `appUrl` (falling back to `subscribeUrl`) so they can subscribe |
+
+**`authUrl` is null, not a 503.** `GET /community/youtube/start/:videoId` returns
+`503` without OAuth because the authorization URL is the only thing it produces.
+This endpoint also carries the funnel event and the subscribe links, and both
+remain useful without OAuth — so when `authUrl` is `null`, send the user to
+`channel.appUrl` to subscribe and then call
+`POST /community/videos/:videoId/unlock` directly. That client-trusted unlock path
+only exists when OAuth is unconfigured; with OAuth configured it returns
+`403 SUBSCRIPTION_REQUIRED`.
+
+#### Why this endpoint exists
+
+The tap used to be two calls the app had to keep in step — `POST /interact` with
+`SUBSCRIBE_INTENT`, then `GET /youtube/start/:videoId`. Nothing forced the app to
+make both, and the analytics half was the one that got dropped.
+
+That failure is invisible. A missing `SUBSCRIBE_INTENT` shrinks the denominator
+that `conversionRate` is computed against (`totalUnlocks / SUBSCRIBE_INTENT`), so
+the funnel reports a *better* number than it earned — the metric that exists to
+tell you whether the gate is working is the one most likely to be quietly wrong.
+Folding the event into the endpoint the app already has to call makes it
+un-skippable.
+
+The intent is written before the OAuth URL is built, and is not conditional on
+it: the tap is the event being measured, and it happened whether or not the
+server can go on to verify anything. A funnel that only counts taps we could
+verify is not a funnel.
+
+`GET /community/youtube/start/:videoId` still exists and still works — use it to
+re-run the flow without recording a new intent (e.g. a retry after a cancelled
+consent screen, which should not inflate the tap count).
 
 ### POST /community/videos/:videoId/unlock
 
@@ -907,11 +1002,11 @@ stale ranking from a genuinely unwatched video.
 {
   "title": "Two-line bold title",
   "description": "One-sentence value proposition.",
-  "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=45&rel=0",
+  "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=30&rel=0",
   "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   "youtubeVideoId": "dQw4w9WgXcQ",
   "previewStartSeconds": 0,
-  "previewDurationSeconds": 45,
+  "previewDurationSeconds": 30,
   "isPublished": true,
   "viewCount": 0,
   "likeCount": 0

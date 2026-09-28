@@ -45,9 +45,11 @@ export interface YouTubeCard extends YouTubeStatistics {
   publishedAt: Date;
 }
 
-// Default preview window handed to locked viewers: the first 45s of the upload.
+// Default preview window handed to locked viewers: the first 30s of the upload.
+// Long enough to read the premise, short enough that the end-of-preview CTA lands
+// while the user is still leaning in. Per-card overrides win over this.
 export const DEFAULT_PREVIEW_START_SECONDS = 0;
-export const DEFAULT_PREVIEW_DURATION_SECONDS = 45;
+export const DEFAULT_PREVIEW_DURATION_SECONDS = 30;
 
 // YouTube's embed player honours `start`/`end` query params, which is the only
 // way to serve a bounded preview from the Data API without hosting our own clip
@@ -67,6 +69,35 @@ export function buildPreviewEmbedUrl(
 // already hold an unlock — never persisted, so it cannot leak from a feed read.
 export function buildFullWatchUrl(videoId: string): string {
   return `https://www.youtube.com/embed/${videoId}`;
+}
+
+// ── Full-video watch links ────────────────────────────────────────────────────
+// Where the end-of-preview "Watch Full Video on YouTube" call-to-action should
+// send an unlocked viewer.
+//
+// Built here for the same reason `getChannelLinks` exists below: the app should
+// never assemble a YouTube URL itself. It used to be told to concatenate
+// `vnd.youtube://<youtubeVideoId>` from the id it was handed, which duplicates
+// scheme knowledge into the client and puts a second hand-rolled link next to
+// one the server already resolves. Both forms are returned so the fallback is
+// the caller's to pick — prefer `appUrl`, and use `webUrl` when the native app
+// is not installed.
+
+export interface WatchLinks {
+  /** `vnd.youtube://` deep link, opening the native app on the full video. */
+  appUrl: string;
+  /** Mobile-web fallback, for a device with no YouTube app installed. */
+  webUrl: string;
+}
+
+export function buildWatchLinks(videoId: string): WatchLinks {
+  return {
+    // `watch?v=` is the scheme's canonical form. The bare-id shorthand
+    // (`vnd.youtube://<id>`) is not part of the documented scheme, so it is
+    // avoided here.
+    appUrl: `vnd.youtube://watch?v=${videoId}`,
+    webUrl: `https://www.youtube.com/watch?v=${videoId}`,
+  };
 }
 
 export function isYouTubeConfigured(): boolean {

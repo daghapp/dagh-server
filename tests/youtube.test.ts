@@ -8,6 +8,7 @@ import {
   fetchVideoStatistics,
   buildPreviewEmbedUrl,
   buildFullWatchUrl,
+  buildWatchLinks,
   resolveChannelId,
   fetchLatestCards,
   fetchChannelLatestCards,
@@ -137,6 +138,26 @@ describe("getChannelLinks", () => {
   });
 });
 
+describe("buildWatchLinks", () => {
+  it("builds an app deep link and a web fallback for the full video", () => {
+    expect(buildWatchLinks("dQw4w9WgXcQ")).toEqual({
+      appUrl: "vnd.youtube://watch?v=dQw4w9WgXcQ",
+      webUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    });
+  });
+
+  it("uses the scheme's canonical watch?v= form rather than the bare-id shorthand", () => {
+    // The bare `vnd.youtube://<id>` form is not part of the documented scheme,
+    // so the server must not hand the app a link built from it.
+    expect(buildWatchLinks("abc123").appUrl).toBe("vnd.youtube://watch?v=abc123");
+  });
+
+  it("keeps the two links pointing at the same video", () => {
+    const links = buildWatchLinks("abc123");
+    expect(links.appUrl).toContain(links.webUrl.split("?v=")[1]);
+  });
+});
+
 describe("cardFromPlaylistItem", () => {
   it("derives all card fields from the snippet", () => {
     const card = cardFromPlaylistItem(playlistItem("abc123", "My Video"));
@@ -144,9 +165,9 @@ describe("cardFromPlaylistItem", () => {
       youtubeVideoId: "abc123",
       title: "My Video",
       description: "desc",
-      teaserUrl: "https://www.youtube.com/embed/abc123?start=0&end=45&rel=0",
+      teaserUrl: "https://www.youtube.com/embed/abc123?start=0&end=30&rel=0",
       previewStartSeconds: 0,
-      previewDurationSeconds: 45,
+      previewDurationSeconds: 30,
       thumbnailUrl: "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
       publishedAt: new Date("2026-01-01T00:00:00Z"),
       viewCount: 0,
@@ -246,9 +267,9 @@ describe("buildPreviewEmbedUrl", () => {
     );
   });
 
-  it("defaults to the first 45 seconds", () => {
+  it("defaults to the first 30 seconds", () => {
     expect(buildPreviewEmbedUrl("abc123")).toBe(
-      "https://www.youtube.com/embed/abc123?start=0&end=45&rel=0",
+      "https://www.youtube.com/embed/abc123?start=0&end=30&rel=0",
     );
   });
 

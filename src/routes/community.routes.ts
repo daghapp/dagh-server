@@ -26,9 +26,9 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *       calling user. Each card carries `videoId` (alias of `id`) and a
  *       `channel` object with the subscribe links — the app must not hardcode
  *       the channel. Locked cards expose only a clipped preview;
- *       `youtubeVideoId` and `watchUrl` are omitted entirely until the user
- *       subscribes and unlocks, so the full video link cannot be read off the
- *       feed.
+ *       `youtubeVideoId`, `watchUrl`, `watchAppUrl` and `watchWebUrl` are omitted
+ *       entirely until the user subscribes and unlocks, so the full video link
+ *       cannot be read off the feed.
  *
  *       Pass `sort` to reorder the feed — e.g. `?sort=most_liked` or
  *       `?sort=most_watched` to rank by YouTube engagement instead of
@@ -114,6 +114,16 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *                       watchUrl:
  *                         type: string
  *                         description: Full-length embed URL. Present only when isUnlocked is true
+ *                       watchAppUrl:
+ *                         type: string
+ *                         description: >
+ *                           vnd.youtube:// deep link for the end-of-preview "Watch Full Video"
+ *                           CTA. Present only when isUnlocked is true. Use this rather than
+ *                           assembling a scheme string from youtubeVideoId; fall back to
+ *                           watchWebUrl when the YouTube app is not installed
+ *                       watchWebUrl:
+ *                         type: string
+ *                         description: Mobile-web watch URL, the fallback for watchAppUrl. Present only when isUnlocked is true
  *                       requiresSubscription:
  *                         type: boolean
  *                       viewCount:
@@ -357,6 +367,90 @@ router.post(
 router.post("/videos/:videoId/unlock", protectedRoute, controller.unlockVideo.bind(controller));
 
 // ── YouTube subscription verification (the gate's key issuer) ─────────────────
+
+/**
+ * @swagger
+ * /community/videos/{videoId}/subscribe-intent:
+ *   post:
+ *     summary: Record a "Subscribe to Unlock" tap and get everything needed to continue
+ *     description: >
+ *       The single call behind the locked card's subscribe button. It records the
+ *       SUBSCRIBE_INTENT analytics event and returns the Google authorization URL
+ *       plus the channel subscribe links in one round-trip.
+ *
+ *       This replaces a two-call sequence — POST /community/videos/{videoId}/interact
+ *       with SUBSCRIBE_INTENT, then GET /community/youtube/start/{videoId} — which
+ *       the app had to keep in step and routinely half-completed. A dropped
+ *       SUBSCRIBE_INTENT shrinks the denominator the conversion rate is computed
+ *       against, so the funnel quietly flattered itself.
+ *
+ *       `authUrl` is `null` rather than a 503 when YOUTUBE_OAUTH_CLIENT_ID /
+ *       YOUTUBE_OAUTH_CLIENT_SECRET are unset: the tap is still worth recording
+ *       and the channel links are still worth sending. The app should then skip
+ *       the OAuth round-trip and call POST /community/videos/{videoId}/unlock
+ *       directly, which is the client-trusted path that only exists when OAuth
+ *       is unconfigured.
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: videoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Internal card id or YouTube video id
+ *     responses:
+ *       200:
+ *         description: Intent recorded, with the links to continue
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     videoId:
+ *                       type: string
+ *                       description: Canonical internal card id
+ *                     authUrl:
+ *                       type: string
+ *                       nullable: true
+ *                       description: >
+ *                         Google authorization URL. Open it in a browser to let the
+ *                         user grant read-only YouTube access so the subscription can be
+ *                         checked. Null when OAuth is not configured
+ *                     channel:
+ *                       type: object
+ *                       description: Same shape as the feed card's `channel` object — the links that get the user to the channel to subscribe
+ *                       properties:
+ *                         channelId:
+ *                           type: string
+ *                           nullable: true
+ *                         handle:
+ *                           type: string
+ *                           nullable: true
+ *                         subscribeUrl:
+ *                           type: string
+ *                           nullable: true
+ *                         appUrl:
+ *                           type: string
+ *                           nullable: true
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Video not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/videos/:videoId/subscribe-intent",
+  protectedRoute,
+  youtubeVerifyController.subscribeIntent.bind(youtubeVerifyController),
+);
 
 /**
  * @swagger
@@ -665,8 +759,11 @@ router.get(
  *                 description: Offset the preview clip starts at
  *               previewDurationSeconds:
  *                 type: integer
- *                 default: 45
- *                 description: Length of the preview clip in seconds
+ *                 default: 30
+ *                 description: >
+ *                   Length of the preview clip in seconds. Omit to get the server
+ *                   default (30s). The end-of-preview CTA overlay fires at the end
+ *                   of this window, so lengthening it delays the call to action
  *               isPublished:
  *                 type: boolean
  *                 default: true
@@ -808,7 +905,7 @@ router.delete(
  *       at whatever they were the day the card was first synced.
  *
  *       Teasers are derived from the video's own embed URL — the app plays the
- *       first 45 seconds as the preview clip and then surfaces the "Watch on
+ *       first 30 seconds as the preview clip and then surfaces the "Watch on
  *       YouTube" / subscribe call-to-action.
  *
  *       A single sync is rate-limited per channel by a Redis-backed cooldown

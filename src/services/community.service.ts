@@ -22,6 +22,7 @@ import {
   getCachedSync,
   setCachedSync,
   buildFullWatchUrl,
+  buildWatchLinks,
   getChannelLinks,
   type ChannelLinks,
   DEFAULT_MAX_RESULTS,
@@ -96,6 +97,12 @@ export interface CardPayload {
   channel: ChannelLinks;
   youtubeVideoId?: string;
   watchUrl?: string;
+  // Where the end-of-preview "Watch Full Video on YouTube" call-to-action deep
+  // links. Resolved server-side for the same reason `channel` is: the app is not
+  // given a scheme string to concatenate. Present only when isUnlocked, so a
+  // locked card still withholds every string that reconstructs the full video.
+  watchAppUrl?: string;
+  watchWebUrl?: string;
 }
 
 export function toCardPayload(
@@ -123,10 +130,14 @@ export function toCardPayload(
     return base;
   }
 
+  const watch = buildWatchLinks(record.youtubeVideoId);
+
   return {
     ...base,
     youtubeVideoId: record.youtubeVideoId,
     watchUrl: buildFullWatchUrl(record.youtubeVideoId),
+    watchAppUrl: watch.appUrl,
+    watchWebUrl: watch.webUrl,
   };
 }
 

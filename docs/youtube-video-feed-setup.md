@@ -13,10 +13,10 @@ the mobile app must implement to display the videos.
 |------|-------------|-------|
 | Latest uploads are pulled from the channel | Admin sync call | `POST /community/admin/sync-youtube` |
 | Video cards are stored (preview clip only) | Backend DB | `CommunityVideo` table |
-| App shows gated cards with a 45s preview | Mobile app | `GET /community/videos` |
+| App shows gated cards with a 30s preview | Mobile app | `GET /community/videos` |
 | User subscribes on YouTube, returns → unlock | Mobile app | `GET /community/youtube/start/:id` |
 | Server confirms the subscription, grants access | OAuth callback | `GET /community/youtube/callback` |
-| Every tap is logged for funnel analytics | Mobile app | `POST /community/videos/:id/interact` |
+| Every tap is logged for funnel analytics | Mobile app | `POST /community/videos/:id/interact` (and `POST /community/videos/:id/subscribe-intent` for the subscribe tap, which logs itself) |
 
 ---
 
@@ -148,7 +148,7 @@ Behavior guarantees:
   **only** `viewCount`, `likeCount` and `statsSyncedAt`, so admin edits and
   unpublishing (soft-delete) survive syncs.
 - Each synced card gets a **clipped** teaser
-  `https://www.youtube.com/embed/<videoId>?start=0&end=45&rel=0` and
+  `https://www.youtube.com/embed/<videoId>?start=0&end=30&rel=0` and
   `thumbnailUrl = https://i.ytimg.com/vi/<videoId>/hqdefault.jpg`. The
   full-length URL is never stored on a card.
 
@@ -173,24 +173,105 @@ designed funnel:
      overlay. Card includes `title`, `description`, `teaserUrl`, `thumbnailUrl`,
      `previewStartSeconds`, `previewDurationSeconds`, `viewCount`, `likeCount`,
      `isUnlocked`, `requiresSubscription`, and `channel` (the subscribe links —
-     see step 3). `youtubeVideoId` and `watchUrl` are only present once unlocked
-     — do not assume they exist.
+     see step 3). `youtubeVideoId`, `watchUrl`, `watchAppUrl` and `watchWebUrl`
+     are only present once unlocked — do not assume they exist.
    - Bottom action bar: prominent red **"Subscribe to Unlock"** + secondary
      **"Preview Clip"** when `isUnlocked === false`; a green
-     **"Watch Full Video on YouTube"** when `isUnlocked === true`.
+     **"Watch Full Video on YouTube"** when `isUnlocked === true` (open
+     `watchAppUrl`, falling back to `watchWebUrl`).
+   - **The red button is a single call**: `POST
+     /community/videos/:videoId/subscribe-intent` (section 4). It records the
+     funnel event and returns the authorization URL and the subscribe links
+     together, so the tap cannot half-succeed.
    - Optional sort tabs: pass `?sort=most_watched` or `?sort=most_liked` to rank
      the feed by YouTube engagement instead of recency (default `newest`). The
      ordering applied is echoed in `meta.sort`. The counts are already on every
      card, so the tabs need no extra request — see
      [Ranking the feed by engagement](api-reference.md#sort--ranking-the-feed-by-engagement).
 
-2. **Preview modal — the 45-second teaser:**
-   - Tapping the thumbnail opens a bottom-sheet that plays `teaserUrl`.
-   - The clip is already bounded server-side, but also stop at
-     `previewStartSeconds + previewDurationSeconds` and then freeze with a
-     persistent overlay prompting to subscribe for the full version.
-   - Log `PREVIEW_CLIP` when it opens, `SUBSCRIBE_INTENT` when "Subscribe to
-     Unlock" is tapped.
+2. **Preview modal — the teaser, then the end-of-preview CTA overlay:**
+
+   This one modal covers three of the four steps in the user journey, and it is
+   entirely client-side: the server has no endpoint that fires when a preview
+   ends, and does not need one. Everything it needs is already on the card.
+
+   **a. Play the teaser.** Tapping the thumbnail opens a bottom-sheet that plays
+   `teaserUrl`. The clip is already bounded server-side by YouTube's own `start`
+   /`end` embed params. Stop it locally at
+   `previewStartSeconds + previewDurationSeconds` anyway — `end` is honoured by
+   the embed player but is not a hard guarantee across every embed context, and a
+   preview that runs into the full video defeats the whole gate.
+
+   **b. Show the CTA overlay at the end of the preview.** The overlay is a single
+   view pinned over the video area — not a separate screen, and not a dialog that
+   dismisses itself.
+
+   - **Trigger it on the player's own `ended` event, not a timer.** A
+     `setTimeout(previewDurationSeconds * 1000)` drifts, and fires while the
+     player is paused, buffering, or backgrounded — so the user gets the overlay
+     for a video they have not finished. Use the media element's `ended` /
+     `onStateChange === YT.PlayerState.ENDED`, and treat the local stop in (a) as
+     the backstop that *causes* the same event.
+   - **Keep the last frame and pause the audio.** Do not let the clip loop under
+     the overlay, and stop any looping autoplay of the card's thumbnail media
+     behind the sheet — otherwise the overlay reads as broken over a video that
+     is still audibly playing.
+   - **It is persistent.** Do not auto-dismiss it and do not add a short
+     countdown. The user has to choose an action; a disappearing overlay is the
+     one outcome that loses the click.
+   - **Guard re-entry.** If the user dismisses the overlay and replays the clip,
+     do not bring it straight back — set a `hasSeenCta` flag per modal session
+     and let it re-arm only when the clip completes again. Otherwise every
+     replay re-triggers it and the second tap does nothing visible.
+   - **Copy and button depend on the card's unlock state**, which the app already
+     holds on the card object — do not re-fetch to decide:
+
+     | `isUnlocked` | Overlay message | Button | Action |
+     |---|---|---|---|
+     | `true` | "Enjoyed the preview? Watch the full discussion." | **Watch Full Video on YouTube** | Open `watchAppUrl`, falling back to `watchWebUrl` (section 3) |
+     | `false` | "Enjoyed the preview? Subscribe to unlock the full discussion." | **Subscribe to Unlock** | Run the subscribe flow (section 4) |
+
+     Reading `isUnlocked` at the moment the preview ends — rather than at modal
+     open — matters: a grant can be revoked by the re-verify sweep while the user
+     is mid-clip, and a locked card has no `watchAppUrl` to open. Treat a missing
+     `watchAppUrl` as "not unlocked" and fall back to the subscribe branch rather
+     than opening a broken link.
+
+   - **Prefer the app, fall back to the web.** `watchAppUrl` is a
+     `vnd.youtube://` deep link. On a device with no YouTube app it silently does
+     nothing on some platforms, so check whether the URL can be opened and fall
+     back to `watchWebUrl` on failure. Both are supplied by the server for exactly
+     this reason — see section 3.
+
+   - **Analytics.** Log `PREVIEW_CLIP` once when the modal opens, via
+     `POST /community/videos/:videoId/interact`. Sending `durationMs` when the
+     modal is dismissed measures drop-off within the clip, which is the number
+     that tells you whether the teaser is too long.
+
+     On the overlay button, the two branches differ:
+
+     - **Unlocked** → log `WATCH_FULL_VIDEO` via `/interact`, then open
+       `watchAppUrl`.
+     - **Locked** → call `POST /community/videos/:videoId/subscribe-intent`
+       (section 4). It records `SUBSCRIBE_INTENT` for you and returns the
+       authorization URL and channel links. Do **not** also call `/interact` with
+       `SUBSCRIBE_INTENT` — that double-counts the funnel denominator, since
+       `conversionRate` divides real unlocks by that count, so the rate is
+       understated and your team chases a funnel problem that does not exist.
+
+     Log at the tap, not at the end of the video, and do not log
+     `SUBSCRIBE_INTENT` again when the OAuth flow completes — the server logs
+     `UNLOCK` for that.
+
+   **Preview length:** cards default to a 30-second clip
+   (`previewDurationSeconds`), which is what this doc assumes. The field is
+   per-video and admin-editable via `PUT /community/admin/videos/:videoId`, so a
+   card can be tuned to a tighter or longer teaser with no deploy. Note the
+   channel sync only ever writes preview bounds when it first creates a card — it
+   refreshes counters on cards it already knows and leaves curated fields alone —
+   so changing the server default does not shorten existing cards. Set them
+   explicitly per card to move a published feed. The overlay contract above is
+   unchanged by the length.
 
 3. **Deep link to the channel — take it from the API, do not hardcode it:**
    - Every card carries a `channel` object, and `GET /community/youtube/start/:videoId`
@@ -209,10 +290,30 @@ designed funnel:
      `channel.subscribeUrl` as the browser fallback. `appUrl` is `null` for a
      handle-only configuration, because the `vnd.youtube://channel/` scheme has
      no handle form.
-   - "Watch Full Video on YouTube" → `vnd.youtube://<youtubeVideoId>`
-     (fallback `https://www.youtube.com/watch?v=<youtubeVideoId>`). This action
-     only exists for unlocked cards, so the id is guaranteed present.
-   - All four fields are `null` when neither `YOUTUBE_CHANNEL_ID` nor
+   - **"Watch Full Video on YouTube"** (the end-of-preview overlay button, or the
+     card's green action) → open **`watchAppUrl`**, falling back to
+     **`watchWebUrl`** when the deep link cannot be opened:
+
+     ```json
+     {
+       "watchAppUrl": "vnd.youtube://watch?v=dQw4w9WgXcQ",
+       "watchWebUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+     }
+     ```
+
+     Both fields are present only once `isUnlocked` is `true`, so the id they are
+     built from is guaranteed to be one the server has cleared this user to watch.
+
+     **Do not assemble these from `youtubeVideoId`.** The app used to be told to
+     concatenate `vnd.youtube://<youtubeVideoId>` itself, which is the same
+     hand-rolled-scheme problem the `channel` object exists to solve: the scheme
+     knowledge is duplicated into the client, and the bare-id form is not part of
+     YouTube's documented scheme. The server now builds both forms and ships them
+     next to the id. `watchUrl` is also still returned — it is the
+     *embed* address for the full video, useful for an in-app web player — but it
+     is the wrong URL for a "watch on YouTube" button, since it opens an embed
+     page rather than the app or the mobile site.
+   - All four `channel` fields are `null` when neither `YOUTUBE_CHANNEL_ID` nor
      `YOUTUBE_CHANNEL_HANDLE` is set — handle that state rather than assuming a
      link exists.
 
@@ -228,11 +329,28 @@ designed funnel:
    on the user's behalf.
 
 4. **Unlock + rehydrate:**
-   - "Subscribe to Unlock" should run the OAuth flow
-     (`GET /community/youtube/start/:videoId` → `authUrl`, section 8). The
-     callback confirms the subscription and unlocks server-side; the browser
-     lands back on your deep link with
-     `?subscribed=…&unlocked=…&channelGranted=…&hasChannelAccess=…`.
+   - **"Subscribe to Unlock" is one call:
+     `POST /community/videos/:videoId/subscribe-intent`.** It records the
+     `SUBSCRIBE_INTENT` funnel event and returns `{ videoId, authUrl, channel }`
+     in a single round-trip. Do not also call
+     `POST /community/videos/:videoId/interact` with `SUBSCRIBE_INTENT` — that
+     double-counts the denominator behind `conversionRate`, which *understates*
+     the rate — the unlock count does not move, only the tap count does.
+   - Then, from that one response:
+     - **`authUrl` non-null** → open it (section 8) to run the OAuth flow. The
+       callback confirms the subscription and unlocks server-side; the browser
+       lands back on your deep link with
+       `?subscribed=…&unlocked=…&channelGranted=…&hasChannelAccess=…`.
+     - **`authUrl` is `null`** → YouTube verification is not configured on this
+       server. Send the user to `channel.appUrl` to subscribe, then call
+       `POST /community/videos/:videoId/unlock`, which is client-trusted on that
+       path. `null` is not an error — the endpoint deliberately does not 503,
+       because the tap is still worth recording and the subscribe link is still
+       worth sending.
+   - `GET /community/youtube/start/:videoId` still works and returns the same
+     links, but use it only to **re-run** the flow without recording a new intent
+     (a retry after a cancelled consent screen, say). Calling it for the initial
+     tap means going back to two calls and a separately-optional analytics call.
    - **`hasChannelAccess=true` means the entire feed is unlocked.** Hide every
      subscribe call to action at once rather than card by card — otherwise a
      subscriber scrolling a feed the server has already opened gets nagged to
@@ -256,9 +374,10 @@ across launches:
   unlocked and stop consulting the per-video map. Persist it alongside the map
   (AsyncStorage/encrypted storage).
 - **Then: keep `videoId → unlockedAt` as a fallback** for users with no channel
-  grant (and for the rare legacy per-video unlock). Keep `youtubeVideoId`
-  separately once unlocked — it is only used for deep links, and it is only sent
-  to you after unlocking.
+  grant (and for the rare legacy per-video unlock). Keep `watchAppUrl` /
+  `watchWebUrl` alongside it once unlocked — they are only sent to you after
+  unlocking, and caching them means the end-of-preview overlay can deep-link on a
+  tap without waiting on a network round-trip.
 - **On launch:** call `GET /community/my-unlocks`, persist `hasChannelAccess`,
   and merge `{ unlocks: [{ videoId, unlockedAt }] }` into the map. Merge, don't
   replace, so unlocks made offline/other devices aren't lost. When
@@ -275,12 +394,20 @@ across launches:
 
 5. **Analytics:** log every meaningful tap via
    `POST /community/videos/:videoId/interact` with
-   `SUBSCRIBE_INTENT | PREVIEW_CLIP | WATCH_FULL_VIDEO | UNLOCK`. Pass the
-   optional `durationMs` (integer ms ≥ 0) to record watch time — e.g. send
-   `durationMs` on `PREVIEW_CLIP` when the user leaves the teaser, so you can
-   measure drop-off within the 45s clip. Admins read the funnel (interaction
-   counts + conversion rate + watch-time totals) at
-   `GET /community/videos/:videoId/analytics`.
+   `PREVIEW_CLIP | WATCH_FULL_VIDEO | UNLOCK`. Pass the optional `durationMs`
+   (integer ms ≥ 0) to record watch time — e.g. send `durationMs` on
+   `PREVIEW_CLIP` when the user leaves the teaser, so you can measure drop-off
+   within the 30s clip. Admins read the funnel (interaction counts + conversion
+   rate + watch-time totals) at `GET /community/videos/:videoId/analytics`.
+
+   **`SUBSCRIBE_INTENT` is not in that list on purpose** — it is written by
+   `POST /community/videos/:videoId/subscribe-intent` (section 4), which the app
+   calls anyway. Logging it a second time through `/interact` double-counts the
+   denominator behind `conversionRate`, so the funnel reports a conversion rate
+   roughly half of what it earned — silently, and in the self-punishing
+   direction, which is the harder mistake to spot because a number that looks
+   merely unimpressive invites optimising the product rather than the
+   instrumentation.
 
 ### API payload contract (what the feed returns)
 
@@ -292,9 +419,9 @@ A **locked** card in `GET /community/videos` is:
   "videoId": "uuid",
   "title": "string",
   "description": "string",
-  "teaserUrl": "https://www.youtube.com/embed/VIDEO?start=0&end=45&rel=0",
+  "teaserUrl": "https://www.youtube.com/embed/VIDEO?start=0&end=30&rel=0",
   "previewStartSeconds": 0,
-  "previewDurationSeconds": 45,
+  "previewDurationSeconds": 30,
   "thumbnailUrl": "string",
   "viewCount": 12480,
   "likeCount": 932,
@@ -319,7 +446,9 @@ An **unlocked** card is the same shape plus:
   "requiresSubscription": false,
   "unlockedAt": "ISO-8601",
   "youtubeVideoId": "string",
-  "watchUrl": "https://www.youtube.com/embed/VIDEO"
+  "watchUrl": "https://www.youtube.com/embed/VIDEO",
+  "watchAppUrl": "vnd.youtube://watch?v=VIDEO",
+  "watchWebUrl": "https://www.youtube.com/watch?v=VIDEO"
 }
 ```
 
@@ -337,16 +466,18 @@ An **unlocked** card is the same shape plus:
   counts; an unrecognised value falls back to `newest` and `meta.sort` reports
   what was actually applied.
 
-#### Why `youtubeVideoId` and `watchUrl` are omitted while locked
+#### Why the full-video fields are omitted while locked
 
 Gating only the *playback* is theatre: the full-length link is just a string, so
 any client that can read the feed can read the video. The server therefore
-withholds the two fields that reconstruct it and derives the full watch URL on
-demand, only for callers who already hold a `VideoUnlock`. Locked viewers get
-`teaserUrl` (bounded to the preview window by YouTube's own `start`/`end` embed
-params) and `thumbnailUrl` — enough to sample the content, not enough to watch
-it in full. `teaserUrl` is stored clipped, so even a client that ignores
-`isUnlocked` cannot pull the whole upload out of that field.
+withholds every field that reconstructs it — `youtubeVideoId`, `watchUrl`,
+`watchAppUrl` and `watchWebUrl` — and derives them on demand, only for callers
+who already hold a `VideoUnlock`. The two `watch*Url` forms are the same link in
+different shapes, so withholding one while sending the other would gate nothing.
+Locked viewers get `teaserUrl` (bounded to the preview window by YouTube's own
+`start`/`end` embed params) and `thumbnailUrl` — enough to sample the content,
+not enough to watch it in full. `teaserUrl` is stored clipped, so even a client
+that ignores `isUnlocked` cannot pull the whole upload out of that field.
 
 ### CORS / network headers
 
@@ -566,8 +697,9 @@ OAuth client ID → Web application**, then add the redirect URI.
 
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| GET | `/community/youtube/start/:videoId` | Bearer | Returns `{ authUrl, expiresIn, channel }` — the state token inside encodes the user + video for 15 min, and `channel` carries the subscribe links so the app needs no second call |
-| GET | `/community/youtube/callback` | Public | Google redirect target. Exchanges the code, checks `subscriptions?mine=true&forChannelId=<channel>`, unlocks + logs `SUBSCRIBE_INTENT`/`UNLOCK` when subscribed, caches the verdict, redirects to the return URL |
+| POST | `/community/videos/:videoId/subscribe-intent` | Bearer | **The subscribe button.** Records `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }` in one call. `authUrl` is `null` (not 503) when OAuth is unconfigured — subscribe via `channel.appUrl`, then call `/unlock` |
+| GET | `/community/youtube/start/:videoId` | Bearer | Returns `{ authUrl, expiresIn, channel }` without recording a new intent — use only to re-run the flow (e.g. after a cancelled consent screen). The state token inside encodes the user + video for 15 min |
+| GET | `/community/youtube/callback` | Public | Google redirect target. Exchanges the code, checks `subscriptions?mine=true&forChannelId=<channel>`, grants the channel + logs `UNLOCK` when subscribed, caches the verdict, redirects to the return URL |
 | GET | `/community/youtube/status/:videoId` | Bearer | `{ isUnlocked, verifiedSubscribed, verifiedAt, cached }` — durable unlock + last cached verdict |
 
 Behavior notes:
@@ -615,20 +747,34 @@ an instant redirect.
       reports the applied order
 - [ ] Cards carry non-zero `viewCount` / `likeCount` after a sync (a fresh channel
       whose first sync reported 0 means the statistics call is failing)
-- [ ] A **locked** card has no `youtubeVideoId` and no `watchUrl` anywhere in the
-      payload, and its `teaserUrl` carries `start`/`end` bounds
+- [ ] Published cards report `previewDurationSeconds: 30` (the sync only writes preview
+      bounds when it first creates a card, so existing cards need the migration
+      `20261012_shorten_preview_window` or a per-card `PUT`)
+- [ ] A **locked** card has no `youtubeVideoId`, `watchUrl`, `watchAppUrl` or
+      `watchWebUrl` anywhere in the payload, and its `teaserUrl` carries
+      `start`/`end` bounds
 - [ ] `POST /community/videos/:videoId/unlock` with no prior verification returns
       `403 SUBSCRIPTION_REQUIRED` (gate closed)
 - [ ] `POST /community/videos/:videoId/unlock` works with the `videoId` from a card **and** with the `youtubeVideoId` of an unlocked card
 - [ ] Web-view origin is in `ALLOWED_ORIGINS` (native requests need no origin)
 - [ ] Server logs show a `community.feed.list` line per request and `community.feed.*.not_found` / `*.error` lines on failures
-- [ ] App plays the clipped preview, then shows subscribe overlay — logs `PREVIEW_CLIP`
+- [ ] App plays the clipped preview, then shows the CTA overlay — logs `PREVIEW_CLIP`
+- [ ] The overlay appears on the player's `ended` event, not a timer: pausing or
+      backgrounding mid-clip does not raise it, and it does not reappear on a
+      replay until the clip finishes again
+- [ ] The overlay stays put — it does not auto-dismiss or loop the clip underneath
 - [ ] "Subscribe to Unlock" opens `channel.appUrl` (falling back to `channel.subscribeUrl`) — **no hardcoded handle in the app**
 - [ ] Changing `YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE` changes the link the app shows, with no app release
-- [ ] "Subscribe to Unlock" starts the OAuth flow — logs `SUBSCRIBE_INTENT` **once**
+- [ ] "Subscribe to Unlock" is **one** call to `POST /community/videos/:videoId/subscribe-intent`, which logs `SUBSCRIBE_INTENT` and returns `authUrl` + `channel`
+- [ ] The app does **not** also call `/interact` with `SUBSCRIBE_INTENT` — admin analytics shows it logged **once** per tap
 - [ ] Consent → callback confirms the subscription, unlocks, logs `UNLOCK` once
-- [ ] The unlocked card now carries `youtubeVideoId` + `watchUrl`
+- [ ] The unlocked card now carries `youtubeVideoId` + `watchUrl` + `watchAppUrl` + `watchWebUrl`
+- [ ] The overlay's "Watch Full Video on YouTube" opens `watchAppUrl`, and falls
+      back to `watchWebUrl` on a device with no YouTube app — **no scheme string
+      is assembled in the app**
 - [ ] "Watch Full Video on YouTube" opens the video — logs `WATCH_FULL_VIDEO`
+- [ ] An overlay shown on a still-locked card offers "Subscribe to Unlock" rather
+      than a link, and does not attempt to open `watchAppUrl`
 - [ ] Relaunching the app preserves green state via `GET /community/my-unlocks`
 - [ ] An existing unlock survives verdict-cache expiry (call `/unlock` again after
       `YOUTUBE_VERIFY_CACHE_MS` — still 200)

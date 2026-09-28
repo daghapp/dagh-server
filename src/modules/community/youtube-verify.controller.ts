@@ -82,6 +82,94 @@ function redirectResult(res: Response, query: Record<string, string | boolean>):
 }
 
 export class YouTubeVerifyController {
+  // ── POST /community/videos/:videoId/subscribe-intent ──────────────────────
+  // The "Subscribe to Unlock" tap: records the intent and hands back everything
+  // the app needs to continue, in one round-trip.
+  //
+  // This was two calls the app had to keep in step — POST /interact with
+  // SUBSCRIBE_INTENT for the funnel, then GET /youtube/start/:videoId for the
+  // authorization URL and the subscribe links. Nothing forced it to make both,
+  // so the analytics half was the one that got dropped, and a missing
+  // SUBSCRIBE_INTENT understates the denominator that the conversion rate is
+  // computed against — the funnel silently flattered itself. One endpoint makes
+  // the event un-skippable.
+  async subscribeIntent(req: Request, res: Response) {
+    const start = started();
+    try {
+      const userId = req.user?.id as string;
+      const videoId = param(req.params.videoId);
+
+      // Resolved up front both to 404 an unknown card and to canonicalise the
+      // id: the state token is signed with the internal id, and the interaction
+      // row's foreign key must point at the real CommunityVideo.
+      const video = await communityService.getVideoRecord(videoId);
+      if (!video) {
+        logCommunityWarn("community.subscribe_intent.not_found", {
+          status: 404,
+          userId,
+          videoId,
+          durationMs: Date.now() - start,
+        });
+        return fail(res, 404, "Video not found");
+      }
+
+      // Logged before the OAuth work and unconditionally. The tap is the event
+      // being measured, and it happened whether or not we can go on to verify
+      // anything. A funnel that only counts taps we could verify is not a
+      // funnel. A failure here is logged and swallowed rather than failing the
+      // request: the user still needs the subscribe link.
+      const logged = await communityService.logInteraction(userId, video.id, "SUBSCRIBE_INTENT");
+      if (!logged.success) {
+        logCommunityWarn("community.subscribe_intent.log_failed", {
+          status: 200,
+          userId,
+          videoId: video.id,
+          durationMs: Date.now() - start,
+        });
+      }
+
+      // `authUrl: null` rather than a 503 when OAuth is unconfigured, unlike
+      // GET /youtube/start/:videoId. That endpoint's job is the authorization
+      // URL, so it has nothing to return without OAuth. This one also carries
+      // the funnel event and the subscribe links, both of which remain useful:
+      // the user can still go and subscribe, and the tap still counts. Failing
+      // the whole call would discard real analytics to report a configuration
+      // problem the app cannot act on — and the dev flow unlocks without OAuth
+      // anyway, so the app proceeds by calling /unlock directly.
+      let authUrl: string | null = null;
+      if (youtubeOauth.isYouTubeOAuthConfigured()) {
+        const state = youtubeOauth.signVerifyState(userId, video.id);
+        authUrl = youtubeOauth.buildAuthUrl(state);
+      }
+
+      logCommunity("community.subscribe_intent", {
+        status: 200,
+        userId,
+        videoId: video.id,
+        logged: logged.success,
+        verificationAvailable: authUrl !== null,
+        durationMs: Date.now() - start,
+      });
+
+      return ok(
+        res,
+        { videoId: video.id, authUrl, channel: getChannelLinks() },
+        authUrl
+          ? "Subscribe intent recorded. Open authUrl to verify the subscription, or channel.appUrl to subscribe first."
+          : "Subscribe intent recorded. YouTube verification is not configured, so the subscription cannot be checked automatically.",
+      );
+    } catch (error) {
+      logCommunityError("community.subscribe_intent.error", {
+        status: 500,
+        userId: req.user?.id,
+        videoId: param(req.params.videoId),
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to record subscribe intent");
+    }
+  }
+
   // ── GET /community/youtube/start/:videoId ─────────────────────────────────
   // Returns the Google authorization URL that will verify the caller's YouTube
   // subscription to the configured channel before unlocking the video, plus the
