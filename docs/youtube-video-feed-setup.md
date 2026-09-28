@@ -14,7 +14,8 @@ the mobile app must implement to display the videos.
 | Latest uploads are pulled from the channel | Admin sync call | `POST /community/admin/sync-youtube` |
 | Video cards are stored (preview clip only) | Backend DB | `CommunityVideo` table |
 | App shows gated cards with a 30s preview | Mobile app | `GET /community/videos` |
-| User subscribes on YouTube, returns → unlock | Mobile app | `GET /community/youtube/start/:id` |
+| "Subscribe to Unlock Preview" is tapped — intent logged, links returned | Mobile app | `POST /community/videos/:id/subscribe-intent` |
+| User subscribes on YouTube, returns → verify | Mobile app | opens the returned `authUrl` |
 | Server confirms the subscription, grants access | OAuth callback | `GET /community/youtube/callback` |
 | Every tap is logged for funnel analytics | Mobile app | `POST /community/videos/:id/interact` (and `POST /community/videos/:id/subscribe-intent` for the subscribe tap, which logs itself) |
 
@@ -29,6 +30,10 @@ the mobile app must implement to display the videos.
   verify a subscription. Without them the unlock endpoint **fails open** and
   trusts the client, so the gate is effectively off. Set these before launch
   (see [section 8](#8-server-side-subscription-verification--the-unlock-gate)).
+  Whether gating on a subscribe action is permitted by YouTube's policies at all
+  is a separate question this repo does not answer —
+  [section 10](#10-before-you-launch-channel-incentive-policy-review) is the
+  pre-launch review.
 
 ### Optional (but recommended)
 - **`YOUTUBE_CHANNEL_ID`** (e.g. `UC...`) **or** **`YOUTUBE_CHANNEL_HANDLE`**
@@ -175,7 +180,7 @@ designed funnel:
      `isUnlocked`, `requiresSubscription`, and `channel` (the subscribe links —
      see step 3). `youtubeVideoId`, `watchUrl`, `watchAppUrl` and `watchWebUrl`
      are only present once unlocked — do not assume they exist.
-   - Bottom action bar: prominent red **"Subscribe to Unlock"** + secondary
+   - Bottom action bar: prominent red **"Subscribe to Unlock Preview"** + secondary
      **"Preview Clip"** when `isUnlocked === false`; a green
      **"Watch Full Video on YouTube"** when `isUnlocked === true` (open
      `watchAppUrl`, falling back to `watchWebUrl`).
@@ -229,7 +234,7 @@ designed funnel:
      | `isUnlocked` | Overlay message | Button | Action |
      |---|---|---|---|
      | `true` | "Enjoyed the preview? Watch the full discussion." | **Watch Full Video on YouTube** | Open `watchAppUrl`, falling back to `watchWebUrl` (section 3) |
-     | `false` | "Enjoyed the preview? Subscribe to unlock the full discussion." | **Subscribe to Unlock** | Run the subscribe flow (section 4) |
+     | `false` | "Enjoyed the preview? Subscribe to unlock the full discussion." | **Subscribe to Unlock Preview** | Run the subscribe flow (section 4) |
 
      Reading `isUnlocked` at the moment the preview ends — rather than at modal
      open — matters: a grant can be revoked by the re-verify sweep while the user
@@ -286,7 +291,7 @@ designed funnel:
      }
      ```
 
-   - "Subscribe to Unlock" → open `channel.appUrl` if non-null, else
+   - "Subscribe to Unlock Preview" → open `channel.appUrl` if non-null, else
      `channel.subscribeUrl` as the browser fallback. `appUrl` is `null` for a
      handle-only configuration, because the `vnd.youtube://channel/` scheme has
      no handle form.
@@ -329,7 +334,7 @@ designed funnel:
    on the user's behalf.
 
 4. **Unlock + rehydrate:**
-   - **"Subscribe to Unlock" is one call:
+   - **"Subscribe to Unlock Preview" is one call:
      `POST /community/videos/:videoId/subscribe-intent`.** It records the
      `SUBSCRIBE_INTENT` funnel event and returns `{ videoId, authUrl, channel }`
      in a single round-trip. Do not also call
@@ -763,9 +768,9 @@ an instant redirect.
       backgrounding mid-clip does not raise it, and it does not reappear on a
       replay until the clip finishes again
 - [ ] The overlay stays put — it does not auto-dismiss or loop the clip underneath
-- [ ] "Subscribe to Unlock" opens `channel.appUrl` (falling back to `channel.subscribeUrl`) — **no hardcoded handle in the app**
+- [ ] "Subscribe to Unlock Preview" opens `channel.appUrl` (falling back to `channel.subscribeUrl`) — **no hardcoded handle in the app**
 - [ ] Changing `YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE` changes the link the app shows, with no app release
-- [ ] "Subscribe to Unlock" is **one** call to `POST /community/videos/:videoId/subscribe-intent`, which logs `SUBSCRIBE_INTENT` and returns `authUrl` + `channel`
+- [ ] "Subscribe to Unlock Preview" is **one** call to `POST /community/videos/:videoId/subscribe-intent`, which logs `SUBSCRIBE_INTENT` and returns `authUrl` + `channel`
 - [ ] The app does **not** also call `/interact` with `SUBSCRIBE_INTENT` — admin analytics shows it logged **once** per tap
 - [ ] Consent → callback confirms the subscription, unlocks, logs `UNLOCK` once
 - [ ] The unlocked card now carries `youtubeVideoId` + `watchUrl` + `watchAppUrl` + `watchWebUrl`
@@ -773,10 +778,77 @@ an instant redirect.
       back to `watchWebUrl` on a device with no YouTube app — **no scheme string
       is assembled in the app**
 - [ ] "Watch Full Video on YouTube" opens the video — logs `WATCH_FULL_VIDEO`
-- [ ] An overlay shown on a still-locked card offers "Subscribe to Unlock" rather
+- [ ] An overlay shown on a still-locked card offers "Subscribe to Unlock Preview" rather
       than a link, and does not attempt to open `watchAppUrl`
 - [ ] Relaunching the app preserves green state via `GET /community/my-unlocks`
 - [ ] An existing unlock survives verdict-cache expiry (call `/unlock` again after
       `YOUTUBE_VERIFY_CACHE_MS` — still 200)
 - [ ] Admin analytics endpoint shows the funnel numbers, and
       `SUBSCRIBE_INTENT` is not double-counted
+---
+
+## 10. Before you launch: channel-incentive policy review
+
+**This is not a code task and nothing in this repo satisfies it for you. Get it
+reviewed before the flow ships.**
+
+The feature as built gates your own content behind a subscribe action on *your*
+channel, and sends users off-platform via a deep link. That is squarely the shape
+YouTube's policies govern, and two are worth reading against the real text
+rather than trusting a summary:
+
+- **API Terms of Service / developer policies** — the YouTube Data API is granted
+  for integrating YouTube functionality, and the terms restrict using API results
+  to promote off-YouTube activity and require the API not be used to incentivize
+  engagement in ways YouTube has not sanctioned. "Unlock the full video by
+  subscribing" is a channel-growth incentive built on API-verified subscription
+  data, so read the current terms against that specific mechanism.
+- **Spam and deceptive practices / engagement-bait policy** — requiring an action
+  in order to access content can be treated as engagement-bait even when the
+  content and the channel are the same property.
+
+**What is explicitly in scope for review:** the fact that the subscription check
+uses the Data API's `subscriptions.list`, and that the unlock is conditioned on
+its result, makes this API-verified incentivization rather than a client-asserted
+claim. If the check were purely client-side the framing would be different; it is
+not.
+
+**What the implementation deliberately does not do**, so the exposure is bounded
+rather than hidden:
+
+- No reward, prize, discount, or reciprocal benefit is offered. The unlocked
+  content is the *same* creator's, which is the strongest argument available that
+  this is a channel-follow funnel rather than an incentive scheme.
+- The teaser is a real 30-second excerpt of the same video, not a withheld
+  original, and the overlay is shown on the user's own action after it plays.
+- Nothing auto-subscribes, auto-likes, or auto-comments. YouTube exposes no such
+  capability, and the flow asks the user to do it themselves.
+
+**Practical mitigations if review comes back negative**, roughly in order of
+cost:
+
+1. Make the teaser the default experience and the subscribe CTA a secondary
+   action. Nothing in the code prevents this — it is presentation.
+2. Keep the overlay copy informational ("enjoyed the preview? the full
+   discussion is on the channel") rather than making the unlock a condition of
+   finishing the clip.
+3. Ship the 30s teaser for all users and drop the gate entirely, keeping
+   `hasChannelAccess` only for the deeper archive.
+
+**Decide this before launch, not after.** The unlock endpoint fails open when
+`YOUTUBE_OAUTH_*` is unconfigured, which is what local dev relies on and what
+makes a staged rollout easy — but it also means a production deploy that quietly
+misses the env vars is not a broken demo, it is a public feed. Confirm
+`YOUTUBE_OAUTH_CLIENT_ID` is set in the target environment and check the boot log
+line that says so, as part of the same pre-launch pass.
+
+### Pre-launch policy sign-off
+
+- [ ] The channel-incentive question in [section 10](#10-before-you-launch-channel-incentive-policy-review)
+      has been reviewed against the current YouTube API Terms and engagement-bait
+      policy by someone qualified to make that call, and the outcome recorded
+      here:
+      <!-- Reviewer / date / outcome -->
+- [ ] `YOUTUBE_OAUTH_CLIENT_ID` is confirmed present in the **target production
+      environment** (not just locally), and the boot log does not contain the
+      "client is unconfigured" warning

@@ -655,7 +655,7 @@ present and authoritative, so a client can render from the cards alone.
 ```
 
 `hasChannelAccess` is `true` when the caller holds a durable channel grant, and
-`channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock"
+`channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock Preview"
 call to action at once instead of deriving the state card by card — otherwise a
 subscriber sees subscribe prompts on cards the server has already opened.
 `verifiedAt` is when the subscription was last confirmed. YouTube publishes no
@@ -759,7 +759,7 @@ treat the feed as fully unlocked; otherwise use `unlocks`.
 Append-only analytics event. Safe to fire for every user action (client-side
 fire-and-forget). `action` must be one of:
 
-- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock" (logged by the client,
+- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock Preview" (logged by the client,
   before the OAuth round-trip)
 - `PREVIEW_CLIP` — user played the clipped preview on a locked card
 - `WATCH_FULL_VIDEO` — user opened the full video (unlocked users only)
@@ -778,7 +778,7 @@ YouTube exposes no per-user watch API, so treat it as a hint, not evidence.
 
 ### POST /community/videos/:videoId/subscribe-intent
 
-The locked card's **"Subscribe to Unlock"** button, in one round-trip. Records
+The locked card's **"Subscribe to Unlock Preview"** button, in one round-trip. Records
 the `SUBSCRIBE_INTENT` event and returns the Google authorization URL plus the
 channel subscribe links.
 
