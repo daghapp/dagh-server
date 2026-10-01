@@ -19,6 +19,10 @@ import {
 import { ok, created, fail } from "../../helpers/response.js";
 import { toAuthUser } from "../../helpers/auth-user.js";
 import { disableAllUserDevices } from "../devices/devices.controller.js";
+import {
+  resolveChannelAccessForLogin,
+  resolveChannelAccessForRead,
+} from "../../services/community.service.js";
 
 export class PasswordAuthController {
   async register(req: Request, res: Response) {
@@ -125,8 +129,16 @@ export class PasswordAuthController {
         email: user.email,
         accountType: user.accountType,
       });
+
+      // Signing in forces a check rather than trusting a live lease. This is the
+      // moment yesterday's evidence stops being evidence about today: someone who
+      // unsubscribed last night must see a locked feed now, not in an hour.
+      // Best effort by design — a Google outage locks the feed for this response
+      // rather than failing the sign-in, and it never opens anything.
+      const communityAccess = await resolveChannelAccessForLogin(user.id);
+
       return ok(res, {
-        ...toAuthUser(user),
+        ...toAuthUser(user, communityAccess),
         accessToken,
         refreshToken,
       });
@@ -231,8 +243,15 @@ export class PasswordAuthController {
       // ethnicity, which then looked unset and re-prompted the user on every
       // resume. Same flat shape as `login`, so one client-side session handler
       // covers both.
+      // A read, not a forced check. Refresh runs every few minutes on an active
+      // session, so forcing Google on each one would burn quota to answer a
+      // question the lease already answers; a lapsed lease is still re-checked
+      // here. The client rebuilds its session from this response, which is
+      // exactly why it needs the current access rather than a token alone.
+      const { access: communityAccess } = await resolveChannelAccessForRead(user.id);
+
       return ok(res, {
-        ...toAuthUser(user),
+        ...toAuthUser(user, communityAccess),
         accessToken: newAccessToken,
       });
     } catch (error) {

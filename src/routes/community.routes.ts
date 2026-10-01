@@ -38,11 +38,16 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *       to `newest` rather than erroring, and the applied order is echoed back
  *       in `meta.sort`.
  *
- *       If the caller's channel grant is older than
- *       YOUTUBE_READ_REVERIFY_FLOOR_MS (default 5 min) it is re-checked against
- *       the YouTube subscriptions API before this page is built, so a user who
- *       unsubscribed sees `meta.hasChannelAccess: false` on this request. A
- *       grant inside the window costs no quota.
+ *       Access is resolved ONCE for the whole page and returned as
+ *       `meta.access`. A grant whose lease has lapsed
+ *       (COMMUNITY_ACCESS_LEASE_SECONDS, default 60s) is re-checked against the
+ *       YouTube subscriptions API before the page is built, so a user who
+ *       unsubscribed sees `meta.hasChannelAccess: false` on this request. A live
+ *       lease costs no quota.
+ *
+ *       Apply `meta.access` to every card on the page. Do not re-decide per card:
+ *       one page cannot hold two answers, and a per-card check would spend quota
+ *       per card.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -182,6 +187,13 @@ const youtubeVerifyController = new YouTubeVerifyController();
  *                     hasChannelAccess:
  *                       type: boolean
  *                       description: True when a channel subscription unlocks the whole feed
+ *                     access:
+ *                       allOf:
+ *                         - $ref: '#/components/schemas/ChannelAccess'
+ *                       description: >
+ *                         The decision every card on this page was gated by, returned
+ *                         verbatim. Resolve access once and apply it to the whole page —
+ *                         never per card.
  *                     sort:
  *                       type: string
  *                       enum: [NEWEST, MOST_WATCHED, MOST_LIKED]
@@ -197,8 +209,15 @@ router.get("/videos", protectedRoute, controller.listVideos.bind(controller));
  * @swagger
  * /community/my-unlocks:
  *   get:
- *     summary: Get all video IDs unlocked by the calling user
- *     description: Used on app launch to rehydrate local isSubscribed / unlock state without re-fetching every video.
+ *     summary: Get the calling user's channel access and per-video unlock history
+ *     description: >
+ *       Used on app launch to rehydrate local state without re-fetching every video.
+ *       Re-checks a lapsed verdict before answering, so a user who cancelled is
+ *       locked on this request rather than on the next one.
+ *
+ *       The `unlocks` array is analytics — which cards this user converted on.
+ *       It is NOT what decides access, and a non-empty array does not mean the
+ *       feed is open. Branch on `access` / `hasChannelAccess`.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -215,8 +234,13 @@ router.get("/videos", protectedRoute, controller.listVideos.bind(controller));
  *                 data:
  *                   type: object
  *                   properties:
+ *                     hasChannelAccess:
+ *                       type: boolean
+ *                     access:
+ *                       $ref: '#/components/schemas/ChannelAccess'
  *                     unlocks:
  *                       type: array
+ *                       description: Analytics only. Never used to decide access.
  *                       items:
  *                         type: object
  *                         properties:
@@ -318,15 +342,18 @@ router.post(
  *   post:
  *     summary: Unlock a video for the calling user
  *     description: >
- *       Grants full access, but only against a server-confirmed YouTube
- *       subscription verdict — the client saying "I came back from YouTube" is
- *       not evidence. Idempotent: an existing unlock is returned untouched and
- *       never re-checked, so it does not expire with the verdict cache.
+ *       Confirms and reports the subscription decision; it does not create one.
+ *       The client saying "I came back from YouTube" is not evidence, so the
+ *       server consults the same subscription service a read would and returns
+ *       what it found. There is no path here that grants on a tap alone.
+ *       A lapsed lease is refreshed (the request supplies the full-length fields,
+ *       so it is treated as a playback read); a live lease is reused, which makes
+ *       a normal tap free.
  *       Accepts either the internal card id or the YouTube video id.
- *       Returns 403 SUBSCRIPTION_REQUIRED when there is no positive verdict.
- *       When YOUTUBE_OAUTH_CLIENT_ID / YOUTUBE_OAUTH_CLIENT_SECRET are unset the
- *       server cannot verify anything, so the gate fails open and this endpoint
- *       trusts the client.
+ *       Returns 403 SUBSCRIPTION_REQUIRED whenever there is no positive verdict,
+ *       carrying `reason` so the app can distinguish "not subscribed" from
+ *       "we could not check". Per-video unlock rows are analytics only and never
+ *       open a video on their own.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []
@@ -355,10 +382,18 @@ router.post(
  *                     unlockedAt:
  *                       type: string
  *                       format: date-time
+ *                     hasChannelAccess:
+ *                       type: boolean
+ *                     access:
+ *                       $ref: '#/components/schemas/ChannelAccess'
  *       401:
  *         description: Unauthorized
  *       403:
- *         description: SUBSCRIPTION_REQUIRED — no positive subscription verdict on record
+ *         description: >
+ *           SUBSCRIPTION_REQUIRED — no positive verdict on record. `reason` says
+ *           why (NOT_SUBSCRIBED, GOOGLE_NOT_CONNECTED, REAUTHORIZATION_REQUIRED,
+ *           LEASE_EXPIRED, VERIFICATION_UNAVAILABLE) and `access` carries the full
+ *           decision so the client does not have to re-derive it.
  *       404:
  *         description: Video not found
  *       500:
@@ -562,20 +597,25 @@ router.get("/youtube/callback", youtubeVerifyController.callback.bind(youtubeVer
  * @swagger
  * /community/youtube/status/{videoId}:
  *   get:
- *     summary: Get durable unlock state plus the last cached subscription verdict
+ *     summary: Get the current subscription decision for the calling user
  *     description: >
- *       Combines the persistent VideoUnlock record with the most recent
- *       server-side verification verdict (cached up to YOUTUBE_VERIFY_CACHE_MS).
- *       Call on feed load / app resume to rehydrate buttons without re-running
- *       the OAuth flow.
+ *       Returns the one decision every community surface shares, plus (for
+ *       analytics) which card this user converted on. Call on feed load / app
+ *       resume to rehydrate button state without re-running the OAuth flow.
  *
- *       YouTube publishes no event when a user unsubscribes, so this endpoint
- *       re-checks the channel grant live if it is older than
- *       YOUTUBE_READ_REVERIFY_FLOOR_MS (default 5 min) and returns the corrected
- *       state in this same response — a user who cancelled is locked here rather
- *       than after the nightly sweep. A grant inside the window costs no YouTube
- *       quota. The same gate backs the feed, the single-card read, `my-unlocks`
- *       and `unlock`.
+ *       The `unlocked` flag is analytics. It is NOT the gate — do not use it to
+ *       decide whether to play. Branch on `access` / `hasChannelAccess`.
+ *
+ *       YouTube publishes no event when a user unsubscribes, so a lapsed lease
+ *       (COMMUNITY_ACCESS_LEASE_SECONDS, default 60s) is re-checked live and the
+ *       corrected decision is returned in this same response — a user who
+ *       cancelled is locked here rather than at the nightly sweep. A live lease
+ *       costs no YouTube quota. The same gate backs the feed, the single-card
+ *       read, `my-unlocks` and `unlock`.
+ *
+ *       Subscribing pushes `community.access.changed` to this user's other
+ *       sessions, but do not treat that event as the guarantee: it cannot reach
+ *       an offline or backgrounded client. The lease is the guarantee.
  *     tags: [Community]
  *     security:
  *       - bearerAuth: []

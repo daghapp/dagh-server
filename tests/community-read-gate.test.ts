@@ -163,9 +163,8 @@ describe("read paths go through the re-verify gate", () => {
   });
 
   it("re-checks the grant on the verification status the app polls", async () => {
-    const { YouTubeVerifyController } = await import(
-      "../src/modules/community/youtube-verify.controller.js"
-    );
+    const { YouTubeVerifyController } =
+      await import("../src/modules/community/youtube-verify.controller.js");
     const verify = new YouTubeVerifyController();
 
     await verify.status(req({}, { videoId: "v1" }), res());

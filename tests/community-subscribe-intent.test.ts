@@ -7,9 +7,14 @@ import type { Request, Response } from "express";
  * The behaviour worth pinning is not the happy path — it is the two ways this
  * endpoint could quietly damage data it is only supposed to record. The
  * SUBSCRIBE_INTENT event is the denominator of the conversion rate, so it has to
- * be written before anything that can fail, and it has to survive the server
- * being unable to verify anything. A dropped event does not error; it makes the
- * funnel report a better number than it earned.
+ * be written before anything that can fail, and it has to survive the server being
+ * unable to verify anything. A dropped event does not error; it makes the funnel
+ * report a better number than it earned.
+ *
+ * The 503 is the other half. This endpoint used to answer 200 with a null authUrl
+ * when OAuth was unconfigured, and the unlock path then failed open. That shape is
+ * the reason an unconfigured deployment could hand out content: the app saw a
+ * success and unlocked.
  */
 
 const communityMock = {
@@ -19,9 +24,24 @@ const communityMock = {
 
 const oauthMock = {
   isYouTubeOAuthConfigured: vi.fn(),
-  signVerifyState: vi.fn(() => "state-token"),
+  isYouTubeVerificationAvailable: vi.fn(),
   buildAuthUrl: vi.fn(() => "https://accounts.google.com/o/oauth2/v2/auth?state=state-token"),
+  hasYouTubeReadonlyScope: vi.fn(() => false),
+  getVerifyReturnUrl: vi.fn(() => "daghapp://youtube/verify"),
 };
+
+const accessMock = {
+  resolveTargetChannelId: vi.fn<() => Promise<string | null>>(async () => "UC123"),
+};
+
+const stateMock = {
+  storeVerifyState: vi.fn(async () => "state-token"),
+  consumeVerifyState: vi.fn(),
+  newNonce: vi.fn(() => "nonce-1"),
+  newSessionId: vi.fn(() => "session-1"),
+};
+
+const prismaMock = { channelAccess: { findUnique: vi.fn() } };
 
 const CHANNEL_LINKS = {
   channelId: "UC123",
@@ -32,6 +52,9 @@ const CHANNEL_LINKS = {
 
 vi.mock("../src/services/community.service.js", () => communityMock);
 vi.mock("../src/services/youtube-oauth.service.js", () => oauthMock);
+vi.mock("../src/services/channel-access.service.js", () => accessMock);
+vi.mock("../src/services/youtube-verify-state.js", () => stateMock);
+vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/services/youtube.service.js", () => ({
   getChannelLinks: vi.fn(() => CHANNEL_LINKS),
   YouTubeNotConfiguredError: class extends Error {},
@@ -50,10 +73,10 @@ const { YouTubeVerifyController } =
 
 const controller = new YouTubeVerifyController();
 
-/** The success body this endpoint is contracted to return. */
 interface IntentBody {
   success: boolean;
-  data: { videoId: string; authUrl: string | null; channel: typeof CHANNEL_LINKS };
+  data?: { videoId: string; authUrl: string; channel: typeof CHANNEL_LINKS };
+  error?: { code: string; message: string };
 }
 
 /** Captures the status code and body the handler sends. */
@@ -67,7 +90,8 @@ function mockRes() {
     state.status = code;
     return { json } as unknown as Response;
   });
-  const res = { status, json } as unknown as Response;
+  const setHeader = vi.fn();
+  const res = { status, json, setHeader } as unknown as Response;
   return { res, state };
 }
 
@@ -84,8 +108,11 @@ function sentBody(state: { body?: IntentBody }): IntentBody {
 beforeEach(() => {
   vi.clearAllMocks();
   oauthMock.isYouTubeOAuthConfigured.mockReturnValue(true);
-  oauthMock.signVerifyState.mockReturnValue("state-token");
+  oauthMock.isYouTubeVerificationAvailable.mockReturnValue(true);
   oauthMock.buildAuthUrl.mockReturnValue("https://accounts.google.com/o/oauth2/v2/auth?state=x");
+  oauthMock.hasYouTubeReadonlyScope.mockReturnValue(false);
+  accessMock.resolveTargetChannelId.mockResolvedValue("UC123");
+  prismaMock.channelAccess.findUnique.mockResolvedValue(null);
   communityMock.getVideoRecord.mockResolvedValue({ id: "card-1" });
   communityMock.logInteraction.mockResolvedValue({ success: true });
 });
@@ -107,21 +134,53 @@ describe("YouTubeVerifyController.subscribeIntent", () => {
     });
   });
 
-  it("signs the state token with the canonical internal card id", async () => {
+  it("marks the response private and uncacheable", async () => {
+    // The body carries an authorization URL bound to this user's round-trip. A
+    // shared cache replaying it to the next reader would hand one user's
+    // single-use state token to another.
+    const { res } = mockRes();
+    await controller.subscribeIntent(intentReq("card-1"), res);
+
+    expect(
+      (res as unknown as { setHeader: ReturnType<typeof vi.fn> }).setHeader,
+    ).toHaveBeenCalledWith("Cache-Control", "private, no-store, max-age=0");
+  });
+
+  it("binds the round-trip to the canonical internal card id", async () => {
     // The app may pass the YouTube video id; the state token is verified on the
-    // callback and its videoId is written to the unlock row, so it has to be the
-    // internal id or the foreign key misses.
+    // callback and its videoId is written to the interaction and access rows, so
+    // it has to be the internal id or the foreign key misses.
     communityMock.getVideoRecord.mockResolvedValue({ id: "canonical-card-uuid" });
 
     const { res } = mockRes();
     await controller.subscribeIntent(intentReq("dQw4w9WgXcQ"), res);
 
-    expect(oauthMock.signVerifyState).toHaveBeenCalledWith("user-1", "canonical-card-uuid");
+    expect(stateMock.storeVerifyState).toHaveBeenCalledWith(
+      expect.objectContaining({ appUserId: "user-1", videoId: "canonical-card-uuid" }),
+    );
     expect(communityMock.logInteraction).toHaveBeenCalledWith(
       "user-1",
       "canonical-card-uuid",
       "SUBSCRIBE_INTENT",
     );
+  });
+
+  it("stores the channel, nonce and return URL the callback will need", async () => {
+    // Every one of these is load-bearing. Without the nonce an id_token from any
+    // other flow could satisfy the callback; without the channel there is nothing
+    // to check against; without the return URL the callback cannot get the user
+    // back to the app.
+    const { res } = mockRes();
+    await controller.subscribeIntent(intentReq("card-1"), res);
+
+    expect(stateMock.storeVerifyState).toHaveBeenCalledWith({
+      appUserId: "user-1",
+      channelId: "UC123",
+      nonce: "nonce-1",
+      returnUrl: "daghapp://youtube/verify",
+      sessionId: "session-1",
+      videoId: "card-1",
+    });
   });
 
   it("logs the intent before building the auth URL, so a failure cannot lose it", async () => {
@@ -141,33 +200,60 @@ describe("YouTubeVerifyController.subscribeIntent", () => {
     expect(order).toEqual(["log", "authUrl"]);
   });
 
-  it("still returns the subscribe links when OAuth is not configured", async () => {
-    // Not a 503: the tap happened and is worth recording, and the user can still
-    // go and subscribe. Failing the call would throw away the funnel event to
-    // report a config problem the app cannot act on.
-    oauthMock.isYouTubeOAuthConfigured.mockReturnValue(false);
-
-    const { res, state } = mockRes();
+  it("asks for consent only when the stored credential lacks the YouTube scope", async () => {
+    const { res } = mockRes();
     await controller.subscribeIntent(intentReq("card-1"), res);
 
-    expect(state.status).toBeUndefined();
-    expect(sentBody(state).data.authUrl).toBeNull();
-    expect(sentBody(state).data.channel).toEqual(CHANNEL_LINKS);
-    expect(communityMock.logInteraction).toHaveBeenCalledWith(
-      "user-1",
-      "card-1",
-      "SUBSCRIBE_INTENT",
+    expect(prismaMock.channelAccess.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId_channelId: { userId: "user-1", channelId: "UC123" } },
+      }),
     );
-    expect(oauthMock.buildAuthUrl).not.toHaveBeenCalled();
+    expect(oauthMock.buildAuthUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ forceConsent: true }),
+    );
   });
 
-  it("does not sign a state token when OAuth is not configured", async () => {
-    oauthMock.isYouTubeOAuthConfigured.mockReturnValue(false);
+  it("does not re-prompt an already-linked subscriber", async () => {
+    // include_granted_scopes will not make Google offer a scope it was never asked
+    // for, but once granted, one refresh answers the question — no consent screen.
+    oauthMock.hasYouTubeReadonlyScope.mockReturnValue(true);
 
     const { res } = mockRes();
     await controller.subscribeIntent(intentReq("card-1"), res);
 
-    expect(oauthMock.signVerifyState).not.toHaveBeenCalled();
+    expect(oauthMock.buildAuthUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ forceConsent: false }),
+    );
+  });
+
+  it("503s when the server cannot check subscriptions, and unlocks nothing", async () => {
+    // The regression this guards: a 200 with a null authUrl left the app in a
+    // dead end it could not detect, and the dev fallback then unlocked the video
+    // anyway. An unconfigured server says so loudly instead.
+    oauthMock.isYouTubeVerificationAvailable.mockReturnValue(false);
+
+    const { res, state } = mockRes();
+    await controller.subscribeIntent(intentReq("card-1"), res);
+
+    expect(state.status).toBe(503);
+    expect(sentBody(state).success).toBe(false);
+    expect(sentBody(state).error?.code).toBe("YOUTUBE_VERIFICATION_NOT_CONFIGURED");
+    expect(sentBody(state).data).toBeUndefined();
+    expect(oauthMock.buildAuthUrl).not.toHaveBeenCalled();
+  });
+
+  it("503s when the credentials exist but no channel is configured", async () => {
+    // Distinct from the credentials case and equally unusable: a link could be
+    // stored with nothing to compare it against.
+    accessMock.resolveTargetChannelId.mockResolvedValue(null);
+
+    const { res, state } = mockRes();
+    await controller.subscribeIntent(intentReq("card-1"), res);
+
+    expect(state.status).toBe(503);
+    expect(sentBody(state).error?.code).toBe("YOUTUBE_VERIFICATION_NOT_CONFIGURED");
+    expect(stateMock.storeVerifyState).not.toHaveBeenCalled();
   });
 
   it("still serves the tap when the interaction write reports failure", async () => {
@@ -182,7 +268,7 @@ describe("YouTubeVerifyController.subscribeIntent", () => {
     await controller.subscribeIntent(intentReq("card-1"), res);
 
     expect(sentBody(state).success).toBe(true);
-    expect(sentBody(state).data.authUrl).toBe(
+    expect(sentBody(state).data?.authUrl).toBe(
       "https://accounts.google.com/o/oauth2/v2/auth?state=x",
     );
   });
@@ -195,5 +281,6 @@ describe("YouTubeVerifyController.subscribeIntent", () => {
 
     expect(state.status).toBe(404);
     expect(communityMock.logInteraction).not.toHaveBeenCalled();
+    expect(stateMock.storeVerifyState).not.toHaveBeenCalled();
   });
 });

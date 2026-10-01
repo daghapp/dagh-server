@@ -1,7 +1,12 @@
 import { Request, Response } from "express";
 import * as communityService from "../../services/community.service.js";
-import { ok, created, fail, paginated } from "../../helpers/response.js";
-import { parseEnum, parsePagination, parseSearch, type QueryValue } from "../../helpers/admin-query.js";
+import { ok, created, fail, paginated, privateNoStore } from "../../helpers/response.js";
+import {
+  parseEnum,
+  parsePagination,
+  parseSearch,
+  type QueryValue,
+} from "../../helpers/admin-query.js";
 import {
   logCommunity,
   logCommunityWarn,
@@ -32,9 +37,7 @@ function started(): number {
  * "active" so a typo cannot silently return the whole table.
  */
 function parseGrantStatus(query: Record<string, QueryValue>): communityService.ChannelGrantStatus {
-  const raw = (Array.isArray(query.status) ? query.status[0] : query.status)
-    ?.trim()
-    .toLowerCase();
+  const raw = (Array.isArray(query.status) ? query.status[0] : query.status)?.trim().toLowerCase();
   return communityService.CHANNEL_GRANT_STATUSES.includes(
     raw as communityService.ChannelGrantStatus,
   )
@@ -63,14 +66,17 @@ export class CommunityController {
       // Re-checks a stale channel grant against YouTube before the page is
       // built, so an unsubscribed user sees the feed locked on this request
       // rather than on the next one. A grant inside the read floor costs nothing.
-      const { access, checked } =
-        await communityService.resolveChannelAccessForRead(userId);
+      const { access, checked } = await communityService.resolveChannelAccessForRead(userId);
 
-      const { videos, total, hasChannelAccess, channelAccess } =
-        await communityService.listVideosForUser(userId, page, limit, {
+      const { videos, total, hasChannelAccess } = await communityService.listVideosForUser(
+        userId,
+        page,
+        limit,
+        {
           sort,
           channelAccess: access,
-        });
+        },
+      );
 
       logCommunity("community.feed.list", {
         status: 200,
@@ -87,10 +93,12 @@ export class CommunityController {
         durationMs: Date.now() - start,
       });
       // hasChannelAccess rides in `meta` so the app can hide every "Subscribe to
-      // Unlock" call to action at once instead of deriving it from the cards.
+      // Unlock" call to action at once instead of deriving it from the cards, and
+      // `access` is the same object every card on this page was gated by.
+      privateNoStore(res);
       return paginated(res, videos, total, page, limit, "Community videos retrieved", {
         hasChannelAccess,
-        channelAccess,
+        access,
         sort,
       });
     } catch (error) {
@@ -135,9 +143,15 @@ export class CommunityController {
         userId,
         videoId: video.videoId,
         isUnlocked: video.isUnlocked,
+        accessStatus: access.status,
+        accessVersion: access.accessVersion,
         durationMs: Date.now() - start,
       });
-      return ok(res, video);
+      // The same `access` object the card was gated by, so the detail view and
+      // the feed it was opened from can never disagree about this user. Spreading
+      // rather than nesting keeps every existing card field where clients read it.
+      privateNoStore(res);
+      return ok(res, { ...video, access });
     } catch (error) {
       logCommunityError("community.feed.get.error", {
         status: 500,
@@ -254,13 +268,19 @@ export class CommunityController {
             status: 403,
             userId,
             videoId,
-            verifiedAt: result.verifiedAt,
+            // Carried through so the app can tell "you are not subscribed" from
+            // "we could not check" — different copy, different next action.
+            reason: result.reason,
+            accessStatus: result.access?.status,
+            accessVersion: result.access?.accessVersion,
             durationMs: Date.now() - start,
           });
+          privateNoStore(res);
           return fail(res, 403, {
             code: "SUBSCRIPTION_REQUIRED",
             message: "Subscribe to the channel to unlock this video",
-            verifiedAt: result.verifiedAt,
+            reason: result.reason,
+            access: result.access,
           });
         }
 
@@ -279,11 +299,19 @@ export class CommunityController {
         videoId,
         isUnlocked: result.isUnlocked,
         unlockedAt: result.unlockedAt,
+        accessStatus: result.access.status,
+        accessVersion: result.access.accessVersion,
         durationMs: Date.now() - start,
       });
+      privateNoStore(res);
       return ok(
         res,
-        { isUnlocked: result.isUnlocked, unlockedAt: result.unlockedAt },
+        {
+          isUnlocked: result.isUnlocked,
+          unlockedAt: result.unlockedAt,
+          hasChannelAccess: result.access.hasChannelAccess,
+          access: result.access,
+        },
         "Video unlocked",
       );
     } catch (error) {
@@ -305,16 +333,20 @@ export class CommunityController {
     const start = started();
     try {
       const userId = req.user!.id as string;
-      const result = await communityService.getUserUnlocks(userId, {
-        channelAccess: (await communityService.resolveChannelAccessForRead(userId)).access,
-      });
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const result = await communityService.getUserUnlocks(userId, { channelAccess: access });
       logCommunity("community.my_unlocks", {
         status: 200,
         userId,
         count: result.unlocks.length,
         hasChannelAccess: result.hasChannelAccess,
+        accessStatus: access.status,
+        accessVersion: access.accessVersion,
         durationMs: Date.now() - start,
       });
+      // This is the endpoint the app calls on launch to decide what to show, so a
+      // cached copy is a lock state from someone else's session.
+      privateNoStore(res);
       return ok(res, result, "User unlocks retrieved");
     } catch (error) {
       logCommunityError("community.my_unlocks.error", {
@@ -568,15 +600,9 @@ export class CommunityController {
         durationMs: Date.now() - start,
       });
 
-      return paginated(
-        res,
-        result.rows,
-        result.total,
-        page,
-        limit,
-        "YouTube channel grants",
-        { summary: result.summary },
-      );
+      return paginated(res, result.rows, result.total, page, limit, "YouTube channel grants", {
+        summary: result.summary,
+      });
     } catch (error) {
       logCommunityError("community.admin.grants.list.error", {
         status: 500,

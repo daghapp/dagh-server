@@ -27,8 +27,9 @@ the mobile app must implement to display the videos.
 - **`YOUTUBE_API_KEY`** — needed for the sync endpoint. Without it that endpoint
   returns `503` (`YOUTUBE_NOT_CONFIGURED`).
 - **`YOUTUBE_OAUTH_CLIENT_ID`** + **`YOUTUBE_OAUTH_CLIENT_SECRET`** — needed to
-  verify a subscription. Without them the unlock endpoint **fails open** and
-  trusts the client, so the gate is effectively off. Set these before launch
+  verify a subscription. Without them every check resolves to **no access** and
+  the feed stays locked; the server fails closed and never grants on a client
+  claim. Set these before launch or the community section is unusable
   (see [section 8](#8-server-side-subscription-verification--the-unlock-gate)).
   Whether gating on a subscribe action is permitted by YouTube's policies at all
   is a separate question this repo does not answer —
@@ -43,8 +44,15 @@ the mobile app must implement to display the videos.
   `.env.example`.
 - **`YOUTUBE_VERIFY_RETURN_URL`** — the app deep link the OAuth browser returns
   to (default `daghapp://youtube/verify`).
-- **`YOUTUBE_VERIFY_CACHE_MS`** — how long a verdict is trusted before the next
-  check (default `3600000` = 1h).
+- **`COMMUNITY_ACCESS_LEASE_SECONDS`** — how long a confirmed verdict is trusted
+  before the next read re-checks Google (default `60`). This is the entire
+  staleness policy: YouTube publishes no unsubscribe event, so a longer lease is
+  a longer window in which someone who cancelled keeps watching. Each re-check
+  costs one `subscriptions.list` unit and only happens for users who actually
+  read the community.
+- **`COMMUNITY_REVERIFY_BUDGET_MS`** / **`COMMUNITY_ACTIVE_RECHECK_BATCH`** — the
+  nightly sweep that re-checks users who never reopen the app (defaults
+  `600000` = 10 min, `200`).
 
 ### Not required
 - No per-user YouTube tokens are stored. The OAuth access token is exchanged and
@@ -604,20 +612,22 @@ Two consequences worth designing around:
   cannot stay authoritative forever. The OAuth round-trip stores Google's
   refresh token alongside the grant, and a daily sweep
   (`channel-grant-reverify`) re-runs the subscriptions check for every grant
-  that has gone unconfirmed for `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS`
-  (default 24h). A cancelled subscription revokes the grant, which also deletes
+  that has gone unconfirmed for longer than its lease. A cancelled subscription
+  revokes the grant, which also deletes
   the per-video unlock rows it implies — otherwise a cancelled subscriber would
   keep the individual videos they had already opened.
 
   Two deliberate asymmetries in the sweep:
 
-  - It **fails open**. Only a definite negative verdict (the API returning an
-    empty `items` list) revokes. A thrown error means "could not check", so a
-    Google outage, a quota exhaustion, or a spent refresh token leaves the grant
-    intact and retries on the next pass. Silently re-locking paying supporters
-    on a transient error would be far worse than briefly over-granting. The same
-    holds for a token that cannot be decrypted: it counts as `undecryptable` and
-    is left intact.
+  - Only a **definite negative** revokes (the API returning an empty `items`
+    list). A thrown error means "could not check", so a Google outage, a quota
+    exhaustion, or a spent refresh token leaves the grant intact and retries on
+    the next pass. Silently re-locking paying supporters on a transient error
+    would be far worse than briefly over-granting. The same holds for a token
+    that cannot be decrypted: it counts as `undecryptable` and is left intact.
+    (Worth naming precisely, because this doc used to say the *unlock endpoint*
+    "fails open" to mean the opposite — granting on a client claim. It does not,
+    and must not: that is the whole point of the rewrite.)
   - Grants with **no stored refresh token** are skipped, never revoked. Rows
     created before token persistence cannot be re-checked, and revoking them
     would close access to a still-valid subscription purely because we failed to
@@ -625,7 +635,8 @@ Two consequences worth designing around:
     the flow.
 
   A pass is **budget-bounded, not count-bounded**. It drains the due queue in
-  batches of 200 until the queue is empty or `YOUTUBE_REVERIFY_BUDGET_MS`
+  batches (`COMMUNITY_ACTIVE_RECHECK_BATCH`, default 200) until the queue is
+  empty or `COMMUNITY_REVERIFY_BUDGET_MS`
   (default 10 min) runs out, so throughput tracks the subscriber base — the
   earlier flat 200-per-day cap silently pushed the real revocation window past
   the configured interval once the base grew past that. The job logs "Ran out of
@@ -638,11 +649,11 @@ YouTube publishes **no event when a user unsubscribes**. There is no webhook and
 no Pub/Sub topic for it; the only mechanism is polling, at 1 quota unit per
 check. So revocation latency is set entirely by how often we are willing to ask.
 
-The daily sweep alone means a cancelled subscriber keeps access for up to a full
-interval. That is fine for a dormant account and wrong for an active one, so the
-grant is **also re-checked on the read path**: the first request after
-`YOUTUBE_READ_REVERIFY_FLOOR_MS` (default 5 min) spends one unit, and the
-response the user is looking at is already correct. The feed, the single card,
+The daily sweep alone means a cancelled subscriber keeps access until that pass
+runs. That is fine for a dormant account and wrong for an active one, so the
+grant is **also re-checked on the read path**: once the lease lapses
+(`COMMUNITY_ACCESS_LEASE_SECONDS`, default 60s) the next request spends one unit
+and the response the user is looking at is already correct. The feed, the single card,
 `my-unlocks`, the unlock endpoint and the status poll all go through the same
 gate, so a user who cancelled is locked on their next app open — not on the next
 nightly run.
@@ -672,13 +683,15 @@ for hiding subscribe CTAs, not for gating anything the user pays for.
   that same upsert, so a user who resubscribes regains the feed without a second
   grant row.
 
-The app reads this as three flags, all in the API response:
-`meta.hasChannelAccess` on the feed, `hasChannelAccess` on
-`GET /community/my-unlocks`, and `via: "CHANNEL"` (vs `"VIDEO"` for a legacy
-per-video unlock) on `GET /community/youtube/status/:videoId`.
+The app reads this as **one** object, `access`, returned verbatim by the feed's
+`meta`, by `GET /community/videos/:videoId`, by `/unlock`, and by
+`GET /community/my-unlocks`. There is no per-video flag to branch on and no
+`via: "CHANNEL"` — `hasChannelAccess` is derived from the snapshot's status and
+lease, so it cannot disagree with them.
 
-The callback caches the verdict **before** calling the unlock, because the
-unlock reads that cache as its gate.
+The callback stores the verdict with its lease **before** returning, so the
+`/unlock` that follows the round-trip reads a committed decision rather than
+racing one.
 
 ### Requirements
 
@@ -688,10 +701,10 @@ unlock reads that cache as its gate.
 | `YOUTUBE_OAUTH_CLIENT_SECRET` | Matching client secret |
 | `YOUTUBE_OAUTH_REDIRECT_URI` | HTTPS callback; **must** be added to the client's Authorized redirect URIs in the Google console. Defaults to `<API_URL>/community/youtube/callback` when using `API_URL`. |
 | `YOUTUBE_VERIFY_RETURN_URL` | App deep link the browser returns to (default `daghapp://youtube/verify`). Must be parseable by `new URL()`; if it is not, the browser gets a plain HTML page stating the real outcome instead. |
-| `YOUTUBE_VERIFY_CACHE_MS` | How long a verdict is cached before a re-check (default `3600000` = 1h). Reads are served from cache so feed loads / status polls never hit the API. |
-| `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` | How long a channel grant may go unconfirmed before the daily sweep re-checks it (default `86400000` = 24h). The backstop for users who never reopen the app. |
-| `YOUTUBE_READ_REVERIFY_FLOOR_MS` | How stale a grant may be before the first read re-checks it live (default `300000` = 5 min). This is what locks a user out while they are still using the app. Dedup window, not a polling interval — see below. |
-| `YOUTUBE_REVERIFY_BUDGET_MS` | Wall-clock budget for one sweep pass (default `600000` = 10 min, clamped to [1 min, 13 min]). The pass drains the due queue until it is empty or this runs out. |
+| `COMMUNITY_ACCESS_LEASE_SECONDS` | How long a confirmed verdict is trusted before the next read re-checks Google (default `60`). This is the entire staleness policy — the window in which someone who cancelled keeps watching. |
+| `COMMUNITY_ACTIVE_RECHECK_SECONDS` | How long a *failed* check is remembered before trying again (default `60`). Caches the inability to check, never a grant. |
+| `COMMUNITY_ACTIVE_RECHECK_BATCH` | How many due grants one sweep batch claims (default `200`, clamped to [1, 2000]). |
+| `COMMUNITY_REVERIFY_BUDGET_MS` | Wall-clock budget for one sweep pass (default `600000` = 10 min, clamped to [1 min, 13 min]). The pass drains the due queue until it is empty or this runs out. |
 | `PAYMENT_GATEWAY_ENCRYPTION_KEY` | Seals the refresh token stored on each grant, under its own AAD context. Shared with the payment-gateway credentials — see [the note in `.env.example`](../.env.example) before rotating it. |
 
 The same Google Cloud project needs **YouTube Data API v3** enabled. Create the
@@ -704,8 +717,8 @@ OAuth client ID → Web application**, then add the redirect URI.
 |--------|----------|------|---------|
 | POST | `/community/videos/:videoId/subscribe-intent` | Bearer | **The subscribe button.** Records `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }` in one call. `authUrl` is `null` (not 503) when OAuth is unconfigured — subscribe via `channel.appUrl`, then call `/unlock` |
 | GET | `/community/youtube/start/:videoId` | Bearer | Returns `{ authUrl, expiresIn, channel }` without recording a new intent — use only to re-run the flow (e.g. after a cancelled consent screen). The state token inside encodes the user + video for 15 min |
-| GET | `/community/youtube/callback` | Public | Google redirect target. Exchanges the code, checks `subscriptions?mine=true&forChannelId=<channel>`, grants the channel + logs `UNLOCK` when subscribed, caches the verdict, redirects to the return URL |
-| GET | `/community/youtube/status/:videoId` | Bearer | `{ isUnlocked, verifiedSubscribed, verifiedAt, cached }` — durable unlock + last cached verdict |
+| GET | `/community/youtube/callback` | Public | Google redirect target. Exchanges the code, checks `subscriptions?mine=true&forChannelId=<channel>`, stores the verdict with its lease + logs `UNLOCK` when subscribed, redirects to the return URL carrying `accessVersion` |
+| GET | `/community/youtube/status/:videoId` | Bearer | The `access` snapshot (re-checked if the lease lapsed) plus `isUnlocked`, which is analytics rather than the gate |
 
 Behavior notes:
 
@@ -781,8 +794,13 @@ an instant redirect.
 - [ ] An overlay shown on a still-locked card offers "Subscribe to Unlock Preview" rather
       than a link, and does not attempt to open `watchAppUrl`
 - [ ] Relaunching the app preserves green state via `GET /community/my-unlocks`
-- [ ] An existing unlock survives verdict-cache expiry (call `/unlock` again after
-      `YOUTUBE_VERIFY_CACHE_MS` — still 200)
+- [ ] A lapsed lease re-checks and closes: call `/unlock` again after
+      `COMMUNITY_ACCESS_LEASE_SECONDS` on a non-subscriber and confirm `403` with a
+      `reason` — never `200`
+- [ ] `accessVersion` increases on a change, and a client ignores a response whose
+      version is older than one it has already applied
+- [ ] Subscribing on a second device pushes `community.access.changed` to the first
+      device's other sessions, and an unsubscribing sweep pushes it the other way
 - [ ] Admin analytics endpoint shows the funnel numbers, and
       `SUBSCRIBE_INTENT` is not double-counted
 ---

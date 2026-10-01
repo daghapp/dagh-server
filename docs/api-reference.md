@@ -440,15 +440,15 @@ unlock).
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`, `requiresSubscription` and `channel`, and is gated accordingly. |
-| GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status (same gating and `channel`). |
-| GET | `/community/my-unlocks` | Bearer | Durable channel grant + individually unlocked video IDs — call on app launch. |
+| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`), gated as a page by the single decision in `meta.access`. Apply it to every card; never re-decide per card. |
+| GET | `/community/videos/:videoId` | Bearer | Single card plus the same `access` snapshot every other surface returns. |
+| GET | `/community/my-unlocks` | Bearer | The current `access` decision plus per-video unlock history (analytics only) — call on app launch. |
 | POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. `SUBSCRIBE_INTENT` is still accepted for older clients, but new clients should use [`/subscribe-intent`](#post-communityvideovidsubscribe-intent) — which logs it as a side effect — and not send it here, or the conversion-rate denominator is double-counted. |
 | POST | `/community/videos/:videoId/subscribe-intent` | Bearer | The locked card's subscribe button, in one call: logs `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }`. |
-| POST | `/community/videos/:videoId/unlock` | Bearer | Grant full access to the video and the channel (idempotent). Requires a positive subscription verdict → `403 SUBSCRIPTION_REQUIRED` otherwise. |
+| POST | `/community/videos/:videoId/unlock` | Bearer | Confirm and report the decision; grants nothing by itself. `403 SUBSCRIPTION_REQUIRED` with a `reason` when there is no positive verdict. |
 | GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }`. Superseded by `subscribe-intent` for the tap — kept for re-running the flow without recording a new intent. |
-| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, grants the **channel**, redirects to the app deep link. |
-| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + channel grant + last cached verdict (no API call). |
+| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, stores the verdict with a lease, redirects to the app deep link. |
+| GET | `/community/youtube/status/:videoId` | Bearer | The current `access` decision, re-checking if the lease has lapsed. |
 | GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate, plus the YouTube counters the feed sorts use. |
 | POST | `/community/admin/videos` | Admin | Create a video card. |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
@@ -663,12 +663,13 @@ event for an unsubscribe, so the grant is re-checked two ways (see
 [YouTube channel unlocks](youtube-video-feed-setup.md#locking-on-read--why-the-sweep-is-not-the-whole-answer)):
 
 - **On read.** The first feed / card / `my-unlocks` / `status` / `unlock` call
-  after `YOUTUBE_READ_REVERIFY_FLOOR_MS` (default 5 min) re-checks live, and
-  *that response* is already correct. A subscriber who cancelled is locked on
-  their next app open.
-- **Nightly sweep.** Catches the accounts the read path never sees, within
-  `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` (default 24h) plus whatever a
-  budget-truncated pass leaves over.
+  after the lease lapses (`COMMUNITY_ACCESS_LEASE_SECONDS`, default 60s)
+  re-checks live, and *that response* is already correct. A subscriber who
+  cancelled is locked within a lease's worth of their next read.
+- **Login.** A session boundary forces a check even when the lease is still live,
+  so signing in never presents yesterday's verdict.
+- **Nightly sweep.** Catches the accounts the read path never sees, bounded by
+  `COMMUNITY_REVERIFY_BUDGET_MS` per pass rather than by a fixed interval.
 
 So the state is current for anyone using the app and up to a day stale for anyone
 who has not opened it recently — and permanently stale for a grant with no usable
@@ -839,14 +840,13 @@ consent screen, which should not inflate the tap count).
 
 ### POST /community/videos/:videoId/unlock
 
-Grants full access to the video **and to the channel**, because a YouTube
-subscription is channel-scoped. Idempotent, and an existing grant is returned
-untouched without re-checking YouTube — access does not expire when the verdict
-cache lapses.
+Confirms and reports the decision. It does **not** grant anything: a tap is not
+evidence, so there is no request body or flag that can open a video. The
+subscription is channel-scoped, so a positive verdict opens the whole feed and
+this endpoint is the cheapest place to learn that.
 
-The grant is gated on a server-confirmed subscription verdict (see below), so
-this is **not** a client-trusted flag. In the normal flow the OAuth callback
-grants it itself; call this afterwards only to re-check after the round-trip.
+Because it consults the same decision a read would, a normal tap inside a live
+lease costs no quota; a lapsed one re-checks Google.
 
 ```json
 {
@@ -854,21 +854,21 @@ grants it itself; call this afterwards only to re-check after the round-trip.
   "data": {
     "isUnlocked": true,
     "unlockedAt": "2026-10-01T00:00:00.000Z",
-    "channelGranted": true
+    "hasChannelAccess": true,
+    "access": { "...": "the same ChannelAccess snapshot every other endpoint returns" }
   },
   "message": "Video unlocked"
 }
 ```
 
-`channelGranted` is `true` when this call recorded the channel grant, and
-`false` when the user was already unlocked — either by a channel grant or by a
-legacy per-video row. Both cases return `isUnlocked: true`; the flag exists so
-the app knows whether the whole feed is now open, not just this card.
+`isUnlocked` / `unlockedAt` are analytics — which card this user converted on.
+They are **not** the gate. Branch on `hasChannelAccess` / `access`; a non-empty
+unlock history does not mean the feed is open, and an `isUnlocked: true` from an
+older response must not reopen a feed the server has since closed.
 
-`channelGranted` is `false` for every direct call to this endpoint, because the
-channel id is only known to the OAuth callback, which resolves it from the
-subscription it just checked. Unlocking from here still records the per-video
-row; the feed stays gated per-video until a verification completes.
+There is no `channelGranted` field. It existed only to distinguish "this call
+granted the channel" from "the channel was already granted", which is no longer a
+distinction any client needs — `access` says what is true now.
 
 Errors:
 
@@ -886,18 +886,27 @@ Errors:
 }
 ```
 
-An **absent** verdict (never verified, or the `YOUTUBE_VERIFY_CACHE_MS` TTL
-lapsed) counts as not subscribed, so the gate fails closed. Re-run
+A lapsed lease or an absent verdict resolves to **no access**, so the gate fails
+closed — and it says so in `reason`, so the app can tell "resubscribe" apart from
+"we could not check" rather than showing the same dead end for both. Re-run
 `GET /community/youtube/start/:videoId` rather than retrying the unlock.
+
+This endpoint confirms and reports the decision; it never creates one. A tap
+alone grants nothing, and a `VideoUnlock` row is analytics rather than a grant.
 
 ### Subscription verification (the gate's key issuer)
 
 The gate rests on `GET /community/youtube/start/:videoId` → Google consent →
 `GET /community/youtube/callback`, which checks
-`subscriptions?mine=true&forChannelId=<channel>` and caches the boolean verdict
-(Redis, or in-memory without `REDIS_URL`) for `YOUTUBE_VERIFY_CACHE_MS`. Costs 1
-quota unit per check; the callback caches the verdict *before* the gated unlock
-reads it.
+`subscriptions?mine=true&forChannelId=<channel>` and stores the verdict against
+the user with a lease (`COMMUNITY_ACCESS_LEASE_SECONDS`, default 60s). Costs 1
+quota unit per check.
+
+Only a definite negative is treated as one. A timeout, a `429` or a `5xx` is
+transient and never becomes an unsubscribe — that is what stops a Google outage
+from locking out paying subscribers. Failures are cached only as *failures*, and
+only for `COMMUNITY_ACTIVE_RECHECK_SECONDS`, so they do not cost a token request
+per read.
 
 The callback redirects to the app deep link with
 `?subscribed=&videoId=&unlocked=&channelGranted=&hasChannelAccess=`. On success
@@ -915,9 +924,12 @@ Two things it is worth being explicit about:
   a link inside our app, not the content itself.
 
 When `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` are unset there is
-no way to verify anything, and the unlock endpoint **fails open** to the legacy
-client-trusted behaviour rather than leaving every video permanently locked.
-Configure these before launch.
+no way to verify anything, so every check resolves to **no access** and the feed
+stays locked. The server fails closed: it will never grant on a client claim. The
+cost of misconfiguration is a locked product, not an open one, but it does mean
+the community section is unusable until these are set — configure them before
+launch. The server also logs a loud banner at boot when they are missing in
+production.
 
 ### Cross-origin / network notes
 
@@ -1087,7 +1099,7 @@ Query: `status` (`active` default / `revoked` / `all`), `page`, `limit`
   should be `0`; anything else means a grant was written before sealing landed
   and has not been re-checked since. Run
   `POST /community/admin/youtube-grants/re-encrypt` to clear it.
-- `due` — active grants past `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` and waiting
+- `due` — active grants past its lease and waiting
   for the next sweep. Persistently non-zero means the subscriber base has
   outgrown one pass; check the sweep log for "Ran out of budget".
 - The `summary` counts are table-wide, not page-scoped.

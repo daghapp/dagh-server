@@ -1,45 +1,48 @@
 import cron from "node-cron";
 import { withDistributedLock, tryAcquireWorkItem } from "../helpers/jobLock.js";
-import {
-  reverifyChannelGrants,
-  getReverifyBudgetMs,
-} from "../services/community.service.js";
+import { reverifyChannelGrants, getReverifyBudgetMs } from "../services/community.service.js";
 
 // The lock must outlive the sweep or expire first, which is what let two replicas
-// run the same pass concurrently and spend the quota twice. Tied to the pass's
-// own budget with headroom for the summary queries and logging.
-const ITEM_CLAIM_TTL_MS = 10 * 60 * 1000;
+// run the same pass concurrently and spend the quota twice. Sizing: the pass's own
+// budget (from the same getter the sweep uses, so the two cannot disagree) plus
+// headroom for the summary queries and logging.
+const LOCK_HEADROOM_MS = 5 * 60 * 1000;
 
 /**
- * Re-confirms YouTube channel grants and revokes the ones whose subscription was
- * cancelled.
+ * Re-decides YouTube channel access whose lease has run out, and revokes the ones
+ * whose subscription was cancelled.
  *
- * A grant is written from a positive verdict, but the underlying subscription is
- * mutable from outside our system, so a grant written once is not authoritative
- * forever. Without this sweep, unsubscribing on YouTube leaves the feed open
- * indefinitely. This is the automatic revocation path; the only other writer of
- * `revokedAt` is an admin's manual revoke, which does not consult YouTube.
+ * A lease is written from a positive verdict, but the underlying subscription is
+ * mutable from outside our system and YouTube publishes no unsubscribe event, so
+ * a positive answer is only authoritative until it expires. Without this sweep,
+ * unsubscribing on YouTube leaves the feed open until every reader's own lease
+ * happens to lapse. This is the automatic revocation path; the only other writer
+ * of `revokedAt` is an admin's manual revoke, which does not consult YouTube.
  *
  * Runs daily under a distributed lock so only one instance sweeps at a time, and
- * claims each grant in Redis before checking it so a second instance catching up
- * cannot check the same grant twice and spend the quota twice.
+ * claims each row in Redis before checking it so a second instance catching up
+ * cannot check the same row twice and spend the quota twice.
  *
- * A pass drains the due queue in batches of 200 until it is empty or the
- * wall-clock budget (YOUTUBE_REVERIFY_BUDGET_MS, default 10 minutes) runs out,
- * so throughput tracks the subscriber base. It is budget-bounded rather than
+ * A pass drains the due queue in batches until it is empty or the wall-clock
+ * budget (COMMUNITY_REVERIFY_BUDGET_MS, default 10 minutes) runs out, so
+ * throughput tracks the subscriber base. It is budget-bounded rather than
  * count-bounded because a fixed count cannot promise to finish inside the lock
  * TTL: 200 sequential checks at a 10s per-request timeout can take over an hour.
  *
- * The sweep fails open by design: a grant whose verdict could not be obtained is
- * left intact and retried on the next pass, so a YouTube outage or a spent
- * refresh token never locks out a paying subscriber.
+ * The sweep does NOT fail open, and the difference matters now that a lease
+ * exists. A row it cannot check keeps the expired accessExpiresAt it already had,
+ * which means the next read re-checks and clients polling status see CHECK_FAILED.
+ * A subscriber is never locked out by a Google outage — they lose the *lease*, and
+ * the next successful pass hands it straight back. The previous implementation
+ * left grants intact on a failed check, which without a lease was the only
+ * defensible choice but converted an outage into indefinite access.
  */
 export const channelGrantReverifyJob = () => {
   const budgetMs = getReverifyBudgetMs();
-  const jobLockTtlMs = budgetMs + 5 * 60 * 1000;
+  const jobLockTtlMs = budgetMs + LOCK_HEADROOM_MS;
 
   console.log(
-    `✓ Channel grant re-verification cron job initialized (daily, ` +
+    `✓ Channel access re-verification cron job initialized (daily, ` +
       `${Math.round(budgetMs / 60000)}m budget per pass)`,
   );
 
@@ -48,55 +51,47 @@ export const channelGrantReverifyJob = () => {
     // runs, so a Redis failure here would escape as an unhandled rejection with
     // nothing logging it.
     try {
-      await withDistributedLock("channel-grant-reverify", jobLockTtlMs, async () => {
+      await withDistributedLock("channel-access-reverify", jobLockTtlMs, async () => {
         try {
           const summary = await reverifyChannelGrants({
             budgetMs,
-            shouldProcess: (grantId) =>
-              tryAcquireWorkItem(`channel-grant:${grantId}`, ITEM_CLAIM_TTL_MS),
+            // Keyed on the access record rather than a row id: the sweep's unit of
+            // work is "this user's access to this channel", and there is exactly
+            // one of those per pair.
+            shouldProcess: (row) =>
+              tryAcquireWorkItem(
+                `channel-access:${row.userId}:${row.channelId}`,
+                budgetMs + LOCK_HEADROOM_MS,
+              ),
           });
-
-          // Distinguished from "no grants due": a sweep that cannot run at all is
-          // a silent outage otherwise, and reads identically to an empty queue.
-          if (!summary.configured) {
-            console.error(
-              "[Channel Reverify] SKIPPED — YouTube OAuth is not configured, so no grant can " +
-                "be re-verified or revoked. Set YOUTUBE_OAUTH_CLIENT_ID / _CLIENT_SECRET.",
-            );
-            return;
-          }
 
           if (summary.revoked > 0) {
             console.log(
-              `[Channel Reverify] Revoked ${summary.revoked} grant(s) — subscription cancelled`,
-            );
-          }
-          if (summary.superseded > 0) {
-            console.log(
-              `[Channel Reverify] Skipped ${summary.superseded} negative verdict(s) on grants ` +
-                `re-confirmed during this pass; the next pass re-decides them`,
+              `[Channel Reverify] Revoked ${summary.revoked} access record(s) — subscription ` +
+                `cancelled on YouTube`,
             );
           }
           if (summary.stillSubscribed > 0) {
-            console.log(`[Channel Reverify] Re-confirmed ${summary.stillSubscribed} grant(s)`);
+            console.log(
+              `[Channel Reverify] Re-confirmed ${summary.stillSubscribed} record(s) and renewed ` +
+                `their lease`,
+            );
           }
           if (summary.unverifiable > 0) {
             console.log(
-              `[Channel Reverify] ${summary.unverifiable} active grant(s) hold no usable refresh ` +
-                `token and are not re-verified; they become re-verifiable if the user re-runs the ` +
-                `OAuth flow`,
-            );
-          }
-          if (summary.undecryptable > 0) {
-            console.error(
-              `[Channel Reverify] ${summary.undecryptable} grant(s) hold a token that cannot be ` +
-                `decrypted — the encryption key has probably been rotated. Access is intact but ` +
-                `these can no longer be revoked.`,
+              `[Channel Reverify] ${summary.unverifiable} record(s) hold no usable Google ` +
+                `credential and cannot be re-checked; they stay closed until the user re-runs ` +
+                `the OAuth flow`,
             );
           }
           if (summary.failed > 0) {
+            // Says "lease not renewed", not "access kept". Those were the same
+            // thing when grants had no expiry and are now different things, and a
+            // log line claiming otherwise would hide a real behaviour change from
+            // whoever is on call during a Google incident.
             console.warn(
-              `[Channel Reverify] ${summary.failed} grant(s) could not be checked and keep access`,
+              `[Channel Reverify] ${summary.failed} record(s) could not be checked; their lease ` +
+                `was not renewed, so reads will re-check and report CHECK_FAILED`,
             );
           }
           if (summary.budgetExhausted) {
@@ -104,15 +99,15 @@ export const channelGrantReverifyJob = () => {
             // base outgrows a pass: revocation latency is growing past the
             // configured interval and the answer is a bigger budget, not a retry.
             console.warn(
-              `[Channel Reverify] Ran out of budget after ${summary.checked} grant(s); grants are ` +
-                `still due. Revocation latency is now longer than ` +
-                `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS — raise YOUTUBE_REVERIFY_BUDGET_MS.`,
+              `[Channel Reverify] Ran out of budget after ${summary.checked} record(s); rows are ` +
+                `still due, so revocation latency now exceeds one pass. Raise ` +
+                `COMMUNITY_REVERIFY_BUDGET_MS.`,
             );
           } else if (summary.checked === 0) {
-            console.log("[Channel Reverify] No grants due for re-verification");
+            console.log("[Channel Reverify] No access records due for re-verification");
           }
         } catch (error) {
-          console.error("[Channel Reverify] Failed to re-verify channel grants:", error);
+          console.error("[Channel Reverify] Failed to re-verify channel access:", error);
         }
       });
     } catch (error) {

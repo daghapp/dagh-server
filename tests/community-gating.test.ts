@@ -1,11 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { decryptSecret, isEncryptedPayload } from "../src/helpers/encryption.js";
+import type { ChannelAccessSnapshot } from "../src/services/channel-access.service.js";
 
 /**
- * Unit tests for the community video unlock gate.
+ * Unit tests for the community video gate.
  *
- * Prisma and the YouTube OAuth service are mocked so the gating decisions can
- * be driven directly, without a database or quota-consuming API calls.
+ * The access decision is mocked rather than produced here: checkChannelAccess,
+ * the lease, the single-flight guard and the revocation rules all live in
+ * channel-access.service.ts and are tested there. What is tested here is the part
+ * this file owns — how one decision is turned into the shapes the endpoints
+ * return — and the properties that used to be violated:
+ *
+ *   - a page of cards is gated by one boolean, so no card can disagree with
+ *     another on the same response;
+ *   - per-video rows are analytics and never open anything;
+ *   - unlocking never grants, it only observes.
  */
 
 const prismaMock = {
@@ -19,10 +27,6 @@ const prismaMock = {
     findMany: vi.fn(),
     upsert: vi.fn(),
   },
-  channelUnlock: {
-    findFirst: vi.fn(),
-    upsert: vi.fn(),
-  },
   videoInteraction: {
     create: vi.fn(),
     groupBy: vi.fn(),
@@ -31,14 +35,15 @@ const prismaMock = {
   $transaction: vi.fn(),
 };
 
-const oauthMock = {
-  isYouTubeOAuthConfigured: vi.fn(),
-  getCachedVerification: vi.fn(),
+const accessMock = {
+  readChannelAccess: vi.fn(),
+  checkChannelAccess: vi.fn(),
+  resolveTargetChannelId: vi.fn(async () => "UC123"),
 };
 
 vi.mock("../src/config/prisma.js", () => ({ prisma: prismaMock }));
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
-vi.mock("../src/services/youtube-oauth.service.js", () => oauthMock);
+vi.mock("../src/services/channel-access.service.js", () => accessMock);
 
 const { toCardPayload, unlockVideo, listVideosForUser, getUnlockStatus, getUserUnlocks } =
   await import("../src/services/community.service.js");
@@ -57,22 +62,39 @@ const CARD = {
   likeCount: 85,
 };
 
-/** A durable channel grant: one confirmed subscription to the channel. */
-const CHANNEL_GRANT = {
+const VERIFIED_AT = "2026-02-01T00:00:00.000Z";
+
+/** A live lease. Every card on the page opens, and none of them is special. */
+const SUBSCRIBED: ChannelAccessSnapshot = {
   channelId: "UC123",
-  unlockedAt: new Date("2026-02-01T00:00:00Z"),
-  verifiedAt: new Date("2026-02-01T00:00:00Z"),
+  status: "SUBSCRIBED",
+  hasChannelAccess: true,
+  verifiedAt: VERIFIED_AT,
+  accessExpiresAt: "2026-02-01T00:01:00.000Z",
+  accessVersion: 7,
+  requiresGoogleConnection: false,
+  reason: null,
+};
+
+const NOT_CONNECTED: ChannelAccessSnapshot = {
+  channelId: "UC123",
+  status: "NOT_CONNECTED",
+  hasChannelAccess: false,
+  verifiedAt: null,
+  accessExpiresAt: null,
+  accessVersion: 0,
+  requiresGoogleConnection: true,
+  reason: "GOOGLE_NOT_CONNECTED",
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.$transaction.mockImplementation((ops: unknown[]) => Promise.all(ops));
   prismaMock.communityVideo.findFirst.mockResolvedValue({ id: "card-1" });
-  prismaMock.videoUnlock.findUnique.mockResolvedValue(null);
-  prismaMock.videoUnlock.upsert.mockResolvedValue({ unlockedAt: new Date("2026-02-01T00:00:00Z") });
-  // Default: no channel grant, so each test opts in explicitly.
-  prismaMock.channelUnlock.findFirst.mockResolvedValue(null);
-  prismaMock.channelUnlock.upsert.mockResolvedValue(CHANNEL_GRANT);
+  prismaMock.videoUnlock.upsert.mockResolvedValue({ unlockedAt: new Date(VERIFIED_AT) });
+  prismaMock.videoUnlock.findMany.mockResolvedValue([]);
+  // Default: no access. Each test opts in explicitly.
+  accessMock.readChannelAccess.mockResolvedValue({ access: NOT_CONNECTED, checked: false });
   vi.stubEnv("YOUTUBE_CHANNEL_ID", "UC123");
   vi.stubEnv("YOUTUBE_CHANNEL_HANDLE", "@diasporaaffairsgh");
 });
@@ -92,18 +114,15 @@ describe("toCardPayload", () => {
   it("withholds the full video link and video id from a locked card", () => {
     const payload = toCardPayload(CARD, false, null);
 
-    expect(payload.youtubeVideoId).toBeUndefined();
-    expect(payload.watchUrl).toBeUndefined();
-    expect(payload.watchAppUrl).toBeUndefined();
-    expect(payload.watchWebUrl).toBeUndefined();
-    expect(payload).not.toHaveProperty("youtubeVideoId");
-    expect(payload).not.toHaveProperty("watchUrl");
-    // Every string that reconstructs the full video stays off a locked card —
-    // the deep link is just another one of them.
-    expect(payload).not.toHaveProperty("watchAppUrl");
-    expect(payload).not.toHaveProperty("watchWebUrl");
     expect(payload.isUnlocked).toBe(false);
     expect(payload.requiresSubscription).toBe(true);
+    // Every string that reconstructs the full video stays off a locked card —
+    // the deep link is just another one of them, and any of them would let the
+    // app skip the server entirely.
+    expect(payload).not.toHaveProperty("youtubeVideoId");
+    expect(payload).not.toHaveProperty("watchUrl");
+    expect(payload).not.toHaveProperty("watchAppUrl");
+    expect(payload).not.toHaveProperty("watchWebUrl");
   });
 
   it("still gives a locked viewer enough to sample the video", () => {
@@ -116,18 +135,16 @@ describe("toCardPayload", () => {
   });
 
   it("returns the full video link once unlocked", () => {
-    const unlockedAt = new Date("2026-02-01T00:00:00Z");
-    const payload = toCardPayload(CARD, true, unlockedAt);
+    const payload = toCardPayload(CARD, true, new Date(VERIFIED_AT));
 
     expect(payload.youtubeVideoId).toBe("abc123");
     expect(payload.watchUrl).toBe("https://www.youtube.com/embed/abc123");
     expect(payload.isUnlocked).toBe(true);
     expect(payload.requiresSubscription).toBe(false);
-    expect(payload.unlockedAt).toBe(unlockedAt);
   });
 
   it("resolves the end-of-preview call-to-action deep link server-side once unlocked", () => {
-    const payload = toCardPayload(CARD, true, new Date("2026-02-01T00:00:00Z"));
+    const payload = toCardPayload(CARD, true, new Date(VERIFIED_AT));
 
     // Both forms, so the app falls back to the web when YouTube is not installed
     // rather than having to know the scheme itself.
@@ -138,9 +155,7 @@ describe("toCardPayload", () => {
 
 describe("card channel links", () => {
   it("gives a locked card somewhere to send the user to subscribe", () => {
-    const payload = toCardPayload(CARD, false, null);
-
-    expect(payload.channel).toEqual(CHANNEL);
+    expect(toCardPayload(CARD, false, null).channel).toEqual(CHANNEL);
   });
 
   it("gives an unlocked card the same channel links", () => {
@@ -177,42 +192,67 @@ describe("card engagement counters", () => {
 });
 
 describe("listVideosForUser", () => {
-  it("gates each card individually based on that user's unlocks", async () => {
-    const second = { ...CARD, id: "card-2", youtubeVideoId: "def456" };
-    prismaMock.communityVideo.findMany.mockResolvedValue([CARD, second]);
+  it("gates the whole page on one decision, including cards published since", async () => {
+    // The channel subscription is channel-scoped, so there is no per-card state
+    // left to compute. This is the whole reason two cards on one response cannot
+    // disagree: there is only one answer and it was resolved before the page.
+    prismaMock.communityVideo.findMany.mockResolvedValue([CARD, { ...CARD, id: "card-2" }]);
     prismaMock.communityVideo.count.mockResolvedValue(2);
-    prismaMock.videoUnlock.findMany.mockResolvedValue([
-      { videoId: "card-2", unlockedAt: new Date() },
-    ]);
 
-    const { videos, total, hasChannelAccess } = await listVideosForUser("user-1", 1, 20);
+    const { videos, total, hasChannelAccess, access } = await listVideosForUser("user-1", 1, 20, {
+      channelAccess: SUBSCRIBED,
+    });
 
     expect(total).toBe(2);
+    expect(hasChannelAccess).toBe(true);
+    expect(access).toBe(SUBSCRIBED);
+    expect(videos.every((v) => v.isUnlocked)).toBe(true);
+    expect(videos.every((v) => v.requiresSubscription === false)).toBe(true);
+    // The card's unlock time is the moment the subscription was confirmed — a
+    // card has no unlock moment of its own.
+    expect(videos.every((v) => v.unlockedAt?.toISOString() === VERIFIED_AT)).toBe(true);
+  });
+
+  it("never opens a page on per-video rows alone", async () => {
+    // A leftover VideoUnlock must not resurrect a revoked channel. This is the
+    // regression that per-video authorization permitted.
+    prismaMock.communityVideo.findMany.mockResolvedValue([CARD]);
+    prismaMock.communityVideo.count.mockResolvedValue(1);
+    prismaMock.videoUnlock.findUnique.mockResolvedValue({ unlockedAt: new Date() });
+
+    const { videos, hasChannelAccess } = await listVideosForUser("user-1", 1, 20, {
+      channelAccess: NOT_CONNECTED,
+    });
+
     expect(hasChannelAccess).toBe(false);
     expect(videos[0].isUnlocked).toBe(false);
     expect(videos[0]).not.toHaveProperty("youtubeVideoId");
-    expect(videos[0].channel).toEqual(CHANNEL);
-    expect(videos[1].isUnlocked).toBe(true);
-    expect(videos[1].youtubeVideoId).toBe("def456");
   });
 
-  it("unlocks every card and reports the grant once, from the channel row", async () => {
-    // The channel grant is the single source of truth here: no per-video row
-    // exists for either card, which is exactly the state a subscriber is in
-    // after unlocking video one and then browsing forward.
-    prismaMock.communityVideo.findMany.mockResolvedValue([CARD, { ...CARD, id: "card-2" }]);
-    prismaMock.communityVideo.count.mockResolvedValue(2);
-    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
-    prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
+  it("does not query the per-video table at all when building a page", async () => {
+    prismaMock.communityVideo.findMany.mockResolvedValue([CARD]);
+    prismaMock.communityVideo.count.mockResolvedValue(1);
 
-    const { videos, hasChannelAccess, channelAccess } = await listVideosForUser("user-1", 1, 20);
+    await listVideosForUser("user-1", 1, 20, { channelAccess: SUBSCRIBED });
 
-    expect(hasChannelAccess).toBe(true);
-    expect(channelAccess?.channelId).toBe("UC123");
-    expect(videos.every((v) => v.isUnlocked)).toBe(true);
-    expect(videos.every((v) => v.requiresSubscription === false)).toBe(true);
-    // No per-video row was needed to unlock them.
-    expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
+    // Nothing reads those rows for gating, so nothing is paid for them either.
+    expect(prismaMock.videoUnlock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.videoUnlock.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when no decision was supplied", async () => {
+    // Internal callers that never went through the read gate get a locked feed.
+    // Visible in testing; unreachable in production, where every route resolves
+    // access first. The alternative — a fallback lookup — is a second path that
+    // could answer differently from the first.
+    prismaMock.communityVideo.findMany.mockResolvedValue([CARD]);
+    prismaMock.communityVideo.count.mockResolvedValue(1);
+
+    const { videos, hasChannelAccess, access } = await listVideosForUser("user-1", 1, 20);
+
+    expect(hasChannelAccess).toBe(false);
+    expect(access).toBeNull();
+    expect(videos[0].isUnlocked).toBe(false);
   });
 });
 
@@ -231,18 +271,20 @@ describe("listVideosForUser ordering", () => {
   beforeEach(() => {
     prismaMock.communityVideo.findMany.mockResolvedValue([CARD]);
     prismaMock.communityVideo.count.mockResolvedValue(1);
-    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
   });
 
   it("defaults to newest-first, the pre-existing feed order", async () => {
-    const { sort } = await listVideosForUser("user-1", 1, 20);
+    const { sort } = await listVideosForUser("user-1", 1, 20, { channelAccess: NOT_CONNECTED });
 
     expect(sort).toBe("NEWEST");
     expect(findManyCall().orderBy).toEqual([{ publishedAt: "desc" }, { id: "desc" }]);
   });
 
   it("ranks by view count for MOST_WATCHED", async () => {
-    const { sort } = await listVideosForUser("user-1", 1, 20, { sort: "MOST_WATCHED" });
+    const { sort } = await listVideosForUser("user-1", 1, 20, {
+      sort: "MOST_WATCHED",
+      channelAccess: NOT_CONNECTED,
+    });
 
     expect(sort).toBe("MOST_WATCHED");
     expect(findManyCall().orderBy).toEqual([
@@ -253,7 +295,10 @@ describe("listVideosForUser ordering", () => {
   });
 
   it("ranks by like count for MOST_LIKED", async () => {
-    const { sort } = await listVideosForUser("user-1", 1, 20, { sort: "MOST_LIKED" });
+    const { sort } = await listVideosForUser("user-1", 1, 20, {
+      sort: "MOST_LIKED",
+      channelAccess: NOT_CONNECTED,
+    });
 
     expect(sort).toBe("MOST_LIKED");
     expect(findManyCall().orderBy).toEqual([
@@ -264,7 +309,10 @@ describe("listVideosForUser ordering", () => {
   });
 
   it("breaks ties deterministically so paging a sorted feed cannot drop a card", async () => {
-    await listVideosForUser("user-1", 2, 20, { sort: "MOST_LIKED" });
+    await listVideosForUser("user-1", 2, 20, {
+      sort: "MOST_LIKED",
+      channelAccess: NOT_CONNECTED,
+    });
 
     // Two cards on the same like count would otherwise be free to swap places
     // between requests, showing up on both pages or neither.
@@ -273,14 +321,20 @@ describe("listVideosForUser ordering", () => {
   });
 
   it("keeps the same page window when the order changes", async () => {
-    await listVideosForUser("user-1", 3, 10, { sort: "MOST_WATCHED" });
+    await listVideosForUser("user-1", 3, 10, {
+      sort: "MOST_WATCHED",
+      channelAccess: NOT_CONNECTED,
+    });
 
     expect(findManyCall().skip).toBe(20);
     expect(findManyCall().take).toBe(10);
   });
 
   it("never widens the filter — a sort must not surface unpublished cards", async () => {
-    await listVideosForUser("user-1", 1, 20, { sort: "MOST_LIKED" });
+    await listVideosForUser("user-1", 1, 20, {
+      sort: "MOST_LIKED",
+      channelAccess: NOT_CONNECTED,
+    });
 
     const args = prismaMock.communityVideo.findMany.mock.calls.at(-1)?.[0] as {
       where: unknown;
@@ -291,70 +345,71 @@ describe("listVideosForUser ordering", () => {
 
 describe("getUnlockStatus", () => {
   it("reports CHANNEL for a subscriber so the client can hide subscribe CTAs", async () => {
-    prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
-
-    await expect(getUnlockStatus("user-1", "card-1")).resolves.toEqual({
+    await expect(
+      getUnlockStatus("user-1", "card-1", { channelAccess: SUBSCRIBED }),
+    ).resolves.toEqual({
       isUnlocked: true,
-      unlockedAt: CHANNEL_GRANT.unlockedAt,
+      unlockedAt: VERIFIED_AT,
       via: "CHANNEL",
       hasChannelAccess: true,
+      access: SUBSCRIBED,
     });
   });
 
-  it("falls back to VIDEO for a legacy per-video unlock", async () => {
-    const unlockedAt = new Date("2026-01-15T00:00:00Z");
-    prismaMock.videoUnlock.findUnique.mockResolvedValue({ unlockedAt });
+  it("never reports VIDEO, however complete the per-video history looks", async () => {
+    // There is no longer a per-video unlock to report. Keeping the value would
+    // suggest the app may reason about individual videos, which is the path that
+    // let a revoked channel stay open.
+    prismaMock.videoUnlock.findUnique.mockResolvedValue({ unlockedAt: new Date() });
 
-    await expect(getUnlockStatus("user-1", "card-1")).resolves.toEqual({
-      isUnlocked: true,
-      unlockedAt,
-      via: "VIDEO",
-      hasChannelAccess: false,
-    });
+    const status = await getUnlockStatus("user-1", "card-1", { channelAccess: NOT_CONNECTED });
+
+    expect(status.isUnlocked).toBe(false);
+    expect(status.via).toBeNull();
   });
 
-  it("reports a locked card without touching the per-video table when a grant exists", async () => {
-    prismaMock.channelUnlock.findFirst.mockResolvedValue(null);
-    prismaMock.videoUnlock.findUnique.mockResolvedValue(null);
+  it("carries the decision so the caller can return one snapshot", async () => {
+    const status = await getUnlockStatus("user-1", "card-1", { channelAccess: NOT_CONNECTED });
 
-    await expect(getUnlockStatus("user-1", "card-1")).resolves.toEqual({
-      isUnlocked: false,
-      unlockedAt: null,
-      via: null,
-      hasChannelAccess: false,
-    });
+    // Returning the snapshot is what lets the endpoint answer with one object
+    // rather than a status the client has to reconcile against something else.
+    expect(status.access).toBe(NOT_CONNECTED);
+    expect(status.access?.reason).toBe("GOOGLE_NOT_CONNECTED");
+    expect(status.access?.requiresGoogleConnection).toBe(true);
   });
 });
 
 describe("getUserUnlocks", () => {
-  it("returns the channel grant alongside the per-video rows", async () => {
-    // Reported as a flag, not expanded into one row per video: the app needs to
-    // know "you have everything" and the channel keeps publishing.
-    prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
+  it("returns the full decision alongside the per-video rows", async () => {
     prismaMock.videoUnlock.findMany.mockResolvedValue([
-      { videoId: "card-1", unlockedAt: new Date("2026-02-01T00:00:00Z") },
+      { videoId: "card-1", unlockedAt: new Date(VERIFIED_AT) },
     ]);
 
-    const result = await getUserUnlocks("user-1");
+    const result = await getUserUnlocks("user-1", { channelAccess: SUBSCRIBED });
 
     expect(result.hasChannelAccess).toBe(true);
-    expect(result.channelAccess).toEqual({
-      channelId: "UC123",
-      unlockedAt: CHANNEL_GRANT.unlockedAt,
-      verifiedAt: CHANNEL_GRANT.verifiedAt,
-    });
-    expect(result.unlocks).toEqual([
-      { videoId: "card-1", unlockedAt: new Date("2026-02-01T00:00:00Z") },
-    ]);
+    // The snapshot, not a trimmed copy: a client ordering responses by
+    // accessVersion needs the version, and it was not in the old three-field shape.
+    expect(result.access).toBe(SUBSCRIBED);
+    expect(result.access?.accessVersion).toBe(7);
   });
 
-  it("reports no grant for a non-subscriber", async () => {
-    prismaMock.videoUnlock.findMany.mockResolvedValue([]);
+  it("reports the analytics rows without letting them imply access", async () => {
+    prismaMock.videoUnlock.findMany.mockResolvedValue([
+      { videoId: "card-1", unlockedAt: new Date(VERIFIED_AT) },
+    ]);
 
-    const result = await getUserUnlocks("user-1");
+    const result = await getUserUnlocks("user-1", { channelAccess: NOT_CONNECTED });
 
     expect(result.hasChannelAccess).toBe(false);
-    expect(result.channelAccess).toBeNull();
+    expect(result.unlocks).toHaveLength(1);
+  });
+
+  it("reports no access and no rows for a non-subscriber", async () => {
+    const result = await getUserUnlocks("user-1", { channelAccess: null });
+
+    expect(result.hasChannelAccess).toBe(false);
+    expect(result.access).toBeNull();
     expect(result.unlocks).toEqual([]);
   });
 });
@@ -370,173 +425,70 @@ describe("unlockVideo", () => {
     expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
   });
 
-  describe("with OAuth configured (gate closed)", () => {
-    beforeEach(() => {
-      oauthMock.isYouTubeOAuthConfigured.mockReturnValue(true);
+  it("refuses without access, and writes nothing", async () => {
+    // The route exists so a client can confirm and observe a decision. It is not
+    // a way to obtain one: a tap carries no evidence, and returning success here
+    // would make it the fail-open door the OAuth callback is not.
+    const result = await unlockVideo("user-1", "abc123", { channelAccess: NOT_CONNECTED });
+
+    expect(result).toMatchObject({
+      success: false,
+      code: "SUBSCRIPTION_REQUIRED",
+      reason: "GOOGLE_NOT_CONNECTED",
     });
+    expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
+  });
 
-    it("refuses to unlock without a positive verdict", async () => {
-      oauthMock.getCachedVerification.mockResolvedValue(null);
+  it("resolves access itself when the caller did not, as a playback read", async () => {
+    accessMock.readChannelAccess.mockResolvedValue({ access: NOT_CONNECTED, checked: true });
 
-      const result = await unlockVideo("user-1", "abc123");
+    await unlockVideo("user-1", "abc123");
 
-      expect(result).toEqual({
-        success: false,
-        code: "SUBSCRIPTION_REQUIRED",
-        verifiedAt: null,
-      });
-      expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
-    });
-
-    it("refuses to unlock on a negative verdict and surfaces the check time", async () => {
-      oauthMock.getCachedVerification.mockResolvedValue({
-        subscribed: false,
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-
-      const result = await unlockVideo("user-1", "abc123");
-
-      expect(result).toEqual({
-        success: false,
-        code: "SUBSCRIPTION_REQUIRED",
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-      expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
-    });
-
-    it("unlocks on a positive verdict", async () => {
-      oauthMock.getCachedVerification.mockResolvedValue({
-        subscribed: true,
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-
-      const result = await unlockVideo("user-1", "abc123");
-
-      expect(result.success).toBe(true);
-      expect(prismaMock.videoUnlock.upsert).toHaveBeenCalledOnce();
-    });
-
-    it("resolves the canonical card id so a raw YouTube id cannot orphan the row", async () => {
-      oauthMock.getCachedVerification.mockResolvedValue({
-        subscribed: true,
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-
-      await unlockVideo("user-1", "abc123");
-
-      expect(prismaMock.videoUnlock.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: { userId: "user-1", videoId: "card-1" },
-        }),
-      );
-    });
-
-    it("does not re-check an existing unlock, so it never expires with the cache", async () => {
-      const unlockedAt = new Date("2026-01-15T00:00:00Z");
-      prismaMock.videoUnlock.findUnique.mockResolvedValue({ unlockedAt });
-
-      const result = await unlockVideo("user-1", "abc123");
-
-      expect(result).toEqual({
-        success: true,
-        isUnlocked: true,
-        unlockedAt,
-        channelGranted: false,
-      });
-      expect(oauthMock.getCachedVerification).not.toHaveBeenCalled();
-      expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
-    });
-
-    it("grants the channel so later videos need no further verification", async () => {
-      // A YouTube subscription is to the channel, so one confirmation must cover
-      // the whole feed — including videos published after the grant.
-      oauthMock.getCachedVerification.mockResolvedValue({
-        subscribed: true,
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-      const verifiedAt = new Date("2026-02-01T00:00:00Z");
-
-      const result = await unlockVideo("user-1", "abc123", { channelId: "UC123", verifiedAt });
-
-      expect(prismaMock.channelUnlock.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: {
-            userId: "user-1",
-            channelId: "UC123",
-            verifiedAt,
-            refreshToken: null,
-            lastVerifiedAt: verifiedAt,
-          },
-        }),
-      );
-      expect(result).toEqual(expect.objectContaining({ success: true, channelGranted: true }));
-    });
-
-    it("persists the refresh token so the grant can be re-verified later", async () => {
-      // Without a stored refresh token the sweep cannot re-check the
-      // subscription, so the grant would stay permanent — the exact behaviour
-      // this token exists to end.
-      oauthMock.getCachedVerification.mockResolvedValue({
-        subscribed: true,
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-      const verifiedAt = new Date("2026-02-01T00:00:00Z");
-
-      await unlockVideo("user-1", "abc123", {
-        channelId: "UC123",
-        verifiedAt,
-        refreshToken: "refresh-abc",
-      });
-
-      // Sealed on the way in: a refresh token is a live credential, so a database
-      // dump must not hand over a replayable grant for every subscriber.
-      const args = prismaMock.channelUnlock.upsert.mock.calls[0][0];
-      const stored = args.create.refreshToken as string;
-      expect(isEncryptedPayload(stored)).toBe(true);
-      expect(stored).not.toContain("refresh-abc");
-      expect(decryptSecret(stored, "youtube:refreshToken")).toBe("refresh-abc");
-    });
-
-    it("does not write a channel grant when no channel id is supplied", async () => {
-      oauthMock.getCachedVerification.mockResolvedValue({
-        subscribed: true,
-        verifiedAt: "2026-02-01T00:00:00.000Z",
-      });
-
-      const result = await unlockVideo("user-1", "abc123");
-
-      expect(prismaMock.channelUnlock.upsert).not.toHaveBeenCalled();
-      expect(result).toEqual(expect.objectContaining({ channelGranted: false }));
-    });
-
-    it("short-circuits on an existing channel grant without re-checking YouTube", async () => {
-      prismaMock.channelUnlock.findFirst.mockResolvedValue(CHANNEL_GRANT);
-
-      const result = await unlockVideo("user-1", "abc123");
-
-      expect(result).toEqual({
-        success: true,
-        isUnlocked: true,
-        unlockedAt: CHANNEL_GRANT.unlockedAt,
-        channelGranted: true,
-      });
-      // Re-reading a grant that is never re-checked would be wasted quota.
-      expect(oauthMock.getCachedVerification).not.toHaveBeenCalled();
-      expect(prismaMock.videoUnlock.upsert).not.toHaveBeenCalled();
+    // PLAYBACK, not EXPLICIT: this is the request that supplies the full-length
+    // fields, so a lapsed lease has to be refreshed here — but a live one is
+    // reused, which keeps a normal tap free.
+    expect(accessMock.readChannelAccess).toHaveBeenCalledWith("user-1", {
+      reason: "PLAYBACK",
     });
   });
 
-  describe("without OAuth configured (fail open)", () => {
-    beforeEach(() => {
-      oauthMock.isYouTubeOAuthConfigured.mockReturnValue(false);
-    });
+  it("never re-resolves when the caller already supplied the decision", async () => {
+    await unlockVideo("user-1", "abc123", { channelAccess: SUBSCRIBED });
 
-    it("preserves the legacy behaviour so videos are not permanently locked", async () => {
-      const result = await unlockVideo("user-1", "abc123");
+    expect(accessMock.readChannelAccess).not.toHaveBeenCalled();
+  });
 
-      expect(result.success).toBe(true);
-      expect(oauthMock.getCachedVerification).not.toHaveBeenCalled();
-      expect(prismaMock.videoUnlock.upsert).toHaveBeenCalledOnce();
+  it("reports unlocked and attributes the conversion to the card", async () => {
+    const result = await unlockVideo("user-1", "abc123", { channelAccess: SUBSCRIBED });
+
+    expect(result).toEqual({
+      success: true,
+      isUnlocked: true,
+      unlockedAt: VERIFIED_AT,
+      access: SUBSCRIBED,
     });
+    expect(prismaMock.videoUnlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: { userId: "user-1", videoId: "card-1" } }),
+    );
+  });
+
+  it("resolves the canonical card id so a raw YouTube id cannot orphan the row", async () => {
+    await unlockVideo("user-1", "abc123", { channelAccess: SUBSCRIBED });
+
+    expect(prismaMock.videoUnlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: { userId: "user-1", videoId: "card-1" },
+      }),
+    );
+  });
+
+  it("keeps the first attribution when the row already exists", async () => {
+    await unlockVideo("user-1", "abc123", { channelAccess: SUBSCRIBED });
+
+    // Racing or repeat taps must not rewrite the conversion's timestamp, or the
+    // analytics funnel would report whenever the user last tapped.
+    expect(prismaMock.videoUnlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: {} }),
+    );
   });
 });
