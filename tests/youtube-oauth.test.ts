@@ -421,10 +421,27 @@ describe("fetchAuthorizedChannelId", () => {
 });
 
 describe("redirect URI", () => {
-  it("is required to be configured", () => {
+  // Both vars are stubbed deliberately. Leaving API_URL to ambient state made this
+  // test pass on a developer machine with a .env and fail on CI, which has none.
+  it("derives it from API_URL when the explicit URI is unset", () => {
     // Derived from the API URL when unset, but the OAuth redirect URI has to be
     // registered with Google exactly, so a wrong default fails at the exchange.
     vi.stubEnv("YOUTUBE_OAUTH_REDIRECT_URI", "");
-    expect(getYouTubeOAuthRedirectUri()).toContain("/community/youtube/callback");
+    vi.stubEnv("API_URL", "https://api.example.com");
+    expect(getYouTubeOAuthRedirectUri()).toBe("https://api.example.com/community/youtube/callback");
+  });
+
+  it("prefers the explicit URI over the derived one", () => {
+    vi.stubEnv("YOUTUBE_OAUTH_REDIRECT_URI", "https://oauth.example.com/cb");
+    vi.stubEnv("API_URL", "https://api.example.com");
+    expect(getYouTubeOAuthRedirectUri()).toBe("https://oauth.example.com/cb");
+  });
+
+  it("throws when neither is configured", () => {
+    // isYouTubeVerificationAvailable() is only false when this throws, so the
+    // throw is load-bearing for the availability check — not just a guard.
+    vi.stubEnv("YOUTUBE_OAUTH_REDIRECT_URI", "");
+    vi.stubEnv("API_URL", "");
+    expect(() => getYouTubeOAuthRedirectUri()).toThrow(/YOUTUBE_OAUTH_REDIRECT_URI or API_URL/);
   });
 });
