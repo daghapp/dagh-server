@@ -9,8 +9,13 @@ import {
   _resetFreeModeCache,
   type EffectiveAccess,
 } from "../src/helpers/membership.js";
-import { setPaymentControlStatus, _resetPaymentControlCache } from "../src/config/payments.js";
+import {
+  setPaymentControlStatus,
+  isPaymentsEnabled,
+  _resetPaymentControlCache,
+} from "../src/config/payments.js";
 import { AuthProvider, AccountType, SubscriptionStatus } from "../generated/prisma/client.js";
+import { ensurePlans, cleanupPlans } from "./helpers/plans.js";
 
 /**
  * Free mode: with payments switched off, nobody can buy a paid tier, so the
@@ -35,6 +40,11 @@ describe("Free mode (payments disabled ⇒ paid features are free)", () => {
   }
 
   beforeAll(async () => {
+    // CI migrates a fresh database and never seeds, and the migrations do not
+    // insert membership_plans. Without this the whole suite threw in beforeAll
+    // and was reported as 15 *skipped* rather than passing.
+    await ensurePlans();
+
     const mkUser = async (label: string) => {
       const user = await prisma.user.create({
         data: {
@@ -80,7 +90,10 @@ describe("Free mode (payments disabled ⇒ paid features are free)", () => {
     await prisma.membershipPlan.deleteMany({ where: { name: { contains: `FM${stamp}` } } });
     await prisma.user.deleteMany({ where: { id: { in: [freeUserId, payingUserId] } } });
     await prisma.systemSetting.deleteMany({ where: { key: "PAYMENTS_ENABLED" } });
-    await prisma.adminActivityLog.deleteMany({ where: { actorId: { in: [freeUserId, payingUserId] } } });
+    await cleanupPlans();
+    await prisma.adminActivityLog.deleteMany({
+      where: { actorId: { in: [freeUserId, payingUserId] } },
+    });
   });
 
   // ─────────────────────────────────────────
@@ -165,6 +178,31 @@ describe("Free mode (payments disabled ⇒ paid features are free)", () => {
     it("grants the highest-priced active paid plan while payments are disabled", async () => {
       await setPayments(false);
       expect(await getFreeModeTierCode()).toBe(TOP_PLAN_CODE);
+    });
+
+    // These deliberately do NOT call _resetFreeModeCache(). Nothing in production
+    // resets it, so a toggle has to invalidate the cached tier on its own — the
+    // cache is keyed on the payment state it was resolved under.
+    it("engages on the same read that sees the kill switch", async () => {
+      await getFreeModeTierCode(); // warm the cache while payments are enabled
+
+      await setPaymentControlStatus({ enabled: false, reason: "Cache coherence test" });
+
+      // The kill switch is synchronous with the write, so if free mode is still
+      // null here the app is refusing checkout while granting nothing — the
+      // exact outage state free mode exists to prevent.
+      expect(await isPaymentsEnabled()).toBe(false);
+      expect(await getFreeModeTierCode()).toBe(TOP_PLAN_CODE);
+    });
+
+    it("drops the grant on the same read that clears the kill switch", async () => {
+      await setPaymentControlStatus({ enabled: false, reason: "Cache coherence test" });
+      expect(await getFreeModeTierCode()).toBe(TOP_PLAN_CODE);
+
+      await setPaymentControlStatus({ enabled: true });
+
+      expect(await isPaymentsEnabled()).toBe(true);
+      expect(await getFreeModeTierCode()).toBeNull();
     });
 
     it("ignores a deactivated plan even when it is the most expensive", async () => {

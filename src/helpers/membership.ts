@@ -189,8 +189,22 @@ export function resolveEffectiveAccess(input: {
 // behind it. The cost of that choice is that free mode cannot be separated from
 // an outage — see docs/disabling-payments.md.
 
-/** Short cache: the tier is read on access resolution, and plan edits should show up promptly. */
-let freeModeCache: { tierCode: string | null; cachedAt: number } | null = null;
+/**
+ * Short cache: the tier is read on access resolution, and plan edits should show up promptly.
+ *
+ * `enabled` is the payment state this tier was resolved under, not a copy of it.
+ * Holding it here is what makes a toggle take effect immediately: the cache is
+ * only reused when the payment state still matches, so disabling or re-enabling
+ * payments invalidates it on the very next read. Caching the tier alone left a
+ * window — up to the full TTL — where the kill switch had already fired but
+ * free mode had not yet engaged, which is precisely the state this exists to
+ * prevent: checkout refused and every gated feature locked out.
+ *
+ * `isPaymentsEnabled()` is an in-memory read of the payments.ts cache, which
+ * writes refresh synchronously, so this costs no database round trip and adds no
+ * import cycle (see the note at the top of this file).
+ */
+let freeModeCache: { enabled: boolean; tierCode: string | null; cachedAt: number } | null = null;
 const FREE_MODE_CACHE_TTL_MS = 10_000;
 
 /**
@@ -202,30 +216,49 @@ const FREE_MODE_CACHE_TTL_MS = 10_000;
  */
 export async function getFreeModeTierCode(): Promise<string | null> {
   const now = Date.now();
-  if (freeModeCache && now - freeModeCache.cachedAt < FREE_MODE_CACHE_TTL_MS) {
+
+  let enabled: boolean;
+  try {
+    enabled = await isPaymentsEnabled();
+  } catch (error) {
+    // Never cache a guess: if the payment state is unreadable, fall through and
+    // resolve without caching rather than pinning free mode on or off.
+    console.error("[FREE_MODE] failed to read payment state, resolving uncached:", error);
+    return resolveFreeModeTier();
+  }
+
+  if (
+    freeModeCache &&
+    freeModeCache.enabled === enabled &&
+    now - freeModeCache.cachedAt < FREE_MODE_CACHE_TTL_MS
+  ) {
     return freeModeCache.tierCode;
   }
 
-  let tierCode: string | null = null;
+  const tierCode = enabled ? null : await resolveFreeModeTier();
+  freeModeCache = { enabled, tierCode, cachedAt: now };
+  return tierCode;
+}
 
+/**
+ * The most expensive active paid plan — the tier free mode hands out. Returns
+ * null when there is nothing to grant (or the lookup failed, in which case the
+ * caller resolves the user's real entitlement rather than guessing).
+ */
+async function resolveFreeModeTier(): Promise<string | null> {
   try {
-    if (!(await isPaymentsEnabled())) {
-      const plan = await prisma.membershipPlan.findFirst({
-        where: { isActive: true, price: { gt: 0 }, code: { not: "FREE" } },
-        orderBy: { price: "desc" },
-        select: { code: true },
-      });
-      tierCode = plan?.code ?? null;
-    }
+    const plan = await prisma.membershipPlan.findFirst({
+      where: { isActive: true, price: { gt: 0 }, code: { not: "FREE" } },
+      orderBy: { price: "desc" },
+      select: { code: true },
+    });
+    return plan?.code ?? null;
   } catch (error) {
     // Free mode must never be the reason somebody loses access. If the lookup
     // fails, resolve their real entitlement rather than guessing.
     console.error("[FREE_MODE] failed to resolve free-mode tier, using real access:", error);
     return null;
   }
-
-  freeModeCache = { tierCode, cachedAt: now };
-  return tierCode;
 }
 
 /**
@@ -238,7 +271,10 @@ export async function getFreeModeTierCode(): Promise<string | null> {
  * above the free tier — a comp to a tier above the top active plan — keeps
  * exactly what they had, including the perks setting on their grant.
  */
-export function applyFreeMode(access: EffectiveAccess, freeModeTier: string | null): EffectiveAccess {
+export function applyFreeMode(
+  access: EffectiveAccess,
+  freeModeTier: string | null,
+): EffectiveAccess {
   if (!freeModeTier) return access;
   if (tierValue(freeModeTier) <= tierValue(access.tierCode)) return access;
 
