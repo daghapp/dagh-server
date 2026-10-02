@@ -37,7 +37,7 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 | POST | `/auth/login` | Public | Log in; returns `accessToken` + `refreshToken`. |
 | POST | `/auth/verify-otp` | Public | Verify an email OTP (email verification or password reset). |
 | POST | `/auth/resend-otp` | Public | Resend the email-verification OTP (rate-limited, 1/min). |
-| POST | `/auth/refresh-token` | Public | Exchange a refresh token for a new access token. |
+| POST | `/auth/refresh-token` | Public | Exchange a refresh token for a new access token + the signed-in user (same shape as login). |
 | POST | `/auth/request-reset-password` | Public | Send a password-reset OTP to an email. |
 | POST | `/auth/reset-password` | Bearer | Verify OTP + old password, then set a new password. |
 | POST | `/auth/logout` | Bearer | Log out; invalidates all of the user's refresh tokens. |
@@ -78,8 +78,33 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 { "email": "user@example.com", "password": "Password123!" }
 ```
 
-Returns `data: { id, email, fullName, accountType, accessToken, refreshToken }`.
+Returns `data: { id, email, fullName, accountType, ethnicity, accessToken, refreshToken }`.
 `403` if the email is not yet verified.
+
+`ethnicity` is `null` until the user chooses one — the column is nullable and
+nothing in the auth flow requires it, so treat `null` as "not answered yet"
+rather than invalid.
+
+### POST /auth/refresh-token
+
+```json
+{ "refreshToken": "..." }
+```
+
+Returns `data: { id, email, fullName, accountType, ethnicity, accessToken }` — the
+**same user shape as `POST /auth/login`**, minus `refreshToken` (the caller
+already holds it; the token is not rotated).
+
+This matters more than it looks. Clients call this whenever the access token
+expires mid-session, so it is the response most often used to rebuild in-memory
+session state. It used to return the access token alone, which meant a client
+rehydrating from it lost every profile field the login response had supplied —
+most visibly `ethnicity`, which then read as unset and re-prompted the user on
+every resume. **Clients should treat login and refresh as the same payload and
+keep one session handler for both.**
+
+`401` if the refresh token is missing, invalid, expired, or no longer in the
+device store; `403` if the account is no longer active; `404` if the user is gone.
 
 ---
 
@@ -415,19 +440,23 @@ unlock).
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`); each card carries `isUnlocked`, `requiresSubscription` and `channel`, and is gated accordingly. |
-| GET | `/community/videos/:videoId` | Bearer | Single card + caller's unlock status (same gating and `channel`). |
-| GET | `/community/my-unlocks` | Bearer | Durable channel grant + individually unlocked video IDs — call on app launch. |
-| POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. |
-| POST | `/community/videos/:videoId/unlock` | Bearer | Grant full access to the video and the channel (idempotent). Requires a positive subscription verdict → `403 SUBSCRIPTION_REQUIRED` otherwise. |
-| GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }` so the app can send the user to the channel and verify in one round-trip. |
-| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, caches the verdict, grants the **channel**, redirects to the app deep link. |
-| GET | `/community/youtube/status/:videoId` | Bearer | Durable unlock + channel grant + last cached verdict (no API call). |
-| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate. |
+| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`), gated as a page by the single decision in `meta.access`. Apply it to every card; never re-decide per card. |
+| GET | `/community/videos/:videoId` | Bearer | Single card plus the same `access` snapshot every other surface returns. |
+| GET | `/community/my-unlocks` | Bearer | The current `access` decision plus per-video unlock history (analytics only) — call on app launch. |
+| POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. `SUBSCRIBE_INTENT` is still accepted for older clients, but new clients should use [`/subscribe-intent`](#post-communityvideovidsubscribe-intent) — which logs it as a side effect — and not send it here, or the conversion-rate denominator is double-counted. |
+| POST | `/community/videos/:videoId/subscribe-intent` | Bearer | The locked card's subscribe button, in one call: logs `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }`. |
+| POST | `/community/videos/:videoId/unlock` | Bearer | Confirm and report the decision; grants nothing by itself. `403 SUBSCRIPTION_REQUIRED` with a `reason` when there is no positive verdict. |
+| GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }`. Superseded by `subscribe-intent` for the tap — kept for re-running the flow without recording a new intent. |
+| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, stores the verdict with a lease, redirects to the app deep link. |
+| GET | `/community/youtube/status/:videoId` | Bearer | The current `access` decision, re-checking if the lease has lapsed. |
+| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate, plus the YouTube counters the feed sorts use. |
 | POST | `/community/admin/videos` | Admin | Create a video card. |
 | PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
 | DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
-| POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API and add missing cards to the feed. |
+| POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API, add missing cards, and refresh the view/like counters on existing ones. |
+| GET | `/community/admin/youtube-grants` | Admin | List channel grants with a table-wide health summary. Never returns a refresh token. |
+| POST | `/community/admin/youtube-grants/:userId/revoke` | Admin | Close a grant without consulting YouTube (reason `MANUAL`). |
+| POST | `/community/admin/youtube-grants/re-encrypt` | Admin | Re-seal any refresh token still stored in the clear. Idempotent. |
 
 ### POST /community/admin/sync-youtube (Admin)
 
@@ -436,15 +465,26 @@ via `YOUTUBE_CHANNEL_ID` or `YOUTUBE_CHANNEL_HANDLE` (e.g. `@diasporaaffairsgh`)
 or an explicit `channelId` / `handle` in the request body, then fetches the latest
 uploads from the channel's uploads playlist.
 
-Only **new** uploads are inserted. Existing cards are never overwritten, so admin
-edits to title/description and soft-deletes (`isPublished = false`) survive a
-sync. Teasers are derived from the video's own embed URL bounded to the first 45
-seconds (`?start=0&end=45&rel=0`), so a freshly synced card can only serve a
-preview until the viewer subscribes. The full-length URL is never stored.
+Only **new** uploads are inserted. On an existing card the sync rewrites the
+YouTube view/like counters and nothing else, so admin edits to
+title/description and soft-deletes (`isPublished = false`) survive a sync while
+the engagement rankings still move. Teasers are derived from the video's own
+embed URL bounded to the first 30 seconds (`?start=0&end=30&rel=0`), so a freshly
+synced card can only serve a preview until the viewer subscribes. The
+full-length URL is never stored.
+
+`playlistItems` cannot return view/like counts, so the counters come from one
+extra `videos?part=statistics` call covering the whole batch (1 quota point).
+That call is allowed to fail: the uploads are still synced, just carrying their
+previous counts, because losing the ranking signal should not cost us the upload
+list we already paid for.
 
 Repeated syncs for the same channel are returned from a Redis-backed cooldown
 cache (`YOUTUBE_SYNC_COOLDOWN_MS`, default 1 hour) instead of re-hitting the
-YouTube API, protecting quota.
+YouTube API, protecting quota. The cooldown is consulted after the channel id is
+resolved and before the uploads are fetched, so a sync inside the window spends
+no quota at all. The cooldown is Redis-backed only — without `REDIS_URL` there is
+none, and every call reaches YouTube.
 
 Body (all optional):
 
@@ -465,12 +505,16 @@ Response:
     "channelId": "UC...",
     "fetched": 6,
     "created": 4,
+    "updated": 2,
     "alreadyPresent": 2,
     "syncedAt": "2026-10-01T00:00:00.000Z",
     "cached": false
   }
 }
 ```
+
+`updated` counts existing cards whose counters were refreshed; `alreadyPresent` is
+a deprecated alias of it, kept so older clients keep parsing.
 
 `503` if `YOUTUBE_API_KEY` is not configured; `502` if the YouTube API call fails.
 
@@ -481,6 +525,14 @@ so the client can render the correct button color/behavior without extra calls.
 `videoId` is an alias of `id` — both are stable identifiers you can use as the
 `:videoId` path/query param on the other endpoints. `:videoId` also accepts the
 YouTube video id directly (`youtubeVideoId`).
+
+**Query params**
+
+| Param | Values | Default | Notes |
+|-------|--------|---------|-------|
+| `page` | integer ≥ 1 | `1` | |
+| `limit` | 1–50 | `20` | |
+| `sort` | `newest`, `most_watched`, `most_liked` | `newest` | Case-insensitive. An unrecognised value falls back to `newest` rather than erroring; the order actually applied is echoed in `meta.sort` |
 
 A **locked** card:
 
@@ -493,10 +545,12 @@ A **locked** card:
       "videoId": "uuid",
       "title": "Two-line bold title",
       "description": "One-sentence value proposition for the full discussion.",
-      "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=45&rel=0",
+      "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=30&rel=0",
       "previewStartSeconds": 0,
-      "previewDurationSeconds": 45,
+      "previewDurationSeconds": 30,
       "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      "viewCount": 12480,
+      "likeCount": 932,
       "isUnlocked": false,
       "requiresSubscription": true,
       "unlockedAt": null,
@@ -509,11 +563,12 @@ A **locked** card:
       "publishedAt": "2026-10-01T00:00:00.000Z"
     }
   ],
-  "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 }
+  "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 },
+  "meta": { "hasChannelAccess": false, "channelAccess": null, "sort": "NEWEST" }
 }
 ```
 
-An **unlocked** card additionally carries `youtubeVideoId` and `watchUrl`:
+An **unlocked** card additionally carries `youtubeVideoId`, `watchUrl`, `watchAppUrl` and `watchWebUrl`:
 
 ```json
 {
@@ -521,19 +576,60 @@ An **unlocked** card additionally carries `youtubeVideoId` and `watchUrl`:
   "requiresSubscription": false,
   "unlockedAt": "2026-10-01T00:00:00.000Z",
   "youtubeVideoId": "dQw4w9WgXcQ",
-  "watchUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ"
+  "watchUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+  "watchAppUrl": "vnd.youtube://watch?v=dQw4w9WgXcQ",
+  "watchWebUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 }
 ```
 
-`youtubeVideoId` and `watchUrl` are **absent** (not `null`) while locked — the
-server withholds both rather than gating only playback, because the full link is
-just a string any client could read. `watchUrl` is derived from
-`youtubeVideoId` on demand and never stored.
+All four are **absent** (not `null`) while locked — the server withholds them
+rather than gating only playback, because the full link is just a string any
+client could read. `watchAppUrl` and `watchWebUrl` are the same link in two
+shapes, so sending one while withholding the other would gate nothing. All are
+derived from `youtubeVideoId` on demand and never stored.
+
+Use `watchAppUrl` for the "Watch Full Video on YouTube" call-to-action and fall
+back to `watchWebUrl` when the deep link cannot be opened (no YouTube app
+installed). Do not assemble either from `youtubeVideoId` — the same rule as
+`channel` below. `watchUrl` is the *embed* address for the full video, for an
+in-app web player; it is not a YouTube-app or mobile-site destination.
 
 Non-nullable string fields (`title`, `description`, `thumbnailUrl`, `teaserUrl`)
 are never `null` in the DB (defaulting to `"Untitled"` / `""` and derived YouTube
 URLs respectively), so the client does not need null-guards on them. `unlockedAt`
 is the only nullable field (`null` until unlocked). Timestamps serialize as ISO-8601 strings.
+
+#### `sort` — ranking the feed by engagement
+
+`?sort=most_watched` and `?sort=most_liked` reorder the feed by YouTube's public
+view and like counts, which lets the app offer "Most Liked" / "Most Watched" tabs
+alongside the default chronological feed.
+
+| Sort | Ordering |
+|------|----------|
+| `newest` (default) | `publishedAt` desc |
+| `most_watched` | `viewCount` desc, then `publishedAt` desc |
+| `most_liked` | `likeCount` desc, then `publishedAt` desc |
+
+The counts come from the channel sync (`POST /community/admin/sync-youtube`), not
+from this server's own interaction log — those rows only see activity inside this
+app, so they cannot report what happened on the channel. They are refreshed each
+sync run, so a long-standing popular video can legitimately outrank a newer one,
+and a video that goes viral climbs the ranking over time rather than staying
+where it was first published.
+
+Every ordering ends in the same deterministic tie-break chain, so paging through
+a sorted feed (`?sort=most_liked&page=2`) cannot repeat or drop a card the way an
+unordered tie would.
+
+`viewCount` / `likeCount` ride on **every** card, locked included — they describe
+the video rather than granting access to it, so there is no reason to withhold
+them. Read them straight off the response to label a tab; no extra request needed.
+A `0` means either genuinely unwatched or never synced, so treat it as "no signal
+yet" rather than "nobody watched this".
+
+`meta.sort` echoes the applied order in upper case (`NEWEST`, `MOST_WATCHED`,
+`MOST_LIKED`) so a client can confirm what the server did with its request.
 
 #### `meta.hasChannelAccess` — the feed-level unlock flag
 
@@ -559,15 +655,27 @@ present and authoritative, so a client can render from the cards alone.
 ```
 
 `hasChannelAccess` is `true` when the caller holds a durable channel grant, and
-`channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock"
+`channelAccess` is `null` otherwise. Use it to hide every "Subscribe to Unlock Preview"
 call to action at once instead of deriving the state card by card — otherwise a
 subscriber sees subscribe prompts on cards the server has already opened.
-`verifiedAt` is when the subscription was last confirmed. The grant is
-re-checked on a schedule (see
-[YouTube channel unlocks](youtube-video-feed-setup.md#how-access-is-granted)),
-so a subscriber who later unsubscribes loses access within
-`YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS`. Between sweeps the grant still stands —
-treat `hasChannelAccess` as current-enough for UI, not as a guarantee.
+`verifiedAt` is when the subscription was last confirmed. YouTube publishes no
+event for an unsubscribe, so the grant is re-checked two ways (see
+[YouTube channel unlocks](youtube-video-feed-setup.md#locking-on-read--why-the-sweep-is-not-the-whole-answer)):
+
+- **On read.** The first feed / card / `my-unlocks` / `status` / `unlock` call
+  after the lease lapses (`COMMUNITY_ACCESS_LEASE_SECONDS`, default 60s)
+  re-checks live, and *that response* is already correct. A subscriber who
+  cancelled is locked within a lease's worth of their next read.
+- **Login.** A session boundary forces a check even when the lease is still live,
+  so signing in never presents yesterday's verdict.
+- **Nightly sweep.** Catches the accounts the read path never sees, bounded by
+  `COMMUNITY_REVERIFY_BUDGET_MS` per pass rather than by a fixed interval.
+
+So the state is current for anyone using the app and up to a day stale for anyone
+who has not opened it recently — and permanently stale for a grant with no usable
+refresh token, which is never re-checkable and shows up in the admin listing as
+`unverifiable`. Treat `hasChannelAccess` as current-enough for UI, not as a
+guarantee.
 
 #### `channel` — where to send the user to subscribe
 
@@ -593,6 +701,30 @@ Two things these links deliberately do **not** do: they open the channel page bu
 do not complete the subscription (YouTube exposes no link that subscribes on the
 user's behalf — the user still taps Subscribe), and they are resolved from env
 without an API call, so a handle-only setup costs nothing per feed load.
+
+#### `watchAppUrl` / `watchWebUrl` — where to send an unlocked viewer
+
+Present only on unlocked cards, and the destination for the end-of-preview
+"Watch Full Video on YouTube" call-to-action. Resolved server-side for the same
+reason as `channel`: the app should not be assembling YouTube URL schemes itself.
+
+| Field | Notes |
+|-------|-------|
+| `watchAppUrl` | `vnd.youtube://watch?v=<id>` deep link — opens the native app on the full video |
+| `watchWebUrl` | `https://www.youtube.com/watch?v=<id>` — fallback for a device with no YouTube app |
+
+Both are always present together and never `null` on an unlocked card. Open
+`watchAppUrl`, and fall back to `watchWebUrl` when the deep link cannot be
+opened — on some platforms a `vnd.youtube://` URL aimed at a missing app fails
+silently rather than erroring.
+
+`watchUrl` is a third, separate field: the *embed* address
+(`https://www.youtube.com/embed/<id>`), for an in-app web player. It is not a
+substitute for either link above.
+
+The full client-side contract for the end-of-preview overlay — trigger, copy,
+per-state behaviour and the analytics to log — is in
+[App integration](youtube-video-feed-setup.md#2-preview-modal--the-teaser-then-the-end-of-preview-cta-overlay).
 
 ### GET /community/my-unlocks
 
@@ -628,7 +760,7 @@ treat the feed as fully unlocked; otherwise use `unlocks`.
 Append-only analytics event. Safe to fire for every user action (client-side
 fire-and-forget). `action` must be one of:
 
-- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock" (logged by the client,
+- `SUBSCRIBE_INTENT` — user tapped "Subscribe to Unlock Preview" (logged by the client,
   before the OAuth round-trip)
 - `PREVIEW_CLIP` — user played the clipped preview on a locked card
 - `WATCH_FULL_VIDEO` — user opened the full video (unlocked users only)
@@ -645,16 +777,76 @@ YouTube exposes no per-user watch API, so treat it as a hint, not evidence.
 
 `400` for an unknown action or an invalid `durationMs`; `404` if the video doesn't exist.
 
+### POST /community/videos/:videoId/subscribe-intent
+
+The locked card's **"Subscribe to Unlock Preview"** button, in one round-trip. Records
+the `SUBSCRIBE_INTENT` event and returns the Google authorization URL plus the
+channel subscribe links.
+
+```json
+{
+  "success": true,
+  "data": {
+    "videoId": "uuid",
+    "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?...",
+    "channel": {
+      "channelId": "UC...",
+      "handle": "@diasporaaffairsgh",
+      "subscribeUrl": "https://www.youtube.com/@diasporaaffairsgh",
+      "appUrl": "vnd.youtube://channel/UC..."
+    }
+  }
+}
+```
+
+`videoId` in the response is the canonical internal card id, even when the
+request passed a YouTube video id.
+
+| Field | Notes |
+|-------|-------|
+| `authUrl` | Open in a browser to let the user grant read-only YouTube access. **`null`** when `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` are unset |
+| `channel` | Same object as on every feed card. Send the user to `appUrl` (falling back to `subscribeUrl`) so they can subscribe |
+
+**`authUrl` is null, not a 503.** `GET /community/youtube/start/:videoId` returns
+`503` without OAuth because the authorization URL is the only thing it produces.
+This endpoint also carries the funnel event and the subscribe links, and both
+remain useful without OAuth — so when `authUrl` is `null`, send the user to
+`channel.appUrl` to subscribe and then call
+`POST /community/videos/:videoId/unlock` directly. That client-trusted unlock path
+only exists when OAuth is unconfigured; with OAuth configured it returns
+`403 SUBSCRIPTION_REQUIRED`.
+
+#### Why this endpoint exists
+
+The tap used to be two calls the app had to keep in step — `POST /interact` with
+`SUBSCRIBE_INTENT`, then `GET /youtube/start/:videoId`. Nothing forced the app to
+make both, and the analytics half was the one that got dropped.
+
+That failure is invisible. A missing `SUBSCRIBE_INTENT` shrinks the denominator
+that `conversionRate` is computed against (`totalUnlocks / SUBSCRIBE_INTENT`), so
+the funnel reports a *better* number than it earned — the metric that exists to
+tell you whether the gate is working is the one most likely to be quietly wrong.
+Folding the event into the endpoint the app already has to call makes it
+un-skippable.
+
+The intent is written before the OAuth URL is built, and is not conditional on
+it: the tap is the event being measured, and it happened whether or not the
+server can go on to verify anything. A funnel that only counts taps we could
+verify is not a funnel.
+
+`GET /community/youtube/start/:videoId` still exists and still works — use it to
+re-run the flow without recording a new intent (e.g. a retry after a cancelled
+consent screen, which should not inflate the tap count).
+
 ### POST /community/videos/:videoId/unlock
 
-Grants full access to the video **and to the channel**, because a YouTube
-subscription is channel-scoped. Idempotent, and an existing grant is returned
-untouched without re-checking YouTube — access does not expire when the verdict
-cache lapses.
+Confirms and reports the decision. It does **not** grant anything: a tap is not
+evidence, so there is no request body or flag that can open a video. The
+subscription is channel-scoped, so a positive verdict opens the whole feed and
+this endpoint is the cheapest place to learn that.
 
-The grant is gated on a server-confirmed subscription verdict (see below), so
-this is **not** a client-trusted flag. In the normal flow the OAuth callback
-grants it itself; call this afterwards only to re-check after the round-trip.
+Because it consults the same decision a read would, a normal tap inside a live
+lease costs no quota; a lapsed one re-checks Google.
 
 ```json
 {
@@ -662,21 +854,21 @@ grants it itself; call this afterwards only to re-check after the round-trip.
   "data": {
     "isUnlocked": true,
     "unlockedAt": "2026-10-01T00:00:00.000Z",
-    "channelGranted": true
+    "hasChannelAccess": true,
+    "access": { "...": "the same ChannelAccess snapshot every other endpoint returns" }
   },
   "message": "Video unlocked"
 }
 ```
 
-`channelGranted` is `true` when this call recorded the channel grant, and
-`false` when the user was already unlocked — either by a channel grant or by a
-legacy per-video row. Both cases return `isUnlocked: true`; the flag exists so
-the app knows whether the whole feed is now open, not just this card.
+`isUnlocked` / `unlockedAt` are analytics — which card this user converted on.
+They are **not** the gate. Branch on `hasChannelAccess` / `access`; a non-empty
+unlock history does not mean the feed is open, and an `isUnlocked: true` from an
+older response must not reopen a feed the server has since closed.
 
-`channelGranted` is `false` for every direct call to this endpoint, because the
-channel id is only known to the OAuth callback, which resolves it from the
-subscription it just checked. Unlocking from here still records the per-video
-row; the feed stays gated per-video until a verification completes.
+There is no `channelGranted` field. It existed only to distinguish "this call
+granted the channel" from "the channel was already granted", which is no longer a
+distinction any client needs — `access` says what is true now.
 
 Errors:
 
@@ -694,18 +886,27 @@ Errors:
 }
 ```
 
-An **absent** verdict (never verified, or the `YOUTUBE_VERIFY_CACHE_MS` TTL
-lapsed) counts as not subscribed, so the gate fails closed. Re-run
+A lapsed lease or an absent verdict resolves to **no access**, so the gate fails
+closed — and it says so in `reason`, so the app can tell "resubscribe" apart from
+"we could not check" rather than showing the same dead end for both. Re-run
 `GET /community/youtube/start/:videoId` rather than retrying the unlock.
+
+This endpoint confirms and reports the decision; it never creates one. A tap
+alone grants nothing, and a `VideoUnlock` row is analytics rather than a grant.
 
 ### Subscription verification (the gate's key issuer)
 
 The gate rests on `GET /community/youtube/start/:videoId` → Google consent →
 `GET /community/youtube/callback`, which checks
-`subscriptions?mine=true&forChannelId=<channel>` and caches the boolean verdict
-(Redis, or in-memory without `REDIS_URL`) for `YOUTUBE_VERIFY_CACHE_MS`. Costs 1
-quota unit per check; the callback caches the verdict *before* the gated unlock
-reads it.
+`subscriptions?mine=true&forChannelId=<channel>` and stores the verdict against
+the user with a lease (`COMMUNITY_ACCESS_LEASE_SECONDS`, default 60s). Costs 1
+quota unit per check.
+
+Only a definite negative is treated as one. A timeout, a `429` or a `5xx` is
+transient and never becomes an unsubscribe — that is what stops a Google outage
+from locking out paying subscribers. Failures are cached only as *failures*, and
+only for `COMMUNITY_ACTIVE_RECHECK_SECONDS`, so they do not cost a token request
+per read.
 
 The callback redirects to the app deep link with
 `?subscribed=&videoId=&unlocked=&channelGranted=&hasChannelAccess=`. On success
@@ -723,9 +924,12 @@ Two things it is worth being explicit about:
   a link inside our app, not the content itself.
 
 When `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` are unset there is
-no way to verify anything, and the unlock endpoint **fails open** to the legacy
-client-trusted behaviour rather than leaving every video permanently locked.
-Configure these before launch.
+no way to verify anything, so every check resolves to **no access** and the feed
+stays locked. The server fails closed: it will never grant on a client claim. The
+cost of misconfiguration is a locked product, not an open one, but it does mean
+the community section is unusable until these are set — configure them before
+launch. The server also logs a loud banner at boot when they are missing in
+production.
 
 ### Cross-origin / network notes
 
@@ -780,6 +984,11 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
     "youtubeVideoId": "dQw4w9WgXcQ",
     "interactions": { "SUBSCRIBE_INTENT": 40, "PREVIEW_CLIP": 300, "WATCH_FULL_VIDEO": 22, "UNLOCK": 18 },
     "totalUnlocks": 18,
+    "youtube": {
+      "viewCount": 12480,
+      "likeCount": 932,
+      "statsSyncedAt": "2026-10-01T00:00:00.000Z"
+    },
     "conversionRate": 0.45,
     "totalWatchTimeMs": 5420000,
     "avgWatchTimeMs": 28942
@@ -791,18 +1000,28 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
 (milliseconds) across interactions; they are `null` until clients start sending
 `durationMs` with `POST /community/videos/:videoId/interact`.
 
+`youtube` reports the channel-wide counters the feed's `most_watched` /
+`most_liked` sorts are built on. They are deliberately kept apart from
+`interactions`: the latter only covers activity inside this app, so a high
+`likeCount` alongside a low `PREVIEW_CLIP` count says the audience already cares
+about a video the feed is not surfacing. `statsSyncedAt` is `null` when the card
+predates the counters or the last sync could not read them, which distinguishes a
+stale ranking from a genuinely unwatched video.
+
 ### POST /community/admin/videos (Admin)
 
 ```json
 {
   "title": "Two-line bold title",
   "description": "One-sentence value proposition.",
-  "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=45&rel=0",
+  "teaserUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&end=30&rel=0",
   "thumbnailUrl": "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   "youtubeVideoId": "dQw4w9WgXcQ",
   "previewStartSeconds": 0,
-  "previewDurationSeconds": 45,
-  "isPublished": true
+  "previewDurationSeconds": 30,
+  "isPublished": true,
+  "viewCount": 0,
+  "likeCount": 0
 }
 ```
 
@@ -810,6 +1029,10 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
 storing the full URL there defeats the gate for every locked viewer.
 `previewStartSeconds` (default 0) and `previewDurationSeconds` (default 45) bound
 the clip.
+
+`viewCount` / `likeCount` are optional (default 0) and only worth setting for a
+hand-made card that would otherwise sit at the bottom of the engagement-sorted
+feeds until the next channel sync sees it. Any later sync overwrites both.
 
 `409` if a card with that `youtubeVideoId` already exists.
 
@@ -822,6 +1045,81 @@ Accepts any subset of `title`, `description`, `teaserUrl`, `thumbnailUrl`,
 
 Soft-delete — sets `isPublished = false`. The card and its analytics/ unlock
 rows are preserved.
+
+### GET /community/admin/youtube-grants (Admin)
+
+The grant table is otherwise unreachable: the only reads on it are the per-user
+lookups behind the feed gate, and the only writer besides the OAuth callback is
+the nightly sweep. Use this to answer "does this account still have feed access,
+and can we still prove it?" without going to the database.
+
+Query: `status` (`active` default / `revoked` / `all`), `page`, `limit`
+(default 25, max 100), `q` (case-insensitive match on the user's email or name).
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "…",
+      "userId": "…",
+      "user": { "id": "…", "email": "…", "fullName": "…" },
+      "channelId": "UC…",
+      "unlockedAt": "2026-09-01T00:00:00.000Z",
+      "verifiedAt": "2026-09-01T00:00:00.000Z",
+      "lastVerifiedAt": "2026-09-20T03:17:00.000Z",
+      "revokedAt": null,
+      "revokedReason": null,
+      "hasRefreshToken": true,
+      "tokenEncrypted": true,
+      "unverifiable": false,
+      "dueForReverify": false
+    }
+  ],
+  "pagination": { "total": 1, "page": 1, "limit": 25, "totalPages": 1 },
+  "meta": {
+    "summary": {
+      "active": 1,
+      "revoked": 0,
+      "unverifiable": 0,
+      "unencrypted": 0,
+      "due": 0
+    }
+  }
+}
+```
+
+- **Refresh tokens are never returned.** `hasRefreshToken` and `tokenEncrypted`
+  report only whether a credential is present and sealed.
+- `unverifiable` — the grant works but can no longer be re-checked, so an
+  unsubscribe would not be caught. Either no credential was ever stored, or the
+  stored one cannot be decrypted (e.g. the encryption key was rotated). The user
+  re-running the OAuth flow repairs it.
+- `unencrypted` — active grants still holding a **plaintext** refresh token. This
+  should be `0`; anything else means a grant was written before sealing landed
+  and has not been re-checked since. Run
+  `POST /community/admin/youtube-grants/re-encrypt` to clear it.
+- `due` — active grants past its lease and waiting
+  for the next sweep. Persistently non-zero means the subscriber base has
+  outgrown one pass; check the sweep log for "Ran out of budget".
+- The `summary` counts are table-wide, not page-scoped.
+
+### POST /community/admin/youtube-grants/:userId/revoke (Admin)
+
+Closes the user's active grant with reason `MANUAL` and deletes their per-video
+unlock rows, without consulting YouTube. This is the escape hatch for a support
+request, a refund, or an account that must not keep feed access while its
+subscription check is stuck. `404` when the user has no active grant.
+
+Recoverable — if the user re-runs the OAuth flow, the same row is revived in
+place.
+
+### POST /community/admin/youtube-grants/re-encrypt (Admin)
+
+Re-seals any refresh token still stored in the clear, returning
+`{ scanned, sealed }`. New grants are sealed on write and the sweep re-seals a row
+the first time it successfully re-checks it, so this is normally a no-op. It
+exists so the backfill does not need shell access to the database. Idempotent.
 
 ---
 

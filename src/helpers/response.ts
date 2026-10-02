@@ -62,6 +62,24 @@ export function fail(res: Response, status: number, error: any, details?: unknow
   return res.status(status).json(body);
 }
 
+/**
+ * Marks a response as private and uncacheable, and returns it.
+ *
+ * Every response that varies by authenticated user is one a shared cache must not
+ * keep: an unlock state served to the wrong person is an authorization decision
+ * answered for someone else. Express sets no Cache-Control by default, so an
+ * intermediary is free to cache a 200 and replay it to the next reader — which
+ * for the community endpoints means serving one user's unlocked feed to another.
+ *
+ * `private` as well as `no-store` because the two answer different questions:
+ * no-store forbids storing at all, private forbids a shared cache storing it
+ * while leaving a browser's own copy alone.
+ */
+export function privateNoStore(res: Response): Response {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  return res;
+}
+
 export function paginated<T>(
   res: Response,
   data: T[],

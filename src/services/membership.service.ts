@@ -457,15 +457,18 @@ export async function createPrioritySupportRequest(userId: string, payload: Prio
     throw new Error("Priority support is only available for paid tier members");
   }
 
-  // Resolving via the subscription row keeps the existing FK attribution for
-  // paying members; a comped user may have no subscription row at all.
+  // Only a SUBSCRIPTION entitlement is backed by a subscription row, so only
+  // that source looks one up or requires one. GRANT is a comp with no row, and
+  // FREE_MODE is a resolution-time grant that deliberately writes nothing — so
+  // demanding a row for either would deny exactly the users free mode exists to
+  // serve. Both leave both attribution FKs null.
   const subscriptionId =
-    access.source === "GRANT"
-      ? null
-      : ((await prisma.userSubscription.findUnique({ where: { userId }, select: { id: true } }))
-          ?.id ?? null);
+    access.source === "SUBSCRIPTION"
+      ? ((await prisma.userSubscription.findUnique({ where: { userId }, select: { id: true } }))
+          ?.id ?? null)
+      : null;
 
-  if (access.source !== "GRANT" && !subscriptionId) {
+  if (access.source === "SUBSCRIPTION" && !subscriptionId) {
     throw new Error("Your subscription is not active");
   }
 

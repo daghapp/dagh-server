@@ -1,6 +1,12 @@
 import { Request, Response } from "express";
 import * as communityService from "../../services/community.service.js";
-import { ok, created, fail, paginated } from "../../helpers/response.js";
+import { ok, created, fail, paginated, privateNoStore } from "../../helpers/response.js";
+import {
+  parseEnum,
+  parsePagination,
+  parseSearch,
+  type QueryValue,
+} from "../../helpers/admin-query.js";
 import {
   logCommunity,
   logCommunityWarn,
@@ -25,6 +31,20 @@ function started(): number {
   return Date.now();
 }
 
+/**
+ * Reads the grant listing's `status` filter, where "all" is a meaningful value
+ * rather than a synonym for "unset". Anything unrecognised falls back to
+ * "active" so a typo cannot silently return the whole table.
+ */
+function parseGrantStatus(query: Record<string, QueryValue>): communityService.ChannelGrantStatus {
+  const raw = (Array.isArray(query.status) ? query.status[0] : query.status)?.trim().toLowerCase();
+  return communityService.CHANNEL_GRANT_STATUSES.includes(
+    raw as communityService.ChannelGrantStatus,
+  )
+    ? (raw as communityService.ChannelGrantStatus)
+    : "active";
+}
+
 export class CommunityController {
   // ── GET /community/videos ─────────────────────────────────────────────────
   // Returns paginated published videos with isUnlocked flag for the calling user.
@@ -34,37 +54,60 @@ export class CommunityController {
       const userId = req.user?.id as string;
       const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
       const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
+      // Unrecognised values fall back to NEWEST rather than 400: a client asking
+      // for a sort this server does not know about should still get the feed.
+      const sort =
+        parseEnum(
+          req.query as unknown as Record<string, QueryValue>,
+          "sort",
+          communityService.VIDEO_SORTS,
+        ) ?? communityService.DEFAULT_VIDEO_SORT;
 
-      const { videos, total, hasChannelAccess, channelAccess } =
-        await communityService.listVideosForUser(userId, page, limit);
+      // Re-checks a stale channel grant against YouTube before the page is
+      // built, so an unsubscribed user sees the feed locked on this request
+      // rather than on the next one. A grant inside the read floor costs nothing.
+      const { access, checked } = await communityService.resolveChannelAccessForRead(userId);
+
+      const { videos, total, hasChannelAccess } = await communityService.listVideosForUser(
+        userId,
+        page,
+        limit,
+        {
+          sort,
+          channelAccess: access,
+        },
+      );
 
       logCommunity("community.feed.list", {
         status: 200,
         userId,
         page,
         limit,
+        sort,
         count: videos.length,
         total,
         hasChannelAccess,
+        // True when this request spent a YouTube unit re-checking the grant.
+        // False for a grant inside the read floor, which is the common case.
+        reverified: checked,
         durationMs: Date.now() - start,
       });
       // hasChannelAccess rides in `meta` so the app can hide every "Subscribe to
-      // Unlock" call to action at once instead of deriving it from the cards.
-      return paginated(
-        res,
-        videos,
-        total,
-        page,
-        limit,
-        "Community videos retrieved",
-        { hasChannelAccess, channelAccess },
-      );
+      // Unlock" call to action at once instead of deriving it from the cards, and
+      // `access` is the same object every card on this page was gated by.
+      privateNoStore(res);
+      return paginated(res, videos, total, page, limit, "Community videos retrieved", {
+        hasChannelAccess,
+        access,
+        sort,
+      });
     } catch (error) {
       logCommunityError("community.feed.list.error", {
         status: 500,
         userId: req.user?.id,
         page: req.query.page,
         limit: req.query.limit,
+        sort: req.query.sort,
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - start,
       });
@@ -81,7 +124,10 @@ export class CommunityController {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const video = await communityService.getVideoForUser(userId, videoId);
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const video = await communityService.getVideoForUser(userId, videoId, {
+        channelAccess: access,
+      });
       if (!video) {
         logCommunityWarn("community.feed.get.not_found", {
           status: 404,
@@ -97,9 +143,15 @@ export class CommunityController {
         userId,
         videoId: video.videoId,
         isUnlocked: video.isUnlocked,
+        accessStatus: access.status,
+        accessVersion: access.accessVersion,
         durationMs: Date.now() - start,
       });
-      return ok(res, video);
+      // The same `access` object the card was gated by, so the detail view and
+      // the feed it was opened from can never disagree about this user. Spreading
+      // rather than nesting keeps every existing card field where clients read it.
+      privateNoStore(res);
+      return ok(res, { ...video, access });
     } catch (error) {
       logCommunityError("community.feed.get.error", {
         status: 500,
@@ -115,7 +167,7 @@ export class CommunityController {
   // ── POST /community/videos/:videoId/interact ──────────────────────────────
   // Logs a user interaction event (analytics). Fire-and-forget from the client.
   // Optional body field `durationMs` (integer ms ≥ 0) records client-reported
-  // watch time, e.g. how far the user got into the 45s teaser before leaving.
+  // watch time, e.g. how far the user got into the 30s teaser before leaving.
   async logInteraction(req: Request, res: Response) {
     const start = started();
     try {
@@ -205,7 +257,10 @@ export class CommunityController {
       const userId = req.user?.id as string;
       const videoId = param(req.params.videoId);
 
-      const result = await communityService.unlockVideo(userId, videoId);
+      // Re-checked for the same reason as the feed: an unsubscribed user must not
+      // be told "unlocked" by a stale grant just because they asked again.
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const result = await communityService.unlockVideo(userId, videoId, { channelAccess: access });
 
       if (!result.success) {
         if (result.code === "SUBSCRIPTION_REQUIRED") {
@@ -213,13 +268,19 @@ export class CommunityController {
             status: 403,
             userId,
             videoId,
-            verifiedAt: result.verifiedAt,
+            // Carried through so the app can tell "you are not subscribed" from
+            // "we could not check" — different copy, different next action.
+            reason: result.reason,
+            accessStatus: result.access?.status,
+            accessVersion: result.access?.accessVersion,
             durationMs: Date.now() - start,
           });
+          privateNoStore(res);
           return fail(res, 403, {
             code: "SUBSCRIPTION_REQUIRED",
             message: "Subscribe to the channel to unlock this video",
-            verifiedAt: result.verifiedAt,
+            reason: result.reason,
+            access: result.access,
           });
         }
 
@@ -238,11 +299,19 @@ export class CommunityController {
         videoId,
         isUnlocked: result.isUnlocked,
         unlockedAt: result.unlockedAt,
+        accessStatus: result.access.status,
+        accessVersion: result.access.accessVersion,
         durationMs: Date.now() - start,
       });
+      privateNoStore(res);
       return ok(
         res,
-        { isUnlocked: result.isUnlocked, unlockedAt: result.unlockedAt },
+        {
+          isUnlocked: result.isUnlocked,
+          unlockedAt: result.unlockedAt,
+          hasChannelAccess: result.access.hasChannelAccess,
+          access: result.access,
+        },
         "Video unlocked",
       );
     } catch (error) {
@@ -264,14 +333,20 @@ export class CommunityController {
     const start = started();
     try {
       const userId = req.user!.id as string;
-      const result = await communityService.getUserUnlocks(userId);
+      const { access } = await communityService.resolveChannelAccessForRead(userId);
+      const result = await communityService.getUserUnlocks(userId, { channelAccess: access });
       logCommunity("community.my_unlocks", {
         status: 200,
         userId,
         count: result.unlocks.length,
         hasChannelAccess: result.hasChannelAccess,
+        accessStatus: access.status,
+        accessVersion: access.accessVersion,
         durationMs: Date.now() - start,
       });
+      // This is the endpoint the app calls on launch to decide what to show, so a
+      // cached copy is a lock state from someone else's session.
+      privateNoStore(res);
       return ok(res, result, "User unlocks retrieved");
     } catch (error) {
       logCommunityError("community.my_unlocks.error", {
@@ -490,6 +565,125 @@ export class CommunityController {
         durationMs: Date.now() - start,
       });
       return fail(res, 500, "Failed to sync community videos");
+    }
+  }
+
+  // ── GET /community/admin/youtube-grants (admin) ───────────────────────────
+  // The grant table is otherwise unreachable: the only reads on it are the
+  // per-user lookups behind the feed gate. This answers "does this account still
+  // have access, and can we still prove it?" without touching the database by
+  // hand. Refresh tokens are never returned — only whether one is present and
+  // sealed.
+  async adminListChannelGrants(req: Request, res: Response) {
+    const start = started();
+    try {
+      const query = req.query as Record<string, QueryValue>;
+      const { page, limit } = parsePagination(query);
+      // Not parseEnum(): that helper maps "all" to undefined, which here would
+      // silently widen the request to every grant instead of the default
+      // "active" — the opposite of what an operator typing status=all expects.
+      const status = parseGrantStatus(query);
+
+      const result = await communityService.listChannelGrants({
+        status,
+        page,
+        limit,
+        search: parseSearch(query),
+      });
+
+      logCommunity("community.admin.grants.list", {
+        status: 200,
+        adminId: req.user?.id,
+        statusFilter: status,
+        total: result.total,
+        ...result.summary,
+        durationMs: Date.now() - start,
+      });
+
+      return paginated(res, result.rows, result.total, page, limit, "YouTube channel grants", {
+        summary: result.summary,
+      });
+    } catch (error) {
+      logCommunityError("community.admin.grants.list.error", {
+        status: 500,
+        adminId: req.user?.id,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to list YouTube channel grants");
+    }
+  }
+
+  // ── POST /community/admin/youtube-grants/:userId/revoke (admin) ───────────
+  // Closes a grant without consulting YouTube — the escape hatch for a support
+  // request, a refund, or an account that must not keep feed access. Recoverable:
+  // the user re-authorising revives the same row.
+  async adminRevokeChannelGrant(req: Request, res: Response) {
+    const start = started();
+    try {
+      const adminId = req.user?.id as string;
+      const userId = param(req.params.userId);
+
+      const revoked = await communityService.revokeChannelGrantManually(userId);
+
+      if (!revoked) {
+        logCommunityWarn("community.admin.grants.revoke.not_found", {
+          status: 404,
+          adminId,
+          userId,
+          durationMs: Date.now() - start,
+        });
+        return fail(res, 404, "No active channel grant for that user");
+      }
+
+      logCommunity("community.admin.grants.revoke", {
+        status: 200,
+        adminId,
+        userId,
+        durationMs: Date.now() - start,
+      });
+      return ok(res, { userId, revoked: true }, "Channel grant revoked");
+    } catch (error) {
+      logCommunityError("community.admin.grants.revoke.error", {
+        status: 500,
+        adminId: req.user?.id,
+        userId: param(req.params.userId),
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to revoke channel grant");
+    }
+  }
+
+  // ── POST /community/admin/youtube-grants/re-encrypt (admin) ───────────────
+  // One-shot backfill for grants whose refresh token predates sealing. New writes
+  // and any successful re-check already re-seal, so this is normally a no-op; it
+  // exists so a deploy does not need shell access to the database.
+  async adminReencryptGrantTokens(req: Request, res: Response) {
+    const start = started();
+    try {
+      const adminId = req.user?.id as string;
+      const result = await communityService.reencryptLegacyRefreshTokens();
+
+      logCommunity("community.admin.grants.reencrypt", {
+        status: 200,
+        adminId,
+        ...result,
+        durationMs: Date.now() - start,
+      });
+      return ok(
+        res,
+        result,
+        `Re-sealed ${result.sealed} of ${result.scanned} stored refresh tokens`,
+      );
+    } catch (error) {
+      logCommunityError("community.admin.grants.reencrypt.error", {
+        status: 500,
+        adminId: req.user?.id,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - start,
+      });
+      return fail(res, 500, "Failed to re-encrypt refresh tokens");
     }
   }
 }

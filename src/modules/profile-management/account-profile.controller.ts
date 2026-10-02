@@ -14,6 +14,7 @@ const ACCOUNT_PROFILE_SELECT = {
   phoneNumber: true,
   gender: true,
   dateOfBirth: true,
+  ethnicity: true,
   authProvider: true,
   accountStatus: true,
   createdAt: true,

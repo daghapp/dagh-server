@@ -116,14 +116,13 @@ export const recordSwipe = async (req: Request, res: Response) => {
 
     // Enforce daily super-like limit based on membership tier.
     if (direction === "SUPER_LIKE") {
-      const swiper = await prisma.user.findUnique({
-        where: { id: swiperId },
-        select: {
-          subscription: { select: { tierCode: true } },
-        },
-      });
-
-      const dailyLimit = getSuperLikeDailyLimit(swiper?.subscription?.tierCode);
+      // Resolves through getEffectiveAccess rather than reading user_subscriptions
+      // directly, for the same reason as getLikesReceived below: reading the row
+      // silently denies a comped user their tier, and denies every user the
+      // free-mode tier, leaving them on the FREE limit (1/day) for the whole
+      // outage even though free mode is meant to open the app up.
+      const access = await getEffectiveAccess(swiperId);
+      const dailyLimit = getSuperLikeDailyLimit(access.perksTierCode);
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 

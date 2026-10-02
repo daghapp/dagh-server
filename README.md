@@ -188,9 +188,11 @@ behind a load balancer:
 2. **Session store** is Postgres-backed (`connect-pg-simple`, `session` table
    auto-created), so OAuth/passport sessions survive restarts and are shared
    across instances.
-3. **Cron jobs** (`check-pending-payments`, `user-cleanup`) run under a Redis
-   distributed lock and per-item claims, so exactly one replica executes them
-   and crashed runs can't double-credit the ledger.
+3. **Cron jobs** (`check-pending-payments`, `user-cleanup`,
+   `subscription-expiry`, `channel-grant-reverify`, `call-expiry`,
+   `push-delivery`) run under a Redis distributed lock and per-item claims, so
+   exactly one replica executes them and crashed runs can't double-credit the
+   ledger.
 4. **Presence** fan-out is scoped to conversation partners & matches instead of
    broadcasting to every connected client.
 5. Keep the pg connection pool per instance proportional to replica count
@@ -309,7 +311,7 @@ All endpoints return responses in a standardized envelope:
 | POST   | `/auth/logout`                 | Bearer | Logout (revokes all refresh tokens)     |
 | POST   | `/auth/verify-otp`             | Public | Verify email OTP                        |
 | POST   | `/auth/resend-otp`             | Public | Resend verification OTP                 |
-| POST   | `/auth/refresh-token`          | Public | Get new access token                    |
+| POST   | `/auth/refresh-token`          | Public | New access token + the signed-in user (same shape as `/auth/login`, so one client session handler covers both) |
 | POST   | `/auth/request-reset-password` | Public | Request password reset OTP              |
 | POST   | `/auth/reset-password`         | Public | Reset password with OTP                 |
 | GET    | `/auth/google`                 | Public | Google OAuth redirect                   |
@@ -795,19 +797,23 @@ for funnel conversion.
 
 | Method | Endpoint                               | Auth   | Description                                                                                                                                                                                              |
 | ------ | -------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/community/videos`                    | Bearer | List published video cards (paginated; each card includes `isUnlocked`, `requiresSubscription` and `channel`; locked cards omit `youtubeVideoId`/`watchUrl`; `meta.hasChannelAccess` reports the feed-level grant) |
+| GET    | `/community/videos`                    | Bearer | List published video cards (paginated; each card includes `isUnlocked`, `requiresSubscription`, `channel` and the YouTube `viewCount`/`likeCount`; locked cards omit `youtubeVideoId`/`watchUrl`/`watchAppUrl`/`watchWebUrl`, unlocked cards carry `watchAppUrl`/`watchWebUrl` for the end-of-preview "Watch Full Video" CTA; `meta.hasChannelAccess` reports the feed-level grant). `?sort=newest\|most_watched\|most_liked` reorders the feed, `meta.sort` echoes the applied order |
 | GET    | `/community/videos/:videoId`           | Bearer | Get a single video card with the caller's unlock status (same gating and `channel` as the feed)                                                                                                          |
 | GET    | `/community/my-unlocks`                | Bearer | Durable channel grant (`hasChannelAccess`) + individually unlocked video IDs for the caller — call on app launch to rehydrate state                                                                              |
-| POST   | `/community/videos/:videoId/interact`  | Bearer | Log an interaction event (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`)                                                                                                              |
+| POST   | `/community/videos/:videoId/interact`  | Bearer | Log an interaction event (`PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`) — `SUBSCRIBE_INTENT` is written by `subscribe-intent` instead |
+| POST   | `/community/videos/:videoId/subscribe-intent` | Bearer | The locked card's subscribe button in one call: logs `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }` (`authUrl` is `null` when OAuth is unconfigured) |                                                                                                              |
 | POST   | `/community/videos/:videoId/unlock`    | Bearer | Grant full access (idempotent; `channelGranted` is set when the channel-wide grant was recorded). Requires a positive subscription verdict, else `403 SUBSCRIPTION_REQUIRED`; falls open to client-trust when `YOUTUBE_OAUTH_*` is unset |
 | GET    | `/community/youtube/start/:videoId`    | Bearer | Start server-side subscription verification — returns `{ authUrl, expiresIn, channel }` (requires `YOUTUBE_OAUTH_CLIENT_ID`/`YOUTUBE_OAUTH_CLIENT_SECRET`)                                                   |
 | GET    | `/community/youtube/callback`          | Public | Google OAuth callback — checks the subscription against the configured channel, grants the **channel** on success, caches the verdict, redirects back to `YOUTUBE_VERIFY_RETURN_URL`                  |
 | GET    | `/community/youtube/status/:videoId`   | Bearer | Durable unlock state (`via: CHANNEL`\|`VIDEO`, `hasChannelAccess`) + the last cached subscription verdict (poll on feed load; never hits the API)                                                       |
-| GET    | `/community/videos/:videoId/analytics` | Admin  | Interaction counts + conversion rate (`unlocks / subscribe_intents`)                                                                                                                                     |
+| GET    | `/community/videos/:videoId/analytics` | Admin  | Interaction counts + conversion rate (`unlocks / subscribe_intents`), plus the YouTube view/like counters the feed sorts use                                                                              |
 | POST   | `/community/admin/videos`              | Admin  | Create a video card (`title`, `description`, `teaserUrl` = **clipped** preview, `thumbnailUrl`, `youtubeVideoId`, optional `previewStartSeconds`/`previewDurationSeconds`)                              |
 | PUT    | `/community/admin/videos/:videoId`     | Admin  | Update title, description, URLs, preview bounds, `isPublished`                                                                                                                                           |
 | DELETE | `/community/admin/videos/:videoId`     | Admin  | Unpublish (soft-delete, sets `isPublished = false`)                                                                                                                                                      |
-| POST   | `/community/admin/sync-youtube`        | Admin  | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards (teaser is a clipped first-45s embed; Redis cooldown protects API quota) |
+| POST   | `/community/admin/sync-youtube`        | Admin  | Pull the latest uploads from the configured YouTube channel (`YOUTUBE_CHANNEL_ID` / `YOUTUBE_CHANNEL_HANDLE`) and add missing cards, refreshing the view/like counters on existing ones (teaser is a clipped first-30s embed; the Redis cooldown is checked before the fetch, so a sync inside the window costs no quota) |
+| GET    | `/community/admin/youtube-grants`      | Admin  | List channel grants (`status`, `page`, `limit`, `q`) with a table-wide health summary in `meta.summary` (`active`, `revoked`, `unverifiable`, `unencrypted`, `due`). Never returns a refresh token — only `hasRefreshToken` / `tokenEncrypted` |
+| POST   | `/community/admin/youtube-grants/:userId/revoke` | Admin | Close a grant without consulting YouTube (reason `MANUAL`), deleting the user's per-video unlock rows. Recoverable — re-running OAuth revives the same row |
+| POST   | `/community/admin/youtube-grants/re-encrypt` | Admin | Re-seal any refresh token still stored in the clear (`{ scanned, sealed }`). Idempotent; normally a no-op |
 
 ### Admin — Dashboard
 
@@ -967,9 +973,9 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `FaqItem`                                         | FAQ entries with optional category and sort order                                                                                                                                                                  |
 | `SystemSetting`                                   | Key-value feature flags (`system_settings` table) — legacy `PAYMENTS_ENABLED` payment toggle, consulted only when no `PaymentGatewayConfig` row exists                                                             |
 | `PaymentGatewayConfig`                            | Payment gateway settings (one row per provider): AES-256-GCM encrypted client id/secret, `environment`, server-derived `connectionStatus`/`connectedEnvironment`, and the `paymentProcessingEnabled` master switch |
-| `CommunityVideo`                                  | Admin-managed YouTube video cards (title, description, teaser/thumbnail URLs, `youtubeVideoId`)                                                                                                                    |
+| `CommunityVideo`                                  | Admin-managed YouTube video cards (title, description, teaser/thumbnail URLs, `youtubeVideoId`, and the YouTube `viewCount`/`likeCount`/`statsSyncedAt` behind the feed's engagement sorts)                                                                                                                    |
 | `VideoInteraction`                                | Append-only analytics log of community actions (`SUBSCRIBE_INTENT`, `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`)                                                                                                  |
-| `ChannelUnlock`                                   | Per-user durable grant for the whole YouTube channel (`@@unique([userId, channelId])`) — the record that actually opens the feed, written by the OAuth callback                                        |
+| `ChannelUnlock`                                   | Per-user durable grant for the whole YouTube channel (`@@unique([userId, channelId])`) — the record that actually opens the feed, written by the OAuth callback. Holds the sealed Google refresh token that both the nightly sweep and the on-read re-check use to notice an unsubscribe, plus `revokedAt`/`revokedReason` (`UNSUBSCRIBED` or `MANUAL`) |
 | `VideoUnlock`                                     | Per-user unlocked state for a video (`@@unique([userId, videoId])`) — keeps per-video analytics; not the access authority                                                                                     |
 
 See `prisma/schema.prisma` for the full schema with all fields and relations.
@@ -981,10 +987,18 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 | Job                     | Schedule         | Description                                                                                                                                                         |
 | ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Pending payments check  | Every 5 minutes  | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries                                                                           |
+| Subscription lifecycle  | Every 10 minutes | Renews auto-renewing memberships and expires lapsed ones                                                                                                             |
 | Unverified user cleanup | Hourly           | Deletes `PENDING_VERIFICATION` users older than 24 hours                                                                                                            |
 | Call expiry             | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants                                                       |
 | Push delivery           | Every 10 seconds | Sends PENDING `CallPushDelivery` and `MessagePushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
-| Channel grant re-verify | Daily (03:17)    | Re-confirms YouTube channel grants past `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` and revokes those whose subscription was cancelled. Fails open — only a definite negative verdict revokes, so a YouTube outage never locks out subscribers |
+| Channel grant re-verify | Daily (03:17 server-local) | Backstop for dormant accounts: re-confirms YouTube channel grants past `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` and revokes those whose subscription was cancelled. Fails open — only a definite negative verdict revokes, so a YouTube outage never locks out subscribers. A pass drains the due queue in batches of 200 until it is empty or `YOUTUBE_REVERIFY_BUDGET_MS` runs out; the job logs "Ran out of budget" when grants are still due |
+| Grant re-check on read | On demand | YouTube publishes no unsubscribe event, so the grant is re-checked live on the first read after `YOUTUBE_READ_REVERIFY_FLOOR_MS` (default 5 min) — a cancelled user is locked on their next app open, not at the next nightly run. A dedup window rather than a polling interval: cost is 1 quota unit per window per *active* user, so spend tracks usage instead of the subscriber base |
+
+> Every schedule is `node-cron` in **server-local** time; no job passes a
+> `timezone`, so the times above hold only because the server runs UTC. A log
+> line reading `SKIPPED — YouTube OAuth is not configured` means the sweep could
+> not run at all (and therefore no grant is being revoked), not that there was
+> nothing to do.
 
 ---
 

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { readFileSync } from "node:fs";
 import { generateAccessToken, generateRefreshToken } from "../../helpers/index.js";
 import { viewsPath } from "../../helpers/view-path.js";
+import { resolveChannelAccessForLogin } from "../../services/community.service.js";
 import {
   buildAppCallbackUrl,
   takeOAuthRedirect,
@@ -49,12 +50,30 @@ export async function finalizeOauthLogin(
   }))!;
 
   if (stateCheck.redirect) {
+    // The app is about to render a feed, and it needs to know whether to render
+    // it locked — otherwise it flashes the locked state for a subscriber, or the
+    // unlocked one for someone who cancelled.
+    //
+    // Forcing the check here, as on password login, is the point: this is a new
+    // session, and the lease from the previous one is evidence about yesterday.
+    // Best effort — a Google failure resolves to a locked snapshot rather than
+    // blocking the sign-in.
+    const communityAccess = await resolveChannelAccessForLogin(user.id);
+
     res.redirect(
       buildAppCallbackUrl(stateCheck.redirect, {
         accessToken,
         refreshToken,
         provider: options.provider,
         email: user.email,
+        // A HINT, and deliberately only these two fields. A deep-link URL is
+        // logged, screenshotted and readable by anything holding the link, so the
+        // full snapshot does not belong in it. `accessVersion` travels because a
+        // hint the app cannot order against a later API response is a way to
+        // resurrect a stale verdict. The API stays authoritative: the app treats
+        // this as what to draw first, and the community endpoint as the truth.
+        accessVersion: String(communityAccess.accessVersion),
+        hasChannelAccess: String(communityAccess.hasChannelAccess),
       }),
     );
     return;

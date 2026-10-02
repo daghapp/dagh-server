@@ -6,6 +6,9 @@ import { PaymentStatus, PaymentTargetType } from "../../../generated/prisma/clie
 import { getAccountId } from "../../helpers/ledger.js";
 import { ok, fail } from "../../helpers/response.js";
 import { pricing } from "../../config/pricing.js";
+// Imported from ./payments directly, matching helpers/membership.ts: the barrel
+// re-exports ./payments, and this module already imports the barrel for prisma.
+import { isPaymentsEnabled } from "../../config/payments.js";
 
 export class ItineraryPaymentController {
   async initiateItineraryPayment(req: Request, res: Response) {
@@ -15,7 +18,13 @@ export class ItineraryPaymentController {
 
       const tourRequest = await prisma.tourRequest.findUnique({
         where: { id: tourRequestId as string },
-        select: { id: true, userId: true, durationDays: true },
+        select: {
+          id: true,
+          userId: true,
+          durationDays: true,
+          paymentStatus: true,
+          paymentId: true,
+        },
       });
 
       if (!tourRequest) {
@@ -25,12 +34,50 @@ export class ItineraryPaymentController {
         return fail(res, 403, "Forbidden");
       }
 
+      // Already settled — never charge twice. This also protects a request that
+      // was waived during an outage: re-enabling payments must not let a later
+      // call reset it to PENDING, which would lock the user out of the itinerary
+      // they already generated (the service gate reads this same column).
+      if (tourRequest.paymentStatus === "SUCCESS") {
+        const wasFree = tourRequest.paymentId === "FREE_ITINERARY";
+        return ok(
+          res,
+          {
+            tourRequestId: tourRequest.id,
+            paymentId: tourRequest.paymentId,
+            checkoutUrl: null,
+            checkoutId: null,
+            clientReference: null,
+            paymentData: null,
+            alreadyPaid: true,
+            freeMode: wasFree,
+          },
+          wasFree
+            ? "This itinerary was already paid for and the fee has been waived."
+            : "This itinerary has already been paid for.",
+        );
+      }
+
       const amount =
         tourRequest.durationDays <= 4
           ? pricing.itinerary.shortItineraryFee
           : pricing.itinerary.longItineraryFee;
 
-      if (amount === 0) {
+      // The itinerary gate is tour_request.paymentStatus, not a membership tier,
+      // so free mode (helpers/membership.ts) does not reach it on its own: the
+      // only thing that can flip SUCCESS is a completed checkout, which the kill
+      // switch makes impossible. Without this branch, disabling payments skips
+      // the charge and then locks the user out of the itinerary they were
+      // promised — the feature stays unreachable for the whole outage.
+      //
+      // The facilitation fee is DAGh's own revenue (Account_DAGh_Revenue), not a
+      // pass-through to an operator or government, so it is released rather than
+      // demanded. Visa fees and tour bookings are pass-throughs and stay closed
+      // (docs/disabling-payments.md §4).
+      const paymentsOff = !(await isPaymentsEnabled());
+      const feeWaived = amount === 0;
+
+      if (paymentsOff || feeWaived) {
         await prisma.tourRequest.update({
           where: { id: tourRequest.id },
           data: { paymentStatus: "SUCCESS", paymentId: "FREE_ITINERARY" },
@@ -45,8 +92,11 @@ export class ItineraryPaymentController {
             checkoutId: null,
             clientReference: null,
             paymentData: null,
+            freeMode: paymentsOff,
           },
-          "Payment successful. Itinerary is free.",
+          paymentsOff
+            ? "Payments are temporarily disabled. The itinerary fee has been waived."
+            : "Payment successful. Itinerary is free.",
         );
       }
 

@@ -47,8 +47,18 @@ someone has opened the gateway settings screen. If you think payments are
 disabled, check `GET /admin/payments/status` (§7) rather than the env var.
 
 Reads are cached in memory for **10 seconds** (`CACHE_TTL_MS`,
-`src/config/payments.ts:42`); writes refresh the cache synchronously, so a
-disable takes effect on every instance's next read without waiting on the TTL.
+`src/config/payments.ts:42`); writes refresh the cache synchronously. A toggle
+therefore takes effect **immediately on the instance that handled the write**, and
+within 10 seconds on every other instance — the caches are per-process, so there
+is no cross-instance invalidation. Single-instance deployments see no lag.
+
+Free mode's own cache (`FREE_MODE_CACHE_TTL_MS`, `src/helpers/membership.ts`) is
+keyed on the payment state it was resolved under, so it invalidates on the same
+read that observes a toggle rather than waiting out its TTL. That matters: when
+the two caches were independent, disabling payments left a window — up to 10
+seconds — in which the kill switch had fired but free mode had not yet engaged.
+That window is the failure this whole system exists to prevent, and it is now
+closed.
 
 ---
 
@@ -134,6 +144,7 @@ Please try again later."* — on every path that **starts** a payment:
 | `subscriptionPayment` — subscription invoice | `src/modules/payment-management/payment.controller.ts:85` | **503** + disabled message |
 | `initializePaymentMOMO` — Mobile Money | `src/services/payment.service.ts:166` | `POST /tours/bookings` → **400** `"Payment initiation failed"` |
 | Paid-plan checkout via `POST /membership/subscribe` | reaches the guards above | `success: false`, `code: CHECKOUT_INITIALIZATION_FAILED`, disabled message as `message` |
+| Itinerary fee | `src/modules/itinerary/itinerary.payment.controller.ts:50` | **Not blocked** — the fee is waived and the itinerary is released. See §4 |
 
 The service guards return **before any DB write and before any Hubtel call** —
 no `payment` row is created, no checkout URL is generated, no
@@ -219,6 +230,53 @@ can buy the perk while payments are off, so nobody is held to it. A paid tier
 that could not be purchased would be a tier whose defining restriction could not
 be enforced.
 
+### The itinerary fee is waived
+
+Itinerary generation is also open, but through a different mechanism, and the
+distinction matters if you change this code.
+
+The itinerary is gated on `tour_request.paymentStatus === "SUCCESS"`
+(`src/modules/itinerary/itinerary.service.ts:189`) — a **per-record payment
+gate**, not a membership tier. Free mode therefore does not reach it: the only
+thing that can flip `SUCCESS` is a completed Hubtel checkout, which the kill
+switch makes impossible. Left alone, disabling payments skips the charge and then
+locks the user out of the itinerary they were just promised, for the entire
+outage.
+
+So `POST /itinerary/:tourRequestId/payment` waives the fee explicitly while
+payments are off, writing `paymentStatus: "SUCCESS"` with
+`paymentId: "FREE_ITINERARY"` — the same shape the zero-fee path has always used
+(`itinerary.payment.controller.ts:50`). The response carries `freeMode: true` and
+`checkoutUrl: null` so the client can skip the redirect and say why.
+
+The reasoning for waiving rather than blocking: the GHS 350/500 facilitation fee
+is **DAGh's own revenue** — it books to `Account_DAGh_Revenue` as
+*"Itinerary Facilitation Fee"* (`itinerary.payment.controller.ts:182`). It is a
+product, not a pass-through, so it behaves like a membership entitlement.
+
+**One deliberate departure from "nothing is persisted".** Free mode normally
+writes nothing, so access reverts the instant payments come back. The itinerary
+waiver *does* persist `paymentStatus: "SUCCESS"`. That is intentional: a user
+who generated an itinerary during the outage keeps it after re-enable, rather
+than being locked out of an `itinerary` row that already exists. The cost is that
+an outage window is a window in which itineraries are genuinely free — the same
+trade the zero-fee path already makes.
+
+### Re-calling the endpoint is safe
+
+Persisting `SUCCESS` creates a hazard that did not exist before: once payments
+are back on, a request waived during the outage no longer matches
+`amount === 0` or `paymentsOff`, so a naive second call would charge for it —
+resetting `paymentStatus` to `PENDING` and locking the user out of the itinerary
+they already have.
+
+`POST /itinerary/:tourRequestId/payment` therefore returns early on an
+already-`SUCCESS` request, before any Hubtel call
+(`itinerary.payment.controller.ts:24`). The response carries `alreadyPaid: true`
+and no `checkoutUrl`. This is plain idempotency, not a free-mode concern — it
+also stops a double-tap from charging twice.
+
+
 ### Invariants
 
 **Free mode only ever adds access.** It never downgrades anyone:
@@ -247,15 +305,59 @@ for. Handle the new value in any client switch on that field.
 
 ### What free mode does **not** do
 
-**Real purchases stay closed.** Free mode covers *membership entitlements* — the
-things a subscription unlocks. It does not make a payment optional:
+**Pass-through payments stay closed.** The dividing line is *whose money is it*:
 
-- **Tour bookings** — the money pays the tour operator.
-- **Visa-on-arrival fees** — the money pays the government/agent.
+| Fee | Whose money | Free mode |
+| --- | --- | --- |
+| Membership plans | DAGh — access to the product | **Open** |
+| Itinerary facilitation | DAGh — `Account_DAGh_Revenue` | **Open** (waived, §4) |
+| Tour bookings | The tour operator | **Closed** |
+| Visa-on-arrival | The government / agent | **Closed** |
 
-Those flows return the errors in §3 and cannot be completed while payments are
-off. There is no version of "free tour booking" that is not a mispricing, so
-the app does not offer one.
+A pass-through fee is money DAGh never keeps, so there is no version of "free"
+that is not a mispricing — the app does not offer one. Those flows return the
+errors in §3 and cannot be completed while payments are off.
+
+DAGh's own fees are different: not charging them loses nothing but the revenue,
+and blocking them strands a feature the user is entitled to. So the rule for
+adding a new paid feature is **decide whose money it is first.** If it is
+DAGh's, it must be reachable while payments are off.
+
+## 4a. Why features go missing when payments are off
+
+Free mode only works if every gate is *derived* from the resolver. There are
+three ways to get this wrong, and all three shipped as bugs before the itinerary
+fix. They are worth knowing because the symptom is always the same — a feature
+goes quiet the moment the kill switch is pulled, with nothing in the logs.
+
+| Trap | What it looks like | Rule |
+| --- | --- | --- |
+| **Per-record payment flag** | A column like `tour_request.paymentStatus` that only a completed checkout can set. Free mode lifts tiers; it cannot flip a column. | If a gate reads a payment column, it also needs a free-mode branch. |
+| **Reading the subscription row directly** | `prisma.user.findUnique({ select: { subscription: { tierCode } } })`. Fine for a payer, empty for a comped user and for free mode, so both silently get `FREE`. | Never read `user_subscriptions` in feature code. Call `getEffectiveAccess()`. |
+| **Assuming a tier implies a row** | Entitlement granted at resolution time, then the code demands the backing record and throws. `FREE_MODE` writes nothing by design, so this always fires. | Only require the record when `access.source === "SUBSCRIPTION"`. |
+
+All three were found in the same audit, in `swipe.controller.ts` (super-like
+daily limit, 1/day instead of 20) and `membership.service.ts` (priority support
+throwing *"Your subscription is not active"* — which closed the support channel
+during the very outage it exists for). `getLikesReceived` carries a comment
+warning about the second trap; it had been fixed there and left broken 250 lines
+away.
+
+**Audit checklist for a new gate.** Three questions, and if any answer is "no",
+the feature is dead while payments are off:
+
+1. Does it call `getEffectiveAccess()` / `getPerksTierCode()` rather than
+   reading `user_subscriptions`?
+2. If it keys off a payment column, is there a free-mode branch that satisfies
+   it?
+3. If it throws when a backing record is missing, is that guarded by
+   `access.source === "SUBSCRIPTION"` rather than applied to every source?
+
+Tier-only gates are already covered — free mode feeds every consumer of
+`getEffectiveAccess()`, and `matching.service.ts` resolves in batch rather than
+per candidate. Note that `matching.service.ts` and `swipe.controller.ts` use
+`perksTierCode`, not `tierCode`, because a quota perk like a super-like limit is
+a perk and must respect `includePaidPerks`.
 
 ---
 
@@ -271,6 +373,22 @@ curl -X PATCH "$API_URL/admin/settings/payment-gateway/processing" \
 Free mode ends immediately. Everyone resolves back to their real entitlement —
 their own subscription, their comp, or `FREE`. Nothing needs to be migrated or
 rolled back.
+
+Two things deliberately **survive** re-enabling, both consequences of the
+itinerary waiver persisting `SUCCESS` (§4):
+
+- A user who generated an itinerary during the outage keeps viewing it, rather
+  than losing access to a row that already exists.
+- `POST /itinerary/:tourRequestId/payment` on such a request returns
+  `alreadyPaid: true` with `freeMode: true` and no `checkoutUrl`, so the client
+  should not expect to redirect. A client that only checks for `checkoutUrl` and
+  treats its absence as an error will show a false failure here.
+
+Free mode grants access, not tier *perks that were paid for* — but note that
+because it forces `includePaidPerks: true`, a user on a comp that had
+`includePaidPerks: false` gets full perks while payments are off and drops back
+to FREE perks on re-enable. That is the documented fail-open choice (§6), not a
+regression.
 
 **409 `GATEWAY_NOT_CONNECTED`** is returned if the *currently selected*
 environment has not been verified (`payment-gateway-config.service.ts:635`).
@@ -359,6 +477,7 @@ if you used the legacy endpoint), with the reason in the note.
 | Payments switched themselves off | Credentials or environment changed | Read `processingDisabledReason` — free mode is now on too |
 | Free mode is too generous | Top plan is the ceiling | Deactivate expensive plans (§6) |
 | Free mode granted nothing | No active paid plan | Create/activate a paid plan, or accept the kill switch only |
+| A feature is dead while payments are off | A gate that free mode does not reach | §4a — check the gate against the three questions |
 | Enable returns 409 | Selected environment unverified | **Connect** first, then enable |
 | A user paid but never got their tier | In-flight payment, verification still open | `GET /payment/verify/:reference`, or wait for the callback |
 
@@ -375,10 +494,14 @@ if you used the legacy endpoint), with the reason in the note.
   building the settings screen
 
 **Tests:** `tests/free-mode.test.ts` (15), `tests/admin-payment-control.test.ts`,
-`tests/payment-gateway-settings.test.ts`, `tests/access-grants.test.ts`
+`tests/payment-gateway-settings.test.ts`, `tests/access-grants.test.ts`,
+`tests/itinerary-free-mode.test.ts` (4), `tests/superlike-free-mode.test.ts` (4),
+`tests/priority-support-free-mode.test.ts` (3)
 
 ```bash
-npx vitest run tests/free-mode.test.ts tests/admin-payment-control.test.ts
+npx vitest run tests/free-mode.test.ts tests/admin-payment-control.test.ts \
+  tests/itinerary-free-mode.test.ts tests/superlike-free-mode.test.ts \
+  tests/priority-support-free-mode.test.ts
 ```
 
 `tests/free-mode.test.ts` covers the pure rule (no-downgrade, equal-tier,
@@ -387,3 +510,9 @@ zero-priced and `FREE` excluded), and the end-to-end outcome: a FREE user
 gaining and losing the grant around a payment toggle, a paying subscriber
 lifted and restored with their row untouched, and
 `hasPaidActiveMembership` / `getPerksTierCode` following.
+
+The three `*-free-mode.test.ts` files are the regression guards for the traps
+in §4a, one per gate. Each was verified to **fail against the pre-fix code**, so
+they will catch a reintroduction rather than merely describing current
+behaviour. Super-like and priority support had no prior coverage at all, which is
+why those bugs survived.
