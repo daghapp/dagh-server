@@ -19,3 +19,20 @@ services:
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
         sync: false
+      # YouTube subscription verification. Without CLIENT_ID/CLIENT_SECRET the
+      # gate fails closed and POST /community/videos/:videoId/subscribe-intent
+      # answers 503 YOUTUBE_VERIFICATION_NOT_CONFIGURED for every user.
+      - key: YOUTUBE_OAUTH_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_OAUTH_CLIENT_SECRET
+        sync: false
+      # Must match the redirect URI registered for this OAuth client in the
+      # Google Cloud Console, or the token exchange fails at the callback.
+      - key: YOUTUBE_OAUTH_REDIRECT_URI
+        value: https://dagh-server-fo64.onrender.com/community/youtube/callback
+      # Public channel id, so channel resolution needs no API call and no key.
+      - key: YOUTUBE_CHANNEL_ID
+        value: UCj8dtl0Hf6AZIlfDIq7fHAg
+      # Still needed by the admin channel-sync endpoint (uploads playlist fetch).
+      - key: YOUTUBE_API_KEY
+        sync: false

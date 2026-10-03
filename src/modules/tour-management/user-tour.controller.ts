@@ -23,6 +23,7 @@ import {
 import * as paymentService from "../../services/payment.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
+import { isPaymentsEnabled } from "../../config/payments.js";
 
 export class UserTourController {
   //get all tours
@@ -161,30 +162,39 @@ export class UserTourController {
       let paymentData = null;
 
       if (totalPrice > 0) {
-        const paymentResponse = await paymentService.initializePayment({
-          totalAmount: totalPrice,
-          description: "Payment for tour: " + tour.id,
-          returnUrl: HUBTEL_RETURN_URL || "",
-          callbackUrl: HUBTEL_CALLBACK_URL || "",
-          cancellationUrl: HUBTEL_CANCELLATION_URL || "",
-          targetType: PaymentTargetType.TOUR_BOOKING,
-          targetId: tour.id,
-          userId: userId,
-          currency: tour.currency || "GHS",
-        });
+        // When the kill-switch is off, bypass the checkout and book for free.
+        // Tour bookings are a pass-through to operators, so this is gated on the
+        // same flag as itinerary (see docs/disabling-payments.md §4).
+        const paymentsOff = !(await isPaymentsEnabled());
+        if (paymentsOff) {
+          paymentId = "FREE_BOOKING";
+          paymentStatus = PaymentStatus.SUCCESS;
+        } else {
+          const paymentResponse = await paymentService.initializePayment({
+            totalAmount: totalPrice,
+            description: "Payment for tour: " + tour.id,
+            returnUrl: HUBTEL_RETURN_URL || "",
+            callbackUrl: HUBTEL_CALLBACK_URL || "",
+            cancellationUrl: HUBTEL_CANCELLATION_URL || "",
+            targetType: PaymentTargetType.TOUR_BOOKING,
+            targetId: tour.id,
+            userId: userId,
+            currency: tour.currency || "GHS",
+          });
 
-        if (!paymentResponse.success)
-          return fail(
-            res,
-            500,
-            "Failed to book tour",
-            paymentResponse.error || paymentResponse.message,
-          );
+          if (!paymentResponse.success)
+            return fail(
+              res,
+              500,
+              "Failed to book tour",
+              paymentResponse.error || paymentResponse.message,
+            );
 
-        paymentId = paymentResponse.paymentId;
-        paymentStatus = paymentResponse.paymentStatus as PaymentStatus;
-        paymentData = paymentResponse.data;
-        checkoutUrl = paymentResponse.data?.data?.checkoutUrl || null;
+          paymentId = paymentResponse.paymentId;
+          paymentStatus = paymentResponse.paymentStatus as PaymentStatus;
+          paymentData = paymentResponse.data;
+          checkoutUrl = paymentResponse.data?.data?.checkoutUrl || null;
+        }
       }
 
       const newBooking = await prisma.tour_bookings.create({
@@ -427,7 +437,31 @@ export class UserTourController {
 
       // 3. Validate payload with Zod
 
-      // 4. Call universal payment controller
+      // 4. Call universal payment controller — skip when kill-switch is off.
+      const paymentsOff = !(await isPaymentsEnabled());
+      if (paymentsOff) {
+        const booking = await prisma.tour_bookings.create({
+          data: {
+            userId,
+            paymentId: "FREE_BOOKING",
+            paymentStatus: PaymentStatus.SUCCESS,
+            tourId: bookingData.tourId,
+            numberOfPeople: bookingData.numberOfPeople,
+            bookingDate: new Date(bookingData.bookingDate),
+            tourStartDate: new Date(bookingData.tourStartDate),
+            bookingReference,
+            totalPrice,
+            currency: tour.currency || "GHS",
+            specialRequests: bookingData.specialRequests,
+          },
+        });
+        return ok(
+          res,
+          { bookingId: booking.id, paymentId: "FREE_BOOKING", checkoutUrl: null },
+          "Payments are temporarily disabled. Tour booked for free.",
+        );
+      }
+
       const paymentResponse = await paymentService.initializePaymentMOMO(paymentPayload);
 
       // 5. If payment initiation succeeded, create booking with paymentStatus = PENDING

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { getItineraryByRequestId } from "./itinerary.service.js";
 import { ok, fail } from "../../helpers/response.js";
+import { isPaymentsEnabled } from "../../config/payments.js";
 
 export async function getUserItineraries(req: Request, res: Response) {
   try {
@@ -11,12 +12,15 @@ export async function getUserItineraries(req: Request, res: Response) {
       return fail(res, 401, "Unauthorized");
     }
 
-    // Load all tour requests for the user that are paid.
-    // We then lazily generate itinerary per request if it doesn't exist.
+    // When payments are off every tour request is effectively paid — the
+    // individual fetch (getItineraryByRequestId) auto-waives STATUS in that
+    // case, so filtering to SUCCESS here would return an empty list for
+    // requests that haven't been fetched individually yet.
+    const paymentsOff = !(await isPaymentsEnabled());
     const paidRequests = await prisma.tourRequest.findMany({
       where: {
         userId,
-        paymentStatus: "SUCCESS",
+        ...(paymentsOff ? {} : { paymentStatus: "SUCCESS" }),
       },
       select: {
         id: true,
@@ -39,3 +43,4 @@ export async function getUserItineraries(req: Request, res: Response) {
     return fail(res, 500, "Failed to retrieve itineraries.");
   }
 }
+

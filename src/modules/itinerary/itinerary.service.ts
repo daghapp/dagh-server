@@ -18,6 +18,7 @@ import type {
   ApartmentType,
 } from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/index.js";
+import { isPaymentsEnabled } from "../../config/payments.js";
 import {
   haversineDistance,
   maxPairwiseDistance,
@@ -187,7 +188,17 @@ export async function getItineraryByRequestId(
     throw new Error("FORBIDDEN");
   }
   if (tourRequest.paymentStatus !== "SUCCESS") {
-    throw new Error("PAYMENT_REQUIRED");
+    // When the payment kill-switch is off, waive the fee in-place so this and
+    // every subsequent fetch pass without requiring the user to call the payment
+    // endpoint first. Mirrors the same logic in initiateItineraryPayment.
+    const paymentsOff = !(await isPaymentsEnabled());
+    if (!paymentsOff) {
+      throw new Error("PAYMENT_REQUIRED");
+    }
+    await prisma.tourRequest.update({
+      where: { id: tourRequestId },
+      data: { paymentStatus: "SUCCESS", paymentId: "FREE_ITINERARY" },
+    });
   }
 
   // If itinerary already exists, return it mapped to ItineraryResponse
