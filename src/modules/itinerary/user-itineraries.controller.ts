@@ -43,4 +43,3 @@ export async function getUserItineraries(req: Request, res: Response) {
     return fail(res, 500, "Failed to retrieve itineraries.");
   }
 }
-

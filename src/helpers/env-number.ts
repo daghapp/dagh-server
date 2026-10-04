@@ -24,9 +24,7 @@ export function envNumber(
 
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
-    console.warn(
-      `[Config] ${name}="${raw}" is not a number; using the default ${fallback}.`,
-    );
+    console.warn(`[Config] ${name}="${raw}" is not a number; using the default ${fallback}.`);
     return fallback;
   }
 

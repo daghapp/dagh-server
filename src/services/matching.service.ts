@@ -1,7 +1,12 @@
 import { prisma } from "../config/index.js";
 import type { Gender, LookingFor } from "../../generated/prisma/enums.js";
 import { haversineDistance, maxPairwiseDistance } from "../helpers/haversine.js";
-import { TIER_VALUE, applyFreeMode, getFreeModeTierCode, resolveEffectiveAccess } from "../helpers/membership.js";
+import {
+  TIER_VALUE,
+  applyFreeMode,
+  getFreeModeTierCode,
+  resolveEffectiveAccess,
+} from "../helpers/membership.js";
 
 // ─────────────────────────────────────────
 // Matching engine — candidate discovery, filtering & scoring
