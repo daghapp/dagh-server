@@ -2237,6 +2237,9 @@ async function main() {
         code: "FAMILY_PLAN",
         name: "Flexible Family Plan",
         description: "Cover your whole family under one plan",
+        // Priced by product before it can be sold. A paid tier at 0 is refused at
+        // checkout (see membership.service.ts) rather than activated for free, and
+        // stays inactive here so it is not advertised at GHS 0 in the meantime.
         price: 0,
         currency: "GHS",
         interval: "CUSTOM",
@@ -2247,7 +2250,7 @@ async function main() {
           "Dedicated family support",
         ],
         isMostPopular: false,
-        isActive: true,
+        isActive: false,
       },
     ];
 

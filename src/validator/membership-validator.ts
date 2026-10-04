@@ -24,27 +24,33 @@ export const prioritySupportSchema = z.object({
 });
 
 // Admin schema for creating/updating membership plan definitions
-export const createMembershipPlanSchema = z.object({
-  code: z.enum([
-    "FREE",
-    "BASELINE",
-    "SENIOR_PIONEER",
-    "SANKOFA_SETTLED",
-    "BASIC",
-    "SILVER",
-    "GOLD_INVESTOR",
-    "ELITE_AMBASSADOR",
-    "FAMILY_PLAN",
-  ]),
-  name: z.string().min(1, "Name is required"),
-  description: z.string().optional(),
-  price: z.number().nonnegative("Price must be non-negative"),
-  currency: z.string().default("GHS"),
-  interval: z.enum(["MONTHLY", "ANNUAL", "BIENNIAL", "CUSTOM"]),
-  features: z.array(z.string()).default([]),
-  isMostPopular: z.boolean().default(false),
-  isActive: z.boolean().default(true),
-});
+export const createMembershipPlanSchema = z
+  .object({
+    code: z.enum([
+      "FREE",
+      "BASELINE",
+      "SENIOR_PIONEER",
+      "SANKOFA_SETTLED",
+      "BASIC",
+      "SILVER",
+      "GOLD_INVESTOR",
+      "ELITE_AMBASSADOR",
+      "FAMILY_PLAN",
+    ]),
+    name: z.string().min(1, "Name is required"),
+    description: z.string().optional(),
+    price: z.number().nonnegative("Price must be non-negative"),
+    currency: z.string().default("GHS"),
+    interval: z.enum(["MONTHLY", "ANNUAL", "BIENNIAL", "CUSTOM"]),
+    features: z.array(z.string()).default([]),
+    isMostPopular: z.boolean().default(false),
+    isActive: z.boolean().default(true),
+  })
+  .refine((data) => data.code === "FREE" || data.price > 0, {
+    message:
+      "Only the FREE plan may be priced at 0 — a paid tier at 0 would activate without payment",
+    path: ["price"],
+  });
 
 export type SubscribeMembershipSchema = z.infer<typeof subscribeMembershipSchema>;
 export type PrioritySupportSchema = z.infer<typeof prioritySupportSchema>;

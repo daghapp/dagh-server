@@ -67,6 +67,19 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
     };
   }
 
+  // Only the genuine FREE tier may be self-service. Gating on price alone let any
+  // zero-priced *paid* tier (e.g. FAMILY_PLAN, seeded at price 0) be activated with
+  // no payment, which handed out a real tier for free with payments fully enabled.
+  // Such a plan is a misconfiguration, not a free plan — refuse it rather than fall
+  // through and open a zero-amount Hubtel checkout.
+  if (plan.code !== "FREE" && plan.price <= 0) {
+    return {
+      success: false,
+      code: "PLAN_NOT_PURCHASABLE",
+      message: "This plan is not available for subscription. Please contact support.",
+    };
+  }
+
   // Free plan — activate immediately without payment
   if (plan.price === 0) {
     const subscription = await prisma.userSubscription.upsert({
