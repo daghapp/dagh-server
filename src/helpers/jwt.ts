@@ -21,15 +21,65 @@ interface JwtPayload {
 const AccessTokenSecret = process.env.JWT_ACCESS_SECRET as string;
 const RefreshTokenSecret = process.env.JWT_REFRESH_SECRET as string;
 
-// Generate Access Token (shorter life)
-export function generateAccessToken(user: JwtPayload) {
+/**
+ * Secret for the pre-2FA `mfaToken` an admin login hands back instead of a
+ * session.
+ *
+ * It is deliberately NOT the access-token secret. `protectedRoute` accepts
+ * anything signed with `JWT_ACCESS_SECRET`, so an mfaToken signed with that key
+ * would be a working session token that had skipped the second factor — the
+ * exact thing two-factor auth exists to prevent.
+ */
+const MfaTokenSecret =
+  process.env.JWT_MFA_SECRET ?? `${AccessTokenSecret}:admin-mfa`;
+
+/** Options for the non-session token types minted from this module. */
+export interface ScopedTokenOptions {
+  /** Extra claims. `kind` marks the token as something other than a session. */
+  claims?: Record<string, unknown>;
+  expiresIn?: jwt.SignOptions["expiresIn"];
+}
+
+/**
+ * Generate Access Token (shorter life)
+ *
+ * `options.kind` stamps the token as a non-session credential. `protectedRoute`
+ * rejects any token carrying that marker, so a token minted here for an
+ * intermediate step (MFA challenge, password reset) can never be replayed as a
+ * session even though it is signed by the same helper.
+ */
+export function generateAccessToken(user: JwtPayload, options: ScopedTokenOptions = {}) {
   const token = jwt.sign(
-    { id: user.id, email: user.email, accountType: user.accountType },
+    { id: user.id, email: user.email, accountType: user.accountType, ...options.claims },
     AccessTokenSecret,
-    { expiresIn: "1d" },
+    { expiresIn: options.expiresIn ?? "1d" },
   );
 
   return token;
+}
+
+/** The short-lived, session-less token returned by an admin login with 2FA on. */
+export function generateMfaToken(
+  user: JwtPayload,
+  options: Omit<ScopedTokenOptions, "claims"> = {},
+): string {
+  const token = jwt.sign(
+    { id: user.id, email: user.email, accountType: user.accountType, kind: "admin_mfa" },
+    MfaTokenSecret,
+    { expiresIn: options.expiresIn ?? "5m" },
+  );
+
+  return token;
+}
+
+/** Verifies a token minted by {@link generateMfaToken}. */
+export function verifyMfaToken(token: string): (JwtPayload & { kind: string }) | null {
+  try {
+    const decoded = jwt.verify(token, MfaTokenSecret) as JwtPayload & { kind: string };
+    return decoded.kind === "admin_mfa" ? decoded : null;
+  } catch {
+    return null;
+  }
 }
 
 // Generate Refresh Token (stored in DB)

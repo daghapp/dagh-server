@@ -80,7 +80,21 @@ docker build -t dagh-server .
 docker run -p 5000:5000 dagh-server
 ```
 
+
 ---
+
+## Admin Panel (Console)
+
+The DAGH admin console now supports:
+
+- **Role-based access control**: Granular permissions mapped to admin roles (SUPER_ADMIN, OPERATIONS, FINANCE, SUPPORT, plus legacy roles).
+- **Multi-factor authentication**: TOTP (Authenticator apps), SMS-based codes (where wired), and single-use backup codes.
+- **Admin registration**: Self-service registration creates accounts as `PENDING` pending approval; includes department/role selection.
+- **Departments & roles**: Public endpoint to fetch available admin departments and roles for registration.
+- **Notifications**: Per-admin in-app notifications with read/unread state; Socket.IO `admin:notification` channel for real-time delivery.
+
+Admin authentication endpoints include: `POST /admin/auth/register`, `GET /admin/departments`, and `POST /admin/auth/2fa/*` for 2FA lifecycle management.
+
 
 ## Environment Variables
 
@@ -105,7 +119,8 @@ REDIS_URL=redis://localhost:6379
 # Auth
 JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
-JWT_SECRET=            # call/token signaling (optional, has a default)
+JWT_MFA_SECRET=           # short-lived MFA token (optional, derives from JWT_ACCESS_SECRET)
+JWT_SECRET=            # call/token signaling (optional, has a default)            # call/token signaling (optional, has a default)
 SESSIONSECRET=
 
 # Call / WebRTC media (LiveKit preferred; see https://cloud.livekit.io)

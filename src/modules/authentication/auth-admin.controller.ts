@@ -244,4 +244,89 @@ export class AuthAdminController {
       );
     }
   }
+
+  // Terminate user (replaces disable)
+  async terminateUser(req: Request, res: Response) {
+    try {
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
+      }
+
+      const userId = req.params.userId as string;
+      const { reason } = req.body as { reason?: string };
+
+      if (!reason) {
+        return fail(res, 400, "Reason is required");
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+
+      if (!user) {
+        return fail(res, 404, "User not found");
+      }
+
+      if (user.accountStatus === "TERMINATED") {
+        return fail(res, 400, "User is already terminated");
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { accountStatus: "TERMINATED" },
+        select: { id: true, fullName: true, email: true, accountStatus: true },
+      });
+
+      return ok(res, updated, "User terminated successfully");
+    } catch (error) {
+      console.error("Terminate user error:", error);
+      return fail(
+        res,
+        500,
+        "Failed to terminate user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
+    }
+  }
+
+  async approveUser(req: Request, res: Response) {
+    try {
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) return unauthorizedResponse;
+      const userId = req.params.userId as string;
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return fail(res, 404, "User not found");
+      if (user.accountStatus !== "PENDING") return fail(res, 400, "User is not pending approval");
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { accountStatus: "ACTIVE" },
+        select: { id: true, fullName: true, email: true, accountStatus: true },
+      });
+      return ok(res, updated, "User approved successfully");
+    } catch (error) {
+      console.error("Approve user error:", error);
+      return fail(res, 500, "Failed to approve user", error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
+  async rejectUser(req: Request, res: Response) {
+    try {
+      const unauthorizedResponse = ensureAdmin(req, res);
+      if (unauthorizedResponse) return unauthorizedResponse;
+      const userId = req.params.userId as string;
+      const { reason } = req.body as { reason?: string };
+      if (!reason) return fail(res, 400, "Reason is required");
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return fail(res, 404, "User not found");
+      if (user.accountStatus !== "PENDING") return fail(res, 400, "User is not pending approval");
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { accountStatus: "SUSPENDED" },
+        select: { id: true, fullName: true, email: true, accountStatus: true },
+      });
+      return ok(res, updated, "User rejected successfully");
+    } catch (error) {
+      console.error("Reject user error:", error);
+      return fail(res, 500, "Failed to reject user", error instanceof Error ? error.message : "Unknown error");
+    }
+  }
 }

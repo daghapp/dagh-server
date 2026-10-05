@@ -70,6 +70,11 @@ model User {
   accessGrantsRevoked SubscriptionAccessGrant[] @relation("AccessGrantRevoker")
 
   datingProfile           DatingProfile?
+  datingApplication       DatingApplication?
+  userWarnings            UserWarning[]
+  adminNotifications      AdminNotification[]         @relation("AdminNotifications")
+  ngoMemberships          NgoMembership[]
+  ngoAccessRequests       NgoAccessRequest[]
   swipesMade              UserSwipe[]                 @relation("Swiper")
   swipesReceived          UserSwipe[]                 @relation("SwipeTarget")
   discoveryPreference     DiscoveryPreference?
@@ -861,9 +866,11 @@ model Payment {
 
   metadata Json?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactionFlags TransactionFlag[]
+  paymentRisk      PaymentRisk?
 
   @@index([status])
   @@index([userId])
@@ -945,13 +952,20 @@ model AdminActivityLog {
 // One per admin `User`; created on admin registration (or seed).
 // ─────────────────────────────────────────
 model AdminProfile {
-  id         String          @id @default(uuid())
-  userId     String          @unique
-  department AdminDepartment
-  role       AdminRole
-  createdBy  String? // userId of the account that registered this admin (null for self-registration/seed)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  id                String          @id @default(uuid())
+  userId            String          @unique
+  department        AdminDepartment
+  role              AdminRole
+  mfaEnabled        Boolean         @default(false)
+  mfaMethod         String? // e.g. "TOTP", "SMS"
+  mfaSecret         String? // encrypted
+  lastMfaAt         DateTime?
+  backupCodes       String[] // hashed backup codes
+  failedMfaAttempts Int             @default(0)
+  lockedUntil       DateTime?
+  createdBy         String? // userId of the account that registered this admin (null for self-registration/seed)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -959,6 +973,10 @@ model AdminProfile {
 }
 
 enum AdminDepartment {
+  EXECUTIVE_MANAGEMENT
+  OPERATIONS_AND_MEMBERSHIP
+  FINANCE_AND_COMPLIANCE
+  TECHNICAL_SUPPORT
   DIASPORA_AFFAIRS
   OPERATIONS
   VISA
@@ -973,11 +991,12 @@ enum AdminDepartment {
 
 enum AdminRole {
   SUPER_ADMIN
+  OPERATIONS
+  FINANCE
+  SUPPORT
   ADMIN
   VISA_OFFICER
   TOUR_MANAGER
-  FINANCE
-  SUPPORT
   MODERATOR
 }
 
@@ -1161,8 +1180,10 @@ enum PaymentTargetType {
 enum AccountStatus {
   ACTIVE
   SUSPENDED
-  DEACTIVATED
+  TERMINATED
+  PENDING
   PENDING_VERIFICATION
+  DEACTIVATED
 }
 
 enum AccountType {
@@ -1801,4 +1822,166 @@ enum VideoInteractionType {
   PREVIEW_CLIP // user played the clipped preview on a locked card
   WATCH_FULL_VIDEO // user opened the full video (unlocked users only)
   UNLOCK // server confirmed a YouTube subscription and granted the unlock
+}
+
+model UserWarning {
+  id       String   @id @default(uuid())
+  userId   String
+  reason   String
+  issuedBy String
+  issuedAt DateTime @default(now())
+  note     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_warnings")
+}
+
+model DatingApplication {
+  id         String    @id @default(uuid())
+  userId     String    @unique
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED, FLAGGED, NEEDS_INFO
+  reviewerId String?
+  reason     String?
+  notes      String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("dating_applications")
+}
+
+model AdminNotification {
+  id        String    @id @default(uuid())
+  adminId   String
+  category  String
+  message   String
+  read      Boolean   @default(false)
+  actionUrl String?
+  meta      Json?
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  admin User @relation("AdminNotifications", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, read])
+  @@map("admin_notifications")
+}
+
+model TransactionFlag {
+  id        String   @id @default(uuid())
+  paymentId String
+  flaggedBy String
+  reason    String
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("transaction_flags")
+}
+
+model PaymentRisk {
+  id        String   @id @default(uuid())
+  paymentId String   @unique
+  riskLevel String   @default("LOW") // LOW, MEDIUM, HIGH
+  score     Int      @default(0)
+  reasons   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("payment_risks")
+}
+
+model Ngo {
+  id          String             @id @default(uuid())
+  name        String
+  code        String             @unique
+  status      String             @default("ACTIVE")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  memberships NgoMembership[]
+  requests    NgoAccessRequest[]
+
+  @@map("ngos")
+}
+
+model NgoMembership {
+  id             String   @id @default(uuid())
+  ngoId          String
+  userId         String
+  membershipId   String   @unique
+  status         String   @default("ACTIVE")
+  subscriptionId String?
+  verification   String?
+  eligibility    String?
+  datingAccess   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  ngo  Ngo  @relation(fields: [ngoId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ngoId, userId])
+  @@map("ngo_memberships")
+}
+
+model NgoAccessRequest {
+  id        String    @id @default(uuid())
+  ngoId     String
+  userId    String
+  status    String    @default("PENDING")
+  reason    String?
+  actionBy  String?
+  actionAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  ngo  Ngo  @relation(fields: [ngoId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ngoId, userId])
+  @@map("ngo_access_requests")
+}
+
+model PlatformSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json?
+  encrypted Boolean  @default(false)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("platform_settings")
+}
+
+model MaintenanceWindow {
+  id        String    @id @default(uuid())
+  modules   Json // array of module names
+  message   String
+  active    Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  endedBy   String?
+
+  @@map("maintenance_windows")
+}
+
+model AdminMfaToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  method    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@map("admin_mfa_tokens")
 }

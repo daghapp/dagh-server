@@ -25,6 +25,8 @@ import { router as VerificationRoutes } from "./routes/verification.routes.js";
 
 import { router as AdminRoutes } from "./routes/admin.routes.js";
 import { router as AdminAuthRoutes } from "./routes/admin-auth.routes.js";
+import { router as AdminDepartmentsRoutes } from "./routes/admin-departments.routes.js";
+import { router as AdminNotificationsRoutes } from "./routes/admin-notifications.routes.js";
 import { router as AdminConsoleRoutes } from "./routes/admin-console.routes.js";
 import { router as AdminProfileRoutes } from "./routes/admin-profile.routes.js";
 import { router as AdminPaymentGatewayRoutes } from "./routes/admin-payment-gateway.routes.js";
@@ -210,6 +212,8 @@ app.use("/profile", ProfileEthnicityRoutes);
 
 app.use("/admin", AdminRoutes);
 app.use("/admin", AdminAuthRoutes);
+app.use("/admin", AdminDepartmentsRoutes);
+app.use("/admin/notifications", AdminNotificationsRoutes);
 app.use("/admin", AdminConsoleRoutes);
 app.use("/admin", AdminProfileRoutes);
 app.use("/admin", AdminPaymentGatewayRoutes);

@@ -41,11 +41,12 @@ export type PaymentGatewayPermission =
  */
 const ROLE_SCOPES: Record<AdminRole, readonly PaymentGatewayPermission[]> = {
   [AdminRole.SUPER_ADMIN]: Object.values(PAYMENT_GATEWAY_PERMISSIONS),
+  [AdminRole.OPERATIONS]: [],
+  [AdminRole.FINANCE]: [],
+  [AdminRole.SUPPORT]: [],
   [AdminRole.ADMIN]: [],
   [AdminRole.VISA_OFFICER]: [],
   [AdminRole.TOUR_MANAGER]: [],
-  [AdminRole.FINANCE]: [],
-  [AdminRole.SUPPORT]: [],
   [AdminRole.MODERATOR]: [],
 };
 

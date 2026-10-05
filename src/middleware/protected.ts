@@ -12,6 +12,13 @@ if (!JWT_SECRET) {
 interface AuthPayload extends JwtPayload {
   id: string;
   email: string;
+  /**
+   * Marks a token that is deliberately not a session — an `mfaToken` or a
+   * password-reset token. Those are signed by the same key as access tokens, so
+   * without this check `jwt.verify` alone would happily accept a token that had
+   * never cleared its second factor and let it open every route.
+   */
+  kind?: string;
 }
 
 export default async function protectedRoute(req: Request, res: Response, next: NextFunction) {
@@ -25,6 +32,10 @@ export default async function protectedRoute(req: Request, res: Response, next: 
     const token = authHeader.split(" ")[1];
 
     const decoded = jwt.verify(token, JWT_SECRET!) as AuthPayload;
+
+    if (decoded.kind) {
+      return fail(res, 401, "Incomplete authentication");
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },

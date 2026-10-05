@@ -52,7 +52,7 @@ export class AdminAuthController {
           phoneNumber: data.phoneNumber ?? null,
           passwordHash: hashedPassword,
           accountType: "ADMIN",
-          accountStatus: "ACTIVE",
+          accountStatus: "PENDING",
           adminProfile: {
             create: {
               department: data.department,

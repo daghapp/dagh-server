@@ -27,7 +27,8 @@ export const requestResetPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
-  otp: z.string().length(6, { message: "OTP must be 6 digits long" }),
+  otp: z.string().length(6, { message: "OTP must be 6 digits long" }).optional(),
+  token: z.string().optional(),
   newPassword: z
     .string()
     .min(8, { message: "Password must be at least 8 characters long" })

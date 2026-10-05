@@ -18,6 +18,8 @@ import {
 } from "../../helpers/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { toAuthUser } from "../../helpers/auth-user.js";
+import { getAllPermissionsForRole } from "../../middleware/permissions.js";
+import { generateMfaToken } from "../../helpers/jwt.js";
 import { disableAllUserDevices } from "../devices/devices.controller.js";
 import {
   resolveChannelAccessForLogin,
@@ -137,11 +139,34 @@ export class PasswordAuthController {
       // rather than failing the sign-in, and it never opens anything.
       const communityAccess = await resolveChannelAccessForLogin(user.id);
 
-      return ok(res, {
+      const response: any = {
         ...toAuthUser(user, communityAccess),
         accessToken,
         refreshToken,
-      });
+      };
+
+      if (user.accountType === "ADMIN") {
+        const adminProfile = await prisma.adminProfile.findUnique({
+          where: { userId: user.id },
+          select: { role: true, department: true, mfaEnabled: true, mfaMethod: true },
+        });
+        response.adminRole = adminProfile?.role ?? null;
+        response.department = adminProfile?.department ?? null;
+        response.permissions = adminProfile?.role ? getAllPermissionsForRole(adminProfile.role) : [];
+        response.mfaRequired = adminProfile?.mfaEnabled ?? false;
+        response.mfaMethod = adminProfile?.mfaMethod ?? null;
+        if (adminProfile?.mfaEnabled) {
+          response.mfaToken = generateMfaToken({
+            id: user.id,
+            email: user.email,
+            accountType: user.accountType,
+          });
+          delete response.accessToken;
+          delete response.refreshToken;
+        }
+      }
+
+      return ok(res, response);
     } catch (error) {
       console.error("Login error:", error);
       return fail(res, 500, "Login failed");
@@ -444,7 +469,12 @@ export class PasswordAuthController {
         return fail(res, 400, "OTP has expired");
       }
 
-      const isOtpValid = await verifyOtp(otpRecord.code, resetData.otp);
+      const code = resetData.otp ?? resetData.token;
+      if (!code) {
+        return fail(res, 400, "Invalid OTP code");
+      }
+
+      const isOtpValid = await verifyOtp(otpRecord.code, code);
       if (!isOtpValid) {
         return fail(res, 400, "Invalid OTP code");
       }

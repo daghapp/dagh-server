@@ -335,6 +335,22 @@ router.patch(
 
 /**
  * @swagger
+ * /admin/users/{userId}/terminate:
+ *   patch:
+ *     summary: Terminate user
+ *     tags: [Admin - User Management]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch(
+  "/users/:userId/terminate",
+  protectedRoute,
+  requireAdmin,
+  authAdminController.terminateUser.bind(authAdminController),
+);
+
+/**
+ * @swagger
  * /admin/users/{userId}/reactivate:
  *   patch:
  *     summary: Reactivate user account
@@ -406,6 +422,38 @@ router.patch(
   protectedRoute,
   requireAdmin,
   authAdminController.reactivateUser.bind(authAdminController),
+);
+
+/**
+ * @swagger
+ * /admin/users/{userId}/approve:
+ *   patch:
+ *     summary: Approve pending user
+ *     tags: [Admin - User Management]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch(
+  "/users/:userId/approve",
+  protectedRoute,
+  requireAdmin,
+  authAdminController.approveUser.bind(authAdminController),
+);
+
+/**
+ * @swagger
+ * /admin/users/{userId}/reject:
+ *   patch:
+ *     summary: Reject pending user
+ *     tags: [Admin - User Management]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch(
+  "/users/:userId/reject",
+  protectedRoute,
+  requireAdmin,
+  authAdminController.rejectUser.bind(authAdminController),
 );
 
 /**

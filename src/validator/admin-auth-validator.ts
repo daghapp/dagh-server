@@ -14,6 +14,7 @@ export const adminRegistrationSchema = z.object({
     .regex(/[\W_]/, { message: "Password must contain at least one special character" }),
   department: z.enum(AdminDepartment),
   role: z.enum(AdminRole),
+  acceptedTerms: z.boolean().optional(),
 });
 
 export type AdminRegistrationSchema = z.infer<typeof adminRegistrationSchema>;
