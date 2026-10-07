@@ -6,7 +6,7 @@ import express from "express";
 import { CommunityController } from "../modules/community/community.controller.js";
 import { YouTubeVerifyController } from "../modules/community/youtube-verify.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import { validate } from "../middleware/validation.js";
 import { syncCommunityVideosSchema } from "../validator/community-validator.js";
 
@@ -757,7 +757,7 @@ router.get(
 router.get(
   "/videos/:videoId/analytics",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.getVideoAnalytics.bind(controller),
 );
 
@@ -832,7 +832,7 @@ router.get(
 router.post(
   "/admin/videos",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.adminCreateVideo.bind(controller),
 );
 
@@ -889,7 +889,7 @@ router.post(
 router.put(
   "/admin/videos/:videoId",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.adminUpdateVideo.bind(controller),
 );
 
@@ -923,7 +923,7 @@ router.put(
 router.delete(
   "/admin/videos/:videoId",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.adminDeleteVideo.bind(controller),
 );
 
@@ -1026,7 +1026,7 @@ router.delete(
 router.post(
   "/admin/sync-youtube",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   validate(syncCommunityVideosSchema),
   controller.adminSyncChannel.bind(controller),
 );
@@ -1086,7 +1086,7 @@ router.post(
 router.get(
   "/admin/youtube-grants",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.adminListChannelGrants.bind(controller),
 );
 
@@ -1128,7 +1128,7 @@ router.get(
 router.post(
   "/admin/youtube-grants/:userId/revoke",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.adminRevokeChannelGrant.bind(controller),
 );
 
@@ -1160,7 +1160,7 @@ router.post(
 router.post(
   "/admin/youtube-grants/re-encrypt",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   controller.adminReencryptGrantTokens.bind(controller),
 );
 

@@ -5,7 +5,7 @@ import {
   adminUpdateDataPolicy,
 } from "../modules/data-policy/data-policy.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import { validate } from "../middleware/validation.js";
 import { updateDataPolicySchema } from "../validator/data-policy-validator.js";
 
@@ -66,7 +66,12 @@ router.get("/", getDataPolicy);
  *       500:
  *         description: Internal server error
  */
-router.get("/admin/policy", protectedRoute, requireAdmin, adminGetDataPolicy);
+router.get(
+  "/admin/policy",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminGetDataPolicy,
+);
 
 /**
  * @swagger
@@ -106,7 +111,7 @@ router.get("/admin/policy", protectedRoute, requireAdmin, adminGetDataPolicy);
 router.put(
   "/admin/policy",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   validate(updateDataPolicySchema),
   adminUpdateDataPolicy,
 );

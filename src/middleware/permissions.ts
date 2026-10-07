@@ -52,6 +52,10 @@ export const PERMISSIONS = {
     VIEW: "reports.view",
     EXPORT: "reports.export",
     GENERATE: "reports.generate",
+    // Resolution is a moderation action. The handoff matrix only lists
+    // View/Export/Generate for Reports, so this key is an extension for the
+    // resolve-reports flow (§3.10): granted to the moderating roles only.
+    MANAGE: "reports.manage",
   },
   SETTINGS: {
     FULL: "settings.full",
@@ -111,6 +115,7 @@ const ROLE_SCOPES_MAP: Record<AdminRole, string[]> = {
     "reports.view",
     "reports.export",
     "reports.generate",
+    "reports.manage",
     "settings.full",
     "settings.view",
     "audit.view",
@@ -121,11 +126,18 @@ const ROLE_SCOPES_MAP: Record<AdminRole, string[]> = {
     "notifications.view",
     "notifications.manage",
   ],
+  // Permission sets per the Admin Panel handoff §4 matrix, including the
+  // additions the spec itself lists as missing from the matrix: users.approve,
+  // users.reject, users.warn, users.delete (SUPER_ADMIN only), audit logs and
+  // maintenance (SUPER_ADMIN only). notifications.view is granted to every role
+  // (the bell is a per-admin channel; dating/notification content is filtered
+  // by role, see §3.4) while notifications.manage stays SUPER_ADMIN-only.
   [AdminRole.OPERATIONS]: [
     "dashboard.view",
     "tours.view",
     "tours.edit",
     "tours.approve",
+    "payments.view",
     "users.view",
     "users.edit",
     "users.suspend",
@@ -142,6 +154,8 @@ const ROLE_SCOPES_MAP: Record<AdminRole, string[]> = {
     "ngo.grant",
     "reports.view",
     "reports.export",
+    "reports.manage",
+    "notifications.view",
   ],
   [AdminRole.FINANCE]: [
     "dashboard.view",
@@ -150,19 +164,24 @@ const ROLE_SCOPES_MAP: Record<AdminRole, string[]> = {
     "payments.flag",
     "payments.export",
     "users.view",
+    "business.view",
+    "ngo.view",
     "reports.view",
     "reports.export",
     "reports.generate",
+    "notifications.view",
   ],
   [AdminRole.SUPPORT]: [
     "dashboard.view",
     "tours.view",
+    "payments.view",
     "users.view",
     "users.lookup",
     "dating.view",
     "business.view",
     "ngo.view",
     "reports.view",
+    "notifications.view",
   ],
 };
 
@@ -195,13 +214,19 @@ export function requirePermission(permission: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const user = req.user;
     if (!user || user.accountType !== "ADMIN") {
-      fail(res, 403, { code: "INSUFFICIENT_PERMISSION", message: "Administrator account required" });
+      fail(res, 403, {
+        code: "INSUFFICIENT_PERMISSION",
+        message: "Administrator account required",
+      });
       return;
     }
     try {
       const role = await loadAdminRole(req);
       if (!role) {
-        fail(res, 403, { code: "INSUFFICIENT_PERMISSION", message: "Administrator account required" });
+        fail(res, 403, {
+          code: "INSUFFICIENT_PERMISSION",
+          message: "Administrator account required",
+        });
         return;
       }
       if (!hasPermissionKey(role, permission)) {
@@ -221,10 +246,17 @@ export function requirePermission(permission: string) {
   };
 }
 
-export async function assertPermission(req: Request, res: Response, permission: string): Promise<Response | null> {
+export async function assertPermission(
+  req: Request,
+  res: Response,
+  permission: string,
+): Promise<Response | null> {
   const user = req.user;
   if (!user || user.accountType !== "ADMIN") {
-    return fail(res, 403, { code: "INSUFFICIENT_PERMISSION", message: "Administrator account required" });
+    return fail(res, 403, {
+      code: "INSUFFICIENT_PERMISSION",
+      message: "Administrator account required",
+    });
   }
   const role = await loadAdminRole(req);
   if (!role || !hasPermissionKey(role, permission)) {

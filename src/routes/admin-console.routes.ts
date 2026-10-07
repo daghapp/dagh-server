@@ -1,11 +1,12 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import { AdminVisaConsoleController } from "../modules/admin/visa-console.controller.js";
 import { AdminPaymentsConsoleController } from "../modules/admin/payments-console.controller.js";
 import { AdminDashboardController } from "../modules/admin/dashboard.controller.js";
 import { AdminPlansConsoleController } from "../modules/admin/plans-console.controller.js";
 import { AdminAccessGrantsConsoleController } from "../modules/admin/access-grants-console.controller.js";
+import { AdminRolesConsoleController } from "../modules/admin/roles-console.controller.js";
 import { validate } from "../middleware/validation.js";
 import {
   createMembershipPlanSchema,
@@ -21,6 +22,7 @@ const adminPayments = new AdminPaymentsConsoleController();
 const adminDashboard = new AdminDashboardController();
 const adminPlans = new AdminPlansConsoleController();
 const adminAccessGrants = new AdminAccessGrantsConsoleController();
+const adminRoles = new AdminRolesConsoleController();
 
 /**
  * @swagger
@@ -76,7 +78,7 @@ const adminAccessGrants = new AdminAccessGrantsConsoleController();
 router.get(
   "/dashboard/summary",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.DASHBOARD.VIEW),
   adminDashboard.summary.bind(adminDashboard),
 );
 
@@ -161,7 +163,7 @@ router.get(
 router.get(
   "/users/verified",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.VIEW),
   adminDashboard.verifiedUsers.bind(adminDashboard),
 );
 
@@ -289,7 +291,12 @@ router.get(
  *       403:
  *         description: Admin privileges required
  */
-router.get("/visa-requests", protectedRoute, requireAdmin, adminVisa.list.bind(adminVisa));
+router.get(
+  "/visa-requests",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminVisa.list.bind(adminVisa),
+);
 
 /**
  * @swagger
@@ -337,7 +344,12 @@ router.get("/visa-requests", protectedRoute, requireAdmin, adminVisa.list.bind(a
  *       403:
  *         description: Admin privileges required
  */
-router.get("/visa-requests/stats", protectedRoute, requireAdmin, adminVisa.stats.bind(adminVisa));
+router.get(
+  "/visa-requests/stats",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminVisa.stats.bind(adminVisa),
+);
 
 /**
  * @swagger
@@ -363,7 +375,12 @@ router.get("/visa-requests/stats", protectedRoute, requireAdmin, adminVisa.stats
  *       404:
  *         description: Visa request not found
  */
-router.get("/visa-requests/:id", protectedRoute, requireAdmin, adminVisa.detail.bind(adminVisa));
+router.get(
+  "/visa-requests/:id",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminVisa.detail.bind(adminVisa),
+);
 
 /**
  * @swagger
@@ -398,7 +415,7 @@ router.get("/visa-requests/:id", protectedRoute, requireAdmin, adminVisa.detail.
 router.post(
   "/visa-requests/:id/approve",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   adminVisa.approve.bind(adminVisa),
 );
 
@@ -435,7 +452,7 @@ router.post(
 router.post(
   "/visa-requests/:id/reject",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   adminVisa.reject.bind(adminVisa),
 );
 
@@ -490,7 +507,12 @@ router.post(
  *       403:
  *         description: Admin privileges required
  */
-router.get("/payments", protectedRoute, requireAdmin, adminPayments.list.bind(adminPayments));
+router.get(
+  "/payments",
+  protectedRoute,
+  requirePermission(PERMISSIONS.PAYMENTS.VIEW),
+  adminPayments.list.bind(adminPayments),
+);
 
 /**
  * @swagger
@@ -543,7 +565,7 @@ router.get("/payments", protectedRoute, requireAdmin, adminPayments.list.bind(ad
 router.get(
   "/payments/stats",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.PAYMENTS.VIEW),
   adminPayments.stats.bind(adminPayments),
 );
 
@@ -586,7 +608,7 @@ router.get(
 router.get(
   "/payments/status",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.PAYMENTS.VIEW),
   adminPayments.getControlStatus.bind(adminPayments),
 );
 
@@ -649,7 +671,7 @@ router.get(
 router.patch(
   "/payments/status",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.PAYMENTS.TOGGLE),
   validate(updatePaymentControlSchema),
   adminPayments.updateControlStatus.bind(adminPayments),
 );
@@ -675,7 +697,12 @@ router.patch(
  *       403:
  *         description: Admin privileges required
  */
-router.get("/plans", protectedRoute, requireAdmin, adminPlans.list.bind(adminPlans));
+router.get(
+  "/plans",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminPlans.list.bind(adminPlans),
+);
 
 /**
  * @swagger
@@ -729,7 +756,7 @@ router.get("/plans", protectedRoute, requireAdmin, adminPlans.list.bind(adminPla
 router.post(
   "/plans",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   validate(createMembershipPlanSchema),
   adminPlans.create.bind(adminPlans),
 );
@@ -781,7 +808,12 @@ router.post(
  *       403:
  *         description: Admin privileges required
  */
-router.patch("/plans/:id", protectedRoute, requireAdmin, adminPlans.update.bind(adminPlans));
+router.patch(
+  "/plans/:id",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminPlans.update.bind(adminPlans),
+);
 
 /**
  * @swagger
@@ -805,7 +837,12 @@ router.patch("/plans/:id", protectedRoute, requireAdmin, adminPlans.update.bind(
  *       403:
  *         description: Admin privileges required
  */
-router.post("/plans/:id/toggle", protectedRoute, requireAdmin, adminPlans.toggle.bind(adminPlans));
+router.post(
+  "/plans/:id/toggle",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminPlans.toggle.bind(adminPlans),
+);
 
 /**
  * @swagger
@@ -829,7 +866,12 @@ router.post("/plans/:id/toggle", protectedRoute, requireAdmin, adminPlans.toggle
  *       403:
  *         description: Admin privileges required
  */
-router.delete("/plans/:id", protectedRoute, requireAdmin, adminPlans.remove.bind(adminPlans));
+router.delete(
+  "/plans/:id",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminPlans.remove.bind(adminPlans),
+);
 
 // ─────────────────────────────────────────
 // Complimentary access grants (comped membership)
@@ -874,7 +916,7 @@ router.delete("/plans/:id", protectedRoute, requireAdmin, adminPlans.remove.bind
 router.get(
   "/access-grants",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.VIEW),
   adminAccessGrants.list.bind(adminAccessGrants),
 );
 
@@ -937,7 +979,7 @@ router.get(
 router.post(
   "/access-grants",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.EDIT),
   validate(createAccessGrantSchema),
   adminAccessGrants.create.bind(adminAccessGrants),
 );
@@ -988,7 +1030,7 @@ router.post(
 router.patch(
   "/access-grants/:id",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.EDIT),
   validate(updateAccessGrantSchema),
   adminAccessGrants.update.bind(adminAccessGrants),
 );
@@ -1032,7 +1074,7 @@ router.patch(
 router.post(
   "/access-grants/:id/revoke",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.EDIT),
   validate(revokeAccessGrantSchema),
   adminAccessGrants.revoke.bind(adminAccessGrants),
 );
@@ -1065,8 +1107,95 @@ router.post(
 router.get(
   "/users/:userId/access",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.VIEW),
   adminAccessGrants.userAccess.bind(adminAccessGrants),
+);
+
+/**
+ * @swagger
+ * /admin/roles:
+ *   get:
+ *     summary: Roles, departments, permission matrix and assigned admins
+ *     description: >
+ *       Read-only view of the four admin roles (their department, admin count,
+ *       permission statements and assigned admins) plus the module × action
+ *       matrix. Both the list and the matrix come from the same source the
+ *       requirePermission() middleware enforces, so the screen can never drift
+ *       from the server's actual RBAC.
+ *     tags: [Admin - Roles]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Roles and permission matrix
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     modules:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           key: { type: string }
+ *                           label: { type: string }
+ *                           actions:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 action: { type: string }
+ *                                 permission: { type: string }
+ *                     matrix:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: object
+ *                         additionalProperties:
+ *                           type: boolean
+ *                     roles:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           role: { type: string }
+ *                           department: { type: string }
+ *                           adminCount: { type: integer }
+ *                           permissions:
+ *                             type: array
+ *                             items: { type: string }
+ *                           admins:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id: { type: string }
+ *                                 fullName: { type: string }
+ *                                 email: { type: string }
+ *                                 accountStatus: { type: string }
+ *                                 mfaEnabled: { type: boolean }
+ *                     departments:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           department: { type: string }
+ *                           roles:
+ *                             type: array
+ *                             items: { type: string }
+ *       403:
+ *         description: Insufficient permission
+ */
+router.get(
+  "/roles",
+  protectedRoute,
+  requirePermission(PERMISSIONS.ROLES.VIEW),
+  adminRoles.summary.bind(adminRoles),
 );
 
 export { router };

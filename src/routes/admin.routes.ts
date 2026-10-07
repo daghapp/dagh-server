@@ -1,7 +1,7 @@
 import express from "express";
 import { AuthAdminController } from "../modules/authentication/auth-admin.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import { AdminVisaController } from "../modules/visa-management/admin-visa.controller.js";
 import {
   listReports,
@@ -104,7 +104,7 @@ const adminVisaController = new AdminVisaController();
 router.get(
   "/users",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.VIEW),
   authAdminController.getAllUsers.bind(authAdminController),
 );
 
@@ -179,7 +179,7 @@ router.get(
 router.patch(
   "/users/:userId/promote",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.EDIT),
   authAdminController.promoteToAdmin.bind(authAdminController),
 );
 
@@ -254,7 +254,7 @@ router.patch(
 router.patch(
   "/users/:userId/demote",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.EDIT),
   authAdminController.demoteToUser.bind(authAdminController),
 );
 
@@ -329,7 +329,7 @@ router.patch(
 router.patch(
   "/users/:userId/suspend",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.SUSPEND),
   authAdminController.suspendUser.bind(authAdminController),
 );
 
@@ -345,7 +345,7 @@ router.patch(
 router.patch(
   "/users/:userId/terminate",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.TERMINATE),
   authAdminController.terminateUser.bind(authAdminController),
 );
 
@@ -420,7 +420,7 @@ router.patch(
 router.patch(
   "/users/:userId/reactivate",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.EDIT),
   authAdminController.reactivateUser.bind(authAdminController),
 );
 
@@ -436,7 +436,7 @@ router.patch(
 router.patch(
   "/users/:userId/approve",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.APPROVE),
   authAdminController.approveUser.bind(authAdminController),
 );
 
@@ -452,7 +452,7 @@ router.patch(
 router.patch(
   "/users/:userId/reject",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.REJECT),
   authAdminController.rejectUser.bind(authAdminController),
 );
 
@@ -531,7 +531,7 @@ router.patch(
 router.delete(
   "/users/:userId",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.USERS.DELETE),
   authAdminController.deleteUser.bind(authAdminController),
 );
 
@@ -550,7 +550,7 @@ router.delete(
 router.get(
   "/visa-requests/paid",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   adminVisaController.getPaidVisaRequests.bind(adminVisaController),
 );
 
@@ -580,7 +580,7 @@ router.get(
 router.post(
   "/visa-requests/approve",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   adminVisaController.approveVisaRequest.bind(adminVisaController),
 );
 
@@ -672,7 +672,7 @@ router.post(
  *       500:
  *         description: Internal server error
  */
-router.get("/reports", protectedRoute, requireAdmin, listReports);
+router.get("/reports", protectedRoute, requirePermission(PERMISSIONS.REPORTS.VIEW), listReports);
 
 /**
  * @swagger
@@ -709,7 +709,12 @@ router.get("/reports", protectedRoute, requireAdmin, listReports);
  *       500:
  *         description: Internal server error
  */
-router.patch("/reports/:reportId", protectedRoute, requireAdmin, resolveReport);
+router.patch(
+  "/reports/:reportId",
+  protectedRoute,
+  requirePermission(PERMISSIONS.REPORTS.MANAGE),
+  resolveReport,
+);
 
 /**
  * @swagger
@@ -733,6 +738,11 @@ router.patch("/reports/:reportId", protectedRoute, requireAdmin, resolveReport);
  *       500:
  *         description: Internal server error
  */
-router.post("/reports/:reportId/suspend", protectedRoute, requireAdmin, suspendReportedUser);
+router.post(
+  "/reports/:reportId/suspend",
+  protectedRoute,
+  requirePermission(PERMISSIONS.USERS.SUSPEND),
+  suspendReportedUser,
+);
 
 export { router };

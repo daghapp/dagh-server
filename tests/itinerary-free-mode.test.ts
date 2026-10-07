@@ -43,7 +43,7 @@ describe("Itinerary fee under free mode", () => {
   async function resetRequest(paymentStatus = PaymentStatus.INITIALIZED) {
     await prisma.tourRequest.update({
       where: { id: requestId },
-      data: { paymentStatus, paymentId: null },
+      data: { paymentStatus, paymentId: null, feeWaived: false },
     });
   }
 

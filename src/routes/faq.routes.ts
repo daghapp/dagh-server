@@ -7,7 +7,7 @@ import {
   adminDeleteFaqItem,
 } from "../modules/faq/faq.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import { validate } from "../middleware/validation.js";
 import { createFaqItemSchema, updateFaqItemSchema } from "../validator/faq-validator.js";
 
@@ -68,7 +68,12 @@ router.get("/", getFaqItems);
  *       500:
  *         description: Internal server error
  */
-router.get("/admin", protectedRoute, requireAdmin, adminGetFaqItems);
+router.get(
+  "/admin",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminGetFaqItems,
+);
 
 /**
  * @swagger
@@ -116,7 +121,7 @@ router.get("/admin", protectedRoute, requireAdmin, adminGetFaqItems);
 router.post(
   "/admin",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   validate(createFaqItemSchema),
   adminCreateFaqItem,
 );
@@ -170,7 +175,7 @@ router.post(
 router.put(
   "/admin/:id",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
   validate(updateFaqItemSchema),
   adminUpdateFaqItem,
 );
@@ -201,6 +206,11 @@ router.put(
  *       500:
  *         description: Internal server error
  */
-router.delete("/admin/:id", protectedRoute, requireAdmin, adminDeleteFaqItem);
+router.delete(
+  "/admin/:id",
+  protectedRoute,
+  requirePermission(PERMISSIONS.SETTINGS.FULL),
+  adminDeleteFaqItem,
+);
 
 export { router };

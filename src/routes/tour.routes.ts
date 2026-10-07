@@ -3,7 +3,7 @@ import { UserTourController } from "../modules/tour-management/user-tour.control
 import { AdminTourController } from "../modules/tour-management/admin-tour.controller.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import verifyHubtelCallback from "../middleware/hubtel-callback.js";
 import {
   tourSchema,
@@ -785,7 +785,7 @@ router.delete(
 router.post(
   "/",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.TOURS.EDIT),
   validate(tourSchema),
   adminTourController.createTour.bind(adminTourController),
 );
@@ -874,7 +874,7 @@ router.post(
 router.put(
   "/:id",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.TOURS.EDIT),
   validate(updateTourSchema),
   adminTourController.updateTour.bind(adminTourController),
 );
@@ -920,7 +920,7 @@ router.put(
 router.delete(
   "/:id",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.TOURS.DELETE),
   adminTourController.deleteTour.bind(adminTourController),
 );
 
@@ -1146,7 +1146,7 @@ router.delete(
 router.post(
   "/:id/itinerary",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.TOURS.EDIT),
   validate(tourItinerarySchema),
   adminTourController.addTourItinerary.bind(adminTourController),
 );
@@ -1346,7 +1346,7 @@ router.post(
 router.put(
   "/itinerary/:id",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.TOURS.EDIT),
   validate(tourItinerarySchema),
   adminTourController.updateTourItinerary.bind(adminTourController),
 );
@@ -1392,7 +1392,7 @@ router.put(
 router.delete(
   "/itinerary/:id",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.TOURS.EDIT),
   adminTourController.deleteTourItinerary.bind(adminTourController),
 );
 

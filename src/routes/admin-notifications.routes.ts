@@ -1,14 +1,37 @@
 import express from "express";
 import { AdminNotificationsController } from "../modules/admin/notifications.controller.js";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 
 const router = express.Router();
 const controller = new AdminNotificationsController();
 
-router.get("/", protectedRoute, requireAdmin, controller.list.bind(controller));
-router.patch("/:id/read", protectedRoute, requireAdmin, controller.markRead.bind(controller));
-router.patch("/read-all", protectedRoute, requireAdmin, controller.markAllRead.bind(controller));
-router.delete("/", protectedRoute, requireAdmin, controller.clearAll.bind(controller));
+// The bell is a per-admin channel: every role can read and maintain their own
+// queue (granted via notifications.view on all roles), while broadcasting /
+// global management stays notifications.manage (SUPER_ADMIN only).
+router.get(
+  "/",
+  protectedRoute,
+  requirePermission(PERMISSIONS.NOTIFICATIONS.VIEW),
+  controller.list.bind(controller),
+);
+router.patch(
+  "/:id/read",
+  protectedRoute,
+  requirePermission(PERMISSIONS.NOTIFICATIONS.VIEW),
+  controller.markRead.bind(controller),
+);
+router.patch(
+  "/read-all",
+  protectedRoute,
+  requirePermission(PERMISSIONS.NOTIFICATIONS.VIEW),
+  controller.markAllRead.bind(controller),
+);
+router.delete(
+  "/",
+  protectedRoute,
+  requirePermission(PERMISSIONS.NOTIFICATIONS.VIEW),
+  controller.clearAll.bind(controller),
+);
 
 export { router };

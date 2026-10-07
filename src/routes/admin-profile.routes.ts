@@ -1,6 +1,6 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
-import requireAdmin from "../middleware/admin.js";
+import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
 import { AdminProfileController } from "../modules/profile-management/admin-profile.controller.js";
 
 const router = express.Router();
@@ -71,7 +71,7 @@ const adminProfileController = new AdminProfileController();
 router.get(
   "/profile-verifications",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.DATING.VIEW),
   adminProfileController.getAllVerifications.bind(adminProfileController),
 );
 
@@ -115,7 +115,7 @@ router.get(
 router.patch(
   "/profile-verifications/:id/bio-data",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.DATING.APPROVE),
   adminProfileController.updateBioDataStatus.bind(adminProfileController),
 );
 
@@ -159,7 +159,7 @@ router.patch(
 router.patch(
   "/profile-verifications/:id/face",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.DATING.APPROVE),
   adminProfileController.updateFaceStatus.bind(adminProfileController),
 );
 
@@ -203,7 +203,7 @@ router.patch(
 router.patch(
   "/profile-verifications/:id/documents",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.DATING.APPROVE),
   adminProfileController.updateDocumentStatus.bind(adminProfileController),
 );
 
@@ -231,7 +231,7 @@ router.patch(
 router.post(
   "/profile-verifications/:id/verify",
   protectedRoute,
-  requireAdmin,
+  requirePermission(PERMISSIONS.DATING.APPROVE),
   adminProfileController.verifyUserFully.bind(adminProfileController),
 );
 
