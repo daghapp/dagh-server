@@ -670,7 +670,7 @@ async function seedDemoUsers() {
         await prisma.adminProfile.create({
           data: {
             userId: user.id,
-            department: AdminDepartment.DIASPORA_AFFAIRS,
+            department: AdminDepartment.OPERATIONS_AND_MEMBERSHIP,
             role: AdminRole.SUPER_ADMIN,
           },
         });

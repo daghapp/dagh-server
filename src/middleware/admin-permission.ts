@@ -44,10 +44,6 @@ const ROLE_SCOPES: Record<AdminRole, readonly PaymentGatewayPermission[]> = {
   [AdminRole.OPERATIONS]: [],
   [AdminRole.FINANCE]: [],
   [AdminRole.SUPPORT]: [],
-  [AdminRole.ADMIN]: [],
-  [AdminRole.VISA_OFFICER]: [],
-  [AdminRole.TOUR_MANAGER]: [],
-  [AdminRole.MODERATOR]: [],
 };
 
 export function hasPermission(role: AdminRole, scope: PaymentGatewayPermission): boolean {

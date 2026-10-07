@@ -156,18 +156,19 @@ export class UserTourController {
       // Generate unique booking reference
       const bookingReference = `TBK-${Date.now()}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
-      let paymentId = "FREE_BOOKING";
+      let paymentId: string | null = null;
       let paymentStatus: PaymentStatus = PaymentStatus.SUCCESS;
       let checkoutUrl: string | null = null;
       let paymentData = null;
+      let feeWaived = totalPrice === 0;
 
       if (totalPrice > 0) {
-        // When the kill-switch is off, bypass the checkout and book for free.
-        // Tour bookings are a pass-through to operators, so this is gated on the
-        // same flag as itinerary (see docs/disabling-payments.md §4).
+        // When the kill-switch is off, bypass the checkout and book for free. Tour
+        // bookings are a pass-through to operators, but the product decision is
+        // to waive them during outages (see docs/disabling-payments.md §4).
         const paymentsOff = !(await isPaymentsEnabled());
         if (paymentsOff) {
-          paymentId = "FREE_BOOKING";
+          feeWaived = true;
           paymentStatus = PaymentStatus.SUCCESS;
         } else {
           const paymentResponse = await paymentService.initializePayment({
@@ -208,6 +209,7 @@ export class UserTourController {
           totalPrice,
           paymentId,
           paymentStatus,
+          feeWaived,
           currency: tour.currency || "GHS",
           specialRequests: bookingData.specialRequests,
         },
@@ -443,8 +445,9 @@ export class UserTourController {
         const booking = await prisma.tour_bookings.create({
           data: {
             userId,
-            paymentId: "FREE_BOOKING",
+            paymentId: null,
             paymentStatus: PaymentStatus.SUCCESS,
+            feeWaived: true,
             tourId: bookingData.tourId,
             numberOfPeople: bookingData.numberOfPeople,
             bookingDate: new Date(bookingData.bookingDate),
@@ -457,7 +460,7 @@ export class UserTourController {
         });
         return ok(
           res,
-          { bookingId: booking.id, paymentId: "FREE_BOOKING", checkoutUrl: null },
+          { bookingId: booking.id, paymentId: null, checkoutUrl: null, freeMode: true },
           "Payments are temporarily disabled. Tour booked for free.",
         );
       }

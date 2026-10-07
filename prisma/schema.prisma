@@ -378,6 +378,9 @@ model tour_bookings {
   status              BookingStatus           @default(PENDING)
   paymentId           String?                 @unique
   paymentStatus       PaymentStatus           @default(PENDING)
+  // True when the fee was waived (payments disabled or price 0). Waived
+  // bookings keep paymentId NULL so the unique column never collides.
+  feeWaived           Boolean                 @default(false)
   specialRequests     String?
   contactName         String?
   contactEmail        String?
@@ -977,16 +980,6 @@ enum AdminDepartment {
   OPERATIONS_AND_MEMBERSHIP
   FINANCE_AND_COMPLIANCE
   TECHNICAL_SUPPORT
-  DIASPORA_AFFAIRS
-  OPERATIONS
-  VISA
-  TOURS
-  FINANCE
-  LEGAL
-  MARKETING
-  MODERATION
-  CUSTOMER_SUPPORT
-  IT_SUPPORT
 }
 
 enum AdminRole {
@@ -994,10 +987,6 @@ enum AdminRole {
   OPERATIONS
   FINANCE
   SUPPORT
-  ADMIN
-  VISA_OFFICER
-  TOUR_MANAGER
-  MODERATOR
 }
 
 // ─────────────────────────────────────────
@@ -1056,6 +1045,9 @@ model TourRequest {
 
   paymentId     String?       @unique
   paymentStatus PaymentStatus @default(INITIALIZED)
+  // True when the itinerary fee was waived (payments disabled or price 0).
+  // Waived itineraries keep paymentId NULL so the unique column never collides.
+  feeWaived     Boolean       @default(false)
 
   createdAt DateTime @default(now())
 

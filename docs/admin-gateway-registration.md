@@ -6,7 +6,7 @@ creating an admin console account with a department and role in a single call.
 - **Base URL (dev):** `http://localhost:5000`
 - **Endpoint:** `POST /admin/auth/register` (public)
 - **Interactive docs:** Swagger UI at `GET /api-docs`
-- **Demo admin (seed):** `admin@dagh.app` / `Admin@12345` — `SUPER_ADMIN` · `DIASPORA_AFFAIRS`
+- **Demo admin (seed):** `admin@dagh.app` / `Admin@12345` — `SUPER_ADMIN` · `OPERATIONS_AND_MEMBERSHIP`
 
 ---
 
@@ -19,8 +19,9 @@ attaching a `department` and `role` from the start.
 | Step | Where | What happens |
 |------|-------|--------------|
 | 1 | `POST /admin/auth/register` | Creates the `User` + a 1:1 `AdminProfile` in one write |
-| 2 | — | The account is created as `accountType = ADMIN` and `accountStatus = ACTIVE` (no OTP) |
-| 3 | `POST /auth/login` | Admin logs in immediately with the same public login endpoint |
+| 2 | — | The account is created as `accountType = ADMIN` and `accountStatus = PENDING` |
+| 3 | User Management | A staff admin approves the account (§3.7 of the Admin Panel spec); approval sets `accountStatus = ACTIVE` |
+| 4 | `POST /auth/login` | Once `ACTIVE`, the admin signs in with the same public login endpoint |
 
 Optionally, an official-email-domain gate can be enforced — see §5.
 
@@ -38,6 +39,18 @@ Optionally, an official-email-domain gate can be enforced — see §5.
 | `department` | enum | yes | `AdminDepartment` — see §4 |
 | `role` | enum | yes | `AdminRole` — see §4 |
 | `phoneNumber` | string | no | E.164 (`^\+[1-9]\d{1,14}$`); unique if provided |
+| `acceptedTerms` | boolean | no | Data-policy consent from the sign-up form |
+
+**Role ↔ department (strict 1:1).** Each of the four roles belongs to exactly one
+department (Admin Panel spec §3.1, §4). Any other combination is rejected with a
+`400` from the validator:
+
+| Role | Department |
+|------|-----------|
+| `SUPER_ADMIN` | `EXECUTIVE_MANAGEMENT` |
+| `OPERATIONS` | `OPERATIONS_AND_MEMBERSHIP` |
+| `FINANCE` | `FINANCE_AND_COMPLIANCE` |
+| `SUPPORT` | `TECHNICAL_SUPPORT` |
 
 **Example**
 
@@ -47,8 +60,8 @@ Optionally, an official-email-domain gate can be enforced — see §5.
   "email": "ama@dagh.app",
   "phoneNumber": "+233201234567",
   "password": "Password123!",
-  "department": "DIASPORA_AFFAIRS",
-  "role": "ADMIN"
+  "department": "OPERATIONS_AND_MEMBERSHIP",
+  "role": "OPERATIONS"
 }
 ```
 
@@ -61,8 +74,8 @@ curl -X POST http://localhost:5000/admin/auth/register \
     "fullName": "Ama Mensah",
     "email": "ama@dagh.app",
     "password": "Password123!",
-    "department": "DIASPORA_AFFAIRS",
-    "role": "ADMIN"
+    "department": "OPERATIONS_AND_MEMBERSHIP",
+    "role": "OPERATIONS"
   }'
 ```
 
@@ -78,7 +91,7 @@ curl -X POST http://localhost:5000/admin/auth/register \
   "data": {
     "id": "123e4567-e89b-12d3-a456-426614174000",
     "authProvider": "PASSWORD",
-    "accountStatus": "ACTIVE",
+    "accountStatus": "PENDING",
     "accountType": "ADMIN",
     "fullName": "Ama Mensah",
     "email": "ama@dagh.app",
@@ -88,8 +101,8 @@ curl -X POST http://localhost:5000/admin/auth/register \
     "adminProfile": {
       "id": "…",
       "userId": "123e4567-…",
-      "department": "DIASPORA_AFFAIRS",
-      "role": "ADMIN",
+      "department": "OPERATIONS_AND_MEMBERSHIP",
+      "role": "OPERATIONS",
       "createdBy": null,
       "createdAt": "2026-08-16T07:31:00.000Z",
       "updatedAt": "2026-08-16T07:31:00.000Z"
@@ -119,30 +132,25 @@ The response is the full Prisma `User` row **minus `passwordHash`**, with the
 
 ### `AdminDepartment`
 
+The four departments from the Admin Panel spec (§4):
+
 | Value | Intended use |
 |-------|--------------|
-| `DIASPORA_AFFAIRS` | Diaspora Affairs (default demo department) |
-| `OPERATIONS` | Operations |
-| `VISA` | Visa on Arrival processing |
-| `TOURS` | Tour management |
-| `FINANCE` | Payments / finance |
-| `LEGAL` | Legal |
-| `MARKETING` | Marketing |
-| `MODERATION` | Content / dating moderation |
-| `CUSTOMER_SUPPORT` | Customer support |
-| `IT_SUPPORT` | IT / technical support |
+| `EXECUTIVE_MANAGEMENT` | Executive management |
+| `OPERATIONS_AND_MEMBERSHIP` | Operations and membership |
+| `FINANCE_AND_COMPLIANCE` | Finance and compliance |
+| `TECHNICAL_SUPPORT` | Technical support |
 
 ### `AdminRole`
+
+The four roles from the Admin Panel spec (§4):
 
 | Value | Notes |
 |-------|-------|
 | `SUPER_ADMIN` | Full console access (demo seed admin) |
-| `ADMIN` | General administrator |
-| `VISA_OFFICER` | Visa queue / approvals |
-| `TOUR_MANAGER` | Tour packages / itineraries |
+| `OPERATIONS` | Operations and membership staff |
 | `FINANCE` | Payments / ledger |
 | `SUPPORT` | Support desk |
-| `MODERATOR` | Moderation queue |
 
 Both are stored on the `AdminProfile` model (`admin_profiles` table), 1:1 with the
 `users` table via `userId`.
@@ -167,7 +175,10 @@ an opt-in way.
 
 ## 6. Logging in after registration
 
-Because the account is created `ACTIVE`, the standard flow works unchanged:
+Because the account is created `PENDING` it cannot sign in yet — login rejects any
+non-`ACTIVE` account (`password-auth.controller.ts`). A staff admin must first
+approve the account in User Management (§3.7), which flips it to `ACTIVE`. From
+then on the standard flow works unchanged:
 
 ```bash
 curl -X POST http://localhost:5000/auth/login \
@@ -183,14 +194,18 @@ curl -X POST http://localhost:5000/auth/login \
     "email": "ama@dagh.app",
     "fullName": "Ama Mensah",
     "accountType": "ADMIN",
+    "adminRole": "OPERATIONS",
+    "department": "OPERATIONS_AND_MEMBERSHIP",
+    "permissions": [/* permission keys from src/middleware/permissions.ts */],
     "accessToken": "eyJ…",
     "refreshToken": "eyJ…"
   }
 }
 ```
 
-The console should then gate protected screens on `accountType === "ADMIN"` and use
-`role` (from `data.adminProfile.role`) to shape the sidebar.
+The console should gate protected screens on `accountType === "ADMIN"` and shape
+the sidebar from `adminRole` / `permissions`. Admin routes are protected with
+`requirePermission("<module>.<action>")` (see `src/middleware/permissions.ts`).
 
 ---
 
@@ -205,16 +220,24 @@ const registerAdmin = useMutation({
   },
 });
 
-// Department / role dropdowns
+// Department / role dropdowns — response of GET /admin/departments
 const DEPARTMENTS = [
-  "DIASPORA_AFFAIRS", "OPERATIONS", "VISA", "TOURS", "FINANCE",
-  "LEGAL", "MARKETING", "MODERATION", "CUSTOMER_SUPPORT", "IT_SUPPORT",
+  "EXECUTIVE_MANAGEMENT", "OPERATIONS_AND_MEMBERSHIP",
+  "FINANCE_AND_COMPLIANCE", "TECHNICAL_SUPPORT",
 ] as const;
 
 const ROLES = [
-  "SUPER_ADMIN", "ADMIN", "VISA_OFFICER", "TOUR_MANAGER",
-  "FINANCE", "SUPPORT", "MODERATOR",
+  "SUPER_ADMIN", "OPERATIONS", "FINANCE", "SUPPORT",
 ] as const;
+
+// The role select should only offer the single role each department admits.
+const rolesByDepartment: Record<string, string[]> = {
+  EXECUTIVE_MANAGEMENT: ["SUPER_ADMIN"],
+  OPERATIONS_AND_MEMBERSHIP: ["OPERATIONS"],
+  FINANCE_AND_COMPLIANCE: ["FINANCE"],
+  TECHNICAL_SUPPORT: ["SUPPORT"],
+};
+// selecting a department => set dropdown to rolesByDepartment[department]
 ```
 
 Display the error envelope directly:
@@ -232,10 +255,11 @@ const errorText = err?.response?.data?.error        // "User already exists", �
   `ADMIN_OFFICIAL_EMAIL_DOMAIN` is set. For invite-only or "request + approval"
   flows, see Phase 1 of `docs/admin-console-implementation-plan.md`
   (`POST /admin/invites`, `POST /admin/auth/register-request`).
-- **RBAC.** Roles are stored and returned, but no permission middleware
-  (`requireAdminRole`) is wired yet — every `/admin/*` route currently checks only
-  `accountType === "ADMIN"`. Coarse role gating is a planned Phase 1 follow-up.
+- **Created PENDING.** Self-registered admins must be approved by a staff admin in
+  User Management before they can sign in.
+- **RBAC.** Routes are gated with `requirePermission("<module>.<action>")` backed
+  by the permission matrix in `src/middleware/permissions.ts` (Admin Panel spec §4).
 - **One admin profile per user.** `userId` is unique on `admin_profiles`; a user
   cannot hold multiple departments/roles.
 - **Seed.** The demo `admin@dagh.app` is seeded with a `SUPER_ADMIN` /
-  `DIASPORA_AFFAIRS` profile.
+  `OPERATIONS_AND_MEMBERSHIP` profile.

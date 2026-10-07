@@ -17,7 +17,7 @@ const adminDepartmentsController = new AdminDepartmentsController();
  * /admin/auth/register:
  *   post:
  *     summary: Register a new admin (Admin Gateway)
- *     description: Creates an ACTIVE admin account with department and role. Optionally restricted to an official email domain when ADMIN_OFFICIAL_EMAIL_DOMAIN is set.
+ *     description: Creates a PENDING admin account with department and role. A role must belong to its department (e.g. FINANCE only in FINANCE_AND_COMPLIANCE). The account stays PENDING until approved via User Management. Optionally restricted to an official email domain when ADMIN_OFFICIAL_EMAIL_DOMAIN is set.
  *     tags: [Admin - Auth]
  *     requestBody:
  *       required: true
@@ -54,12 +54,14 @@ const adminDepartmentsController = new AdminDepartmentsController();
  *                 example: Password123!
  *               department:
  *                 type: string
- *                 enum: [DIASPORA_AFFAIRS, OPERATIONS, VISA, TOURS, FINANCE, LEGAL, MARKETING, MODERATION, CUSTOMER_SUPPORT, IT_SUPPORT]
- *                 example: DIASPORA_AFFAIRS
+ *                 enum: [EXECUTIVE_MANAGEMENT, OPERATIONS_AND_MEMBERSHIP, FINANCE_AND_COMPLIANCE, TECHNICAL_SUPPORT]
+ *                 example: OPERATIONS_AND_MEMBERSHIP
+ *                 description: Department. Each department admits exactly one role — see role.
  *               role:
  *                 type: string
- *                 enum: [SUPER_ADMIN, ADMIN, VISA_OFFICER, TOUR_MANAGER, FINANCE, SUPPORT, MODERATOR]
- *                 example: ADMIN
+ *                 enum: [SUPER_ADMIN, OPERATIONS, FINANCE, SUPPORT]
+ *                 example: OPERATIONS
+ *                 description: Role, must belong to the selected department (SUPER_ADMIN=EXECUTIVE_MANAGEMENT, OPERATIONS=OPERATIONS_AND_MEMBERSHIP, FINANCE=FINANCE_AND_COMPLIANCE, SUPPORT=TECHNICAL_SUPPORT).
  *     responses:
  *       201:
  *         description: Admin registered successfully
@@ -88,16 +90,16 @@ const adminDepartmentsController = new AdminDepartmentsController();
  *                       example: ADMIN
  *                     accountStatus:
  *                       type: string
- *                       example: ACTIVE
+ *                       example: PENDING
  *                     adminProfile:
  *                       type: object
  *                       properties:
  *                         department:
  *                           type: string
- *                           example: DIASPORA_AFFAIRS
+ *                           example: OPERATIONS_AND_MEMBERSHIP
  *                         role:
  *                           type: string
- *                           example: ADMIN
+ *                           example: OPERATIONS
  *       400:
  *         description: Invalid input or account already exists
  *       403:
@@ -262,11 +264,11 @@ router.post(
  * /admin/departments:
  *   get:
  *     summary: Admin departments and roles for registration dropdowns
- *     description: Public and unauthenticated so the sign-up form can populate its selects before an admin account exists.
+ *     description: Public and unauthenticated so the sign-up form can populate its selects before an admin account exists. Returns departments, roles and rolesByDepartment (the single role each department admits).
  *     tags: [Admin - Auth]
  *     responses:
  *       200:
- *         description: Departments and roles
+ *         description: Departments, roles and the role-per-department mapping
  */
 router.get("/departments", adminDepartmentsController.getDepartments.bind(adminDepartmentsController));
 

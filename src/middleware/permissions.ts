@@ -164,10 +164,6 @@ const ROLE_SCOPES_MAP: Record<AdminRole, string[]> = {
     "ngo.view",
     "reports.view",
   ],
-  [AdminRole.ADMIN]: [],
-  [AdminRole.VISA_OFFICER]: [],
-  [AdminRole.TOUR_MANAGER]: [],
-  [AdminRole.MODERATOR]: [],
 };
 
 function getPermissionsForRole(role: AdminRole): string[] {

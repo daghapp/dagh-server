@@ -197,7 +197,7 @@ export async function getItineraryByRequestId(
     }
     await prisma.tourRequest.update({
       where: { id: tourRequestId },
-      data: { paymentStatus: "SUCCESS", paymentId: "FREE_ITINERARY" },
+      data: { paymentStatus: "SUCCESS", paymentId: null, feeWaived: true },
     });
   }
 

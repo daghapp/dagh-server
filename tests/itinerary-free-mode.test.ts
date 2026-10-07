@@ -81,7 +81,7 @@ describe("Itinerary fee under free mode", () => {
       expect(status).not.toHaveBeenCalledWith(400);
       const body = json.mock.calls[0]?.[0];
 
-      expect(body.data.paymentId).toBe("FREE_ITINERARY");
+      expect(body.data.paymentId).toBeNull();
       expect(body.data.freeMode).toBe(true);
       expect(body.data.checkoutUrl).toBeNull();
 
@@ -89,7 +89,8 @@ describe("Itinerary fee under free mode", () => {
       // it must be SUCCESS or the itinerary stays locked.
       const row = await prisma.tourRequest.findUniqueOrThrow({ where: { id: requestId } });
       expect(row.paymentStatus).toBe("SUCCESS");
-      expect(row.paymentId).toBe("FREE_ITINERARY");
+      expect(row.paymentId).toBeNull();
+      expect(row.feeWaived).toBe(true);
     } finally {
       await setPayments(true);
     }
@@ -101,14 +102,12 @@ describe("Itinerary fee under free mode", () => {
 
     // No gateway credentials in test env, so Hubtel initialization fails. What
     // matters is that the request is NOT marked paid for free.
-    const { run, json } = call(requestId);
+    const { run } = call(requestId);
     await run();
-
-    const body = json.mock.calls[0]?.[0];
-    expect(body.data?.paymentId).not.toBe("FREE_ITINERARY");
 
     const row = await prisma.tourRequest.findUniqueOrThrow({ where: { id: requestId } });
     expect(row.paymentStatus).not.toBe("SUCCESS");
+    expect(row.feeWaived).toBe(false);
   });
 
   it("keeps the request paid after payments come back on", async () => {
@@ -125,7 +124,8 @@ describe("Itinerary fee under free mode", () => {
 
     const row = await prisma.tourRequest.findUniqueOrThrow({ where: { id: requestId } });
     expect(row.paymentStatus).toBe("SUCCESS");
-    expect(row.paymentId).toBe("FREE_ITINERARY");
+    expect(row.paymentId).toBeNull();
+    expect(row.feeWaived).toBe(true);
 
     // And the endpoint does not re-charge an already-paid request — a second
     // call must not reset it to PENDING, which would lock the user out of the
@@ -133,11 +133,13 @@ describe("Itinerary fee under free mode", () => {
     const second = call(requestId);
     await second.run();
     expect(second.json.mock.calls[0]?.[0].data.alreadyPaid).toBe(true);
-    expect(second.json.mock.calls[0]?.[0].data.paymentId).toBe("FREE_ITINERARY");
+    expect(second.json.mock.calls[0]?.[0].data.freeMode).toBe(true);
+    expect(second.json.mock.calls[0]?.[0].data.paymentId).toBeNull();
 
     const after = await prisma.tourRequest.findUniqueOrThrow({ where: { id: requestId } });
     expect(after.paymentStatus).toBe("SUCCESS");
-    expect(after.paymentId).toBe("FREE_ITINERARY");
+    expect(after.paymentId).toBeNull();
+    expect(after.feeWaived).toBe(true);
   });
 
   it("refuses a request belonging to another user", async () => {

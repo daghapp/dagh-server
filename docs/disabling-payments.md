@@ -244,10 +244,12 @@ locks the user out of the itinerary they were just promised, for the entire
 outage.
 
 So `POST /itinerary/:tourRequestId/payment` waives the fee explicitly while
-payments are off, writing `paymentStatus: "SUCCESS"` with
-`paymentId: "FREE_ITINERARY"` — the same shape the zero-fee path has always used
-(`itinerary.payment.controller.ts:50`). The response carries `freeMode: true` and
-`checkoutUrl: null` so the client can skip the redirect and say why.
+payments are off, writing `paymentStatus: "SUCCESS"`, `paymentId: null` and
+`feeWaived: true` — the same shape the zero-fee path has always used
+(`itinerary.payment.controller.ts:50`). The response carries `freeMode: true`,
+`paymentId: null` and `checkoutUrl: null` so the client can skip the redirect and
+say why. `paymentId` is left `null` (never a shared sentinel) because the column is
+unique and a reused marker would collide with "Unique constraint failed".
 
 The reasoning for waiving rather than blocking: the GHS 350/500 facilitation fee
 is **DAGh's own revenue** — it books to `Account_DAGh_Revenue` as
@@ -311,17 +313,20 @@ for. Handle the new value in any client switch on that field.
 | --- | --- | --- |
 | Membership plans | DAGh — access to the product | **Open** |
 | Itinerary facilitation | DAGh — `Account_DAGh_Revenue` | **Open** (waived, §4) |
-| Tour bookings | The tour operator | **Closed** |
+| Tour bookings | The tour operator (pass-through) | **Open** (waived — product decision) |
 | Visa-on-arrival | The government / agent | **Closed** |
 
-A pass-through fee is money DAGh never keeps, so there is no version of "free"
-that is not a mispricing — the app does not offer one. Those flows return the
-errors in §3 and cannot be completed while payments are off.
+The dividing line is normally *whose money is it*: DAGh's own fees are open
+(not charging them loses nothing but the revenue, and blocking them strands a
+feature the user is entitled to). Pass-through fees are money DAGh never keeps.
+Tour bookings are a pass-through, yet the product decision is to waive them while
+payments are off anyway — free mode still stands behind those users. Visa fees
+are the exception and stay closed: those flows return the errors in §3 and cannot
+be completed while payments are off.
 
-DAGh's own fees are different: not charging them loses nothing but the revenue,
-and blocking them strands a feature the user is entitled to. So the rule for
-adding a new paid feature is **decide whose money it is first.** If it is
-DAGh's, it must be reachable while payments are off.
+The rule when adding a new paid feature is **decide whose money it is first.**
+If it is DAGh's, it must be reachable while payments are off; a new pass-through
+must explicitly be confirmed as waived (like tours) or left closed (like visa).
 
 ## 4a. Why features go missing when payments are off
 

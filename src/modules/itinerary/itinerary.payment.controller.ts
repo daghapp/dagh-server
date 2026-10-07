@@ -24,6 +24,7 @@ export class ItineraryPaymentController {
           durationDays: true,
           paymentStatus: true,
           paymentId: true,
+          feeWaived: true,
         },
       });
 
@@ -39,7 +40,7 @@ export class ItineraryPaymentController {
       // call reset it to PENDING, which would lock the user out of the itinerary
       // they already generated (the service gate reads this same column).
       if (tourRequest.paymentStatus === "SUCCESS") {
-        const wasFree = tourRequest.paymentId === "FREE_ITINERARY";
+        const wasFree = tourRequest.feeWaived === true;
         return ok(
           res,
           {
@@ -72,22 +73,22 @@ export class ItineraryPaymentController {
       //
       // The facilitation fee is DAGh's own revenue (Account_DAGh_Revenue), not a
       // pass-through to an operator or government, so it is released rather than
-      // demanded. Visa fees and tour bookings are pass-throughs and stay closed
-      // (docs/disabling-payments.md §4).
+      // demanded. Tour bookings are waived too (product decision); visa fees are
+      // pass-throughs and stay closed (docs/disabling-payments.md §4).
       const paymentsOff = !(await isPaymentsEnabled());
       const feeWaived = amount === 0;
 
       if (paymentsOff || feeWaived) {
         await prisma.tourRequest.update({
           where: { id: tourRequest.id },
-          data: { paymentStatus: "SUCCESS", paymentId: "FREE_ITINERARY" },
+          data: { paymentStatus: "SUCCESS", paymentId: null, feeWaived: true },
         });
 
         return ok(
           res,
           {
             tourRequestId: tourRequest.id,
-            paymentId: "FREE_ITINERARY",
+            paymentId: null,
             checkoutUrl: null,
             checkoutId: null,
             clientReference: null,

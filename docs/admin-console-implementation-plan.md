@@ -76,8 +76,8 @@ Maps to Login + Admin Gateway register mockups.
 
 **Schema additions (minimal):**
 
-- `AdminDepartment` enum or string (`OPERATIONS`, `VISA`, `TOURS`, `FINANCE`, …)
-- `AdminRole` enum: e.g. `SUPER_ADMIN`, `VISA_OFFICER`, `TOUR_MANAGER`, `FINANCE`, `SUPPORT` (mockup “Select Level”)
+- `AdminDepartment` enum: `EXECUTIVE_MANAGEMENT`, `OPERATIONS_AND_MEMBERSHIP`, `FINANCE_AND_COMPLIANCE`, `TECHNICAL_SUPPORT`
+- `AdminRole` enum: `SUPER_ADMIN`, `OPERATIONS`, `FINANCE`, `SUPPORT` (mockup “Select Level”)
 - Store on `User` (nullable for non-admins) **or** separate `AdminProfile` 1:1
 
 **RBAC (v1):** middleware `requireAdminRole(...roles)` on sensitive routes; SUPER_ADMIN bypasses. Ship coarse roles first; fine-grained permissions later.

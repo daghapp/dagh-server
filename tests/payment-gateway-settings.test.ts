@@ -79,7 +79,7 @@ beforeAll(async () => {
       accountType: AccountType.ADMIN,
       authProvider: AuthProvider.EMAIL,
       adminProfile: {
-        create: { department: AdminDepartment.DIASPORA_AFFAIRS, role: AdminRole.SUPER_ADMIN },
+        create: { department: AdminDepartment.EXECUTIVE_MANAGEMENT, role: AdminRole.SUPER_ADMIN },
       },
     },
   });
@@ -93,7 +93,7 @@ beforeAll(async () => {
       accountType: AccountType.ADMIN,
       authProvider: AuthProvider.EMAIL,
       adminProfile: {
-        create: { department: AdminDepartment.FINANCE, role: AdminRole.FINANCE },
+        create: { department: AdminDepartment.FINANCE_AND_COMPLIANCE, role: AdminRole.FINANCE },
       },
     },
   });
