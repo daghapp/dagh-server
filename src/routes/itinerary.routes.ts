@@ -59,6 +59,14 @@ router.get("/sites", getTourSites);
  *                 type: integer
  *                 minimum: 1
  *                 maximum: 30
+ *               startRegion:
+ *                 type: string
+ *                 description: Hub the loop is anchored to (defaults to Central / Cape Coast)
+ *                 default: Central
+ *               allowAccraOvernight:
+ *                 type: boolean
+ *                 description: Opt in to more than two Greater Accra nights
+ *                 default: false
  *               relocationInterest:
  *                 type: boolean
  *               apartmentType:

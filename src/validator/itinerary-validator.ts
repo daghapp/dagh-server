@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { TourType, DayType, SiteCategory } from "../../generated/prisma/client.js";
+import { GHANA_REGIONS, DEFAULT_START_REGION } from "../helpers/itinerary-routing.js";
+
+const regionEnum = z.enum(GHANA_REGIONS, {
+  message: "startRegion must be a valid Ghanaian region",
+});
 
 export const createTourRequestSchema = z.object({
   tourSiteIds: z
@@ -16,6 +21,13 @@ export const createTourRequestSchema = z.object({
     .int({ message: "Duration must be a whole number of days" })
     .min(1, { message: "Tour must be at least 1 touring day" })
     .max(30, { message: "Tour cannot exceed 30 touring days" }),
+
+  // Hub the loop is anchored to. Defaults to Central Region (Cape Coast).
+  startRegion: regionEnum.optional().default(DEFAULT_START_REGION),
+
+  // Explicit opt-in to more than two Greater Accra nights. Off by default so the
+  // engine keeps Accra to the arrival/departure gateways and cuts urban lodging.
+  allowAccraOvernight: z.boolean().optional().default(false),
 
   relocationInterest: z.boolean().optional().default(false),
 
@@ -45,6 +57,8 @@ export interface CreateTourRequestBody {
   tourSiteIds: string[];
   tourType: TourType;
   durationDays: number; // touring days only
+  startRegion?: string;
+  allowAccraOvernight?: boolean;
   relocationInterest?: boolean;
 }
 
@@ -68,6 +82,14 @@ export interface ItineraryDaySiteResponse {
   site: TourSiteResponse;
 }
 
+export interface LocalProviderRecommendation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+}
+
 export interface DatingSocialBlockProfile {
   datingProfileId: string;
   userId: string;
@@ -87,7 +109,16 @@ export interface DatingSocialBlock {
 export interface ItineraryDayResponse {
   dayNumber: number;
   dayType: DayType;
+  // Descriptive, human-readable label, e.g.
+  // "Day 3: Canopy Walk & Coastal Heritage (Central Region)".
+  title: string | null;
+  // Primary region the day is anchored to.
+  region: string | null;
   sites: ItineraryDaySiteResponse[];
+  // Providers native to this day's region, assigned as the traveller crosses
+  // regional boundaries to cut idle transfer cost.
+  localAccommodation: LocalProviderRecommendation | null;
+  localTransport: LocalProviderRecommendation | null;
   socialBlocks: DatingSocialBlock[];
 }
 
@@ -108,6 +139,12 @@ export interface ItineraryResponse {
   feasibilityError: string | null;
   totalDays: number;
   dateCreated: Date;
+  // Ordered, de-duplicated region cascade actually traversed by the loop.
+  routeRegions: string[];
+  // Nights attributed to Greater Accra (surfaced for the cost limiter).
+  accraNights: number;
+  // Non-fatal advisories, e.g. the Accra night-cap breach.
+  warnings: string[];
   days: ItineraryDayResponse[];
 
   // Recommendations derived from the user's selected accommodation/transport preferences
@@ -167,6 +204,11 @@ export type ItineraryDayInput = {
   dayNumber: number;
   dayType: DayType;
   relocationRequired: boolean;
+  title?: string;
+  region?: string | null;
+  sites?: {
+    create: Array<{ tourSiteId: string; visitOrder: number }>;
+  };
 };
 
 export type CreateTourRequestInput = z.infer<typeof createTourRequestSchema> & { userId: string };

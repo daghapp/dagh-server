@@ -1033,6 +1033,13 @@ model TourRequest {
   durationDays       Int // touring days only (excl. prep + departure)
   relocationInterest Boolean  @default(false) // saved, not acted on yet
 
+  // Dynamic loop-routing hub chosen by the user (e.g. "Central" for Cape Coast).
+  // NULL means the engine falls back to the default hub (Central Region).
+  startRegion         String?
+  // Explicit opt-in to more than two Greater Accra nights. The engine otherwise
+  // confines Accra to the arrival/departure gateways to cut urban lodging cost.
+  allowAccraOvernight Boolean @default(false)
+
   status RequestStatus @default(PENDING)
 
   apartmentType        ApartmentType?
@@ -1085,6 +1092,13 @@ model Itinerary {
   isFeasible       Boolean
   feasibilityError String? // populated if validation fails
   totalDays        Int // durationDays + 2 (prep + departure)
+  // Ordered region cascade the loop actually traverses, e.g.
+  // ["Central", "Ashanti", "Volta", "Greater Accra"]. Regions never repeat.
+  routeRegions     String[] @default([])
+  // Nights attributed to Greater Accra, surfaced for the cost limiter.
+  accraNights      Int      @default(0)
+  // Non-fatal advisories (e.g. Accra night-cap breach) rendered with the plan.
+  warnings         String[] @default([])
   createdAt        DateTime @default(now())
 
   tourRequest TourRequest    @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
@@ -1103,6 +1117,10 @@ model ItineraryDay {
   dayType            DayType
   relocationRequired Boolean @default(false) // saved, not acted on yet
   suggestedHotel     String? // saved, not acted on yet
+  // Descriptive day label, e.g. "Canopy Walk & Coastal Heritage (Central Region)".
+  title              String?
+  // Primary region the day is anchored to — drives day naming + local sourcing.
+  region             String?
 
   itinerary Itinerary          @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
   sites     ItineraryDaySite[]

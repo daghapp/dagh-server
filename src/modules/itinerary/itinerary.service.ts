@@ -1,13 +1,5 @@
-// NOTE: PrismaClient and enums are imported from @prisma/client.
-// Run `npx prisma generate` after connecting your database to resolve these imports.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — generated after `prisma generate`
-// import {
-//   haversineDistance,
-//   maxPairwiseDistance,
-//   ORIGIN,
-//   MAX_DAILY_DISTANCE_KM,
-// } from "../../utils/haversine";
+// NOTE: PrismaClient and enums are imported from the generated client.
+// Run `npx prisma generate` after changing the schema to resolve these imports.
 
 import { DayType, SiteCategory } from "../../../generated/prisma/client.js";
 import type {
@@ -25,10 +17,22 @@ import {
   ORIGIN,
   MAX_DAILY_DISTANCE_KM,
 } from "../../helpers/haversine.js";
+import {
+  ACCRA_REGION,
+  DEFAULT_START_REGION,
+  MAX_ACCRA_NIGHTS,
+  applyAccraGatewayConstraint,
+  buildRegionDayGroups,
+  deriveDayTheme,
+  findRegionReentries,
+  formatDayTitle,
+  orderRegionsByLoop,
+  regionCentroid,
+  type RegionDayGroup,
+  type RoutableSite,
+} from "../../helpers/itinerary-routing.js";
 import type {
   SiteWithCoords,
-  DayGroup,
-  FeasibilityResult,
   CreateTourResponse,
   ItineraryResponse,
   CreateTourRequestInput,
@@ -37,6 +41,11 @@ import type {
 } from "../../validator/itinerary-validator.js";
 
 const MAX_SITES_PER_DAY = 3;
+
+// Providers are considered "native" to a day's zone within this radius. It is
+// generous because rural regions (Volta, Savannah) have sparse verified supply,
+// and a hotel 60km out still beats shipping the traveller back to Accra.
+const LOCAL_PROVIDER_RADIUS_KM = 75;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC: Get all available tour sites (for frontend listing)
@@ -48,7 +57,7 @@ export async function getAllTourSites() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC: Create a tour request and generate its itinerary
+// PUBLIC: Create a tour request (itinerary generated lazily after payment)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function createTourRequest(
   input: CreateTourRequestInput,
@@ -58,8 +67,9 @@ export async function createTourRequest(
     tourSiteIds,
     tourType,
     durationDays,
+    startRegion,
+    allowAccraOvernight,
     relocationInterest,
-
     apartmentType,
     transportType,
     companionInterest,
@@ -82,48 +92,25 @@ export async function createTourRequest(
     };
   }
 
-  // ── Step 2: Attach distance from origin to each site ──────────────────────
-  const sites: SiteWithCoords[] = rawSites.map(
-    (site: {
-      id: string;
-      name: string;
-      region: string;
-      latitude: number;
-      longitude: number;
-      description: string;
-      imageUrl: string | null;
-      category: SiteCategory;
-    }) => ({
-      ...site,
-      distanceFromOrigin: haversineDistance(ORIGIN, {
-        latitude: site.latitude,
-        longitude: site.longitude,
-      }),
-    }),
-  );
+  const sites = toSiteWithCoords(rawSites);
 
-  // ── Step 3: Sort sites by distance from origin (closest first) ─────────────
-  sites.sort((a, b) => a.distanceFromOrigin - b.distanceFromOrigin);
+  // ── Step 2: Plan the contiguous regional loop from the chosen hub ──────────
+  const plan = planItinerary(sites, startRegion, durationDays, allowAccraOvernight);
 
-  // ── Step 4: Feasibility checks ────────────────────────────────────────────
-  const feasibility = checkFeasibility(sites, durationDays);
-
-  // ── Step 5: Save tour request to DB (NO itinerary generation here) ──────
+  // ── Step 3: Save tour request to DB (NO itinerary generation here) ─────────
   const tourRequest = await prisma.tourRequest.create({
     data: {
       userId: userId,
       tourType,
       durationDays,
+      startRegion,
+      allowAccraOvernight: allowAccraOvernight ?? false,
       relocationInterest: relocationInterest ?? false,
-
       apartmentType: apartmentType ?? undefined,
-
       transportType: transportType ?? undefined,
       companionInterest: companionInterest ?? false,
       casualDatingInterest: casualDatingInterest ?? false,
-
-      status: feasibility.feasible ? "CONFIRMED" : "FAILED",
-
+      status: plan.feasible ? "CONFIRMED" : "FAILED",
       selectedSites: {
         create: tourSiteIds.map((id: string) => ({ tourSiteId: id })),
       },
@@ -131,15 +118,15 @@ export async function createTourRequest(
   });
 
   // If not feasible: keep behavior consistent: return 422 from controller path.
-  if (!feasibility.feasible) {
+  if (!plan.feasible) {
     return {
       success: false,
-      message: feasibility.error!,
+      message: plan.error!,
       data: {
         tourRequestId: tourRequest.id,
         itinerary: null,
       },
-      error: feasibility.error ?? undefined,
+      error: plan.error ?? undefined,
     };
   }
 
@@ -156,7 +143,7 @@ export async function createTourRequest(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC: Get a previously generated itinerary or generate if payment is made using tour request ID
+// PUBLIC: Get a previously generated itinerary or generate if payment is made
 // ─────────────────────────────────────────────────────────────────────────────
 export async function getItineraryByRequestId(
   tourRequestId: string,
@@ -169,6 +156,8 @@ export async function getItineraryByRequestId(
       id: true,
       userId: true,
       durationDays: true,
+      startRegion: true,
+      allowAccraOvernight: true,
       paymentStatus: true,
       relocationInterest: true,
       apartmentType: true,
@@ -217,20 +206,15 @@ export async function getItineraryByRequestId(
     },
   });
 
+  const requestParams = {
+    apartmentType: tourRequest.apartmentType ?? null,
+    transportType: tourRequest.transportType ?? null,
+    itinerarySites: tourRequest.selectedSites.map((rs) => rs.tourSite).map(toCoordRef),
+    relocationInterest: !!tourRequest.relocationInterest,
+  };
+
   if (existing) {
-    const availableParams = {
-      apartmentType: tourRequest.apartmentType ?? null,
-      transportType: tourRequest.transportType ?? null,
-      itinerarySites: tourRequest.selectedSites
-        .map((rs) => rs.tourSite)
-        .map((s) => ({
-          id: s.id,
-          latitude: s.latitude,
-          longitude: s.longitude,
-        })),
-      relocationInterest: !!tourRequest.relocationInterest,
-    };
-    return mapItineraryToResponseWithRecommendations(existing, availableParams);
+    return mapItineraryToResponseWithRecommendations(existing, requestParams);
   }
 
   // Otherwise generate itinerary lazily now that payment succeeded
@@ -239,50 +223,29 @@ export async function getItineraryByRequestId(
     throw new Error("NO_SITES_FOR_ITINERARY");
   }
 
-  const sites: SiteWithCoords[] = rawSites.map(
-    (site: {
-      id: string;
-      name: string;
-      region: string;
-      latitude: number;
-      longitude: number;
-      description: string;
-      imageUrl: string | null;
-      category: SiteCategory;
-    }) => ({
-      ...site,
-      distanceFromOrigin: haversineDistance(ORIGIN, {
-        latitude: site.latitude,
-        longitude: site.longitude,
-      }),
-    }),
-  );
-
-  // Sort sites by distance from origin (closest first)
-  sites.sort((a, b) => a.distanceFromOrigin - b.distanceFromOrigin);
-
+  const sites = toSiteWithCoords(rawSites);
   const durationDays = tourRequest.durationDays;
   const totalDays = durationDays + 2;
+  const startRegion = tourRequest.startRegion ?? DEFAULT_START_REGION;
 
-  const feasibility = checkFeasibility(sites, durationDays);
+  const plan = planItinerary(sites, startRegion, durationDays, tourRequest.allowAccraOvernight);
 
   // If not feasible, still persist itinerary row for traceability
-  if (!feasibility.feasible) {
-    // Persist trace, but do not return an itinerary structure to caller
+  if (!plan.feasible) {
     await prisma.itinerary.create({
       data: {
         tourRequestId: tourRequestId,
         isFeasible: false,
-        feasibilityError: feasibility.error,
+        feasibilityError: plan.error,
         totalDays,
+        routeRegions: plan.orderedRegions,
+        accraNights: plan.accraNights,
+        warnings: plan.warnings,
       },
     });
 
     throw new Error("ITINERARY_NOT_FEASIBLE");
   }
-
-  // Generate itinerary
-  const dayGroups = buildDayGroups(sites);
 
   const itinerary = await prisma.itinerary.create({
     data: {
@@ -290,8 +253,11 @@ export async function getItineraryByRequestId(
       isFeasible: true,
       feasibilityError: null,
       totalDays,
+      routeRegions: plan.orderedRegions,
+      accraNights: plan.accraNights,
+      warnings: plan.warnings,
       days: {
-        create: buildItineraryDaysPayload(dayGroups, durationDays),
+        create: buildItineraryDaysPayload(plan, durationDays),
       },
     },
     include: {
@@ -307,25 +273,11 @@ export async function getItineraryByRequestId(
     },
   });
 
-  const availableParams = {
-    apartmentType: tourRequest.apartmentType ?? null,
-    transportType: tourRequest.transportType ?? null,
-    itinerarySites: tourRequest.selectedSites
-      .map((rs) => rs.tourSite)
-      .map((s) => ({
-        id: s.id,
-        latitude: s.latitude,
-        longitude: s.longitude,
-      })),
-    relocationInterest: !!tourRequest.relocationInterest,
-  };
-
-  return mapItineraryToResponseWithRecommendations(itinerary, availableParams);
+  return mapItineraryToResponseWithRecommendations(itinerary, requestParams);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC: Get all itinerary requests for the authenticated user
-// (Payment gating is handled by itinerary GET endpoint. This lists requests only.)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function getTourRequestsByUserId(userId: string) {
   return prisma.tourRequest.findMany({
@@ -341,8 +293,6 @@ export async function getTourRequestsByUserId(userId: string) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOUR → DATING: select recommended dating profiles to merge into the itinerary
-// as social / leisure blocks. Passing candidate *user* ids resolves each user's
-// dating profile and persists the selection against the tour request.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function selectDatingProfilesForTour(
   tourRequestId: string,
@@ -383,19 +333,16 @@ export async function selectDatingProfilesForTour(
     ),
   );
 
-  // Keep output ordered to match the requested ids.
   const byUser = new Map(profiles.map((p) => [p.userId, p.id]));
   const createdByProfile = new Map(created.map((c) => [c.datingProfileId, c.createdAt]));
 
-  const selections = ids
+  return ids
     .filter((uid) => byUser.has(uid))
     .map((uid) => ({
       userId: uid,
       datingProfileId: byUser.get(uid)!,
       selectedAt: createdByProfile.get(byUser.get(uid)!)!,
     }));
-
-  return selections;
 }
 
 export async function getDatingSelectionsForTour(tourRequestId: string) {
@@ -419,12 +366,66 @@ export async function getDatingSelectionsForTour(tourRequestId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INTERNAL: Feasibility checks
+// INTERNAL: Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
-function checkFeasibility(sites: SiteWithCoords[], durationDays: number): FeasibilityResult {
-  const maxAllowedSites = durationDays * MAX_SITES_PER_DAY;
-  const simulatedGroups = buildDayGroups(sites);
+function toSiteWithCoords(
+  sites: Array<{
+    id: string;
+    name: string;
+    region: string;
+    latitude: number;
+    longitude: number;
+    description: string;
+    imageUrl: string | null;
+    category: SiteCategory;
+  }>,
+): SiteWithCoords[] {
+  return sites.map((site) => ({
+    ...site,
+    distanceFromOrigin: haversineDistance(ORIGIN, {
+      latitude: site.latitude,
+      longitude: site.longitude,
+    }),
+  }));
+}
+
+function toCoordRef(site: { id: string; latitude: number; longitude: number }) {
+  return { id: site.id, latitude: site.latitude, longitude: site.longitude };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERNAL: Plan the loop-based itinerary
+// ─────────────────────────────────────────────────────────────────────────────
+export interface ItineraryPlan {
+  feasible: boolean;
+  error: string | null;
+  orderedRegions: string[];
+  dayGroups: RegionDayGroup[];
+  accraNights: number;
+  warnings: string[];
+}
+
+/**
+ * Builds the full route plan:
+ *   1. Cap the site count against the touring-day budget.
+ *   2. Order regions into a crossing-free loop anchored at the hub.
+ *   3. Force Greater Accra onto a gateway unless the traveller opted in.
+ *   4. Group each region's sites into contiguous touring days.
+ *   5. Enforce the Accra night cap and collect advisories.
+ *
+ * Exported for unit testing of the routing/limiter rules.
+ */
+export function planItinerary(
+  sites: RoutableSite[],
+  startRegion: string,
+  durationDays: number,
+  allowAccraOvernight: boolean,
+): ItineraryPlan {
+  const hub = startRegion || DEFAULT_START_REGION;
+  const warnings: string[] = [];
+
   // ── Check 1: Capacity ─────────────────────────────────────────────────────
+  const maxAllowedSites = durationDays * MAX_SITES_PER_DAY;
   if (sites.length > maxAllowedSites) {
     return {
       feasible: false,
@@ -433,16 +434,18 @@ function checkFeasibility(sites: SiteWithCoords[], durationDays: number): Feasib
         `day(s). A maximum of ${MAX_SITES_PER_DAY} sites can be visited per day. ` +
         `Maximum allowed for your trip is ${maxAllowedSites} sites. ` +
         `Please add more days or reduce your selected sites.`,
+      orderedRegions: [],
+      dayGroups: [],
+      accraNights: 0,
+      warnings,
     };
   }
 
-  // ── Check 2: Geographic feasibility ──────────────────────────────────────
+  // ── Check 2: Single-day geographic feasibility ────────────────────────────
   if (durationDays === 1) {
-    // All sites must be within 250km of each other for a single day tour
     const maxDist = maxPairwiseDistance(
       sites.map((s) => ({ latitude: s.latitude, longitude: s.longitude })),
     );
-
     if (maxDist > MAX_DAILY_DISTANCE_KM) {
       return {
         feasible: false,
@@ -450,90 +453,165 @@ function checkFeasibility(sites: SiteWithCoords[], durationDays: number): Feasib
           `Your selected locations are too far apart to complete in ${durationDays} touring day(s). ` +
           `The furthest two locations are approximately ${Math.round(maxDist)}km apart. ` +
           `Maximum travel distance between any two sites in a single day is ${MAX_DAILY_DISTANCE_KM}km (~3 hours).`,
+        orderedRegions: [],
+        dayGroups: [],
+        accraNights: 0,
+        warnings,
       };
-    }
-  } else {
-    // Simulate grouping and check each group for internal distance violations
-    // const simulatedGroups = buildDayGroups(sites);
-    for (let i = 0; i < simulatedGroups.length; i++) {
-      const group = simulatedGroups[i];
-      if (group.sites.length < 2) continue;
-
-      const maxDist = maxPairwiseDistance(
-        group.sites.map((s) => ({ latitude: s.latitude, longitude: s.longitude })),
-      );
-
-      if (maxDist > MAX_DAILY_DISTANCE_KM) {
-        return {
-          feasible: false,
-          error:
-            `Touring day ${i + 1} contains locations that are too far apart ` +
-            `(~${Math.round(maxDist)}km). ` +
-            `Maximum travel distance between any two sites in a single day is ${MAX_DAILY_DISTANCE_KM}km (~3 hours). ` +
-            `Try adding more touring days so these locations can be split across days.`,
-        };
-      }
     }
   }
 
-  const requiredDays = simulatedGroups.length;
+  // ── Step 2: Region cascade (convex-hull loop from the hub) ────────────────
+  const baseOrder = orderRegionsByLoop(hub, sites);
+  const orderedRegions = applyAccraGatewayConstraint(baseOrder, hub, allowAccraOvernight);
+
+  // ── Step 3: Contiguous regional day groups ────────────────────────────────
+  const dayGroups = buildRegionDayGroups(orderedRegions, sites, {
+    maxPerDay: MAX_SITES_PER_DAY,
+    maxKm: MAX_DAILY_DISTANCE_KM,
+  });
+
+  // Zero-backtracking guard — this is structural, so a breach is a bug.
+  const reentries = findRegionReentries(dayGroups.map((g) => g.region));
+  if (reentries.length > 0) {
+    return {
+      feasible: false,
+      error: `Routing error: regions were re-entered mid-trip (${reentries.join(", ")}). Please contact support.`,
+      orderedRegions,
+      dayGroups,
+      accraNights: 0,
+      warnings,
+    };
+  }
+
+  // ── Check 3: Enough touring days for the contiguous layout ────────────────
+  const requiredDays = dayGroups.length;
   if (requiredDays > durationDays) {
     return {
       feasible: false,
       error:
         `Your selected locations are too geographically spread out to fit into ${durationDays} touring day(s). ` +
-        `Based on the distances between your chosen sites, you would need at least ` +
-        `${requiredDays} touring day(s) to complete this itinerary. ` +
+        `Each region is explored as one continuous block, so this route needs at least ` +
+        `${requiredDays} touring day(s). ` +
         `Please increase your trip duration to ${requiredDays} day(s) or more.`,
+      orderedRegions,
+      dayGroups,
+      accraNights: 0,
+      warnings,
     };
   }
 
-  return { feasible: true, error: null };
-}
+  // ── Step 4: Greater Accra cost limiter ────────────────────────────────────
+  const accraTouringDays = dayGroups.filter((g) => g.region === ACCRA_REGION).length;
+  // The preparation night (day 1) is spent at the hub; only counts as Accra when
+  // the hub itself is Accra. The departure day carries no overnight.
+  const accraNights = accraTouringDays + (hub === ACCRA_REGION ? 1 : 0);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// INTERNAL: Group sites into days (max 3 per day, closest to origin first)
-// Sites must already be sorted by distanceFromOrigin ASC before calling this.
-// ─────────────────────────────────────────────────────────────────────────────
-function buildDayGroups(sortedSites: SiteWithCoords[]): DayGroup[] {
-  const groups: DayGroup[] = [];
-  let currentGroup: SiteWithCoords[] = [];
-
-  for (const site of sortedSites) {
-    if (currentGroup.length === 0) {
-      currentGroup.push(site);
-      continue;
+  if (accraNights > MAX_ACCRA_NIGHTS) {
+    const message =
+      `This itinerary spends ${accraNights} nights in Greater Accra, above the ` +
+      `${MAX_ACCRA_NIGHTS}-night cap meant to avoid expensive urban lodging. ` +
+      `Accra is otherwise confined to the arrival/departure gateway.`;
+    if (!allowAccraOvernight) {
+      return {
+        feasible: false,
+        error:
+          `${message} Reduce your Greater Accra selection or set ` +
+          `"allowAccraOvernight": true to opt in explicitly.`,
+        orderedRegions,
+        dayGroups,
+        accraNights,
+        warnings,
+      };
     }
-
-    // Check if adding this site to the current group would exceed distance threshold
-    const wouldExceed = currentGroup.some(
-      (existing) =>
-        haversineDistance(
-          { latitude: existing.latitude, longitude: existing.longitude },
-          { latitude: site.latitude, longitude: site.longitude },
-        ) > MAX_DAILY_DISTANCE_KM,
-    );
-
-    if (wouldExceed || currentGroup.length >= MAX_SITES_PER_DAY) {
-      groups.push({ sites: currentGroup });
-      currentGroup = [site];
-    } else {
-      currentGroup.push(site);
-    }
+    warnings.push(message);
   }
 
-  if (currentGroup.length > 0) {
-    groups.push({ sites: currentGroup });
-  }
-
-  return groups;
+  return {
+    feasible: true,
+    error: null,
+    orderedRegions,
+    dayGroups,
+    accraNights,
+    warnings,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL: Build the Prisma nested create payload for itinerary days
-// Day 1     = PREPARATION  (no sites)
-// Days 2..N-1 = TOURING    (up to 3 sites per day, closest to furthest)
-// Day N     = DEPARTURE    (no sites)
+// Day 1        = PREPARATION  (hub arrival / orientation)
+// Days 2..N-1  = TOURING      (region-contiguous, up to 3 sites per day)
+// Day N        = DEPARTURE    (from the final region)
+// ─────────────────────────────────────────────────────────────────────────────
+export function buildItineraryDaysPayload(
+  plan: ItineraryPlan,
+  durationDays: number,
+): ItineraryDayInput[] {
+  const totalDays = durationDays + 2;
+  const days: ItineraryDayInput[] = [];
+  const hub = plan.orderedRegions[0] ?? DEFAULT_START_REGION;
+  const finalRegion = plan.orderedRegions[plan.orderedRegions.length - 1] ?? hub;
+
+  // Day 1 — Preparation / arrival at the chosen hub
+  days.push({
+    dayNumber: 1,
+    dayType: DayType.PREPARATION,
+    relocationRequired: false,
+    region: hub,
+    title: formatDayTitle(1, deriveDayTheme({ dayType: "PREPARATION", region: hub })),
+  });
+
+  // Touring days — one contiguous region per day
+  plan.dayGroups.forEach((group, index) => {
+    const dayNumber = index + 2;
+    days.push({
+      dayNumber,
+      dayType: DayType.TOURING,
+      relocationRequired: false,
+      region: group.region,
+      title: formatDayTitle(
+        dayNumber,
+        deriveDayTheme({ dayType: "TOURING", region: group.region, sites: group.sites }),
+      ),
+      sites: {
+        create: group.sites.map((site, siteIndex) => ({
+          tourSiteId: site.id,
+          visitOrder: siteIndex + 1,
+        })),
+      },
+    });
+  });
+
+  // Spare touring days stay in the final region (e.g. selected 2 sites for a
+  // 4-day tour). Kept region-anchored so day titles remain meaningful.
+  for (let i = plan.dayGroups.length; i < durationDays; i++) {
+    const dayNumber = i + 2;
+    days.push({
+      dayNumber,
+      dayType: DayType.TOURING,
+      relocationRequired: false,
+      region: finalRegion,
+      title: formatDayTitle(
+        dayNumber,
+        deriveDayTheme({ dayType: "TOURING", region: finalRegion, sites: [] }),
+      ),
+    });
+  }
+
+  // Last day — Departure from the final region of the loop
+  days.push({
+    dayNumber: totalDays,
+    dayType: DayType.DEPARTURE,
+    relocationRequired: false,
+    region: finalRegion,
+    title: formatDayTitle(totalDays, deriveDayTheme({ dayType: "DEPARTURE", region: finalRegion })),
+  });
+
+  return days;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERNAL: Response mapping + localized provider provisioning
 // ─────────────────────────────────────────────────────────────────────────────
 type ItineraryWithDays = PrismaItinerary & {
   days: (PrismaItineraryDay & {
@@ -549,14 +627,25 @@ type ProviderRecommendation = {
   distanceKm: number;
 };
 
-type AccommodationRecommendation = {
+type AccommodationRecommendation = ProviderRecommendation & {
+  apartmentType: ApartmentType | null;
+};
+
+interface RawHotelProvider {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
   apartmentType: ApartmentType | null;
-  distanceKm: number;
-};
+}
+
+interface RawTransportProvider {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  transportType: string | null;
+}
 
 async function mapItineraryToResponseWithRecommendations(
   itinerary: ItineraryWithDays,
@@ -567,41 +656,42 @@ async function mapItineraryToResponseWithRecommendations(
     relocationInterest: boolean;
   },
 ): Promise<ItineraryResponse> {
-  const available_hotels = (
-    await getAvailableHotels(params.apartmentType, params.itinerarySites)
-  ).map((h) => ({
-    ...h,
-    region: undefined as string | undefined,
-    imageUrl: undefined as string | null | undefined,
-  }));
-  const available_transports = (
-    await getAvailableTransports(params.transportType, params.itinerarySites)
-  ).map((t) => ({
-    ...t,
-    region: undefined as string | undefined,
-    imageUrl: undefined as string | null | undefined,
-  }));
+  // Load verified supply once and allocate it in-memory. Previously each day /
+  // site triggered its own findMany, which scaled with the itinerary length.
+  const [hotelProviders, transportProviders] = await Promise.all([
+    loadHotelProviders(),
+    loadTransportProviders(),
+  ]);
 
-  // If relocationInterest is enabled, attach availableAccomodation per itinerary touring site.
-  // We resolve the closest hotel/provider within 30km to each site.
+  const available_hotels = nearestProviders(hotelProviders, params.itinerarySites, {
+    filter: (h) => !params.apartmentType || h.apartmentType === params.apartmentType,
+    limit: 3,
+  }).map(toProviderRecommendation);
+
+  const available_transports = nearestProviders(transportProviders, params.itinerarySites, {
+    filter: (t) => !params.transportType || t.transportType === params.transportType,
+    limit: 3,
+  }).map(toProviderRecommendation);
+
+  // If relocationInterest is enabled, attach availableAccomodation per itinerary
+  // touring site, resolved to the closest provider within 30km.
   const shouldAttachRelocation = !!params.relocationInterest;
-
   const bestRelocationsByDaySite: Record<string, AccommodationRecommendation | null> = {};
   if (shouldAttachRelocation) {
-    const locationsToResolve = params.itinerarySites;
-    for (const site of locationsToResolve) {
-      bestRelocationsByDaySite[site.id] = await getClosestAccommodationWithin30km(
-        params.apartmentType,
-        site.latitude,
-        site.longitude,
-        /*maxKm*/ 30,
-      );
+    for (const site of params.itinerarySites) {
+      const [best] = nearestProviders(hotelProviders, [site], {
+        filter: (h) => !params.apartmentType || h.apartmentType === params.apartmentType,
+        maxKm: 30,
+        limit: 1,
+      });
+      bestRelocationsByDaySite[site.id] = best
+        ? { ...toProviderRecommendation(best), apartmentType: best.apartmentType }
+        : null;
     }
   }
 
-  // Tour → dating: merge the user's selected dating profiles into the itinerary
-  // as social / leisure blocks, one per touring day (cycled if more than the
-  // number of touring days).
+  // Tour → dating: merge selected dating profiles as social / leisure blocks,
+  // one per touring day (cycled if there are more profiles than touring days).
   const datingSelections = await getDatingSelectionsForTour(itinerary.tourRequestId);
   const touringDays = (itinerary.days ?? []).filter((d) => d.dayType === DayType.TOURING);
 
@@ -635,39 +725,70 @@ async function mapItineraryToResponseWithRecommendations(
     feasibilityError: itinerary.feasibilityError,
     totalDays: itinerary.totalDays,
     dateCreated: itinerary.createdAt,
-    days: (itinerary.days ?? []).map((day) => ({
-      dayNumber: day.dayNumber,
-      dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
-      sites: (day.sites ?? []).map((ds) => {
-        const touringSiteId = ds.tourSite?.id ?? ds.tourSiteId;
-        const availableAccomodation = shouldAttachRelocation
-          ? (bestRelocationsByDaySite[String(touringSiteId)] ?? null)
-          : null;
+    routeRegions: itinerary.routeRegions ?? [],
+    accraNights: itinerary.accraNights ?? 0,
+    warnings: itinerary.warnings ?? [],
+    days: (itinerary.days ?? []).map((day) => {
+      const dayAnchors = (day.sites ?? []).map((ds) => ({
+        latitude: ds.tourSite.latitude,
+        longitude: ds.tourSite.longitude,
+      }));
+      // Empty / spare days still resolve local supply from the region's centre.
+      const anchors = dayAnchors.length > 0 ? dayAnchors : [regionCentroid(day.region ?? "", [])];
 
-        return {
-          visitOrder: ds.visitOrder,
-          site: {
-            id: ds.tourSite.id,
-            name: ds.tourSite.name,
-            region: ds.tourSite.region,
-            latitude: ds.tourSite.latitude,
-            longitude: ds.tourSite.longitude,
-            description: ds.tourSite.description,
-            imageUrl: ds.tourSite.imageUrl,
-            category: ds.tourSite.category as
-              "NATURE" | "CULTURAL" | "HISTORICAL" | "BEACH" | "WILDLIFE" | "RELIGIOUS" | "SCENIC",
-          },
-          availableAccomodation,
-        };
-      }),
-      // Dating selections merged as social / leisure blocks for this day.
-      socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
-    })),
+      const [localHotel] = nearestProviders(hotelProviders, anchors, {
+        filter: (h) => !params.apartmentType || h.apartmentType === params.apartmentType,
+        maxKm: LOCAL_PROVIDER_RADIUS_KM,
+        limit: 1,
+      });
+      const [localTransport] = nearestProviders(transportProviders, anchors, {
+        filter: (t) => !params.transportType || t.transportType === params.transportType,
+        maxKm: LOCAL_PROVIDER_RADIUS_KM,
+        limit: 1,
+      });
+
+      return {
+        dayNumber: day.dayNumber,
+        dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
+        title: day.title ?? null,
+        region: day.region ?? null,
+        sites: (day.sites ?? []).map((ds) => {
+          const touringSiteId = ds.tourSite?.id ?? ds.tourSiteId;
+          const availableAccomodation = shouldAttachRelocation
+            ? (bestRelocationsByDaySite[String(touringSiteId)] ?? null)
+            : null;
+
+          return {
+            visitOrder: ds.visitOrder,
+            site: {
+              id: ds.tourSite.id,
+              name: ds.tourSite.name,
+              region: ds.tourSite.region,
+              latitude: ds.tourSite.latitude,
+              longitude: ds.tourSite.longitude,
+              description: ds.tourSite.description,
+              imageUrl: ds.tourSite.imageUrl,
+              category: ds.tourSite.category as
+                | "NATURE"
+                | "CULTURAL"
+                | "HISTORICAL"
+                | "BEACH"
+                | "WILDLIFE"
+                | "RELIGIOUS"
+                | "SCENIC",
+            },
+            availableAccomodation,
+          };
+        }),
+        localAccommodation: localHotel ? toProviderRecommendation(localHotel) : null,
+        localTransport: localTransport ? toProviderRecommendation(localTransport) : null,
+        socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
+      };
+    }),
 
     available_hotels,
     available_transports,
 
-    // Flat list of selected dating profiles for convenient UI rendering.
     datingSelections: datingSelections.map((sel) => ({
       datingProfileId: sel.datingProfileId,
       userId: sel.datingProfile.user.id,
@@ -682,189 +803,71 @@ async function mapItineraryToResponseWithRecommendations(
   };
 }
 
-async function getAvailableHotels(
-  apartmentType: string | null,
-  itinerarySites: Array<{ id: string; latitude: number; longitude: number }>,
-) {
-  // Only search among providers that have a hotel row.
-  // If apartmentType is provided, match that. Otherwise match any apartment_type.
-  const hotels = await prisma.provider.findMany({
-    where: {
-      verification_status: true,
-      hotel: { isNot: null },
-    },
+function toProviderRecommendation(provider: ProviderRecommendation): ProviderRecommendation {
+  return {
+    id: provider.id,
+    name: provider.name,
+    latitude: provider.latitude,
+    longitude: provider.longitude,
+    distanceKm: provider.distanceKm,
+  };
+}
+
+/**
+ * Closest provider to any of the given anchor points, optionally filtered and
+ * capped by radius. Pure (operates on preloaded supply) and shared by the global
+ * recommendation lists, the per-day local allocation, and relocation lookups.
+ */
+function nearestProviders<T extends { latitude: number; longitude: number }>(
+  providers: T[],
+  anchors: Array<{ latitude: number; longitude: number }>,
+  opts: { maxKm?: number; limit?: number; filter?: (p: T) => boolean } = {},
+): Array<T & { distanceKm: number }> {
+  if (anchors.length === 0) return [];
+  const { maxKm = Number.POSITIVE_INFINITY, limit = Number.POSITIVE_INFINITY, filter } = opts;
+
+  const scored = providers
+    .filter((p) => (filter ? filter(p) : true))
+    .map((p) => ({
+      ...p,
+      distanceKm: Math.min(...anchors.map((a) => haversineDistance(a, p))),
+    }))
+    .filter((p) => p.distanceKm <= maxKm)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  return Number.isFinite(limit) ? scored.slice(0, limit) : scored;
+}
+
+async function loadHotelProviders(): Promise<RawHotelProvider[]> {
+  const providers = await prisma.provider.findMany({
+    where: { verification_status: true, hotel: { isNot: null } },
     include: { hotel: true },
   });
 
-  const filtered = hotels
-    .map((p) => {
-      const hotelRow = p.hotel;
-      if (!hotelRow) return null;
-
-      // Find closest distance from provider hotel to ANY itinerary site.
-      const distanceKm = Math.min(
-        ...itinerarySites.map((s) =>
-          haversineDistance(
-            { latitude: s.latitude, longitude: s.longitude },
-            { latitude: p.location_lat, longitude: p.location_lng },
-          ),
-        ),
-      );
-
-      // Filter by apartmentType when provided.
-      if (apartmentType && hotelRow.apartment_type !== apartmentType) {
-        return null;
-      }
-
-      return {
-        id: p.provider_id,
-        name: p.display_name,
-        latitude: p.location_lat,
-        longitude: p.location_lng,
-        distanceKm,
-      };
-    })
-    .filter((item): item is ProviderRecommendation => item !== null);
-
-  return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);
+  return providers
+    .filter((p) => !!p.hotel)
+    .map((p) => ({
+      id: p.provider_id,
+      name: p.display_name,
+      latitude: p.location_lat,
+      longitude: p.location_lng,
+      apartmentType: p.hotel!.apartment_type,
+    }));
 }
 
-async function getClosestAccommodationWithin30km(
-  apartmentType: string | null,
-  siteLatitude: number,
-  siteLongitude: number,
-  maxKm: number,
-) {
-  const hotels = await prisma.provider.findMany({
-    where: {
-      verification_status: true,
-      hotel: { isNot: null },
-    },
-    include: { hotel: true },
-  });
-
-  const within = hotels
-    .map((p) => {
-      const hotelRow = p.hotel;
-      if (!hotelRow) return null;
-      if (apartmentType && hotelRow.apartment_type !== apartmentType) return null;
-
-      const distanceKm = haversineDistance(
-        { latitude: siteLatitude, longitude: siteLongitude },
-        { latitude: p.location_lat, longitude: p.location_lng },
-      );
-
-      if (distanceKm > maxKm) return null;
-
-      return {
-        id: p.provider_id,
-        name: p.display_name,
-        latitude: p.location_lat,
-        longitude: p.location_lng,
-        apartmentType: hotelRow.apartment_type,
-        distanceKm,
-      };
-    })
-    .filter((item): item is AccommodationRecommendation => item !== null);
-
-  if (!within.length) return null;
-  within.sort((a, b) => a.distanceKm - b.distanceKm);
-  return within[0];
-}
-
-async function getAvailableTransports(
-  transportType: string | null,
-  itinerarySites: Array<{ id: string; latitude: number; longitude: number }>,
-) {
-  const cars = await prisma.provider.findMany({
-    where: {
-      verification_status: true,
-      car_rental: { isNot: null },
-    },
+async function loadTransportProviders(): Promise<RawTransportProvider[]> {
+  const providers = await prisma.provider.findMany({
+    where: { verification_status: true, car_rental: { isNot: null } },
     include: { car_rental: true },
   });
 
-  const filtered = cars
-    .map((p) => {
-      const carRow = p.car_rental;
-      if (!carRow) return null;
-
-      if (transportType && carRow.transport_type !== transportType) {
-        return null;
-      }
-
-      const distanceKm = Math.min(
-        ...itinerarySites.map((s) =>
-          haversineDistance(
-            { latitude: s.latitude, longitude: s.longitude },
-            { latitude: p.location_lat, longitude: p.location_lng },
-          ),
-        ),
-      );
-
-      return {
-        id: p.provider_id,
-        name: p.display_name,
-        latitude: p.location_lat,
-        longitude: p.location_lng,
-        distanceKm,
-      };
-    })
-    .filter((item): item is ProviderRecommendation => item !== null);
-
-  // If transportType is null, return top 3 anyway.
-  return filtered.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 3);
-}
-
-function buildItineraryDaysPayload(
-  dayGroups: DayGroup[],
-  durationDays: number,
-): ItineraryDayInput[] {
-  const totalDays = durationDays + 2;
-  const days = [];
-
-  // Day 1 — Preparation
-  days.push({
-    dayNumber: 1,
-    dayType: DayType.PREPARATION,
-    relocationRequired: false,
-  });
-
-  // Touring days — map each group to a day
-  dayGroups.forEach((group, index) => {
-    const dayNumber = index + 2;
-    days.push({
-      dayNumber,
-      dayType: DayType.TOURING,
-      relocationRequired: false,
-      sites: {
-        create: group.sites.map((site, siteIndex) => ({
-          tourSiteId: site.id,
-          visitOrder: siteIndex + 1,
-        })),
-      },
-    });
-  });
-
-  // Fill any remaining touring days with no sites
-  // (e.g. user selected 2 sites for a 3 day tour — extra day stays empty)
-  const touringSlotsUsed = dayGroups.length;
-  for (let i = touringSlotsUsed; i < durationDays; i++) {
-    days.push({
-      dayNumber: i + 2,
-      dayType: DayType.TOURING,
-      relocationRequired: false,
-    });
-  }
-
-  // Last day — Departure
-  days.push({
-    dayNumber: totalDays,
-    dayType: DayType.DEPARTURE,
-    relocationRequired: false,
-  });
-
-  // console.log("days ", {days})
-
-  return days;
+  return providers
+    .filter((p) => !!p.car_rental)
+    .map((p) => ({
+      id: p.provider_id,
+      name: p.display_name,
+      latitude: p.location_lat,
+      longitude: p.location_lng,
+      transportType: p.car_rental!.transport_type ?? null,
+    }));
 }
