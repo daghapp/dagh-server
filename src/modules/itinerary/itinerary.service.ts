@@ -631,6 +631,10 @@ type AccommodationRecommendation = ProviderRecommendation & {
   apartmentType: ApartmentType | null;
 };
 
+type TransportRecommendation = ProviderRecommendation & {
+  transportType: string | null;
+};
+
 interface RawHotelProvider {
   id: string;
   name: string;
@@ -663,15 +667,50 @@ async function mapItineraryToResponseWithRecommendations(
     loadTransportProviders(),
   ]);
 
-  const available_hotels = nearestProviders(hotelProviders, params.itinerarySites, {
-    filter: (h) => !params.apartmentType || h.apartmentType === params.apartmentType,
-    limit: 3,
-  }).map(toProviderRecommendation);
+  const available_hotels = nearestWithTypeFallback(
+    hotelProviders,
+    params.itinerarySites,
+    (h) => h.apartmentType,
+    params.apartmentType,
+    { limit: 3 },
+  ).map(toHotelRecommendation);
 
-  const available_transports = nearestProviders(transportProviders, params.itinerarySites, {
-    filter: (t) => !params.transportType || t.transportType === params.transportType,
-    limit: 3,
-  }).map(toProviderRecommendation);
+  // transportType NONE is an explicit opt-out ("no transport needed"), so no
+  // transport is recommended and per-day localTransport stays null by design.
+  const wantsNoTransport = params.transportType === "NONE";
+  const available_transports = wantsNoTransport
+    ? []
+    : nearestWithTypeFallback(
+        transportProviders,
+        params.itinerarySites,
+        (t) => t.transportType,
+        params.transportType,
+        { limit: 3 },
+      ).map(toTransportRecommendation);
+
+  // Surface a read-time advisory when the requested type has no verified
+  // supply at all, so the frontend can explain why a fallback is shown.
+  // (Not persisted — stored itinerary.warnings is left untouched.)
+  const responseWarnings = [...(itinerary.warnings ?? [])];
+  if (
+    params.apartmentType &&
+    hotelProviders.length > 0 &&
+    !hotelProviders.some((h) => h.apartmentType === params.apartmentType)
+  ) {
+    responseWarnings.push(
+      `No verified ${params.apartmentType} stays are listed yet — showing the closest verified option instead.`,
+    );
+  }
+  if (
+    !wantsNoTransport &&
+    params.transportType &&
+    transportProviders.length > 0 &&
+    !transportProviders.some((t) => t.transportType === params.transportType)
+  ) {
+    responseWarnings.push(
+      `No verified ${params.transportType} transport providers are listed yet — showing the closest verified option instead.`,
+    );
+  }
 
   // If relocationInterest is enabled, attach availableAccomodation per itinerary
   // touring site, resolved to the closest provider within 30km.
@@ -679,14 +718,11 @@ async function mapItineraryToResponseWithRecommendations(
   const bestRelocationsByDaySite: Record<string, AccommodationRecommendation | null> = {};
   if (shouldAttachRelocation) {
     for (const site of params.itinerarySites) {
-      const [best] = nearestProviders(hotelProviders, [site], {
-        filter: (h) => !params.apartmentType || h.apartmentType === params.apartmentType,
+      const [best] = nearestWithTypeFallback(hotelProviders, [site], (h) => h.apartmentType, params.apartmentType, {
         maxKm: 30,
         limit: 1,
       });
-      bestRelocationsByDaySite[site.id] = best
-        ? { ...toProviderRecommendation(best), apartmentType: best.apartmentType }
-        : null;
+      bestRelocationsByDaySite[site.id] = best ? toHotelRecommendation(best) : null;
     }
   }
 
@@ -727,7 +763,7 @@ async function mapItineraryToResponseWithRecommendations(
     dateCreated: itinerary.createdAt,
     routeRegions: itinerary.routeRegions ?? [],
     accraNights: itinerary.accraNights ?? 0,
-    warnings: itinerary.warnings ?? [],
+    warnings: responseWarnings,
     days: (itinerary.days ?? []).map((day) => {
       const dayAnchors = (day.sites ?? []).map((ds) => ({
         latitude: ds.tourSite.latitude,
@@ -736,16 +772,21 @@ async function mapItineraryToResponseWithRecommendations(
       // Empty / spare days still resolve local supply from the region's centre.
       const anchors = dayAnchors.length > 0 ? dayAnchors : [regionCentroid(day.region ?? "", [])];
 
-      const [localHotel] = nearestProviders(hotelProviders, anchors, {
-        filter: (h) => !params.apartmentType || h.apartmentType === params.apartmentType,
-        maxKm: LOCAL_PROVIDER_RADIUS_KM,
-        limit: 1,
-      });
-      const [localTransport] = nearestProviders(transportProviders, anchors, {
-        filter: (t) => !params.transportType || t.transportType === params.transportType,
-        maxKm: LOCAL_PROVIDER_RADIUS_KM,
-        limit: 1,
-      });
+      const localHotel = pickLocalProvider(
+        hotelProviders,
+        anchors,
+        (h) => h.apartmentType,
+        params.apartmentType,
+        LOCAL_PROVIDER_RADIUS_KM,
+      );
+      const localTransport = pickLocalProvider(
+        transportProviders,
+        anchors,
+        (t) => t.transportType,
+        params.transportType,
+        LOCAL_PROVIDER_RADIUS_KM,
+        wantsNoTransport,
+      );
 
       return {
         dayNumber: day.dayNumber,
@@ -780,8 +821,8 @@ async function mapItineraryToResponseWithRecommendations(
             availableAccomodation,
           };
         }),
-        localAccommodation: localHotel ? toProviderRecommendation(localHotel) : null,
-        localTransport: localTransport ? toProviderRecommendation(localTransport) : null,
+        localAccommodation: localHotel ? toHotelRecommendation(localHotel) : null,
+        localTransport: localTransport ? toTransportRecommendation(localTransport) : null,
         socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
       };
     }),
@@ -803,13 +844,29 @@ async function mapItineraryToResponseWithRecommendations(
   };
 }
 
-function toProviderRecommendation(provider: ProviderRecommendation): ProviderRecommendation {
+function toHotelRecommendation(
+  provider: RawHotelProvider & { distanceKm: number },
+): AccommodationRecommendation {
   return {
     id: provider.id,
     name: provider.name,
     latitude: provider.latitude,
     longitude: provider.longitude,
     distanceKm: provider.distanceKm,
+    apartmentType: provider.apartmentType ?? null,
+  };
+}
+
+function toTransportRecommendation(
+  provider: RawTransportProvider & { distanceKm: number },
+): TransportRecommendation {
+  return {
+    id: provider.id,
+    name: provider.name,
+    latitude: provider.latitude,
+    longitude: provider.longitude,
+    distanceKm: provider.distanceKm,
+    transportType: provider.transportType ?? null,
   };
 }
 
@@ -836,6 +893,62 @@ function nearestProviders<T extends { latitude: number; longitude: number }>(
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
   return Number.isFinite(limit) ? scored.slice(0, limit) : scored;
+}
+
+/**
+ * Preference-aware closest-provider lookup with graceful fallback.
+ *
+ * Verified supply is sparse (e.g. a single transport operator, hotels only in
+ * Accra, no AIRBNB/TROTRO/UBER supply at all). A strict exact-type filter
+ * therefore resolves to null/[] for most selections even though usable supply
+ * exists. So: prefer the requested type, but fall back to the closest provider
+ * of any type rather than returning nothing.
+ *
+ * Exported for unit testing.
+ */
+export function nearestWithTypeFallback<T extends { latitude: number; longitude: number }>(
+  providers: T[],
+  anchors: Array<{ latitude: number; longitude: number }>,
+  getType: (p: T) => string | null | undefined,
+  wantedType: string | null | undefined,
+  opts: { maxKm?: number; limit?: number } = {},
+): Array<T & { distanceKm: number }> {
+  if (!wantedType) return nearestProviders(providers, anchors, opts);
+  const exact = nearestProviders(providers, anchors, {
+    ...opts,
+    filter: (p) => getType(p) === wantedType,
+  });
+  if (exact.length > 0) return exact;
+  return nearestProviders(providers, anchors, opts);
+}
+
+/**
+ * Per-day "local" provider pick. Prefers supply within `radiusKm` of the
+ * day's anchors (exact type first, then any type); when nothing is that
+ * close, falls back to the closest nationally so the day still carries a
+ * usable recommendation (with an honest distanceKm) instead of null.
+ *
+ * `optOut` covers explicit "no thanks" selections (transportType NONE):
+ * those always resolve to undefined.
+ *
+ * Exported for unit testing.
+ */
+export function pickLocalProvider<T extends { latitude: number; longitude: number }>(
+  providers: T[],
+  anchors: Array<{ latitude: number; longitude: number }>,
+  getType: (p: T) => string | null | undefined,
+  wantedType: string | null | undefined,
+  radiusKm: number,
+  optOut = false,
+): (T & { distanceKm: number }) | undefined {
+  if (optOut) return undefined;
+  const [within] = nearestWithTypeFallback(providers, anchors, getType, wantedType, {
+    maxKm: radiusKm,
+    limit: 1,
+  });
+  if (within) return within;
+  const [national] = nearestWithTypeFallback(providers, anchors, getType, wantedType, { limit: 1 });
+  return national;
 }
 
 async function loadHotelProviders(): Promise<RawHotelProvider[]> {

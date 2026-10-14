@@ -88,6 +88,11 @@ export interface LocalProviderRecommendation {
   latitude: number;
   longitude: number;
   distanceKm: number;
+  // Echo of the provider's own classification, so the frontend can tell an
+  // exact-type match from a best-effort fallback (present on the relevant
+  // recommendation: apartmentType on accommodation, transportType on transport).
+  apartmentType?: string | null;
+  transportType?: string | null;
 }
 
 export interface DatingSocialBlockProfile {

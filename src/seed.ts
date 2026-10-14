@@ -2021,6 +2021,28 @@ async function seedProviders() {
       reviews: 76,
       hotel: { apartment_type: ApartmentType.APARTMENTS, base_price_per_night: 700 },
     },
+    // Regional supply so itinerary days outside Greater Accra resolve local
+    // accommodation instead of null (all of the above sit in Accra).
+    {
+      displayName: "Cape Coast Seaside Airbnb",
+      lat: 5.1031,
+      lng: -1.2425,
+      address: "26 Beach Road, Cape Coast",
+      bio: "Bright self-catering Airbnb apartments a short walk from the castle.",
+      rating: 4.5,
+      reviews: 64,
+      hotel: { apartment_type: ApartmentType.AIRBNB, base_price_per_night: 550 },
+    },
+    {
+      displayName: "Kumasi Cultural Hotel",
+      lat: 6.6885,
+      lng: -1.6244,
+      address: "12 Prempeh II Avenue, Adum, Kumasi",
+      bio: "Central hotel convenient for Manhyia Palace and cultural sites.",
+      rating: 4.3,
+      reviews: 150,
+      hotel: { apartment_type: ApartmentType.HOTEL, base_price_per_night: 800 },
+    },
   ];
 
   for (const p of providers) {
@@ -2090,6 +2112,67 @@ async function seedProviders() {
           daily_rate: 650,
           driver_required: false,
           transport_type: TransportType.RENTED_VEHICLE,
+        },
+      },
+    },
+  });
+
+  // City-ride supply so UBER selections resolve instead of null.
+  await prisma.provider.create({
+    data: {
+      verification_status: true,
+      display_name: "Accra City Rides",
+      media_assets: ["https://images.unsplash.com/photo-1449965408869-eaa3f722e40d"],
+      location_lat: 5.61,
+      location_lng: -0.19,
+      location_address: "Osu, Accra",
+      avg_rating: 4.4,
+      review_count: 88,
+      response_time_secs: 900,
+      bio_description: "On-demand city rides and airport transfers across Greater Accra.",
+      car_rental: {
+        create: {
+          vehicle_make: "Toyota",
+          vehicle_model: "Corolla",
+          vehicle_year: 2022,
+          transmission: "Automatic",
+          fuel_type: "Petrol",
+          safety_features: ["Airbags", "ABS"],
+          rental_terms_url: "https://example.com/terms",
+          daily_rate: 300,
+          driver_required: true,
+          transport_type: TransportType.UBER,
+        },
+      },
+    },
+  });
+
+  // Regional shared-transport supply so Central/Ashanti touring days resolve
+  // local transport instead of null (all Accra supply is >75km away).
+  await prisma.provider.create({
+    data: {
+      verification_status: true,
+      display_name: "Cape Coast Shuttle Services",
+      media_assets: ["https://images.unsplash.com/photo-1570125909232-eb263c188f7e"],
+      location_lat: 5.1054,
+      location_lng: -1.2466,
+      location_address: "Tantri Road, Cape Coast",
+      avg_rating: 4.2,
+      review_count: 57,
+      response_time_secs: 1800,
+      bio_description: "Shared shuttle and trotro charters along the Cape Coast–Elmina corridor.",
+      car_rental: {
+        create: {
+          vehicle_make: "Mercedes-Benz",
+          vehicle_model: "Sprinter",
+          vehicle_year: 2021,
+          transmission: "Manual",
+          fuel_type: "Diesel",
+          safety_features: ["Seatbelts", "First aid kit"],
+          rental_terms_url: "https://example.com/terms",
+          daily_rate: 400,
+          driver_required: true,
+          transport_type: TransportType.TROTRO,
         },
       },
     },
