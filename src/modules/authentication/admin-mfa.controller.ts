@@ -3,7 +3,36 @@ import { randomInt } from "crypto";
 import { AdminRole, AdminDepartment } from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/prisma.js";
 import { ok, fail, created } from "../../helpers/response.js";
-import { generateAccessToken, generateRefreshToken, generateMfaToken, verifyMfaToken } from "../../helpers/jwt.js";
+import { generateAccessToken, generateRefreshToken, generateMfaToken, verifyMfaToken, resolveMfaIdentity } from "../../helpers/jwt.js";
+import type { NextFunction } from "express";
+
+/**
+ * Auth for TOTP setup/verify: full admin session OR the short-lived mfaToken
+ * issued at login (global-2FA setup-required flow). mfaToken identity is
+ * scoped to the token holder's own account — it opens nothing else.
+ */
+export async function mfaSetupAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const header = req.headers.authorization;
+    if (header?.startsWith("Bearer ")) {
+      // Defer to the standard session check by importing lazily (avoids a
+      // module cycle: protected.ts never imports this controller).
+      const { default: protectedRoute } = await import("../../middleware/protected.js");
+      return protectedRoute(req, res, next);
+    }
+    const identity = resolveMfaIdentity((req.body as any)?.mfaToken);
+    if (!identity) return fail(res, 401, "Not authenticated");
+    const user = await prisma.user.findUnique({
+      where: { id: identity.id },
+      select: { id: true, email: true, accountType: true, fullName: true },
+    });
+    if (!user || user.accountType !== "ADMIN") return fail(res, 403, "Administrator account required");
+    req.user = user;
+    next();
+  } catch {
+    return fail(res, 401, "Invalid or expired token");
+  }
+}
 import {
   buildTotpSetup,
   generateBackupCode,
@@ -157,8 +186,12 @@ export class AdminMfaController {
   /** POST /admin/auth/2fa/totp/setup — provisioning material for the QR code. */
   async totpSetup(req: Request, res: Response) {
     try {
-      const user = req.user;
-      if (!user) return fail(res, 401, "Not authenticated");
+      // Session OR short-lived mfaToken: the global-2FA setup-required flow
+      // hands the admin only an mfaToken, so setup must accept it.
+      const mfaIdentity = req.user ? null : resolveMfaIdentity((req.body as any)?.mfaToken);
+      const identity = req.user ?? (mfaIdentity ? { id: mfaIdentity.id, email: mfaIdentity.email } : null);
+      if (!identity) return fail(res, 401, "Not authenticated");
+      const user = identity as { id: string; email: string };
 
       const existing = await prisma.adminProfile.findUnique({
         where: { userId: user.id },
@@ -185,8 +218,10 @@ export class AdminMfaController {
   /** POST /admin/auth/2fa/totp/verify — confirms the first code, enables TOTP. */
   async totpVerify(req: Request, res: Response) {
     try {
-      const user = req.user;
-      if (!user) return fail(res, 401, "Not authenticated");
+      const mfaIdentity = req.user ? null : resolveMfaIdentity((req.body as any)?.mfaToken);
+      const identity = req.user ?? (mfaIdentity ? { id: mfaIdentity.id } : null);
+      if (!identity) return fail(res, 401, "Not authenticated");
+      const user = identity as { id: string };
       const { code } = req.body as { code?: string };
       if (!code) return fail(res, 400, "code is required");
 

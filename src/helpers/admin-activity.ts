@@ -20,6 +20,9 @@ export const AdminEntityType = {
   MEMBERSHIP_PLAN: "MEMBERSHIP_PLAN",
   SUBSCRIPTION_ACCESS_GRANT: "SUBSCRIPTION_ACCESS_GRANT",
   PAYMENT_GATEWAY: "PAYMENT_GATEWAY",
+  SETTINGS: "SETTINGS",
+  MAINTENANCE: "MAINTENANCE",
+  TOUR_DESTINATION: "TOUR_DESTINATION",
 } as const;
 
 export type AdminEntityType = (typeof AdminEntityType)[keyof typeof AdminEntityType];

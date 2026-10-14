@@ -47,7 +47,10 @@ export class UserTourController {
 
       if (category) where.category = category as string;
       if (subcategory) where.subcategory = subcategory as string;
+      // Public catalogue shows ACTIVE destinations only (§3.5); an explicit
+      // status filter still applies for callers that pass one.
       if (status) where.status = status as string;
+      else where.status = "published";
       if (featured !== undefined) where.featured = featured === "true";
       if (trending !== undefined) where.trending = trending === "true";
       if (durationDays) where.durationDays = Number(durationDays);
@@ -620,6 +623,11 @@ export class UserTourController {
       });
 
       if (!tour) {
+        return fail(res, 404, "Tour not found");
+      }
+
+      // Archived/draft destinations are hidden from the public portal (§3.5).
+      if (tour.status !== "published") {
         return fail(res, 404, "Tour not found");
       }
 

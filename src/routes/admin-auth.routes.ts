@@ -1,6 +1,6 @@
 import express from "express";
 import { AdminAuthController } from "../modules/authentication/admin-auth.controller.js";
-import { AdminMfaController } from "../modules/authentication/admin-mfa.controller.js";
+import { AdminMfaController, mfaSetupAuth } from "../modules/authentication/admin-mfa.controller.js";
 import { AdminDepartmentsController } from "../modules/authentication/admin-departments.controller.js";
 import { validate } from "../middleware/validation.js";
 import { adminRegistrationSchema } from "../validator/admin-auth-validator.js";
@@ -195,8 +195,7 @@ router.post(
  */
 router.post(
   "/auth/2fa/totp/setup",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.VIEW),
+  mfaSetupAuth,
   adminMfaController.totpSetup.bind(adminMfaController),
 );
 
@@ -216,8 +215,7 @@ router.post(
  */
 router.post(
   "/auth/2fa/totp/verify",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.VIEW),
+  mfaSetupAuth,
   adminMfaController.totpVerify.bind(adminMfaController),
 );
 

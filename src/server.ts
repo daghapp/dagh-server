@@ -30,7 +30,15 @@ import { router as AdminNotificationsRoutes } from "./routes/admin-notifications
 import { router as AdminConsoleRoutes } from "./routes/admin-console.routes.js";
 import { router as AdminProfileRoutes } from "./routes/admin-profile.routes.js";
 import { router as AdminPaymentGatewayRoutes } from "./routes/admin-payment-gateway.routes.js";
-import { router as VisaRoutes } from "./routes/visa.routes.js";
+import { router as AdminPaymentsRoutes } from "./routes/admin-payments.routes.js";
+import { router as AdminDatingRoutes } from "./routes/admin-dating.routes.js";
+import { router as AdminSubscriptionsRoutes } from "./routes/admin-subscriptions.routes.js";
+import { router as AdminSettingsRoutes } from "./routes/admin-settings.routes.js";
+import { adminRouter as AdminMaintenanceRoutes, publicRouter as SystemRoutes } from "./routes/admin-maintenance.routes.js";
+import { router as AdminActivityRoutes } from "./routes/admin-activity.routes.js";
+import { router as AdminDashboardRoutes } from "./routes/admin-dashboard.routes.js";
+import { router as AdminToursRoutes } from "./routes/admin-tours.routes.js";
+import { maintenanceGate } from "./middleware/maintenance.js";
 import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
 import { router as ProviderRoutes } from "./routes/provider.routes.js";
 import { router as ProfileValidationStepRoutes } from "./routes/profile-validation-step.routes.js";
@@ -54,11 +62,13 @@ import { pushDeliveryJob } from "./jobs/push-delivery.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
 import { checkPendingPaymentsJob } from "./jobs/check-pending-payments.js";
 import { subscriptionExpiryJob } from "./jobs/subscription-expiry.js";
+import { weeklyDigestJob } from "./jobs/weekly-digest.js";
 import { channelGrantReverifyJob } from "./jobs/channel-grant-reverify.js";
 import { logYouTubeGateStatus } from "./services/youtube-oauth.service.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
 import { setIoInstance as setCallIoInstance } from "./modules/messages/calls.controller.js";
 import { setIoInstance as setDatingIoInstance } from "./modules/dating/swipe.controller.js";
+import { setSocketIO } from "./sockets/io.js";
 import { initFirebase } from "./config/firebase.js";
 import { initApns } from "./config/apns.js";
 import { fail } from "./helpers/response.js"; // Phase 3.4 — standardized response helpers
@@ -147,10 +157,15 @@ app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(sessionConfig);
 app.use(passport.initialize());
 app.use(passport.session());
+// Maintenance gate (§3.14): 503s non-admin traffic for modules under
+// maintenance. Admins bypass; /health, /system/* and /admin/* are exempt.
+// Registered before every router so login/registration gating works too.
+app.use(maintenanceGate);
 
 deleteInactiveUsersJob();
 checkPendingPaymentsJob();
 subscriptionExpiryJob();
+weeklyDigestJob();
 channelGrantReverifyJob();
 logYouTubeGateStatus();
 setupSwagger(app);
@@ -194,6 +209,17 @@ app.use("/auth", authLimiter, PasswordRoutes);
 app.use("/auth", authLimiter, OauthRoutes);
 app.use("/auth", authLimiter, FacebookRoutes);
 app.use("/auth", authLimiter, AppleRoutes);
+// Dedicated admin-API limiter (§3.1): /admin/* previously had no throttle at
+// all. Admin login shares POST /auth/login with customers, so it stays under
+// authLimiter; everything under /admin/* gets this stricter bucket.
+const adminApiLimiter = createRateLimiter("admin", 15 * 60 * 1000, {
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: { success: false, error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/admin", adminApiLimiter);
 app.use("/upload", ImageUploadRoutes);
 const paymentLimiter = createRateLimiter("payment", 15 * 60 * 1000, {
   windowMs: 15 * 60 * 1000,
@@ -217,8 +243,17 @@ app.use("/admin/notifications", AdminNotificationsRoutes);
 app.use("/admin", AdminConsoleRoutes);
 app.use("/admin", AdminProfileRoutes);
 app.use("/admin", AdminPaymentGatewayRoutes);
+app.use("/admin/payments", AdminPaymentsRoutes);
+app.use("/admin/dating", AdminDatingRoutes);
+app.use("/admin", AdminSubscriptionsRoutes);
+app.use("/admin/settings", AdminSettingsRoutes);
+app.use("/admin/maintenance", AdminMaintenanceRoutes);
+app.use("/admin", AdminActivityRoutes);
+app.use("/admin/dashboard", AdminDashboardRoutes);
+app.use("/admin/tours", AdminToursRoutes);
+app.use("/system", SystemRoutes);
 
-app.use("/visa-requests", VisaRoutes);
+// NOTE: Visa on Arrival retired (§7) — /visa-requests routes removed.
 
 app.use("/itinerary", ItineraryGenRoutes);
 app.use("/providers", ProviderRoutes);
@@ -299,6 +334,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 setupSocketHandlers(io);
+setSocketIO(io);
 // Phase 2.1 — Inject Socket.IO instance into messages controller so it can emit real-time events
 setIoInstance(io);
 // Calls module — inject Socket.IO for call lifecycle events

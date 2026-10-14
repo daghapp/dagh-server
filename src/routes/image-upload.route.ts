@@ -14,7 +14,7 @@ const handleUploadError: expres.ErrorRequestHandler = (err, _req, res, next) => 
   }
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      return fail(res, 413, "File too large. Maximum size is 5MB.");
+      return fail(res, 413, "File too large. Maximum size is 10MB.");
     }
     return fail(res, 400, `Upload error: ${err.message}`);
   }

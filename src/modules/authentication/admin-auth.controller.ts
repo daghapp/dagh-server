@@ -14,6 +14,10 @@ export class AdminAuthController {
     try {
       const data = req.body as AdminRegistrationSchema;
 
+      if (data.acceptedTerms !== true) {
+        return fail(res, 400, "You must accept the terms and conditions");
+      }
+
       if (OFFICIAL_EMAIL_DOMAIN) {
         const domain = data.email.split("@")[1]?.toLowerCase();
         if (!domain || domain !== OFFICIAL_EMAIL_DOMAIN) {

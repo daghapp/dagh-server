@@ -19,6 +19,16 @@ model User {
   passwordLastChanged     DateTime?
   accountStatus           AccountStatus            @default(PENDING_VERIFICATION)
   accountType             AccountType              @default(USER)
+  // Admin user lifecycle (§3.7): soft delete keeps the record for audit.
+  isDeleted               Boolean                  @default(false)
+  deletedAt               DateTime?
+  // Reason for the latest status transition (suspend/reject/terminate/...).
+  statusReason            String?
+  statusChangedAt         DateTime?
+  statusChangedBy         String?
+  // Password-login lockout (§3.1): attempts reset on successful login.
+  failedLoginAttempts     Int                      @default(0)
+  lockedUntil             DateTime?
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @default(now())
   lastLoginAt             DateTime?
@@ -72,6 +82,7 @@ model User {
   datingProfile           DatingProfile?
   datingApplication       DatingApplication?
   userWarnings            UserWarning[]
+  statusHistory           UserStatusHistory[]
   adminNotifications      AdminNotification[]         @relation("AdminNotifications")
   ngoMemberships          NgoMembership[]
   ngoAccessRequests       NgoAccessRequest[]
@@ -313,6 +324,8 @@ model tour_locations {
   description   String?
   visitDuration Int?
   photos        String[]
+  latitude      Float?
+  longitude     Float?
   tour_packages tour_packages @relation(fields: [tourId], references: [id], onDelete: Cascade)
 }
 
@@ -337,6 +350,10 @@ model tour_packages {
   basePrice          Decimal?
   currency           String?
   status             String?
+  // Destination-catalogue fields (§3.5): primary region + human location label.
+  region             String?
+  location           String?
+  lastModifiedBy     String?
   featured           Boolean            @default(false)
   trending           Boolean            @default(false)
   cancellationPolicy String?
@@ -860,6 +877,12 @@ model Payment {
   method   PaymentMethod?
   provider PaymentProvider?
 
+  // Partial/full refunds (§3.8). refundedAmount is cumulative; status flips to
+  // PARTIALLY_REFUNDED then REFUNDED once refundedAmount >= amount.
+  refundedAmount Float     @default(0)
+  refundReason   String?
+  refundedAt     DateTime?
+
   providerReference String?
   transactionId     String?
 
@@ -1286,6 +1309,8 @@ enum PaymentStatus {
   PENDING
   SUCCESS
   FAILED
+  PARTIALLY_REFUNDED
+  REFUNDED
 }
 
 enum SubscriptionStatus {
@@ -1846,6 +1871,24 @@ model UserWarning {
 
   @@index([userId])
   @@map("user_warnings")
+}
+
+// ─────────────────────────────────────────
+// USER STATUS HISTORY — every account-status transition (§3.7 detail page).
+// ─────────────────────────────────────────
+model UserStatusHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  from      String?
+  to        String
+  reason    String?
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_status_history")
 }
 
 model DatingApplication {

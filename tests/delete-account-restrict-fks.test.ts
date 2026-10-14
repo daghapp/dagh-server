@@ -11,17 +11,11 @@ import * as bcrypt from "bcrypt";
 import { AuthAdminController } from "../src/modules/authentication/auth-admin.controller.js";
 
 /**
- * Deleting a user hits two ON DELETE RESTRICT foreign keys on `users`, and both
- * previously surfaced as an opaque 500 that rolled the whole delete back:
- *
- *   - admin_activity_logs.actorId            — set when the user has ever acted
- *                                              in the admin console
- *   - subscription_access_grants.grantedById — set when the user has ever comped
- *                                              somebody into a tier
- *
- * These run against a real database rather than a mocked Prisma, because the
- * bug *is* the constraint: a mocked `user.delete` always resolves and would
- * happily pass while production 500s.
+ * Admin DELETE is a SOFT delete (spec §3.7): the record is kept with
+ * isDeleted/deletedAt for audit, so the old RESTRICT drama no longer applies —
+ * no audit purge, no grant nulling. These tests pin the soft-delete contract:
+ * the row survives, the trail survives, and access grants are untouched.
+ * (Self-service DELETE /profile/account below still hard-deletes.)
  */
 
 const controller = new AuthAdminController();
@@ -35,9 +29,14 @@ function mockRes(): {
   json: ReturnType<typeof vi.fn>;
   status: ReturnType<typeof vi.fn>;
 } {
-  const json = vi.fn();
-  const status = vi.fn().mockReturnValue({ json });
-  return { res: { json, status } as unknown as Response, json, status };
+  // Express-faithful mock: res.status()/res.json() return `res` (truthy), which
+  // is what the controllers' `if (unauthorizedResponse) return ...` guards rely
+  // on. A bare vi.fn() returns undefined and would let execution continue past
+  // a rejection — masking exactly the guard under test.
+  const res: any = {};
+  res.json = vi.fn().mockReturnValue(res);
+  res.status = vi.fn().mockReturnValue(res);
+  return { res: res as Response, json: res.json, status: res.status };
 }
 
 /** The caller is an admin (accountType) deleting `targetId` from params. */
@@ -83,10 +82,9 @@ afterEach(async () => {
 });
 
 describe("admin deleteUser against RESTRICT foreign keys", () => {
-  it("deletes an admin who has audit-log rows and issued an access grant", async () => {
-    // The exact combination that used to 500. The audit rows are the restrict
-    // the handler must pre-purge; the issued grant is the one that must not
-    // block anything.
+  it("soft-deletes an admin who has audit-log rows and issued an access grant", async () => {
+    // The exact combination that used to 500 on hard delete. Soft delete
+    // touches only the users row, so neither RESTRICT fires.
     await prisma.adminActivityLog.create({
       data: {
         actorId: issuerId,
@@ -107,15 +105,16 @@ describe("admin deleteUser against RESTRICT foreign keys", () => {
     const { res, json } = mockRes();
     await controller.deleteUser(adminReq(issuerId), res);
 
-    // ok() writes the envelope straight to res.json with no explicit status, so
-    // the meaningful assertion is that the row is actually gone.
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ success: true, message: "User deleted successfully" }),
     );
-    await expect(prisma.user.findUnique({ where: { id: issuerId } })).resolves.toBeNull();
+    const row = await prisma.user.findUnique({ where: { id: issuerId } });
+    expect(row).not.toBeNull();
+    expect(row!.isDeleted).toBe(true);
+    expect(row!.deletedAt).not.toBeNull();
   });
 
-  it("purges the deleted user's audit rows instead of leaving them to block", async () => {
+  it("keeps the deleted user's audit rows instead of purging them", async () => {
     await prisma.adminActivityLog.create({
       data: {
         actorId: issuerId,
@@ -127,13 +126,12 @@ describe("admin deleteUser against RESTRICT foreign keys", () => {
     const { res } = mockRes();
     await controller.deleteUser(adminReq(issuerId), res);
 
-    await expect(prisma.adminActivityLog.count({ where: { actorId: issuerId } })).resolves.toBe(0);
+    await expect(prisma.adminActivityLog.count({ where: { actorId: issuerId } })).resolves.toBe(1);
   });
 
-  it("keeps the comp in force for its recipient when the issuer's account goes", async () => {
-    // One admin closing their own account must not revoke access somebody else
-    // is relying on. The grant survives with the issuer nulled out, which is
-    // what the SET NULL migration buys.
+  it("leaves issued grants fully untouched when the issuer's account goes", async () => {
+    // Soft delete keeps the issuer row, so the grant survives with its
+    // grantedById intact — no nulling, no revocation.
     const grant = await prisma.subscriptionAccessGrant.create({
       data: {
         userId: granteeId,
@@ -153,7 +151,7 @@ describe("admin deleteUser against RESTRICT foreign keys", () => {
     expect(surviving).not.toBeNull();
     expect(surviving!.userId).toBe(granteeId);
     expect(surviving!.tierCode).toBe(MembershipTierCode.GOLD_INVESTOR);
-    expect(surviving!.grantedById).toBeNull();
+    expect(surviving!.grantedById).toBe(issuerId);
   });
 
   it("leaves other admins' audit rows untouched", async () => {
@@ -198,7 +196,7 @@ describe("admin deleteUser against RESTRICT foreign keys", () => {
   });
 
   it("403s a non-admin caller", async () => {
-    const { res, status } = mockRes();
+    const { res, status, json } = mockRes();
     await controller.deleteUser(
       {
         user: { id: granteeId, accountType: "USER" },
@@ -208,6 +206,14 @@ describe("admin deleteUser against RESTRICT foreign keys", () => {
     );
 
     expect(status).toHaveBeenCalledWith(403);
+    // The rejection must stop the handler: exactly one response, no trail, no delete.
+    expect(json).toHaveBeenCalledTimes(1);
+    await expect(
+      prisma.user.findUnique({ where: { id: granteeId }, select: { isDeleted: true } }),
+    ).resolves.toEqual({ isDeleted: false });
+    await expect(
+      prisma.adminActivityLog.count({ where: { actorId: granteeId } }),
+    ).resolves.toBe(0);
   });
 });
 

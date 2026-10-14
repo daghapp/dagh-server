@@ -7,6 +7,7 @@ const validPayload = {
   password: "Password123!",
   department: "OPERATIONS_AND_MEMBERSHIP",
   role: "OPERATIONS",
+  acceptedTerms: true,
 };
 
 describe("adminRegistrationSchema", () => {
@@ -76,5 +77,13 @@ describe("adminRegistrationSchema", () => {
       phoneNumber: "12345",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects a registration without acceptedTerms", () => {
+    const { acceptedTerms: _dropped, ...withoutTerms } = validPayload;
+    expect(adminRegistrationSchema.safeParse(withoutTerms).success).toBe(false);
+    expect(
+      adminRegistrationSchema.safeParse({ ...validPayload, acceptedTerms: false }).success,
+    ).toBe(false);
   });
 });

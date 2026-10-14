@@ -3,14 +3,9 @@ import { prisma } from "../config/prisma.js";
 import {
   PaymentStatus,
   PaymentTargetType,
-  VisaRequestStatus,
 } from "../../generated/prisma/client.js";
 import { getHubtelStatusClient } from "../config/hubtel.js";
-import { convertUSDToGHS } from "../helpers/stringHelper.js";
-import sendEmail from "../config/resend.config.js";
-import { getAccountId } from "../helpers/ledger.js";
 // Phase 2.4 — Replace hardcoded amounts (464, 1450, 200) with env-driven pricing config
-import { pricing } from "../config/pricing.js";
 import { withDistributedLock, tryAcquireWorkItem } from "../helpers/jobLock.js";
 import { settleMembershipPayment } from "../services/membership.service.js";
 import { SubscriptionStatus } from "../../generated/prisma/client.js";
@@ -69,11 +64,6 @@ export const checkPendingPaymentsJob = () => {
                   break;
               }
 
-              const emailTarget =
-                newStatus === "SUCCESS" && payment.targetType === PaymentTargetType.VISA_ON_ARRIVAL
-                  ? payment
-                  : null;
-
               await prisma.$transaction(async (tx) => {
                 await tx.hubtelDirectReceiveLog.create({
                   data: {
@@ -107,85 +97,6 @@ export const checkPendingPaymentsJob = () => {
                   // Not a tour booking — continue to check other target types
                 }
 
-                const target = payment.targetType;
-
-                if (newStatus === "SUCCESS") {
-                  if (target === PaymentTargetType.VISA_ON_ARRIVAL) {
-                    const visaRequest = await tx.visaOnArrivalRequest.findUnique({
-                      where: { paymentId: payment.id },
-                      select: { packageType: true },
-                    });
-
-                    if (!visaRequest)
-                      throw new Error("No visa request found with payment id " + payment.id);
-
-                    // Idempotency guard: never double-credit the ledger, even if a
-                    // previous run crashed after creating entries.
-                    const existingEntries = await tx.ledgerTransaction.findMany({
-                      where: { paymentId: payment.id },
-                      select: { id: true },
-                    });
-
-                    if (visaRequest.packageType === "STANDARD") {
-                      // Ledger Split
-                      if (existingEntries.length === 0) {
-                        await tx.ledgerTransaction.createMany({
-                          data: [
-                            {
-                              accountId: await getAccountId("Account_DAGh_Revenue"),
-                              paymentId: payment.id,
-                              amount: pricing.visa.standardFacilitationFee,
-                              currency: "GHS",
-                              type: "CREDIT",
-                              description: "Visa Facilitation Fee",
-                            },
-                            {
-                              accountId: await getAccountId("Account_GIS_Statutory_Reserve"),
-                              paymentId: payment.id,
-                              amount: await convertUSDToGHS(200),
-                              currency: "GHS",
-                              type: "CREDIT",
-                              description: "Statutory GIS Fee Reserve",
-                            },
-                          ],
-                        });
-                      }
-
-                      await tx.visaOnArrivalRequest.update({
-                        where: { paymentId: payment.id },
-                        data: { status: "READY_FOR_GIS_SUBMISSION" },
-                      });
-                    }
-
-                    if (visaRequest.packageType === "EXPEDITED") {
-                      if (existingEntries.length === 0) {
-                        await tx.ledgerTransaction.create({
-                          data: {
-                            accountId: await getAccountId("Account_DAGh_Revenue"),
-                            paymentId: payment.id,
-                            amount: pricing.visa.expeditedFacilitationFee,
-                            currency: "GHS",
-                            type: "CREDIT",
-                            description: "Expedited Visa Facilitation Fee",
-                          },
-                        });
-                      }
-
-                      await tx.visaOnArrivalRequest.update({
-                        where: { paymentId: payment.id },
-                        data: { status: "EXPEDITED_AIRPORT_PAYMENT_PENDING" },
-                      });
-                    }
-                  }
-                } else {
-                  // Payment failed or refunded
-                  if (target === PaymentTargetType.VISA_ON_ARRIVAL) {
-                    await tx.visaOnArrivalRequest.update({
-                      where: { paymentId: payment.id },
-                      data: { status: VisaRequestStatus.PAYMENT_FAILED },
-                    });
-                  }
-                }
               });
 
               // Membership subscription payment settled via the provider —
@@ -208,29 +119,6 @@ export const checkPendingPaymentsJob = () => {
                 });
               }
 
-              // Send notification emails after the transaction commits.
-              if (emailTarget) {
-                const user = await prisma.user.findUnique({
-                  where: { id: payment.userId },
-                });
-
-                if (user) {
-                  const visaRequest = await prisma.visaOnArrivalRequest.findUnique({
-                    where: { paymentId: payment.id },
-                    select: { packageType: true },
-                  });
-
-                  if (visaRequest?.packageType === "EXPEDITED") {
-                    await sendEmail({
-                      email: user.email,
-                      subject: "Visa request payment confirmation",
-                      html: `<p>Dear ${user.fullName},</p>
-                <p>You are required to pay the statutory $200 USD fee directly to GIS at Kotoka International Airport upon arrival.</p>
-                <p>Thank you for choosing our tour!</p>`,
-                    });
-                  }
-                }
-              }
             } catch (error) {
               console.error("[Cron Job Error] Failed to check pending payments:", error);
             }

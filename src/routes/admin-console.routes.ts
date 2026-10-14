@@ -1,7 +1,6 @@
 import express from "express";
 import protectedRoute from "../middleware/protected.js";
 import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
-import { AdminVisaConsoleController } from "../modules/admin/visa-console.controller.js";
 import { AdminPaymentsConsoleController } from "../modules/admin/payments-console.controller.js";
 import { AdminDashboardController } from "../modules/admin/dashboard.controller.js";
 import { AdminPlansConsoleController } from "../modules/admin/plans-console.controller.js";
@@ -17,7 +16,6 @@ import {
 } from "../validator/index.js";
 
 const router = express.Router();
-const adminVisa = new AdminVisaConsoleController();
 const adminPayments = new AdminPaymentsConsoleController();
 const adminDashboard = new AdminDashboardController();
 const adminPlans = new AdminPlansConsoleController();
@@ -167,294 +165,10 @@ router.get(
   adminDashboard.verifiedUsers.bind(adminDashboard),
 );
 
-/**
- * @swagger
- * /admin/visa-requests:
- *   get:
- *     summary: List visa requests (console queue)
- *     description: Paginated, filterable list for the visa management screen
- *     tags: [Admin - Visa]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [PENDING, APPROVED, REJECTED, PAYMENT_FAILED, READY_FOR_GIS_SUBMISSION, EXPEDITED_AIRPORT_PAYMENT_PENDING]
- *       - in: query
- *         name: q
- *         schema:
- *           type: string
- *         description: Search by passport number, purpose of trip, applicant name or email
- *       - in: query
- *         name: from
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: to
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Paginated visa requests
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       status:
- *                         type: string
- *                       packageType:
- *                         type: string
- *                         enum: [STANDARD, EXPEDITED]
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                       user:
- *                         type: object
- *                         properties:
- *                           id:
- *                             type: string
- *                           fullName:
- *                             type: string
- *                           email:
- *                             type: string
- *                           phoneNumber:
- *                             type: string
- *                       visaData:
- *                         type: object
- *                         properties:
- *                           passport_number:
- *                             type: string
- *                           purpose_of_trip:
- *                             type: string
- *                           date_of_arrival:
- *                             type: string
- *                             format: date-time
- *                           date_of_departure:
- *                             type: string
- *                             format: date-time
- *                       payment:
- *                         type: object
- *                         nullable: true
- *                         properties:
- *                           id:
- *                             type: string
- *                           amount:
- *                             type: number
- *                           status:
- *                             type: string
- *                       approval:
- *                         type: object
- *                         nullable: true
- *                         properties:
- *                           status:
- *                             type: string
- *                           approvedAt:
- *                             type: string
- *                             format: date-time
- *                           notes:
- *                             type: string
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     total:
- *                       type: number
- *                     page:
- *                       type: number
- *                     limit:
- *                       type: number
- *                     totalPages:
- *                       type: number
- *       403:
- *         description: Admin privileges required
- */
-router.get(
-  "/visa-requests",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisa.list.bind(adminVisa),
-);
 
-/**
- * @swagger
- * /admin/visa-requests/stats:
- *   get:
- *     summary: Visa request KPIs
- *     description: Counter stats for the visa queue (total, pending review, approved today, rejection rate)
- *     tags: [Admin - Visa]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: from
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: to
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Visa stats
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     total:
- *                       type: number
- *                     pendingReview:
- *                       type: number
- *                     rejected:
- *                       type: number
- *                     approvedToday:
- *                       type: number
- *                     rejectionRate:
- *                       type: number
- *       403:
- *         description: Admin privileges required
- */
-router.get(
-  "/visa-requests/stats",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisa.stats.bind(adminVisa),
-);
 
-/**
- * @swagger
- * /admin/visa-requests/{id}:
- *   get:
- *     summary: Visa request detail
- *     description: Full detail including applicant, documents, payment, approval and admin activity trail
- *     tags: [Admin - Visa]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Visa request ID
- *     responses:
- *       200:
- *         description: Visa request detail
- *       403:
- *         description: Admin privileges required
- *       404:
- *         description: Visa request not found
- */
-router.get(
-  "/visa-requests/:id",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisa.detail.bind(adminVisa),
-);
 
-/**
- * @swagger
- * /admin/visa-requests/{id}/approve:
- *   post:
- *     summary: Approve a visa request (idempotent)
- *     tags: [Admin - Visa]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               note:
- *                 type: string
- *     responses:
- *       200:
- *         description: Visa request approved
- *       403:
- *         description: Admin privileges required
- *       404:
- *         description: Visa request not found
- */
-router.post(
-  "/visa-requests/:id/approve",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisa.approve.bind(adminVisa),
-);
 
-/**
- * @swagger
- * /admin/visa-requests/{id}/reject:
- *   post:
- *     summary: Reject a visa request (idempotent)
- *     tags: [Admin - Visa]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               note:
- *                 type: string
- *     responses:
- *       200:
- *         description: Visa request rejected
- *       403:
- *         description: Admin privileges required
- *       404:
- *         description: Visa request not found
- */
-router.post(
-  "/visa-requests/:id/reject",
-  protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisa.reject.bind(adminVisa),
-);
 
 /**
  * @swagger
@@ -507,12 +221,9 @@ router.post(
  *       403:
  *         description: Admin privileges required
  */
-router.get(
-  "/payments",
-  protectedRoute,
-  requirePermission(PERMISSIONS.PAYMENTS.VIEW),
-  adminPayments.list.bind(adminPayments),
-);
+// NOTE: GET /admin/payments + /stats now served by src/routes/admin-payments.routes.ts
+// (extended list filters, refund/flag/retry/export/detail). Kept legacy
+// GET|PATCH /payments/status below as the processing-toggle alias.
 
 /**
  * @swagger
@@ -562,12 +273,7 @@ router.get(
  *       403:
  *         description: Admin privileges required
  */
-router.get(
-  "/payments/stats",
-  protectedRoute,
-  requirePermission(PERMISSIONS.PAYMENTS.VIEW),
-  adminPayments.stats.bind(adminPayments),
-);
+
 
 /**
  * @swagger

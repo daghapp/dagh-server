@@ -1,30 +1,27 @@
-// ─────────────────────────────────────────
-// Shared Socket.IO instance
-// ─────────────────────────────────────────
-// Four modules each kept their own module-local copy of the Socket.IO server and
-// their own `setIoInstance` pair, wired at boot from server.ts. That works, but
-// it means a fifth emitter has to be added to server.ts, and a module cannot
-// reach another's server — so a service-layer publisher (as opposed to a
-// controller) has nothing to emit through.
-//
-// This is the one copy. Existing per-module accessors are left alone: they read
-// this same instance, so the behaviour is unchanged, and collapsing them is a
-// refactor with no bearing on whether access revocation reaches clients.
+import type { Server } from "socket.io";
 
-import { Server } from "socket.io";
+/** Process-wide Socket.IO handle so HTTP controllers can emit admin events. */
+let io: Server | null = null;
 
-let io: Server | undefined;
-
-export function setIo(ioInstance: Server): void {
-  io = ioInstance;
+export function setSocketIO(instance: Server): void {
+  io = instance;
 }
 
-/** The Socket.IO server, or undefined before boot wiring has run. */
-export function getIo(): Server | undefined {
+/** Historic alias for setSocketIO. */
+export function setIo(instance: Server): void {
+  io = instance;
+}
+
+export function getSocketIO(): Server | null {
   return io;
 }
 
-/** The room every connected socket of one app user joins. */
+/** Legacy aliases used by community event emitters. */
+export function getIo(): Server | null {
+  return io;
+}
+
+/** Per-user room name (`user:{id}`), mirroring socketHandlers join. */
 export function userRoom(userId: string): string {
   return `user:${userId}`;
 }

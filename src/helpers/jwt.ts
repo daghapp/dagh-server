@@ -83,7 +83,8 @@ export function verifyMfaToken(token: string): (JwtPayload & { kind: string }) |
 }
 
 // Generate Refresh Token (stored in DB)
-export async function generateRefreshToken(user: JwtPayload) {
+export async function generateRefreshToken(user: JwtPayload, options: { days?: number } = {}) {
+  const days = options.days ?? 7;
   //check if a refresh token already exists for the user
   const existingToken = await prisma.deviceToken.findFirst({
     where: { userId: user.id },
@@ -93,7 +94,7 @@ export async function generateRefreshToken(user: JwtPayload) {
   const refreshToken = jwt.sign(
     { id: user.id, email: user.email, accountType: user.accountType },
     RefreshTokenSecret,
-    { expiresIn: "7d" },
+    { expiresIn: days * 24 * 60 * 60 },
   );
 
   await prisma.deviceToken.create({
@@ -101,9 +102,26 @@ export async function generateRefreshToken(user: JwtPayload) {
       userId: user.id,
       token: refreshToken,
       platform: "WEB",
-      expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      expiredAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
     },
   });
 
   return refreshToken;
+}
+
+/**
+ * Helper for routes that must accept a pre-2FA `mfaToken` as an alternative
+ * to a session (e.g. `totp/setup` + `totp/verify` for admins who have not
+ * finished 2FA setup and therefore hold no session yet).
+ *
+ * The owner of `admin-mfa.controller.ts` can use this to resolve the admin
+ * identity: pass `req.body.mfaToken` (or a `Bearer` header carrying one) and
+ * get back the verified payload, or `null` when it is missing/invalid.
+ * `verifyMfaToken` remains the primitive; this just standardises extraction.
+ */
+export function resolveMfaIdentity(
+  mfaToken: unknown,
+): (JwtPayload & { kind: string }) | null {
+  if (typeof mfaToken !== "string" || mfaToken.length === 0) return null;
+  return verifyMfaToken(mfaToken);
 }

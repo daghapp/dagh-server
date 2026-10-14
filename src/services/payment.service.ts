@@ -26,7 +26,7 @@ import axios, { AxiosResponse } from "axios";
 import { HubtelDirectReceiveResponseSchema } from "../validator/index.js";
 
 // These are used as defaults by controllers that don't specify their own callback URL.
-// Visa and itinerary controllers override callbackUrl inline.
+// Itinerary controllers override callbackUrl inline.
 export const HUBTEL_CALLBACK_URL =
   process.env.HUBTEL_CALLBACK_URL || `${process.env.API_URL}/tours/hubtel-callback`;
 export const HUBTEL_CANCELLATION_URL =

@@ -58,6 +58,8 @@ const tourLocationSchema = z.object({
   description: z.string().optional(),
   visitDuration: z.number().int().positive().optional(),
   photos: z.array(z.string().url()).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 // Tour Media Schema
@@ -104,6 +106,20 @@ const tourGuideSchema = z.object({
   bio: z.string().optional(),
 });
 
+// Destination status: stored lowercase (existing data), but the admin panel
+// speaks DRAFT | ACTIVE | ARCHIVED (§3.5) — normalize on input.
+const STATUS_ALIASES: Record<string, string> = {
+  DRAFT: "draft",
+  ACTIVE: "published",
+  ARCHIVED: "archived",
+  PENDING_REVIEW: "pending_review",
+};
+
+export const tourStatusSchema = z.preprocess(
+  (v) => (typeof v === "string" ? (STATUS_ALIASES[v] ?? v) : v),
+  z.enum(["draft", "published", "archived", "pending_review"]).default("draft"),
+);
+
 // Main Tour Package Schema
 export const tourSchema = z.object({
   title: z.string().min(1, "Title is required").max(255),
@@ -116,7 +132,10 @@ export const tourSchema = z.object({
   durationNights: z.number().int().nonnegative().optional(),
   basePrice: z.number().positive().optional(),
   currency: z.string().max(10).default("GHS"),
-  status: z.enum(["draft", "published", "archived", "pending_review"]).default("draft"),
+  status: tourStatusSchema,
+  region: z.string().max(100).optional(),
+  location: z.string().max(255).optional(),
+  gallery: z.array(z.string().url()).max(20).optional(),
   featured: z.boolean().default(false),
   trending: z.boolean().default(false),
   cancellationPolicy: z.string().optional(),

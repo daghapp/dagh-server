@@ -1,8 +1,7 @@
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import { AuthAdminController } from "../modules/authentication/auth-admin.controller.js";
 import protectedRoute from "../middleware/protected.js";
 import { requirePermission, PERMISSIONS } from "../middleware/permissions.js";
-import { AdminVisaController } from "../modules/visa-management/admin-visa.controller.js";
 import {
   listReports,
   resolveReport,
@@ -11,7 +10,6 @@ import {
 
 const router = express.Router();
 const authAdminController = new AuthAdminController();
-const adminVisaController = new AdminVisaController();
 
 /**
  * @swagger
@@ -536,53 +534,93 @@ router.delete(
 );
 
 /**
+ * Reserved single-segment user paths that live on other admin routers.
+ * GET /admin/users/verified is registered in admin-console.routes.ts, which is
+ * mounted AFTER this router — a plain GET /users/:userId here would swallow it.
+ * Fall through to the next router for those segments.
+ */
+const skipReservedUserIds = (req: Request, _res: Response, next: NextFunction) => {
+  if (req.params.userId === "verified") return next("router");
+  next();
+};
+
+/**
  * @swagger
- * /admin/visa-requests/paid:
+ * /admin/users/{userId}:
  *   get:
- *     summary: Get paid visa requests ready for admin processing
- *     tags: [Admin - Visa]
+ *     summary: Get user detail (admin)
+ *     tags: [Admin - User Management]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: List of paid visa requests
+ *         description: User detail with verification, subscription, warnings, status history and admin profile
+ *       404:
+ *         description: User not found
  */
 router.get(
-  "/visa-requests/paid",
+  "/users/:userId",
   protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisaController.getPaidVisaRequests.bind(adminVisaController),
+  requirePermission(PERMISSIONS.USERS.VIEW),
+  skipReservedUserIds,
+  authAdminController.getUserDetail.bind(authAdminController),
 );
 
 /**
  * @swagger
- * /admin/visa-requests/approve:
- *   post:
- *     summary: Approve a visa request
- *     tags: [Admin - Visa]
+ * /admin/users/{userId}/role:
+ *   patch:
+ *     summary: Assign an admin role + department to a user
+ *     tags: [Admin - User Management]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               requestId:
- *                 type: string
- *                 format: uuid
- *             required: [requestId]
- *     responses:
- *       200:
- *         description: Visa request approved
+ */
+router.patch(
+  "/users/:userId/role",
+  protectedRoute,
+  requirePermission(PERMISSIONS.USERS.EDIT),
+  authAdminController.updateUserRole.bind(authAdminController),
+);
+
+/**
+ * @swagger
+ * /admin/users/{userId}/warnings:
+ *   post:
+ *     summary: Issue a warning to a user (max 2)
+ *     tags: [Admin - User Management]
+ *     security:
+ *       - bearerAuth: []
  */
 router.post(
-  "/visa-requests/approve",
+  "/users/:userId/warnings",
   protectedRoute,
-  requirePermission(PERMISSIONS.SETTINGS.FULL),
-  adminVisaController.approveVisaRequest.bind(adminVisaController),
+  requirePermission(PERMISSIONS.USERS.WARN),
+  authAdminController.createWarning.bind(authAdminController),
 );
+
+/**
+ * @swagger
+ * /admin/users/{userId}/warnings:
+ *   get:
+ *     summary: List a user's warning history
+ *     tags: [Admin - User Management]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get(
+  "/users/:userId/warnings",
+  protectedRoute,
+  requirePermission(PERMISSIONS.USERS.VIEW),
+  authAdminController.listWarnings.bind(authAdminController),
+);
+
+
 
 /**
  * @swagger
@@ -673,6 +711,38 @@ router.post(
  *         description: Internal server error
  */
 router.get("/reports", protectedRoute, requirePermission(PERMISSIONS.REPORTS.VIEW), listReports);
+
+/**
+ * @swagger
+ * /admin/reports/export:
+ *   get:
+ *     summary: Export the user-report queue as CSV
+ *     tags: [Admin - Moderation]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get(
+  "/reports/export",
+  protectedRoute,
+  requirePermission(PERMISSIONS.REPORTS.EXPORT),
+  authAdminController.exportReports.bind(authAdminController),
+);
+
+/**
+ * @swagger
+ * /admin/reports/summary:
+ *   get:
+ *     summary: Report counts by status
+ *     tags: [Admin - Moderation]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get(
+  "/reports/summary",
+  protectedRoute,
+  requirePermission(PERMISSIONS.REPORTS.VIEW),
+  authAdminController.reportsSummary.bind(authAdminController),
+);
 
 /**
  * @swagger

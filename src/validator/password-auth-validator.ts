@@ -1,8 +1,18 @@
 import { z } from "zod";
 
+/** Shared strong-password rule: 8+ chars with upper, lower, number, special. */
+export const strongPassword = z
+  .string()
+  .min(8, { message: "Password must be at least 8 characters long" })
+  .regex(/[A-Z]/, { message: "Password must contain at least one uppercase letter" })
+  .regex(/[a-z]/, { message: "Password must contain at least one lowercase letter" })
+  .regex(/[0-9]/, { message: "Password must contain at least one number" })
+  .regex(/[\W_]/, { message: "Password must contain at least one special character" });
+
 export const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
   password: z.string().min(8, { message: "Password must be at least 8 characters long" }),
+  rememberMe: z.boolean().optional(),
 });
 
 export const registrationSchema = z.object({
@@ -12,13 +22,7 @@ export const registrationSchema = z.object({
   dateOfBirth: z.iso.date({ message: "Invalid date of birth" }),
   email: z.string().email({ message: "Invalid email address" }),
   ethnicity: z.string().optional(),
-  password: z
-    .string()
-    .min(8, { message: "Password must be at least 8 characters long" })
-    .regex(/[A-Z]/, { message: "Password must contain at least one uppercase letter" })
-    .regex(/[a-z]/, { message: "Password must contain at least one lowercase letter" })
-    .regex(/[0-9]/, { message: "Password must contain at least one number" })
-    .regex(/[\W_]/, { message: "Password must contain at least one special character" }),
+  password: strongPassword,
 });
 
 export const requestResetPasswordSchema = z.object({
@@ -29,13 +33,7 @@ export const resetPasswordSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
   otp: z.string().length(6, { message: "OTP must be 6 digits long" }).optional(),
   token: z.string().optional(),
-  newPassword: z
-    .string()
-    .min(8, { message: "Password must be at least 8 characters long" })
-    .regex(/[A-Z]/, { message: "Password must contain at least one uppercase letter" })
-    .regex(/[a-z]/, { message: "Password must contain at least one lowercase letter" })
-    .regex(/[0-9]/, { message: "Password must contain at least one number" })
-    .regex(/[\W_]/, { message: "Password must contain at least one special character" }),
+  newPassword: strongPassword,
 });
 
 export type LoginSchema = z.infer<typeof loginSchema>;

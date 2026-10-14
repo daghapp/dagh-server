@@ -3,6 +3,7 @@ import { prisma } from "../config/index.js";
 import jwt from "jsonwebtoken";
 import { registerCallSocketHandlers } from "./callSocket.js";
 import { markOnline, markOffline, isOnline, getPresenceAudience } from "../helpers/presence.js";
+import { adminRoom } from "../helpers/admin-room.js";
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -38,6 +39,14 @@ export const setupSocketHandlers = (io: Server) => {
 
     if (userId) {
       socket.join(`user:${userId}`);
+      // Admins also join their private admin room so `admin:notification`
+      // events (§3.4) reach them without joining every user room.
+      prisma.user
+        .findUnique({ where: { id: userId }, select: { accountType: true } })
+        .then((dbUser) => {
+          if (dbUser?.accountType === "ADMIN") socket.join(adminRoom(userId));
+        })
+        .catch((err) => console.error("[Socket] Failed to join admin room:", err));
 
       // Track presence (local map + Redis when available)
       await markOnline(userId, socket.id);

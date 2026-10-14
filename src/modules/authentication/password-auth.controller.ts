@@ -20,6 +20,8 @@ import { ok, created, fail } from "../../helpers/response.js";
 import { toAuthUser } from "../../helpers/auth-user.js";
 import { getAllPermissionsForRole } from "../../middleware/permissions.js";
 import { generateMfaToken } from "../../helpers/jwt.js";
+import { getSecuritySettings, isPasswordExpired } from "../../helpers/settings.js";
+import { notifyAdmins } from "../../helpers/notify-admins.js";
 import { disableAllUserDevices } from "../devices/devices.controller.js";
 import {
   resolveChannelAccessForLogin,
@@ -73,6 +75,7 @@ export class PasswordAuthController {
             | undefined,
 
           passwordHash: hashedPassword,
+          passwordLastChanged: new Date(),
         },
       });
 
@@ -89,6 +92,8 @@ export class PasswordAuthController {
       } catch (otpError) {
         console.error("Failed to send verification email:", otpError);
       }
+
+      await notifyAdmins({ category: "users", message: `New user registration: ${newUser.email}` });
 
       return created(res, safeUser);
     } catch (error) {
@@ -112,25 +117,105 @@ export class PasswordAuthController {
         return fail(res, 400, "Invalid email or password");
       }
 
+      if (user.isDeleted) {
+        return fail(res, 403, "Account is not active");
+      }
+
+      // Active lockout blocks the attempt before any credential check.
+      if (user.lockedUntil && user.lockedUntil > new Date()) {
+        return fail(res, 423, {
+          code: "ACCOUNT_LOCKED",
+          message: "Account is temporarily locked. Please try again later",
+        });
+      }
+
+      // An expired lockout is cleared so a past incident stops punishing logins.
+      if (user.lockedUntil && user.lockedUntil <= new Date()) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginAttempts: 0, lockedUntil: null },
+        });
+        user.failedLoginAttempts = 0;
+        user.lockedUntil = null;
+      }
+
       if (user.accountStatus !== "ACTIVE") {
         return fail(res, 403, "Please verify your email before logging in");
       }
 
+      const security = await getSecuritySettings();
+
       const passwordMatch = await bcrypt.compare(loginData.password, user.passwordHash);
       if (!passwordMatch) {
+        const attempts = (user.failedLoginAttempts ?? 0) + 1;
+        const maxAttempts = security.maxLoginAttempts || 5;
+        if (attempts >= maxAttempts) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              failedLoginAttempts: attempts,
+              lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
+            },
+          });
+          await notifyAdmins({
+            category: "security",
+            message: `Admin/customer account locked: ${user.email}`,
+            actionUrl: "/admin/users",
+          });
+          return fail(res, 423, {
+            code: "ACCOUNT_LOCKED",
+            message: "Too many failed login attempts. Account is temporarily locked",
+          });
+        }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginAttempts: attempts },
+        });
         return fail(res, 400, "Invalid email or password");
       }
 
-      const accessToken = generateAccessToken({
-        id: user.id,
-        email: user.email,
-        accountType: user.accountType,
-      });
-      const refreshToken = await generateRefreshToken({
-        id: user.id,
-        email: user.email,
-        accountType: user.accountType,
-      });
+      // Password expiry is checked AFTER the credential check so a wrong
+      // password never reveals whether the account's password is stale.
+      if (isPasswordExpired(user.passwordLastChanged, security.passwordExpiryDays)) {
+        return fail(res, 403, {
+          code: "PASSWORD_EXPIRED",
+          message: "Password expired, please reset it",
+        });
+      }
+
+      // Success clears any prior failed-attempt history.
+      if ((user.failedLoginAttempts ?? 0) > 0 || user.lockedUntil) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginAttempts: 0, lockedUntil: null },
+        });
+      }
+
+      const rememberMe = loginData.rememberMe === true;
+
+      const accessToken =
+        user.accountType === "ADMIN"
+          ? generateAccessToken(
+              {
+                id: user.id,
+                email: user.email,
+                accountType: user.accountType,
+              },
+              { expiresIn: `${security.sessionTimeoutMinutes}m` as jwt.SignOptions["expiresIn"] },
+            )
+          : generateAccessToken({
+              id: user.id,
+              email: user.email,
+              accountType: user.accountType,
+            });
+      const refreshToken = await generateRefreshToken(
+        {
+          id: user.id,
+          email: user.email,
+          accountType: user.accountType,
+        },
+        { days: rememberMe ? 30 : 7 },
+      );
 
       // Signing in forces a check rather than trusting a live lease. This is the
       // moment yesterday's evidence stops being evidence about today: someone who
@@ -163,6 +248,18 @@ export class PasswordAuthController {
           });
           delete response.accessToken;
           delete response.refreshToken;
+        } else if (security.require2FAForAdmins) {
+          // Global 2FA mandate: this admin never enrolled, so hand back a
+          // session-less mfaToken for the TOTP setup flow instead of a session.
+          response.mfaToken = generateMfaToken({
+            id: user.id,
+            email: user.email,
+            accountType: user.accountType,
+          });
+          delete response.accessToken;
+          delete response.refreshToken;
+          response.mfaRequired = true;
+          response.mfaSetupRequired = true;
         }
       }
 
@@ -248,6 +345,17 @@ export class PasswordAuthController {
         return fail(res, 404, "User not found");
       }
 
+      if (user.isDeleted) {
+        return fail(res, 403, "Account is not active");
+      }
+
+      if (user.lockedUntil && user.lockedUntil > new Date()) {
+        return fail(res, 423, {
+          code: "ACCOUNT_LOCKED",
+          message: "Account is temporarily locked. Please try again later",
+        });
+      }
+
       if (user.accountStatus !== "ACTIVE") {
         return fail(res, 403, "Account is not active");
       }
@@ -275,10 +383,26 @@ export class PasswordAuthController {
       // exactly why it needs the current access rather than a token alone.
       const { access: communityAccess } = await resolveChannelAccessForRead(user.id);
 
-      return ok(res, {
+      const refreshed: Record<string, unknown> = {
         ...toAuthUser(user, communityAccess),
         accessToken: newAccessToken,
-      });
+      };
+
+      // Same admin fields as login so a client rehydrating its session from a
+      // refresh keeps role, department, and permissions without a second call.
+      if (user.accountType === "ADMIN") {
+        const adminProfile = await prisma.adminProfile.findUnique({
+          where: { userId: user.id },
+          select: { role: true, department: true },
+        });
+        refreshed.adminRole = adminProfile?.role ?? null;
+        refreshed.department = adminProfile?.department ?? null;
+        refreshed.permissions = adminProfile?.role
+          ? getAllPermissionsForRole(adminProfile.role)
+          : [];
+      }
+
+      return ok(res, refreshed);
     } catch (error) {
       console.error("Token refresh error:", error);
       return fail(res, 500, "Failed to refresh token");
@@ -420,7 +544,10 @@ export class PasswordAuthController {
       });
 
       if (!existingUser) {
-        return fail(res, 404, "User not found");
+        // Deliberately identical to the success response: account enumeration
+        // via this endpoint must not reveal whether an email is registered.
+        // No OTP is sent when there is no user.
+        return ok(res, null as never, "Password reset OTP sent successfully");
       }
 
       // Generate OTP — non-fatal if email fails (record is still created)
@@ -462,7 +589,7 @@ export class PasswordAuthController {
       });
 
       if (!otpRecord) {
-        return fail(res, 400, "Invalid or expired OTP");
+        return fail(res, 400, "Invalid OTP code");
       }
 
       if (new Date() > otpRecord.expiresAt) {
@@ -482,8 +609,11 @@ export class PasswordAuthController {
       const hashedNewPassword = await bcrypt.hash(resetData.newPassword, 10);
       await prisma.user.update({
         where: { email: resetData.email },
-        data: { passwordHash: hashedNewPassword },
+        data: { passwordHash: hashedNewPassword, passwordLastChanged: new Date() },
       });
+
+      // A reset proves email ownership, so every existing session ends here.
+      await prisma.deviceToken.deleteMany({ where: { userId: user.id } });
 
       await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
 
