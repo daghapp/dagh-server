@@ -35,6 +35,10 @@ jobs:
       - run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
+      # Several suites assert on baseline data (tour sites, providers, settings)
+      # that the app expects to exist, so seed the CI database the same way a
+      # developer does before running the tests.
+      - run: npm run db:seed
       - run: npm run test
       - run: npx tsc --noEmit
       - run: npm run lint
