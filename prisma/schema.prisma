@@ -1144,9 +1144,14 @@ model ItineraryDay {
   title              String?
   // Primary region the day is anchored to — drives day naming + local sourcing.
   region             String?
+  // Traveller's confirmed car rental for this day. NULL means the day still
+  // serves the recommended localTransport. Restricted to verified car-rental
+  // providers at the service layer.
+  transportProviderId String?
 
-  itinerary Itinerary          @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-  sites     ItineraryDaySite[]
+  itinerary       Itinerary         @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  transportProvider Provider?       @relation(fields: [transportProviderId], references: [provider_id], onDelete: SetNull)
+  sites           ItineraryDaySite[]
 
   @@unique([itineraryId, dayNumber])
   @@map("itinerary_days")
@@ -1436,6 +1441,7 @@ model Provider {
 
   audit_logs       AuditLog[]
   service_requests ServiceRequest[]
+  itinerary_days   ItineraryDay[]
 }
 
 model TourGuide {

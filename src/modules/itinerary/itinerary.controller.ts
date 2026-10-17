@@ -6,6 +6,7 @@ import {
   getTourRequestsByUserId,
   selectDatingProfilesForTour,
   getDatingSelectionsForTour,
+  selectDayTransport,
 } from "./itinerary.service.js";
 import { createTourRequestSchema } from "../../validator/itinerary-validator.js";
 import {
@@ -261,5 +262,56 @@ export async function getItineraryDatingSelections(req: Request, res: Response) 
   } catch (error) {
     console.error("[getItineraryDatingSelections]", error);
     return fail(res, 500, "Failed to retrieve dating selections.");
+  }
+}
+
+// ─────────────────────────────────────────
+// POST /itinerary/{tourRequestId}/days/{dayNumber}/transport
+// Confirm (or clear) the car rental for one itinerary day.
+// ─────────────────────────────────────────
+export async function selectDayTransportHandler(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id as string;
+    const tourRequestId = req.params["tourRequestId"] as string;
+    const dayNumber = Number(req.params["dayNumber"]);
+
+    if (!tourRequestId) return fail(res, 400, "Tour request ID is required.");
+    if (!Number.isInteger(dayNumber) || dayNumber < 1) {
+      return fail(res, 400, "dayNumber must be a positive integer.");
+    }
+
+    const body = req.body as { providerId?: string | null };
+    if (!("providerId" in body)) {
+      return fail(res, 400, "providerId is required (send null to clear the selection).");
+    }
+
+    const rawProviderId = body.providerId ?? null;
+    if (rawProviderId !== null && typeof rawProviderId !== "string") {
+      return fail(res, 400, "providerId must be a string or null.");
+    }
+
+    const result = await selectDayTransport(tourRequestId, dayNumber, userId, rawProviderId);
+
+    return ok(
+      res,
+      result,
+      rawProviderId
+        ? "Car rental saved to your itinerary day."
+        : "Car rental cleared for this itinerary day.",
+    );
+  } catch (error) {
+    console.error("[selectDayTransport]", error);
+    const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+    if (code === "TOUR_REQUEST_NOT_FOUND") return fail(res, 404, "Tour request not found.");
+    if (code === "FORBIDDEN") return fail(res, 403, "Not allowed.");
+    if (code === "ITINERARY_NOT_FOUND") return fail(res, 404, "Itinerary not found.");
+    if (code === "ITINERARY_DAY_NOT_FOUND") return fail(res, 404, "Itinerary day not found.");
+    if (code === "DAY_NOT_TOURING") {
+      return fail(res, 400, "Car rentals can only be selected for touring days.");
+    }
+    if (code === "INVALID_TRANSPORT_PROVIDER") {
+      return fail(res, 400, "The selected provider is not a verified car rental.");
+    }
+    return fail(res, 500, "Failed to save the car rental selection.");
   }
 }

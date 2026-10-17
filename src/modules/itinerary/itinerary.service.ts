@@ -366,6 +366,74 @@ export async function getDatingSelectionsForTour(tourRequestId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TOUR → TRANSPORT: confirm (or clear) a specific rental for one itinerary day
+// ─────────────────────────────────────────────────────────────────────────────
+export interface DayTransportSelection {
+  dayNumber: number;
+  transportProviderId: string | null;
+}
+
+/**
+ * Persists the traveller's confirmed car rental for a single touring day.
+ *
+ * Pass `providerId: null` to clear the selection and fall back to the read-time
+ * localTransport recommendation. Only verified providers that actually carry a
+ * car-rental record may be selected, so a stale client cannot attach an
+ * arbitrary (or de-verified) provider to the trip.
+ */
+export async function selectDayTransport(
+  tourRequestId: string,
+  dayNumber: number,
+  requesterId: string,
+  providerId: string | null,
+): Promise<DayTransportSelection> {
+  const tourRequest = await prisma.tourRequest.findUnique({
+    where: { id: tourRequestId },
+    select: { userId: true },
+  });
+
+  if (!tourRequest) throw new Error("TOUR_REQUEST_NOT_FOUND");
+  if (tourRequest.userId !== requesterId) throw new Error("FORBIDDEN");
+
+  const itinerary = await prisma.itinerary.findUnique({
+    where: { tourRequestId },
+    select: { id: true },
+  });
+
+  if (!itinerary) throw new Error("ITINERARY_NOT_FOUND");
+
+  const day = await prisma.itineraryDay.findUnique({
+    where: { itineraryId_dayNumber: { itineraryId: itinerary.id, dayNumber } },
+    select: { id: true, dayType: true },
+  });
+
+  if (!day) throw new Error("ITINERARY_DAY_NOT_FOUND");
+  // Only touring days carry transport needs; arrival/departure days are
+  // transfers handled outside the rental selection.
+  if (day.dayType !== DayType.TOURING) throw new Error("DAY_NOT_TOURING");
+
+  if (providerId !== null) {
+    const provider = await prisma.provider.findFirst({
+      where: {
+        provider_id: providerId,
+        verification_status: true,
+        car_rental: { isNot: null },
+      },
+      select: { provider_id: true },
+    });
+
+    if (!provider) throw new Error("INVALID_TRANSPORT_PROVIDER");
+  }
+
+  await prisma.itineraryDay.update({
+    where: { id: day.id },
+    data: { transportProviderId: providerId },
+  });
+
+  return { dayNumber, transportProviderId: providerId };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL: Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
 function toSiteWithCoords(
@@ -633,6 +701,17 @@ type AccommodationRecommendation = ProviderRecommendation & {
 
 type TransportRecommendation = ProviderRecommendation & {
   transportType: string | null;
+  locationAddress: string;
+  avgRating: number;
+  reviewCount: number;
+  imageUrl: string | null;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear: number;
+  transmission: string;
+  fuelType: string;
+  dailyRate: number;
+  driverRequired: boolean;
 };
 
 interface RawHotelProvider {
@@ -649,6 +728,17 @@ interface RawTransportProvider {
   latitude: number;
   longitude: number;
   transportType: string | null;
+  locationAddress: string;
+  avgRating: number;
+  reviewCount: number;
+  imageUrl: string | null;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear: number;
+  transmission: string;
+  fuelType: string;
+  dailyRate: number;
+  driverRequired: boolean;
 }
 
 async function mapItineraryToResponseWithRecommendations(
@@ -788,6 +878,13 @@ async function mapItineraryToResponseWithRecommendations(
         wantsNoTransport,
       );
 
+      // Traveller's confirmed rental for this day, if any. Resolved from the
+      // same verified supply so a de-verified provider degrades to the
+      // recommendation rather than a stale row.
+      const selectedTransportProvider = day.transportProviderId
+        ? transportProviders.find((t) => t.id === day.transportProviderId)
+        : undefined;
+
       return {
         dayNumber: day.dayNumber,
         dayType: day.dayType as "PREPARATION" | "TOURING" | "DEPARTURE",
@@ -823,6 +920,14 @@ async function mapItineraryToResponseWithRecommendations(
         }),
         localAccommodation: localHotel ? toHotelRecommendation(localHotel) : null,
         localTransport: localTransport ? toTransportRecommendation(localTransport) : null,
+        selectedTransport: selectedTransportProvider
+          ? toTransportRecommendation({
+              ...selectedTransportProvider,
+              distanceKm: Math.min(
+                ...anchors.map((a) => haversineDistance(a, selectedTransportProvider)),
+              ),
+            })
+          : null,
         socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
       };
     }),
@@ -867,6 +972,17 @@ function toTransportRecommendation(
     longitude: provider.longitude,
     distanceKm: provider.distanceKm,
     transportType: provider.transportType ?? null,
+    locationAddress: provider.locationAddress,
+    avgRating: provider.avgRating,
+    reviewCount: provider.reviewCount,
+    imageUrl: provider.imageUrl,
+    vehicleMake: provider.vehicleMake,
+    vehicleModel: provider.vehicleModel,
+    vehicleYear: provider.vehicleYear,
+    transmission: provider.transmission,
+    fuelType: provider.fuelType,
+    dailyRate: provider.dailyRate,
+    driverRequired: provider.driverRequired,
   };
 }
 
@@ -982,5 +1098,16 @@ async function loadTransportProviders(): Promise<RawTransportProvider[]> {
       latitude: p.location_lat,
       longitude: p.location_lng,
       transportType: p.car_rental!.transport_type ?? null,
+      locationAddress: p.location_address,
+      avgRating: p.avg_rating,
+      reviewCount: p.review_count,
+      imageUrl: p.media_assets[0] ?? null,
+      vehicleMake: p.car_rental!.vehicle_make,
+      vehicleModel: p.car_rental!.vehicle_model,
+      vehicleYear: p.car_rental!.vehicle_year,
+      transmission: p.car_rental!.transmission,
+      fuelType: p.car_rental!.fuel_type,
+      dailyRate: p.car_rental!.daily_rate,
+      driverRequired: p.car_rental!.driver_required,
     }));
 }

@@ -95,6 +95,29 @@ export interface LocalProviderRecommendation {
   transportType?: string | null;
 }
 
+// Car-rental recommendation. Richer than the generic location recommendation
+// because selecting a rental is a real decision: the fleet, price and terms
+// must be visible to the traveller, not just the provider's name.
+export interface TransportRecommendation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  transportType: string | null;
+  locationAddress: string;
+  avgRating: number;
+  reviewCount: number;
+  imageUrl: string | null;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear: number;
+  transmission: string;
+  fuelType: string;
+  dailyRate: number;
+  driverRequired: boolean;
+}
+
 export interface DatingSocialBlockProfile {
   datingProfileId: string;
   userId: string;
@@ -123,7 +146,11 @@ export interface ItineraryDayResponse {
   // Providers native to this day's region, assigned as the traveller crosses
   // regional boundaries to cut idle transfer cost.
   localAccommodation: LocalProviderRecommendation | null;
-  localTransport: LocalProviderRecommendation | null;
+  localTransport: TransportRecommendation | null;
+  // The rental the traveller confirmed for this day (null = using the
+  // localTransport recommendation). Set via
+  // POST /itinerary/:tourRequestId/days/:dayNumber/transport.
+  selectedTransport: TransportRecommendation | null;
   socialBlocks: DatingSocialBlock[];
 }
 
@@ -154,7 +181,7 @@ export interface ItineraryResponse {
 
   // Recommendations derived from the user's selected accommodation/transport preferences
   available_hotels: ItineraryLocationRecommendation[];
-  available_transports: ItineraryLocationRecommendation[];
+  available_transports: TransportRecommendation[];
 
   // Tour → dating: selected dating profiles merged into the itinerary timeline.
   datingSelections: (DatingSocialBlockProfile & { selectedAt: Date })[];

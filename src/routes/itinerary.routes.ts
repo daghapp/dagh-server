@@ -6,6 +6,7 @@ import {
   getUserTourRequests,
   selectDatingProfiles,
   getItineraryDatingSelections,
+  selectDayTransportHandler,
 } from "../modules/itinerary/itinerary.controller.js";
 import { ItineraryPaymentController } from "../modules/itinerary/itinerary.payment.controller.js";
 import protectedRoute from "../middleware/protected.js";
@@ -234,6 +235,54 @@ router.get("/:tourRequestId/dating-selections", protectedRoute, getItineraryDati
  *         description: Tour request not found
  */
 router.post("/:tourRequestId/dating-selections", protectedRoute, selectDatingProfiles);
+
+/**
+ * @swagger
+ * /itinerary/{tourRequestId}/days/{dayNumber}/transport:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Confirm (or clear) the car rental for an itinerary day
+ *     tags: [Itinerary]
+ *     description: >
+ *       Persists the traveller's chosen car rental for one touring day. The
+ *       provider must be a verified car rental (see GET /providers/nearby-rentals).
+ *       Send `providerId: null` to clear the selection and fall back to the
+ *       recommended localTransport. Arrival (PREPARATION) and departure days are
+ *       rejected — rentals attach to touring days only.
+ *     parameters:
+ *       - in: path
+ *         name: tourRequestId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: dayNumber
+ *         required: true
+ *         schema: { type: integer, minimum: 1 }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [providerId]
+ *             properties:
+ *               providerId:
+ *                 type: string
+ *                 format: uuid
+ *                 nullable: true
+ *                 description: Verified car-rental provider id, or null to clear
+ *     responses:
+ *       200:
+ *         description: Car rental saved (or cleared)
+ *       400:
+ *         description: Invalid dayNumber/providerId, non-touring day, or provider is not a verified car rental
+ *       403:
+ *         description: Not allowed
+ *       404:
+ *         description: Tour request, itinerary, or day not found
+ */
+router.post("/:tourRequestId/days/:dayNumber/transport", protectedRoute, selectDayTransportHandler);
 
 /**
  * @swagger
