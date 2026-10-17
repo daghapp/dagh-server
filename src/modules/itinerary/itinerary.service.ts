@@ -808,10 +808,16 @@ async function mapItineraryToResponseWithRecommendations(
   const bestRelocationsByDaySite: Record<string, AccommodationRecommendation | null> = {};
   if (shouldAttachRelocation) {
     for (const site of params.itinerarySites) {
-      const [best] = nearestWithTypeFallback(hotelProviders, [site], (h) => h.apartmentType, params.apartmentType, {
-        maxKm: 30,
-        limit: 1,
-      });
+      const [best] = nearestWithTypeFallback(
+        hotelProviders,
+        [site],
+        (h) => h.apartmentType,
+        params.apartmentType,
+        {
+          maxKm: 30,
+          limit: 1,
+        },
+      );
       bestRelocationsByDaySite[site.id] = best ? toHotelRecommendation(best) : null;
     }
   }
