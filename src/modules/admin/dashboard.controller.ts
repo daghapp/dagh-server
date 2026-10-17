@@ -1,9 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
-import {
-  PaymentStatus,
-  VerificationStatus,
-} from "../../../generated/prisma/client.js";
+import { PaymentStatus, VerificationStatus } from "../../../generated/prisma/client.js";
 import { ok, fail, paginated } from "../../helpers/response.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
 
@@ -190,7 +187,11 @@ export class AdminDashboardController {
       for (let i = range - 1; i >= 0; i--) {
         const from = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-        months.push({ key: `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}`, from, to });
+        months.push({
+          key: `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}`,
+          from,
+          to,
+        });
       }
       const series = await Promise.all(
         months.map(async (m) => {

@@ -34,7 +34,10 @@ import { router as AdminPaymentsRoutes } from "./routes/admin-payments.routes.js
 import { router as AdminDatingRoutes } from "./routes/admin-dating.routes.js";
 import { router as AdminSubscriptionsRoutes } from "./routes/admin-subscriptions.routes.js";
 import { router as AdminSettingsRoutes } from "./routes/admin-settings.routes.js";
-import { adminRouter as AdminMaintenanceRoutes, publicRouter as SystemRoutes } from "./routes/admin-maintenance.routes.js";
+import {
+  adminRouter as AdminMaintenanceRoutes,
+  publicRouter as SystemRoutes,
+} from "./routes/admin-maintenance.routes.js";
 import { router as AdminActivityRoutes } from "./routes/admin-activity.routes.js";
 import { router as AdminDashboardRoutes } from "./routes/admin-dashboard.routes.js";
 import { router as AdminToursRoutes } from "./routes/admin-tours.routes.js";

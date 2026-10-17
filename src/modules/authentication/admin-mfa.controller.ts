@@ -3,7 +3,13 @@ import { randomInt } from "crypto";
 import { AdminRole, AdminDepartment } from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/prisma.js";
 import { ok, fail, created } from "../../helpers/response.js";
-import { generateAccessToken, generateRefreshToken, generateMfaToken, verifyMfaToken, resolveMfaIdentity } from "../../helpers/jwt.js";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  generateMfaToken,
+  verifyMfaToken,
+  resolveMfaIdentity,
+} from "../../helpers/jwt.js";
 import type { NextFunction } from "express";
 
 /**
@@ -26,7 +32,8 @@ export async function mfaSetupAuth(req: Request, res: Response, next: NextFuncti
       where: { id: identity.id },
       select: { id: true, email: true, accountType: true, fullName: true },
     });
-    if (!user || user.accountType !== "ADMIN") return fail(res, 403, "Administrator account required");
+    if (!user || user.accountType !== "ADMIN")
+      return fail(res, 403, "Administrator account required");
     req.user = user;
     next();
   } catch {
@@ -189,7 +196,8 @@ export class AdminMfaController {
       // Session OR short-lived mfaToken: the global-2FA setup-required flow
       // hands the admin only an mfaToken, so setup must accept it.
       const mfaIdentity = req.user ? null : resolveMfaIdentity((req.body as any)?.mfaToken);
-      const identity = req.user ?? (mfaIdentity ? { id: mfaIdentity.id, email: mfaIdentity.email } : null);
+      const identity =
+        req.user ?? (mfaIdentity ? { id: mfaIdentity.id, email: mfaIdentity.email } : null);
       if (!identity) return fail(res, 401, "Not authenticated");
       const user = identity as { id: string; email: string };
 

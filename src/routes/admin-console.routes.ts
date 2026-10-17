@@ -165,11 +165,6 @@ router.get(
   adminDashboard.verifiedUsers.bind(adminDashboard),
 );
 
-
-
-
-
-
 /**
  * @swagger
  * /admin/payments:
@@ -273,7 +268,6 @@ router.get(
  *       403:
  *         description: Admin privileges required
  */
-
 
 /**
  * @swagger

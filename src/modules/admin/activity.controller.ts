@@ -144,7 +144,9 @@ export class AdminActivityController {
       ]);
       const data = rows.map((r) => {
         const meta =
-          r.metadata && typeof r.metadata === "object" ? (r.metadata as Record<string, unknown>) : {};
+          r.metadata && typeof r.metadata === "object"
+            ? (r.metadata as Record<string, unknown>)
+            : {};
         return {
           timestamp: r.createdAt,
           admin: r.actor,
@@ -181,7 +183,9 @@ export class AdminActivityController {
         "timestamp,admin,action,module,entity,previous,newState",
         ...rows.map((r) => {
           const meta =
-            r.metadata && typeof r.metadata === "object" ? (r.metadata as Record<string, unknown>) : {};
+            r.metadata && typeof r.metadata === "object"
+              ? (r.metadata as Record<string, unknown>)
+              : {};
           return [
             r.createdAt.toISOString(),
             r.actor?.email ?? r.actorId,

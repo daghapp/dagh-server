@@ -32,7 +32,11 @@ export class AdminMaintenanceController {
     try {
       const modules = parseModules(req.body?.modules);
       if (!modules) {
-        return fail(res, 400, `modules must be a non-empty array of: ${MAINTENANCE_MODULES.join(", ")}`);
+        return fail(
+          res,
+          400,
+          `modules must be a non-empty array of: ${MAINTENANCE_MODULES.join(", ")}`,
+        );
       }
       const message =
         typeof req.body?.message === "string" && req.body.message.length > 0
@@ -67,7 +71,9 @@ export class AdminMaintenanceController {
   /** PATCH /admin/maintenance/:id — end a window early. */
   async endEarly(req: Request, res: Response) {
     try {
-      const existing = await prisma.maintenanceWindow.findUnique({ where: { id: req.params.id as string } });
+      const existing = await prisma.maintenanceWindow.findUnique({
+        where: { id: req.params.id as string },
+      });
       if (!existing) return fail(res, 404, "Maintenance window not found");
       const updated = await prisma.maintenanceWindow.update({
         where: { id: req.params.id as string },

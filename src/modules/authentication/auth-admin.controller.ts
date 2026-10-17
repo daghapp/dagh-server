@@ -5,11 +5,7 @@ import { logAdminActivity } from "../../helpers/admin-activity.js";
 import { notifyAdmins } from "../../helpers/notify-admins.js";
 import sendEmail from "../../config/resend.config.js";
 import { roleBelongsToDepartment } from "../../config/admin-roles.js";
-import {
-  AdminDepartment,
-  AdminRole,
-  Prisma,
-} from "../../../generated/prisma/client.js";
+import { AdminDepartment, AdminRole, Prisma } from "../../../generated/prisma/client.js";
 
 const ensureAdmin = (req: Request, res: Response) => {
   const accountType = req.user?.accountType;
@@ -147,7 +143,8 @@ export class AuthAdminController {
         } else {
           return fail(res, 400, {
             code: "INVALID_ROLE",
-            message: "Invalid role filter. Expected admin|user|SUPER_ADMIN|OPERATIONS|FINANCE|SUPPORT",
+            message:
+              "Invalid role filter. Expected admin|user|SUPER_ADMIN|OPERATIONS|FINANCE|SUPPORT",
           });
         }
       }
@@ -784,7 +781,12 @@ export class AuthAdminController {
       return ok(res, updated, "User approved successfully");
     } catch (error) {
       console.error("Approve user error:", error);
-      return fail(res, 500, "Failed to approve user", error instanceof Error ? error.message : "Unknown error");
+      return fail(
+        res,
+        500,
+        "Failed to approve user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
@@ -850,7 +852,12 @@ export class AuthAdminController {
       return ok(res, updated, "User rejected successfully");
     } catch (error) {
       console.error("Reject user error:", error);
-      return fail(res, 500, "Failed to reject user", error instanceof Error ? error.message : "Unknown error");
+      return fail(
+        res,
+        500,
+        "Failed to reject user",
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 

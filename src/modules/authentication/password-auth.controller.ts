@@ -237,7 +237,9 @@ export class PasswordAuthController {
         });
         response.adminRole = adminProfile?.role ?? null;
         response.department = adminProfile?.department ?? null;
-        response.permissions = adminProfile?.role ? getAllPermissionsForRole(adminProfile.role) : [];
+        response.permissions = adminProfile?.role
+          ? getAllPermissionsForRole(adminProfile.role)
+          : [];
         response.mfaRequired = adminProfile?.mfaEnabled ?? false;
         response.mfaMethod = adminProfile?.mfaMethod ?? null;
         if (adminProfile?.mfaEnabled) {

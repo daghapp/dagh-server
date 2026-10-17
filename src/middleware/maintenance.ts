@@ -61,8 +61,10 @@ async function isAdminRequest(req: Request): Promise<boolean> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return false;
   try {
-    const decoded = jwt.verify(header.slice(7), process.env.JWT_ACCESS_SECRET as string) as
-      jwt.JwtPayload & { id?: string; accountType?: string };
+    const decoded = jwt.verify(
+      header.slice(7),
+      process.env.JWT_ACCESS_SECRET as string,
+    ) as jwt.JwtPayload & { id?: string; accountType?: string };
     if (decoded.accountType !== "ADMIN" || !decoded.id) return false;
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -112,7 +114,12 @@ export async function systemStatus() {
   ]);
   return {
     maintenance: window
-      ? { active: true, modules: window.modules, message: window.message, startedAt: window.startedAt }
+      ? {
+          active: true,
+          modules: window.modules,
+          message: window.message,
+          startedAt: window.startedAt,
+        }
       : { active: false, modules: [] as string[], message: null as string | null },
     payments: { enabled: paymentsEnabled },
     timestamp: new Date().toISOString(),

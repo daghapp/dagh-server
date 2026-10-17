@@ -211,9 +211,7 @@ describe("admin deleteUser against RESTRICT foreign keys", () => {
     await expect(
       prisma.user.findUnique({ where: { id: granteeId }, select: { isDeleted: true } }),
     ).resolves.toEqual({ isDeleted: false });
-    await expect(
-      prisma.adminActivityLog.count({ where: { actorId: granteeId } }),
-    ).resolves.toBe(0);
+    await expect(prisma.adminActivityLog.count({ where: { actorId: granteeId } })).resolves.toBe(0);
   });
 });
 

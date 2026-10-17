@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
-import { getSettingTab, updateSettingTab, SETTING_TABS, type SettingTab } from "../../helpers/settings.js";
+import {
+  getSettingTab,
+  updateSettingTab,
+  SETTING_TABS,
+  type SettingTab,
+} from "../../helpers/settings.js";
 import { logAdminActivity, AdminEntityType } from "../../helpers/admin-activity.js";
 import { ok, fail } from "../../helpers/response.js";
 
@@ -14,7 +19,8 @@ export class AdminSettingsController {
   async getTab(req: Request, res: Response) {
     try {
       const tab = parseTab(req.params.tab);
-      if (!tab) return fail(res, 400, `Unknown settings tab. Expected one of: ${SETTING_TABS.join(", ")}`);
+      if (!tab)
+        return fail(res, 400, `Unknown settings tab. Expected one of: ${SETTING_TABS.join(", ")}`);
       return ok(res, { tab, settings: await getSettingTab(tab) });
     } catch (error) {
       console.error("[settings] get failed:", error);
@@ -26,7 +32,8 @@ export class AdminSettingsController {
   async updateTab(req: Request, res: Response) {
     try {
       const tab = parseTab(req.params.tab);
-      if (!tab) return fail(res, 400, `Unknown settings tab. Expected one of: ${SETTING_TABS.join(", ")}`);
+      if (!tab)
+        return fail(res, 400, `Unknown settings tab. Expected one of: ${SETTING_TABS.join(", ")}`);
       const patch = (req.body ?? {}) as Record<string, unknown>;
       if (typeof patch !== "object" || Array.isArray(patch)) {
         return fail(res, 400, "Request body must be a settings object");

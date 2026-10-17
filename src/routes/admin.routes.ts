@@ -620,8 +620,6 @@ router.get(
   authAdminController.listWarnings.bind(authAdminController),
 );
 
-
-
 /**
  * @swagger
  * /admin/reports:

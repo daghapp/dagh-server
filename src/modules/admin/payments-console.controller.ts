@@ -93,8 +93,7 @@ function buildPaymentListWhere(query: Record<string, QueryValue>): Record<string
  */
 function mapHubtelStatus(data: unknown): PaymentStatus {
   const record = (data ?? {}) as Record<string, unknown>;
-  const statusText =
-    typeof record.status === "string" ? record.status.toLowerCase() : "";
+  const statusText = typeof record.status === "string" ? record.status.toLowerCase() : "";
   if (statusText === "paid" || statusText === "success") return PaymentStatus.SUCCESS;
   if (statusText === "failed" || statusText === "fail") return PaymentStatus.FAILED;
   if (!record.status && record.responseCode === "0000") return PaymentStatus.SUCCESS;
@@ -691,10 +690,7 @@ export class AdminPaymentsConsoleController {
       const { id } = req.params as { id: string };
       const { status, reason } = req.body as { status?: unknown; reason?: unknown };
 
-      if (
-        typeof status !== "string" ||
-        !(PAYMENT_STATUSES as readonly string[]).includes(status)
-      ) {
+      if (typeof status !== "string" || !(PAYMENT_STATUSES as readonly string[]).includes(status)) {
         return fail(res, 400, "Invalid status");
       }
       if (typeof reason !== "string" || reason.trim() === "") {

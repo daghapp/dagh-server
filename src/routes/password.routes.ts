@@ -55,13 +55,13 @@ const passwordAuthController = new PasswordAuthController();
  *                 type: string
  *                 format: email
  *                 example: user@example.com
-  *               password:
-  *                 type: string
-  *                 format: password
-  *                 minLength: 8
-  *                 description: Must contain at least one uppercase, lowercase, number, and special character
-  *                 example: Password123!
-  *               ethnicity:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 description: Must contain at least one uppercase, lowercase, number, and special character
+ *                 example: Password123!
+ *               ethnicity:
  *                 type: string
  *                 required: false
  *                 enum: [African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other]
@@ -164,19 +164,19 @@ router.post(
  *                 type: string
  *                 format: email
  *                 example: user@example.com
-  *               password:
-  *                 type: string
-  *                 format: password
-  *                 minLength: 6
-  *                 example: Password123!
-  *               rememberMe:
-  *                 type: boolean
-  *                 description: When true, the refresh token lasts 30 days instead of 7
-  *                 example: false
-  *     responses:
-  *       200:
-  *         description: Login successful
-  *         content:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 6
+ *                 example: Password123!
+ *               rememberMe:
+ *                 type: boolean
+ *                 description: When true, the refresh token lasts 30 days instead of 7
+ *                 example: false
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
  *           application/json:
  *             schema:
  *               type: object
@@ -396,14 +396,14 @@ router.post(
  *                 success:
  *                   type: boolean
  *                   example: true
-  *                 message:
-  *                   type: string
-  *                   example: Password reset OTP sent successfully
-  *       400:
-  *         description: Invalid email address
-  *       500:
-  *         description: Failed to send password reset OTP
-  */
+ *                 message:
+ *                   type: string
+ *                   example: Password reset OTP sent successfully
+ *       400:
+ *         description: Invalid email address
+ *       500:
+ *         description: Failed to send password reset OTP
+ */
 router.post(
   "/request-reset-password",
   validate(requestResetPasswordSchema),

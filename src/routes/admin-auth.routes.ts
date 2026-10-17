@@ -1,6 +1,9 @@
 import express from "express";
 import { AdminAuthController } from "../modules/authentication/admin-auth.controller.js";
-import { AdminMfaController, mfaSetupAuth } from "../modules/authentication/admin-mfa.controller.js";
+import {
+  AdminMfaController,
+  mfaSetupAuth,
+} from "../modules/authentication/admin-mfa.controller.js";
 import { AdminDepartmentsController } from "../modules/authentication/admin-departments.controller.js";
 import { validate } from "../middleware/validation.js";
 import { adminRegistrationSchema } from "../validator/admin-auth-validator.js";
@@ -145,10 +148,7 @@ router.post(
  *       401:
  *         description: Invalid or expired mfaToken, or invalid code
  */
-router.post(
-  "/auth/2fa/verify",
-  adminMfaController.verify.bind(adminMfaController),
-);
+router.post("/auth/2fa/verify", adminMfaController.verify.bind(adminMfaController));
 
 /**
  * @swagger
@@ -173,10 +173,7 @@ router.post(
  *       429:
  *         description: Resend cooldown not elapsed
  */
-router.post(
-  "/auth/2fa/resend",
-  adminMfaController.resend.bind(adminMfaController),
-);
+router.post("/auth/2fa/resend", adminMfaController.resend.bind(adminMfaController));
 
 /**
  * @swagger
@@ -268,6 +265,9 @@ router.post(
  *       200:
  *         description: Departments, roles and the role-per-department mapping
  */
-router.get("/departments", adminDepartmentsController.getDepartments.bind(adminDepartmentsController));
+router.get(
+  "/departments",
+  adminDepartmentsController.getDepartments.bind(adminDepartmentsController),
+);
 
 export { router };

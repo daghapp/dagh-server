@@ -89,9 +89,7 @@ export const listProfiles = async (req: Request, res: Response) => {
     }
     const tab = rawTab as Tab;
     const limitRaw = Number(req.query.limit ?? 20);
-    const limit = Number.isFinite(limitRaw)
-      ? Math.min(Math.max(Math.floor(limitRaw), 1), 50)
-      : 20;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.floor(limitRaw), 1), 50) : 20;
     const cursorId = (req.query.cursor as string | undefined) || null;
 
     await ensurePendingApplications();
@@ -182,8 +180,7 @@ export const getProfileStats = async (_req: Request, res: Response) => {
       }),
     ]);
 
-    const queueClearedPct =
-      total === 0 ? 0 : Math.round((cleared / total) * 1000) / 10;
+    const queueClearedPct = total === 0 ? 0 : Math.round((cleared / total) * 1000) / 10;
 
     // Null when nothing was reviewed today (no data, not zero-second reviews).
     let avgReviewSeconds: number | null = null;

@@ -1,9 +1,6 @@
 import cron from "node-cron";
 import { prisma } from "../config/prisma.js";
-import {
-  PaymentStatus,
-  PaymentTargetType,
-} from "../../generated/prisma/client.js";
+import { PaymentStatus, PaymentTargetType } from "../../generated/prisma/client.js";
 import { getHubtelStatusClient } from "../config/hubtel.js";
 // Phase 2.4 — Replace hardcoded amounts (464, 1450, 200) with env-driven pricing config
 import { withDistributedLock, tryAcquireWorkItem } from "../helpers/jobLock.js";
@@ -96,7 +93,6 @@ export const checkPendingPaymentsJob = () => {
                 } catch {
                   // Not a tour booking — continue to check other target types
                 }
-
               });
 
               // Membership subscription payment settled via the provider —
@@ -118,7 +114,6 @@ export const checkPendingPaymentsJob = () => {
                   data: { status: SubscriptionStatus.PAYMENT_FAILED },
                 });
               }
-
             } catch (error) {
               console.error("[Cron Job Error] Failed to check pending payments:", error);
             }

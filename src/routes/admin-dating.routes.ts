@@ -23,47 +23,23 @@ const router = express.Router();
 
 router.use(protectedRoute);
 
-router.get(
-  "/profiles/stats",
-  requirePermission(PERMISSIONS.DATING.VIEW),
-  getProfileStats,
-);
-router.patch(
-  "/profiles/bulk",
-  requirePermission(PERMISSIONS.DATING.APPROVE),
-  bulkReview,
-);
+router.get("/profiles/stats", requirePermission(PERMISSIONS.DATING.VIEW), getProfileStats);
+router.patch("/profiles/bulk", requirePermission(PERMISSIONS.DATING.APPROVE), bulkReview);
 router.get("/profiles", requirePermission(PERMISSIONS.DATING.VIEW), listProfiles);
-router.get(
-  "/profiles/:id/document",
-  requirePermission(PERMISSIONS.DATING.VIEW),
-  getDocument,
-);
+router.get("/profiles/:id/document", requirePermission(PERMISSIONS.DATING.VIEW), getDocument);
 router.get("/profiles/:id", requirePermission(PERMISSIONS.DATING.VIEW), getProfileDetail);
 router.patch(
   "/profiles/:id/approve",
   requirePermission(PERMISSIONS.DATING.APPROVE),
   approveProfile,
 );
-router.patch(
-  "/profiles/:id/reject",
-  requirePermission(PERMISSIONS.DATING.REJECT),
-  rejectProfile,
-);
+router.patch("/profiles/:id/reject", requirePermission(PERMISSIONS.DATING.REJECT), rejectProfile);
 router.post(
   "/profiles/:id/request-info",
   requirePermission(PERMISSIONS.DATING.APPROVE),
   requestInfo,
 );
-router.patch(
-  "/profiles/:id/flag",
-  requirePermission(PERMISSIONS.DATING.APPROVE),
-  flagProfile,
-);
-router.post(
-  "/profiles/:id/notes",
-  requirePermission(PERMISSIONS.DATING.APPROVE),
-  addNote,
-);
+router.patch("/profiles/:id/flag", requirePermission(PERMISSIONS.DATING.APPROVE), flagProfile);
+router.post("/profiles/:id/notes", requirePermission(PERMISSIONS.DATING.APPROVE), addNote);
 
 export { router };

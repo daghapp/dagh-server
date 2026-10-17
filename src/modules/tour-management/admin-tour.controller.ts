@@ -58,7 +58,13 @@ export class AdminTourController {
       const publishError = validatePublishable(tourData);
       if (publishError) return fail(res, 400, publishError);
 
-      const { gallery, itineraries, locations, media: _media, ...scalar } = tourData as TourSchema & {
+      const {
+        gallery,
+        itineraries,
+        locations,
+        media: _media,
+        ...scalar
+      } = tourData as TourSchema & {
         gallery?: string[];
         itineraries?: unknown;
         locations?: unknown;
@@ -110,7 +116,13 @@ export class AdminTourController {
       const publishError = validatePublishable({ ...existing, ...tourData, status: nextStatus });
       if (publishError) return fail(res, 400, publishError);
 
-      const { gallery, itineraries, locations, media: _media, ...scalar } = tourData as UpdateTourSchema & {
+      const {
+        gallery,
+        itineraries,
+        locations,
+        media: _media,
+        ...scalar
+      } = tourData as UpdateTourSchema & {
         gallery?: string[];
         itineraries?: unknown;
         locations?: unknown;
@@ -312,7 +324,8 @@ export class AdminTourController {
       if (typeof category === "string") where.category = category;
       if (typeof from === "string" || typeof to === "string") {
         const createdAt: Record<string, Date> = {};
-        if (typeof from === "string" && !Number.isNaN(Date.parse(from))) createdAt.gte = new Date(from);
+        if (typeof from === "string" && !Number.isNaN(Date.parse(from)))
+          createdAt.gte = new Date(from);
         if (typeof to === "string" && !Number.isNaN(Date.parse(to))) createdAt.lte = new Date(to);
         if (Object.keys(createdAt).length > 0) where.createdAt = createdAt;
       }
@@ -337,7 +350,9 @@ export class AdminTourController {
       return paginated(res, rows.map(withPublicUrl), total, page, limit, undefined, {
         stats: {
           total,
-          byStatus: Object.fromEntries(byStatus.map((s) => [s.status ?? "unknown", s._count.status])),
+          byStatus: Object.fromEntries(
+            byStatus.map((s) => [s.status ?? "unknown", s._count.status]),
+          ),
         },
       });
     } catch (error) {
@@ -372,7 +387,11 @@ export class AdminTourController {
 
       const status = normalizeStatus(req.body?.status);
       if (!status) {
-        return fail(res, 400, "status must be one of DRAFT | ACTIVE | ARCHIVED (or draft | published | archived)");
+        return fail(
+          res,
+          400,
+          "status must be one of DRAFT | ACTIVE | ARCHIVED (or draft | published | archived)",
+        );
       }
       const tourId = req.params.id as string;
       const existing = await prisma.tour_packages.findUnique({ where: { id: tourId } });
@@ -483,7 +502,8 @@ function validatePublishable(
     unknown
   >,
 ): string | null {
-  const status = typeof tour.status === "string" ? (STATUS_ALIASES[tour.status] ?? tour.status) : "draft";
+  const status =
+    typeof tour.status === "string" ? (STATUS_ALIASES[tour.status] ?? tour.status) : "draft";
   if (status !== "published") return null;
   if (!tour.title) return "Title is required to publish a destination";
   if (!tour.description) return "Description is required to publish a destination";
@@ -501,7 +521,10 @@ function slugify(title: string): string {
     .slice(0, 60);
 }
 
-async function uniqueSlug(provided: string | undefined, title: string | undefined): Promise<string | undefined> {
+async function uniqueSlug(
+  provided: string | undefined,
+  title: string | undefined,
+): Promise<string | undefined> {
   if (provided) return provided;
   if (!title) return undefined;
   const base = slugify(title) || "destination";
@@ -509,6 +532,8 @@ async function uniqueSlug(provided: string | undefined, title: string | undefine
 }
 
 /** Stable public URL for "Preview on Portal" (GET /tours/:tourId today). */
-function withPublicUrl<T extends { id: string; slug?: string | null }>(tour: T): T & { publicUrl: string } {
+function withPublicUrl<T extends { id: string; slug?: string | null }>(
+  tour: T,
+): T & { publicUrl: string } {
   return { ...tour, publicUrl: `/tours/${tour.slug ?? tour.id}` };
 }

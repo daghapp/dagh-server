@@ -30,8 +30,7 @@ const RefreshTokenSecret = process.env.JWT_REFRESH_SECRET as string;
  * would be a working session token that had skipped the second factor — the
  * exact thing two-factor auth exists to prevent.
  */
-const MfaTokenSecret =
-  process.env.JWT_MFA_SECRET ?? `${AccessTokenSecret}:admin-mfa`;
+const MfaTokenSecret = process.env.JWT_MFA_SECRET ?? `${AccessTokenSecret}:admin-mfa`;
 
 /** Options for the non-session token types minted from this module. */
 export interface ScopedTokenOptions {
@@ -119,9 +118,7 @@ export async function generateRefreshToken(user: JwtPayload, options: { days?: n
  * get back the verified payload, or `null` when it is missing/invalid.
  * `verifyMfaToken` remains the primitive; this just standardises extraction.
  */
-export function resolveMfaIdentity(
-  mfaToken: unknown,
-): (JwtPayload & { kind: string }) | null {
+export function resolveMfaIdentity(mfaToken: unknown): (JwtPayload & { kind: string }) | null {
   if (typeof mfaToken !== "string" || mfaToken.length === 0) return null;
   return verifyMfaToken(mfaToken);
 }

@@ -7,10 +7,7 @@ import { notifyAdmins } from "../../helpers/notify-admins.js";
 // cancellable-state guard (ACTIVE / PAYMENT_PENDING only) instead of
 // duplicating the transition rules here.
 import { cancelSubscription as cancelUserSubscription } from "../../services/membership.service.js";
-import {
-  SubscriptionStatus,
-  MembershipTierCode,
-} from "../../../generated/prisma/client.js";
+import { SubscriptionStatus, MembershipTierCode } from "../../../generated/prisma/client.js";
 
 /**
  * Admin console — subscriptions + NGO access (§3.9 handoff).
@@ -56,9 +53,7 @@ export class AdminSubscriptionsController {
       if (plan) {
         // `plan` accepts either a tier code (FREE, SILVER, …) or a plan id.
         const upperPlan = plan.toUpperCase();
-        if (
-          (Object.values(MembershipTierCode) as string[]).includes(upperPlan)
-        ) {
+        if ((Object.values(MembershipTierCode) as string[]).includes(upperPlan)) {
           where.tierCode = upperPlan;
         } else {
           where.planId = plan;
@@ -94,9 +89,7 @@ export class AdminSubscriptionsController {
         }),
       ]);
 
-      const byStatus = Object.fromEntries(
-        statusGroups.map((g) => [g.status, g._count._all]),
-      );
+      const byStatus = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
       const activeCount = byStatus[SubscriptionStatus.ACTIVE] ?? 0;
       const mrr = activePlans.reduce((sum, s) => sum + (s.plan?.price ?? 0), 0);
 
@@ -193,8 +186,7 @@ export class AdminSubscriptionsController {
       const actor = req.user!;
       const id = req.params.id as string;
       const rawDays = (req.body ?? {}).days as unknown;
-      const days =
-        typeof rawDays === "string" ? parseInt(rawDays, 10) : (rawDays as number);
+      const days = typeof rawDays === "string" ? parseInt(rawDays, 10) : (rawDays as number);
 
       if (!Number.isInteger(days) || days < 1 || days > 365) {
         return fail(res, 400, {
@@ -216,9 +208,7 @@ export class AdminSubscriptionsController {
 
       const now = new Date();
       const base =
-        existing.endDate && existing.endDate.getTime() > now.getTime()
-          ? existing.endDate
-          : now;
+        existing.endDate && existing.endDate.getTime() > now.getTime() ? existing.endDate : now;
       const endDate = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
 
       const updated = await prisma.userSubscription.update({
@@ -306,14 +296,7 @@ export class AdminSubscriptionsController {
           }),
           prisma.ngoAccessRequest.count({ where }),
         ]);
-        return paginated(
-          res,
-          requests,
-          total,
-          page,
-          limit,
-          "Pending NGO access requests",
-        );
+        return paginated(res, requests, total, page, limit, "Pending NGO access requests");
       }
 
       const where: Record<string, unknown> = {};
@@ -524,8 +507,7 @@ export class AdminSubscriptionsController {
       }
 
       const datingAccess =
-        Array.isArray(services) &&
-        services.some((s) => String(s).toUpperCase() === "DATING");
+        Array.isArray(services) && services.some((s) => String(s).toUpperCase() === "DATING");
 
       // Find-or-create: reactivate the latest existing link instead of
       // stacking duplicate rows for the same ngo+user.

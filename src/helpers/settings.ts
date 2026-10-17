@@ -50,7 +50,8 @@ export async function getSettingTab<T extends Record<string, unknown>>(
   tab: SettingTab,
 ): Promise<T> {
   const hit = cache.get(tab);
-  if (hit && hit.expires > Date.now()) return { ...SETTING_DEFAULTS[tab], ...(hit.value as object) } as T;
+  if (hit && hit.expires > Date.now())
+    return { ...SETTING_DEFAULTS[tab], ...(hit.value as object) } as T;
   let stored: Record<string, unknown> = {};
   try {
     const row = await prisma.platformSetting.findUnique({ where: { key: tab } });
@@ -96,7 +97,10 @@ export async function getSecuritySettings(): Promise<SecuritySettings> {
 }
 
 /** True when the user's password is older than the configured expiry window. */
-export function isPasswordExpired(passwordLastChanged: Date | null | undefined, expiryDays: number): boolean {
+export function isPasswordExpired(
+  passwordLastChanged: Date | null | undefined,
+  expiryDays: number,
+): boolean {
   if (!passwordLastChanged || !(expiryDays > 0)) return false;
   return Date.now() - passwordLastChanged.getTime() > expiryDays * 24 * 60 * 60 * 1000;
 }
