@@ -3,6 +3,7 @@
 
 import { prisma } from "./config";
 import type { Prisma } from "../generated/prisma/client.js";
+import { deriveTransitProfile } from "./helpers/transit-profile.js";
 import {
   AccountStatus,
   AccountType,
@@ -33,7 +34,7 @@ import crypto from "crypto";
 const DEMO_PASSWORD = "Demo@12345";
 const ADMIN_PASSWORD = "Admin@12345";
 
-const tourSites: Prisma.TourSiteCreateInput[] = [
+const rawTourSites: Prisma.TourSiteCreateInput[] = [
   // ── Greater Accra ──────────────────────────────────────────────────
   {
     name: "Kwame Nkrumah Mausoleum",
@@ -44,6 +45,7 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
       "The final resting place of Ghana's first president and independence hero, surrounded by a beautifully landscaped park and museum.",
     imageUrl: null,
     category: "HISTORICAL",
+    transit_profile: "RURAL",
   },
   {
     name: "Labadi Beach",
@@ -54,6 +56,7 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
       "Accra's most popular public beach, known for lively weekends, local food, live music and stunning Atlantic views.",
     imageUrl: null,
     category: "BEACH",
+    transit_profile: "RURAL",
   },
   {
     name: "Shai Hills Resource Reserve",
@@ -116,6 +119,7 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
       "A UNESCO World Heritage Site and one of the most significant slave castles on the West African coast.",
     imageUrl: null,
     category: "HISTORICAL",
+    transit_profile: "RURAL",
   },
   {
     name: "Elmina Castle",
@@ -126,6 +130,7 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
       "Built by the Portuguese in 1482, Elmina Castle is the oldest European building in sub-Saharan Africa and a UNESCO World Heritage Site.",
     imageUrl: null,
     category: "HISTORICAL",
+    transit_profile: "RURAL",
   },
   {
     name: "Kakum National Park",
@@ -147,6 +152,7 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
       "One of Ghana's finest beaches, known for safe swimming, surfing, and a laid-back fishing village atmosphere.",
     imageUrl: null,
     category: "BEACH",
+    transit_profile: "RURAL",
   },
   {
     name: "Nzulezo Stilt Village",
@@ -294,6 +300,15 @@ const tourSites: Prisma.TourSiteCreateInput[] = [
     category: "CULTURAL",
   },
 ];
+
+// Region → accessibility tier (§2). Hand-maintaining transit_profile per entry
+// drifted (urban sites marked RURAL), so the seed always derives the profile
+// from the region via the shared helper — one source of truth with the
+// pending-site approval pipeline.
+const tourSites: Prisma.TourSiteCreateInput[] = rawTourSites.map((site) => ({
+  ...site,
+  transit_profile: deriveTransitProfile(site.region),
+}));
 
 const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = [
   { code: "US", name: "United States" },
@@ -2181,6 +2196,271 @@ async function seedProviders() {
   console.log("Providers seeded successfully.");
 }
 
+// ── Public transport catalog (§2: STC / VIP / trotro / air mobility) ────────
+// Boarding-point based catalog consumed by the mobility engine. Coordinates
+// are approximate city/station centroids — accurate enough for nearest-service
+// ranking, not for navigation. Notes describe the boarding route / drop-off
+// guidance the itinerary surfaces for rural and peri-urban sites.
+const publicTransportServices: Prisma.PublicTransportServiceCreateManyInput[] = [
+  // Intercity coaches — STC
+  {
+    mode: "INTERCITY_BUS",
+    operator: "STC",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Kumasi",
+    destinationRegion: "Ashanti",
+    destinationLat: 6.694,
+    destinationLng: -1.6244,
+    notes: "Board at Circle; drops at Asafo area, central Kumasi.",
+  },
+  {
+    mode: "INTERCITY_BUS",
+    operator: "STC",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Cape Coast",
+    destinationRegion: "Central",
+    destinationLat: 5.1054,
+    destinationLng: -1.2466,
+    notes: "Coastal corridor service; drops at Cape Coast main station.",
+  },
+  {
+    mode: "INTERCITY_BUS",
+    operator: "STC",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Takoradi",
+    destinationRegion: "Western",
+    destinationLat: 4.8961,
+    destinationLng: -1.7748,
+    notes: "Western corridor service; drops central Takoradi.",
+  },
+  {
+    mode: "INTERCITY_BUS",
+    operator: "STC",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Tamale",
+    destinationRegion: "Northern",
+    destinationLat: 9.4034,
+    destinationLng: -0.8424,
+    notes: "Northern corridor; long-haul service, book ahead.",
+  },
+  {
+    mode: "INTERCITY_BUS",
+    operator: "STC",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Ho",
+    destinationRegion: "Volta",
+    destinationLat: 6.6111,
+    destinationLng: 0.4714,
+    notes: "Volta corridor service; drops at Ho main station area.",
+  },
+  {
+    mode: "INTERCITY_BUS",
+    operator: "STC",
+    originCity: "Kumasi",
+    originStation: "Asafo Station (Kumasi)",
+    originLat: 6.6969,
+    originLng: -1.626,
+    destinationCity: "Tamale",
+    destinationRegion: "Northern",
+    destinationLat: 9.4034,
+    destinationLng: -0.8424,
+    notes: "Up-north leg from the Ashanti hub.",
+  },
+  // Intercity coaches — VIP
+  {
+    mode: "INTERCITY_BUS",
+    operator: "VIP",
+    originCity: "Accra",
+    originStation: "Circle / Neoplan Station (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Kumasi",
+    destinationRegion: "Ashanti",
+    destinationLat: 6.694,
+    destinationLng: -1.6244,
+    notes: "High-frequency Accra–Kumasi service; drops at Asafo.",
+  },
+  {
+    mode: "INTERCITY_BUS",
+    operator: "VIP",
+    originCity: "Accra",
+    originStation: "Circle / Neoplan Station (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Tamale",
+    destinationRegion: "Northern",
+    destinationLat: 9.4034,
+    destinationLng: -0.8424,
+    notes: "Northern route; long-haul service.",
+  },
+  // Local trotro corridors — station-of-origin + drop-off guidance
+  {
+    mode: "TROTRO",
+    operator: "Trotro",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Cape Coast",
+    destinationRegion: "Central",
+    destinationLat: 5.1054,
+    destinationLng: -1.2466,
+    notes: "Board at Circle; alight Cape Coast main trotro station.",
+  },
+  {
+    mode: "TROTRO",
+    operator: "Trotro",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Kumasi",
+    destinationRegion: "Ashanti",
+    destinationLat: 6.694,
+    destinationLng: -1.6244,
+    notes: "Board at Circle; alight Asafo Station, Kumasi.",
+  },
+  {
+    mode: "TROTRO",
+    operator: "Trotro",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Takoradi",
+    destinationRegion: "Western",
+    destinationLat: 4.8961,
+    destinationLng: -1.7748,
+    notes: "Board at Circle; alight Market Circle, Takoradi.",
+  },
+  {
+    mode: "TROTRO",
+    operator: "Trotro",
+    originCity: "Accra",
+    originStation: "Kwame Nkrumah Circle (Accra)",
+    originLat: 5.5711,
+    originLng: -0.2119,
+    destinationCity: "Ho",
+    destinationRegion: "Volta",
+    destinationLat: 6.6111,
+    destinationLng: 0.4714,
+    notes: "Board at Circle; alight Ho main station.",
+  },
+  {
+    mode: "TROTRO",
+    operator: "Trotro",
+    originCity: "Kumasi",
+    originStation: "Asafo Station (Kumasi)",
+    originLat: 6.6969,
+    originLng: -1.626,
+    destinationCity: "Abono",
+    destinationRegion: "Ashanti",
+    destinationLat: 6.5167,
+    destinationLng: -1.4667,
+    notes: "Lake Bosomtwe gateway: alight Abono junction, then short taxi/trotro hop to the lake.",
+  },
+  // Domestic air — airports serving the tour corridors
+  {
+    mode: "DOMESTIC_AIR",
+    operator: "Domestic Air",
+    originCity: "Accra",
+    originStation: "Kotoka International Airport (ACC)",
+    originLat: 5.6051,
+    originLng: -0.1668,
+    destinationCity: null,
+    destinationRegion: null,
+    notes: "Domestic departures to Kumasi, Takoradi and Tamale.",
+  },
+  {
+    mode: "DOMESTIC_AIR",
+    operator: "Domestic Air",
+    originCity: "Kumasi",
+    originStation: "Kumasi Airport (KMS)",
+    originLat: 6.7156,
+    originLng: -1.5908,
+    destinationCity: null,
+    destinationRegion: null,
+    notes: "Domestic flights to Accra.",
+  },
+  {
+    mode: "DOMESTIC_AIR",
+    operator: "Domestic Air",
+    originCity: "Tamale",
+    originStation: "Tamale Airport (TML)",
+    originLat: 9.5571,
+    originLng: -0.8632,
+    destinationCity: null,
+    destinationRegion: null,
+    notes: "Domestic flights to Accra.",
+  },
+  {
+    mode: "DOMESTIC_AIR",
+    operator: "Domestic Air",
+    originCity: "Takoradi",
+    originStation: "Takoradi Airport (TKD)",
+    originLat: 4.8961,
+    originLng: -1.7748,
+    destinationCity: null,
+    destinationRegion: null,
+    notes: "Domestic flights to Accra.",
+  },
+  {
+    mode: "DOMESTIC_AIR",
+    operator: "Domestic Air",
+    originCity: "Ho",
+    originStation: "Ho Airport (HOH)",
+    originLat: 6.6008,
+    originLng: 0.4699,
+    destinationCity: null,
+    destinationRegion: null,
+    notes: "Domestic flights to Accra.",
+  },
+];
+
+// Idempotent: rows are keyed by (mode, operator, originCity, destinationCity)
+// — destinationCity IS NULL for airports, hence the explicit null match.
+async function seedPublicTransportServices() {
+  console.log("Seeding public transport services...");
+  let created = 0;
+  for (const service of publicTransportServices) {
+    const existing = await prisma.publicTransportService.findFirst({
+      where: {
+        mode: service.mode,
+        operator: service.operator,
+        originCity: service.originCity,
+        destinationCity: service.destinationCity ?? null,
+      },
+    });
+    if (existing) {
+      await prisma.publicTransportService.update({
+        where: { id: existing.id },
+        data: { ...service, active: true },
+      });
+    } else {
+      await prisma.publicTransportService.create({ data: service });
+      created += 1;
+    }
+  }
+  console.log(
+    `Public transport catalog seeded (${publicTransportServices.length} total, ${created} new).`,
+  );
+}
+
 async function main() {
   console.log("Seeding tour sites...");
   const siteCount = await prisma.tourSite.count();
@@ -2191,6 +2471,29 @@ async function main() {
 
     console.log(`Seeded ${tourSites.length} tour sites successfully.`);
   }
+
+  // Backfill transit_profile for rows that predate the column (they all carry
+  // the RURAL column default). Region-derivation is deterministic, so re-seeding
+  // converges every environment onto the same mobility tiers.
+  const seededSites = await prisma.tourSite.findMany({
+    select: { id: true, region: true, transit_profile: true },
+  });
+  let profileCorrections = 0;
+  for (const site of seededSites) {
+    const derived = deriveTransitProfile(site.region);
+    if (site.transit_profile !== derived) {
+      await prisma.tourSite.update({
+        where: { id: site.id },
+        data: { transit_profile: derived },
+      });
+      profileCorrections += 1;
+    }
+  }
+  if (profileCorrections > 0) {
+    console.log(`Backfilled transit_profile on ${profileCorrections} tour sites.`);
+  }
+
+  await seedPublicTransportServices();
 
   // Seed Ledger Accounts
   await prisma.ledgerAccount.createMany({

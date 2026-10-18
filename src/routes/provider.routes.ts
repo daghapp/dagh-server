@@ -20,7 +20,12 @@ const rentalsController = new ProviderNearbyRentalsController();
  *   get:
  *     security:
  *       - bearerAuth: []
- *     summary: Get nearby verified hotels for a tour site
+ *     summary: Get nearby verified hotels for a tour site (§1 tiered)
+ *     description: >
+ *       Verified supply within the radius first (category-preferred when
+ *       propertyType is given); when fewer than 2 verified matches remain, an
+ *       external Google Places fallback is injected tagged
+ *       "Suggested Alternative Accommodation".
  *     tags: [Providers]
  *     parameters:
  *       - in: query
@@ -31,6 +36,13 @@ const rentalsController = new ProviderNearbyRentalsController();
  *         name: radiusKm
  *         required: false
  *         schema: { type: number, example: 30 }
+ *       - in: query
+ *         name: propertyType
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [HOTEL, GUESTHOUSE, AIRBNB, APARTMENTS, MOTEL]
+ *         description: Preferred accommodation category (ordered ahead of others)
  *       - in: query
  *         name: limit
  *         required: false

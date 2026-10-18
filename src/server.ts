@@ -43,6 +43,8 @@ import { router as AdminDashboardRoutes } from "./routes/admin-dashboard.routes.
 import { router as AdminToursRoutes } from "./routes/admin-tours.routes.js";
 import { maintenanceGate } from "./middleware/maintenance.js";
 import { router as ItineraryGenRoutes } from "./routes/itinerary.routes.js";
+import { router as PendingSitesRoutes } from "./routes/pending-sites.routes.js";
+import { router as SitePhotosRoutes } from "./routes/site-photos.routes.js";
 import { router as ProviderRoutes } from "./routes/provider.routes.js";
 import { router as ProfileValidationStepRoutes } from "./routes/profile-validation-step.routes.js";
 import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
@@ -259,6 +261,8 @@ app.use("/system", SystemRoutes);
 // NOTE: Visa on Arrival retired (§7) — /visa-requests routes removed.
 
 app.use("/itinerary", ItineraryGenRoutes);
+app.use("/pending-sites", PendingSitesRoutes);
+app.use("/tour-sites", SitePhotosRoutes);
 app.use("/providers", ProviderRoutes);
 // Phase 2.1 — Message routes wired up (previously registered but never connected to Socket.IO)
 app.use("/messages", MessageRoutes);

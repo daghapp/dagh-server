@@ -292,3 +292,25 @@ export function _clearAdminRoleCache(req: Request): void {
 export function getAllPermissionsForRole(role: AdminRole): string[] {
   return getPermissionsForRole(role);
 }
+
+export function requireRole(roles: string | string[]) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const user = req.user;
+    if (!user) {
+      fail(res, 401, {
+        code: "UNAUTHENTICATED",
+        message: "User not authenticated",
+      });
+      return;
+    }
+    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+    if (!allowedRoles.includes(user.accountType)) {
+      fail(res, 403, {
+        code: "INSUFFICIENT_PERMISSION",
+        message: `Role "${user.accountType}" is not authorized. Required: ${allowedRoles.join(", ")}`,
+      });
+      return;
+    }
+    next();
+  };
+}

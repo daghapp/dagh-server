@@ -1,0 +1,2046 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R 10 0 R 12 0 R 14 0 R 16 0 R 18 0 R 20 0 R 22 0 R 24 0 R] /Count 10 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 5263 >>
+stream
+BT
+/F1 5.0 Tf
+1 0 0 1 54.0 744.0 Tm
+() Tj
+/F2 20.0 Tf
+1 0 0 1 54.0 737.2 Tm
+(DAGH Admin API ? Endpoint Reference) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 710.2 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 705.2 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 698.5 Tm
+(Generated from the registered Express routes and their controllers) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 686.4 Tm
+(API base: https://<API_HOST> \(local development: http://localhost:5000\)) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 674.2 Tm
+(Route prefix: /admin unless another prefix is shown) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 662.1 Tm
+(Last reviewed: 9 October 2026) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 649.9 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 643.2 Tm
+(This document describes the admin-facing endpoints currently implemented in this repository. It includes the) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 631.0 Tm
+(/admin/* API, admin-only community content operations, and other admin-gated endpoints mounted under /tours,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 618.9 Tm
+(/faq, and /data-policy. It documents the runtime controller behavior where it differs from older Swagger) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 606.7 Tm
+(comments or handoff notes.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 594.6 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 587.8 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 582.8 Tm
+(1. Conventions and access) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 562.6 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 557.6 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 550.8 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 545.8 Tm
+(Authentication) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 531.0 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 526.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 519.2 Tm
+(Protected endpoints require a completed admin session:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 507.1 Tm
+() Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 500.3 Tm
+() Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 494.9 Tm
+(Authorization: Bearer <accessToken>) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 484.1 Tm
+(Content-Type: application/json) Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 473.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 467.9 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 461.2 Tm
+(The admin login flow starts at the application's POST /auth/login. Admin MFA can return a short-lived) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 449.0 Tm
+(mfaToken; that token is only for the MFA verification endpoints and is not accepted as an access token. After) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 436.9 Tm
+(MFA succeeds, use the returned accessToken and refreshToken as the session credentials.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 424.7 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 418.0 Tm
+(GET /admin/departments and POST /admin/auth/register are public. The registration endpoint creates an admin) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 405.8 Tm
+(account with accountStatus: "PENDING"; an authorized admin must approve it using PATCH) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 393.7 Tm
+(/admin/users/:userId/approve before normal access is available. If ADMIN_OFFICIAL_EMAIL_DOMAIN is configured,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 381.5 Tm
+(registration is limited to that email domain.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 369.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 362.6 Tm
+(Authorization is role-scoped. Admin-only routes generally return 403 when the account or role lacks the) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 350.5 Tm
+(required permission. The payment gateway configuration routes use an additional scope guard; currently those) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 338.3 Tm
+(scopes are granted only to SUPER_ADMIN. A missing/invalid/expired access token is normally rejected by) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 326.2 Tm
+(protectedRoute with 401.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 314.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 307.3 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 302.3 Tm
+(Response envelopes) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 287.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 282.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 275.7 Tm
+(Most endpoints use these helpers:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 263.5 Tm
+() Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 256.8 Tm
+() Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 251.4 Tm
+({ "success": true, "data": {}, "message": "Optional status message" }) Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 240.6 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 235.2 Tm
+() Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 228.4 Tm
+() Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 223.0 Tm
+({ "success": false, "error": "Readable error or error object", "details": {} }) Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 212.2 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 206.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 200.1 Tm
+(Paginated endpoints return:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 187.9 Tm
+() Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 181.2 Tm
+() Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 175.8 Tm
+({) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 165.0 Tm
+(  "success": true,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 154.2 Tm
+(  "data": [],) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 143.4 Tm
+(  "pagination": { "total": 0, "page": 1, "limit": 20, "totalPages": 0 }) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 132.6 Tm
+(}) Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 121.8 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 116.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 109.6 Tm
+(Created resources generally use HTTP 201; ordinary success is 200. Exceptions are noted below \(for example,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 97.5 Tm
+(/admin/settings/payment-gateway/test returns 503 for retryable provider failures\). A few legacy routes have a) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 85.3 Tm
+(different response shape; those are explicitly called out.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 73.2 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 66.4 Tm
+() Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 1) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 5385 >>
+stream
+BT
+/F2 11.0 Tf
+1 0 0 1 54.0 744.0 Tm
+(Common query behavior) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 729.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 724.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 717.4 Tm
+(- Pagination is 1-based, defaults to page=1 and limit=20, and clamps the limit to 1?100, unless noted) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 705.2 Tm
+(otherwise.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 693.1 Tm
+(- Date filters use from and to on createdAt; the end date is inclusive through the end of that day.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 681.0 Tm
+(- Unknown enum filters are ignored in the visa and payment console list routes.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 668.8 Tm
+(- Timestamps are ISO-8601 date-time strings. Amounts use the payment record currency \(normally GHS\).) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 656.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 649.9 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 644.9 Tm
+(Common errors) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 630.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 625.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 618.3 Tm
+(- 400 Bad Request: invalid input, unsupported action, or a state/business rule that prevents the operation.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 606.2 Tm
+(- 401 Unauthorized: protected route called without a valid access token.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 594.0 Tm
+(- 403 Forbidden: admin account or required permission is missing. Permission middleware uses {) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 581.9 Tm
+(success:false, error:{ code:"INSUFFICIENT_PERMISSION", message, scope? } }.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 569.7 Tm
+(- 404 Not Found: referenced user, request, report, grant, plan, video, FAQ, or policy does not exist.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 557.6 Tm
+(- 409 Conflict: duplicate resource, already-revoked grant, or payment gateway not connected when attempting) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 545.4 Tm
+(to enable processing.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 533.3 Tm
+(- 500 Internal Server Error: unexpected database or server failure. The error message is usually safe to) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 521.1 Tm
+(show; log server diagnostics separately.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 509.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 502.2 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 497.2 Tm
+(2. Endpoint index) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 477.0 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 472.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 465.2 Tm
+(Group: Admin registration and MFA  |  Routes: GET /admin/departments; POST /admin/auth/register;) Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 453.1 Tm
+(/admin/auth/2fa/*) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 440.9 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 435.9 Tm
+(Group: Dashboard and users  |  Routes: /admin/dashboard/summary; /admin/users*) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 423.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 418.8 Tm
+(Group: Visa requests  |  Routes: /admin/visa-requests*) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 406.6 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 401.6 Tm
+(Group: Payments and gateway  |  Routes: /admin/payments*; /admin/settings/payment-gateway*) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 389.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 384.5 Tm
+(Group: Plans and access grants  |  Routes: /admin/plans*; /admin/access-grants*; /admin/users/:userId/access) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 372.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 367.3 Tm
+(Group: Moderation and verification  |  Routes: /admin/reports*; /admin/profile-verifications*) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 355.2 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 350.2 Tm
+(Group: Roles and notifications  |  Routes: /admin/roles; /admin/notifications*) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 338.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 333.0 Tm
+(Group: Community content  |  Routes: /community/admin/*; /community/videos/:videoId/analytics) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 320.9 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 60.0 315.9 Tm
+(Group: Other admin-gated resources  |  Routes: /tours*; /faq/admin*; /data-policy/admin/policy) Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 303.7 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 298.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 292.0 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 287.0 Tm
+(3. Registration, departments, and MFA) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 266.7 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 261.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 255.0 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 250.0 Tm
+(GET /admin/departments ? public) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 235.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 230.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 223.4 Tm
+(Returns data for the admin registration form:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 211.2 Tm
+() Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 204.5 Tm
+() Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 199.1 Tm
+({) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 188.3 Tm
+(  "success": true,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 177.5 Tm
+(  "data": {) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 166.7 Tm
+(    "departments": ["EXECUTIVE_MANAGEMENT", "OPERATIONS_AND_MEMBERSHIP", "FINANCE_AND_COMPLIANCE",) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 155.9 Tm
+("TECHNICAL_SUPPORT"],) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 145.1 Tm
+(    "roles": ["SUPER_ADMIN", "OPERATIONS", "FINANCE", "SUPPORT"],) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 134.3 Tm
+(    "rolesByDepartment": {) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 123.5 Tm
+(      "EXECUTIVE_MANAGEMENT": ["SUPER_ADMIN"],) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 112.7 Tm
+(      "OPERATIONS_AND_MEMBERSHIP": ["OPERATIONS"],) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 101.9 Tm
+(      "FINANCE_AND_COMPLIANCE": ["FINANCE"],) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 91.1 Tm
+(      "TECHNICAL_SUPPORT": ["SUPPORT"]) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 80.3 Tm
+(    }) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 69.5 Tm
+(  }) Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 2) Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 5848 >>
+stream
+BT
+/F3 8.0 Tf
+1 0 0 1 66.0 744.0 Tm
+(}) Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 733.2 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 727.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 721.1 Tm
+(There is no controller-level error response for this static lookup.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 708.9 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 702.2 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 697.2 Tm
+(POST /admin/auth/register ? public) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 682.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 677.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 670.6 Tm
+(Creates a pending administrator. Required JSON fields: fullName \(at least 2 characters\), email, password \(at) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 658.4 Tm
+(least 8 characters, uppercase, lowercase, number, and special character\), department, and role. Optional) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 646.3 Tm
+(phoneNumber must be E.164. The selected role must belong to the selected department.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 634.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 627.4 Tm
+(Success is 201 with { success:true, data: <created user plus adminProfile>, message:"Admin registered) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 615.2 Tm
+(successfully" }. passwordHash is omitted. accountType is ADMIN and accountStatus is PENDING.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 603.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 596.3 Tm
+(Errors: 400 invalid registration, existing email \(User already exists\), or duplicate phone \(Phone number) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 584.2 Tm
+(already in use\); 403 configured official-email-domain restriction; 500 Admin registration failed.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 572.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 565.3 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 560.3 Tm
+(MFA sign-in endpoints) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 545.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 540.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 533.7 Tm
+(- POST /admin/auth/2fa/verify ? Body: { "mfaToken":"...", "code":"123456", "method":"SMS|TOTP",) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 521.5 Tm
+("useBackupCode":false }. Verifies the factor and returns data with user identity, adminRole, department,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 509.4 Tm
+(permissions, accessToken, and refreshToken. method may be omitted to use the configured method. To use a) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 497.2 Tm
+(backup code, set useBackupCode:true or use /admin/auth/2fa/backup-codes/verify. Errors: 400 missing) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 485.1 Tm
+(required values or TOTP not configured; 401 invalid/expired MFA token or invalid code; 403 not an admin;) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 472.9 Tm
+(500 verification failure.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 460.8 Tm
+(- POST /admin/auth/2fa/resend ? Body: { "mfaToken":"..." }. Creates a new SMS challenge and returns {) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 448.6 Tm
+(success:true, data:{ sent:true }, message:"Verification code sent" }. The code itself is not returned.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 436.5 Tm
+(Errors: 400 missing token, 401 invalid/expired token, 429 resend cooldown \(30 seconds\), 500 resend failure.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 424.3 Tm
+(- POST /admin/auth/2fa/backup-codes/verify ? Body: { "mfaToken":"...", "code":"DAGH-XXXX-XXXX" }. A valid) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 412.2 Tm
+(code can only be used once. Success returns the same session payload as MFA verify. Errors: 400 missing) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 400.0 Tm
+(values; 401 invalid/expired MFA token or invalid backup code; 403 not an admin; 500 verification failure.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 387.9 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 381.1 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 376.1 Tm
+(Authenticated MFA settings) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 361.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 356.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 349.5 Tm
+(These three endpoints require an access token and settings.view permission.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 337.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 330.6 Tm
+(- POST /admin/auth/2fa/totp/setup ? no body. Returns provisioning data in data \(including the authenticator) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 318.5 Tm
+(URI, manual key, and shared secret\). It stores a pending secret; MFA is not enabled until verified. Errors:) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 306.3 Tm
+(401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 294.2 Tm
+(- POST /admin/auth/2fa/totp/verify ? Body: { "code":"123456" }. Confirms the secret and returns {) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 282.0 Tm
+(mfaEnabled:true, mfaMethod:"TOTP" }. Errors: 400 missing code, setup not started, or invalid code; 401,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 269.9 Tm
+(403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 257.7 Tm
+(- POST /admin/auth/2fa/backup-codes ? no body. Returns 201 with { backupCodes:["...", ...] } \(10 plaintext) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 245.6 Tm
+(codes, shown once; only hashes are stored\). Save these at generation time. Errors: 401, 403, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 233.4 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 226.7 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 221.7 Tm
+(4. Dashboard and user management) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 201.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 196.4 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 189.7 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 184.7 Tm
+(GET /admin/dashboard/summary) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 169.8 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 164.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 158.1 Tm
+(Requires dashboard.view. No query parameters. Returns aggregate KPI data:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 145.9 Tm
+() Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 139.2 Tm
+() Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 133.8 Tm
+({) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 123.0 Tm
+(  "success": true,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 112.2 Tm
+(  "data": {) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 101.4 Tm
+(    "tours": { "total": 4, "bulk": 4, "custom": 0 },) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 90.6 Tm
+(    "pendingVisaRequests": 4,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 79.8 Tm
+(    "successfulPaymentsAmount": 8906,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 69.0 Tm
+(    "successfulPaymentsMoMPercent": 12.5,) Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 3) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 13 0 R >>
+endobj
+13 0 obj
+<< /Length 5739 >>
+stream
+BT
+/F3 8.0 Tf
+1 0 0 1 66.0 744.0 Tm
+(    "alerts": {) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 733.2 Tm
+(      "pendingVisaRequests": 4,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 722.4 Tm
+(      "pendingReports": 0,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 711.6 Tm
+(      "pendingProfileVerifications": 0,) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 700.8 Tm
+(      "failedPaymentsLast24h": 1) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 690.0 Tm
+(    }) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 679.2 Tm
+(  }) Tj
+/F3 8.0 Tf
+1 0 0 1 66.0 668.4 Tm
+(}) Tj
+/F1 4.0 Tf
+1 0 0 1 54.0 657.6 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 652.2 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 645.5 Tm
+(Revenue is successful payments only; month-over-month compares this calendar month to the previous month.) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 633.3 Tm
+(Reviewable visa statuses are PENDING, READY_FOR_GIS_SUBMISSION, and EXPEDITED_AIRPORT_PAYMENT_PENDING.) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 621.2 Tm
+(Errors: 403, 500 \(Failed to build dashboard summary\).) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 609.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 602.3 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 597.3 Tm
+(GET /admin/users/verified?page=1&limit=20) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 582.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 577.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 570.7 Tm
+(Requires users.view. Returns { success:true, data:{ data:[...], pagination:{...}, counts:{ verifiedUsers,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 558.5 Tm
+(totalUsers } } }. Each item includes verification id, isVerified, verifiedAt, section booleans) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 546.4 Tm
+(\(phoneVerified, ipAddressVerified, bioProfileVerified, documentVerified\), and a nullable user with id,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 534.2 Tm
+(fullName, email, phoneNumber, accountStatus, and createdAt. Errors: 403, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 522.1 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 515.3 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 510.3 Tm
+(User directory: GET /admin/users?page=1&limit=20) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 495.5 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 490.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 483.7 Tm
+(Requires users.view. Returns a standard paginated list ordered newest first. Each user has id, fullName,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 471.6 Tm
+(email, phoneNumber, accountType, accountStatus, authProvider, createdAt, and lastLoginAt. No search or status) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 459.4 Tm
+(filters are implemented. Errors: 401/403; 500 with error:"Failed to fetch users" and optional details.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 447.3 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 440.5 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 435.5 Tm
+(User actions) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 420.7 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 415.7 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 408.9 Tm
+(All paths use :userId. Mutations return { success:true, data:<selected updated user>, message:<status> },) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 396.8 Tm
+(unless noted.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 384.6 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 377.9 Tm
+(- PATCH /admin/users/:userId/promote ? Requires users.edit. Sets accountType=ADMIN. Data: {id, fullName,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 365.7 Tm
+(email, accountType}. Errors: 400 already an admin; 404 user not found; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 353.6 Tm
+(- PATCH /admin/users/:userId/demote ? Requires users.edit. Sets accountType=USER. Same data shape. Errors:) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 341.4 Tm
+(400 already a regular user; 404; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 329.3 Tm
+(- PATCH /admin/users/:userId/suspend ? Requires users.suspend. Sets accountStatus=SUSPENDED. Data: {id,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 317.1 Tm
+(fullName, email, accountStatus}. Errors: 400 already suspended; 404; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 305.0 Tm
+(- PATCH /admin/users/:userId/reactivate ? Requires users.edit. Sets accountStatus=ACTIVE. Same data shape.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 292.8 Tm
+(Errors: 400 already active; 404; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 280.7 Tm
+(- PATCH /admin/users/:userId/terminate ? Requires users.terminate. Body: { "reason":"Required explanation") Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 268.5 Tm
+(}. Sets accountStatus=TERMINATED; returns {id,fullName,email,accountStatus}. Errors: 400 missing reason or) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 256.4 Tm
+(already terminated; 404; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 244.2 Tm
+(- PATCH /admin/users/:userId/approve ? Requires users.approve. Only a PENDING user can be approved; status) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 232.1 Tm
+(becomes ACTIVE. Returns {id,fullName,email,accountStatus}. Errors: 400 not pending; 404; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 219.9 Tm
+(- PATCH /admin/users/:userId/reject ? Requires users.reject. Body: { "reason":"Required explanation" }.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 207.8 Tm
+(Only a PENDING user can be rejected; status becomes SUSPENDED. Returns {id,fullName,email,accountStatus}.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 195.6 Tm
+(Errors: 400 missing reason or not pending; 404; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 183.5 Tm
+(- DELETE /admin/users/:userId ? Requires users.delete. Permanently removes the account and returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 171.3 Tm
+({success:true,data:null,message:"User deleted successfully"}. Errors: 404 user not found; 403; 500 \(Failed) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 159.2 Tm
+(to delete user\).) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 147.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 140.3 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 135.3 Tm
+(5. Visa request management) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 115.0 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 110.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 103.3 Tm
+(These endpoints require settings.full.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 91.1 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 84.4 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 79.4 Tm
+(GET /admin/visa-requests) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 64.5 Tm
+() Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 4) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 15 0 R >>
+endobj
+15 0 obj
+<< /Length 5771 >>
+stream
+BT
+/F1 5.0 Tf
+1 0 0 1 54.0 744.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 737.2 Tm
+(Paginated newest-first queue. Filters: page, limit, status \(any defined visa-request status\), q \(passport) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 725.1 Tm
+(number, trip purpose, applicant name/email\), from, and to.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 713.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 706.2 Tm
+(List row includes the visa request fields plus user:{id,fullName,email,phoneNumber},) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 694.1 Tm
+(visaData:{passport_number,purpose_of_trip,date_of_arrival,date_of_departure},) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 681.9 Tm
+(approval:{status,approvedAt,notes} or null, and payment:{id,amount,status} or null. The payment is looked up) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 669.8 Tm
+(from paymentId. Response uses the standard paginated envelope. Errors: 403, 500 \(Failed to list visa) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 657.6 Tm
+(requests\).) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 645.5 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 638.7 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 633.7 Tm
+(GET /admin/visa-requests/stats?from=YYYY-MM-DD&to=YYYY-MM-DD) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 618.9 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 613.9 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 607.1 Tm
+(Returns data:{ total, pendingReview, rejected, approvedToday, rejectionRate }. pendingReview counts PENDING,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 595.0 Tm
+(READY_FOR_GIS_SUBMISSION, and EXPEDITED_AIRPORT_PAYMENT_PENDING; rejectionRate is a percentage. Errors: 403,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 582.8 Tm
+(500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 570.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 563.9 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 558.9 Tm
+(GET /admin/visa-requests/:id) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 544.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 539.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 532.3 Tm
+(Returns { success:true, data:<request> } with full user details, complete visaData, payment row or null,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 520.2 Tm
+(approval row or null, and activityLogs newest first \(each log includes actor identity\). Errors: 404 Visa) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 508.0 Tm
+(request not found; 403; 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 495.9 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 489.1 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 484.1 Tm
+(POST /admin/visa-requests/:id/approve and /reject) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 469.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 464.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 457.5 Tm
+(Optional JSON body: { "note":"Optional review note" }. These actions update the request and approval row) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 445.4 Tm
+(transactionally and add an admin activity record. Success returns data:{ request, approval } and a message.) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 433.2 Tm
+(Repeating the same decision succeeds idempotently and returns the existing request with an ?already) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 421.1 Tm
+(approved/rejected? message. Errors: 404 request not found; 403; 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 408.9 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 402.2 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 397.2 Tm
+(Legacy visa routes) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 382.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 377.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 370.6 Tm
+(- GET /admin/visa-requests/paid ? Returns data:[...] \(not paginated\), limited to READY_FOR_GIS_SUBMISSION) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 358.4 Tm
+(and EXPEDITED_AIRPORT_PAYMENT_PENDING, with applicant {id,fullName,email}, full visaData, and approval) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 346.3 Tm
+(record. Errors: 403, 500 \(Failed to get paid visa requests\).) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 334.1 Tm
+(- POST /admin/visa-requests/approve ? Body { "requestId":"..." }. Returns {visaRequest,approval} on a new) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 322.0 Tm
+(approval or the current request with an ?already approved? message. Errors: 400 missing requestId, 404) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 309.8 Tm
+(request not found, 403, 500. Prefer the id-based /admin/visa-requests/:id/approve route for new clients.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 297.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 290.9 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 285.9 Tm
+(6. Payment monitoring and controls) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 265.7 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 260.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 253.9 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 248.9 Tm
+(GET /admin/payments) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 234.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 229.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 222.3 Tm
+(Requires payments.view. Filters: page, limit, status \(INITIALIZED|PENDING|SUCCESS|FAILED\), targetType, q) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 210.2 Tm
+(\(reference/user name/email\), from, to. Returns paginated payment rows with id, reference, description,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 198.0 Tm
+(targetType, targetId, amount, currency, status, method, provider, paidAt, createdAt, and) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 185.9 Tm
+(user:{id,fullName,email}. Errors: 403, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 173.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 167.0 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 162.0 Tm
+(GET /admin/payments/stats?from=...&to=...) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 147.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 142.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 135.4 Tm
+(Requires payments.view. Returns) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 123.2 Tm
+(data:{totalRevenue,successCount,pendingCount,pendingAmount,failedCount,successRate}. Revenue sums successful) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 111.1 Tm
+(payments; pending includes PENDING and INITIALIZED; success rate is successes divided by successes plus) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 98.9 Tm
+(failures, as a percentage. Errors: 403, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 86.8 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 80.0 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 75.0 Tm
+(Legacy payment control: /admin/payments/status) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 60.2 Tm
+() Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 5) Tj
+ET
+endstream
+endobj
+16 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 17 0 R >>
+endobj
+17 0 obj
+<< /Length 6436 >>
+stream
+BT
+/F1 5.0 Tf
+1 0 0 1 54.0 744.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 737.2 Tm
+(- GET /admin/payments/status ? Requires payments.view. Returns current control metadata, including enabled,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 725.1 Tm
+(reason, updatedAt, and updatedBy.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 713.0 Tm
+(- PATCH /admin/payments/status ? Requires payments.toggle. Body { "enabled":true, "reason":"Optional note) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 700.8 Tm
+(\(max 500 chars\)" }. Returns updated details and an enable/disable message. Errors: 400 invalid body; 403;) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 688.7 Tm
+(409 when enabling while gateway is not connected for the selected environment; 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 676.5 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 669.8 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 664.8 Tm
+(7. Payment gateway configuration) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 644.5 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 639.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 632.8 Tm
+(These routes are additionally protected by payment-gateway scopes currently assigned only to SUPER_ADMIN. The) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 620.6 Tm
+(client secret is write-only: read responses expose only hasClientSecret, never the secret itself.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 608.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 601.7 Tm
+(- GET /admin/settings/payment-gateway ? Requires settings.payment.view. Returns sanitized configuration:) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 589.6 Tm
+(environment, client ID, hasClientSecret, connection and processing state, and relevant update/test) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 577.4 Tm
+(timestamps. If no stored configuration exists, values are derived from HUBTEL_* environment variables and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 565.3 Tm
+(credentialSource is environment. Errors: 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 553.1 Tm
+(- PUT /admin/settings/payment-gateway ? Requires settings.payment.credentials.manage; changing environment) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 541.0 Tm
+(additionally requires settings.payment.environment.manage. Partial JSON body may contain clientId,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 528.8 Tm
+(clientSecret, clearClientSecret, and environment \(TEST|LIVE\). Empty or omitted credentials mean no change.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 516.7 Tm
+(Removing a stored secret requires clearClientSecret:true. Changing credentials revokes verification and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 504.5 Tm
+(disables payment processing. Returns updated sanitized config. Errors: 400 invalid input or attempting to) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 492.4 Tm
+(clear the last remaining credential; 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 480.2 Tm
+(- POST /admin/settings/payment-gateway/test ? Requires settings.payment.connection.test. Optional body can) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 468.1 Tm
+(supply unsaved clientId, clientSecret, and environment; an empty body tests stored credentials. This is a) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 455.9 Tm
+(read-only Hubtel check and does not change connection status. Returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 443.8 Tm
+(data:{success,message,checkedAt,retryable,lastErrorCategory}. HTTP status is 200 accepted, 400 locally) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 431.6 Tm
+(missing/rejected credentials, 503 retryable provider timeout/unavailable, 403, or 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 419.5 Tm
+(- POST /admin/settings/payment-gateway/connect ? Requires settings.payment.connection.manage. Verifies) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 407.3 Tm
+(stored credentials and marks the currently selected environment connected. Success returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 395.2 Tm
+(data:{connectionStatus:"CONNECTED",connectedAt,environment}. Errors: 502 verification/provider failure) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 383.0 Tm
+(\(response includes current state and error category\); 403; 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 370.9 Tm
+(- PATCH /admin/settings/payment-gateway/processing ? Requires settings.payment.processing.manage. Body {) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 358.7 Tm
+("enabled":true, "reason":"Optional reason, max 500 chars" }. Returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 346.6 Tm
+(data:{paymentProcessingEnabled,effectiveAt}. Disabling is always allowed; enabling requires a verified) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 334.4 Tm
+(connection. Errors: 400 validation; 409 not connected; 403; 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 322.3 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 315.5 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 310.5 Tm
+(8. Membership plans and access grants) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 290.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 285.3 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 278.5 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 273.5 Tm
+(Membership plan routes) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 258.7 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 253.7 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 246.9 Tm
+(All require settings.full.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 234.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 228.0 Tm
+(- GET /admin/plans?active=true|false ? Returns {success:true,data:[plan...]} ordered by price. active is) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 215.9 Tm
+(optional.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 203.7 Tm
+(- POST /admin/plans ? Body requires code, name, price, and interval; optional description, currency) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 191.6 Tm
+(\(default GHS\), features \(string array\), isMostPopular, isActive. Tier codes are the supported) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 179.4 Tm
+(MembershipTierCode values; intervals are MONTHLY|ANNUAL|BIENNIAL|CUSTOM. Returns 201 with the created plan.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 167.3 Tm
+(- PATCH /admin/plans/:id ? Partial update of name, description, price, currency, interval, features,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 155.1 Tm
+(isMostPopular, and isActive. Returns updated plan.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 143.0 Tm
+(- POST /admin/plans/:id/toggle ? Flips isActive; returns updated plan.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 130.8 Tm
+(- DELETE /admin/plans/:id ? Permanently deletes the plan; returns data:null.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 118.7 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 111.9 Tm
+(All mutations return the standard success envelope with a message and write an admin activity log. Errors:) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 99.8 Tm
+(400 invalid plan code or billing interval; 404 plan not found; 409 duplicate plan code \(PLAN_ALREADY_EXISTS\);) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 87.6 Tm
+(403; 500. Plan deletion may also fail with 500 if a database constraint prevents removal.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 75.5 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 68.7 Tm
+() Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 6) Tj
+ET
+endstream
+endobj
+18 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 19 0 R >>
+endobj
+19 0 obj
+<< /Length 6192 >>
+stream
+BT
+/F2 11.0 Tf
+1 0 0 1 54.0 744.0 Tm
+(Complimentary access grants) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 729.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 724.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 717.4 Tm
+(List/read endpoints require users.view; create/update/revoke require users.edit.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 705.2 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 698.5 Tm
+(- GET /admin/access-grants?userId=...&tierCode=...&status=active|revoked|expired ? Returns an array with) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 686.4 Tm
+(the grant, target user, granting admin, and revoking admin where applicable. active means started, not) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 674.2 Tm
+(revoked, and before end date. No pagination is implemented.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 662.1 Tm
+(- POST /admin/access-grants ? Required body: {userId,tierCode,reason}. Optional includePaidPerks \(default) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 649.9 Tm
+(false\), startDate \(defaults now\), and nullable endDate \(omit/null means perpetual\). Grants do not) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 637.8 Tm
+(auto-renew and coexist with paid subscriptions. Returns 201 with the grant. A live grant of the same tier) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 625.6 Tm
+(is rejected.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 613.5 Tm
+(- PATCH /admin/access-grants/:id ? Updates any supplied tierCode, includePaidPerks, reason, startDate, and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 601.3 Tm
+(endDate. Setting endDate in the past ends access while preserving the record. Returns updated grant.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 589.2 Tm
+(Revoked grants cannot be edited.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 577.0 Tm
+(- POST /admin/access-grants/:id/revoke ? Optional body { "reason":"Optional audit note" }. Soft-revokes the) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 564.9 Tm
+(grant and retains its audit history; returns updated grant.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 552.7 Tm
+(- GET /admin/users/:userId/access ? Returns {user,effectiveAccess,subscription,grants}. subscription is) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 540.6 Tm
+(null when absent; grant history includes the granting/revoking administrator.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 528.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 521.7 Tm
+(Errors: 400 invalid payload/date range \(endDate must be after startDate\); 404 user or grant not found; 409 an) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 509.5 Tm
+(active same-tier grant exists, or a grant is already revoked/cannot be modified; 403; 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 497.4 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 490.6 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 485.6 Tm
+(9. Moderation and profile verification) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 465.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 460.4 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 453.6 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 448.6 Tm
+(User reports) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 433.8 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 428.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 422.0 Tm
+(- GET /admin/reports?status=PENDING|REVIEWING|RESOLVED|DISMISSED|ALL&page=1&limit=20 ? Requires) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 409.9 Tm
+(reports.view. Returns a paginated list with reporter:{id,fullName,email},) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 397.7 Tm
+(target:{id,fullName,email,accountStatus}, status, resolution note, and creation time. Missing status and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 385.6 Tm
+(ALL return all reports. Errors: 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 373.4 Tm
+(- PATCH /admin/reports/:reportId ? Requires reports.manage. Body { "status":"REVIEWING|RESOLVED|DISMISSED",) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 361.3 Tm
+("resolutionNote":"Optional" }. Returns the updated report. Closed statuses set resolver and resolved) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 349.1 Tm
+(timestamp; moving to REVIEWING clears them. Errors: 404 report not found; 500. The current route has no) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 337.0 Tm
+(schema-validation middleware; unsupported status values may surface as 500 from persistence rather than a) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 324.8 Tm
+(clean 400.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 312.7 Tm
+(- POST /admin/reports/:reportId/suspend ? Requires users.suspend; no body. Suspends the report target and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 300.5 Tm
+(resolves the report. Returns data:{user,reportId}. Errors: 404 report not found; 403; 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 288.4 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 281.6 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 276.6 Tm
+(Profile verifications) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 261.8 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 256.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 250.0 Tm
+(- GET /admin/profile-verifications ? Requires dating.view. Returns an unpaginated array newest-updated) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 237.9 Tm
+(first. Each row contains verification state, faceScanUrl, document URLs/type/number, section summaries) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 225.7 Tm
+(\(bioData, faceVerification, documents including status/reviewer/timestamp/reason\), user identity/status,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 213.6 Tm
+(and lastUpdatedAt.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 201.4 Tm
+(- PATCH /admin/profile-verifications/:id/bio-data, /face, or /documents ? Requires dating.approve. Body {) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 189.3 Tm
+("action":"APPROVED|REJECTED", "reason":"Optional" }. Returns the raw updated database row in data \(not the) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 177.1 Tm
+(flattened list representation\) and a message. Rejection marks overall isVerified=false; approval/rejection) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 165.0 Tm
+(reviewer and reason fields are updated.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 152.8 Tm
+(- POST /admin/profile-verifications/:id/verify ? Requires dating.approve; no body. Approves all sections) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 140.7 Tm
+(and sets isVerified=true. Returns the updated raw database row.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 128.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 121.8 Tm
+(Errors for mutations: 400 invalid/missing action \(Invalid action. Must be APPROVED or REJECTED\); 404 profile) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 109.6 Tm
+(verification not found; 403; 500. Refetch the list after mutation to restore its flattened item shape.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 97.5 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 90.7 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 85.7 Tm
+(10. Roles and admin notifications) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 65.5 Tm
+() Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 7) Tj
+ET
+endstream
+endobj
+20 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 21 0 R >>
+endobj
+21 0 obj
+<< /Length 6173 >>
+stream
+BT
+/F1 5.0 Tf
+1 0 0 1 54.0 744.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 737.2 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 732.2 Tm
+(GET /admin/roles) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 717.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 712.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 705.6 Tm
+(Requires roles.view. Read-only. Returns data:{modules,matrix,roles,departments}. modules lists permission) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 693.5 Tm
+(actions; matrix maps each permission to a boolean per role; roles includes role, department, admin count,) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 681.4 Tm
+(permissions and administrator list \(id, fullName, email, accountStatus, mfaEnabled\); departments maps) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 669.2 Tm
+(departments to roles. Errors: 403, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 657.1 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 650.3 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 645.3 Tm
+(Notifications \(/admin/notifications\)) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 630.5 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 625.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 618.7 Tm
+(All require notifications.view. Data is scoped to the currently signed-in admin. List supports pagination and) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 606.6 Tm
+(optional category filter.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 594.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 587.7 Tm
+(- GET /admin/notifications?page=1&limit=20&category=... ? Paginated notification rows, plus) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 575.5 Tm
+(meta.unreadCount. The unread count is for all categories belonging to the current admin.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 563.4 Tm
+(- PATCH /admin/notifications/:id/read ? Marks that admin's notification read. Returns data:{id} and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 551.2 Tm
+(message:"Marked as read". A nonexistent or other-admin notification is not distinguished; request succeeds) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 539.1 Tm
+(without modifying it.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 526.9 Tm
+(- PATCH /admin/notifications/read-all ? Marks all own notifications read; returns data:null and a message.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 514.8 Tm
+(- DELETE /admin/notifications ? Permanently clears own notifications; returns data:null and a message.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 502.6 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 495.9 Tm
+(Errors: 401 if unauthenticated; 403 permission missing; 500 with operation-specific message.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 483.7 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 477.0 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 472.0 Tm
+(11. Admin community content and YouTube access) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 451.7 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 446.7 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 440.0 Tm
+(These routes are under /community and all require settings.full.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 427.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 421.1 Tm
+(- GET /community/videos/:videoId/analytics ? Returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 408.9 Tm
+(data:{videoId,title,interactions,totalUnlocks,youtube,conversionRate,totalWatchTimeMs,avgWatchTimeMs}.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 396.8 Tm
+(Interaction counts are in-app; youtube has channel view/like counts and sync timestamp. Errors: 401, 403,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 384.6 Tm
+(404 video not found, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 372.5 Tm
+(- POST /community/admin/videos ? Required fields: title, description, teaserUrl, thumbnailUrl,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 360.3 Tm
+(youtubeVideoId. Optional preview start/duration, isPublished, and non-negative seed viewCount/likeCount.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 348.2 Tm
+(Returns 201 with created card. Duplicate YouTube ID: 409; invalid payload: 422; 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 336.0 Tm
+(- PUT /community/admin/videos/:videoId ? Partial update of title, description, teaser/thumbnail URLs,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 323.9 Tm
+(preview bounds, and publication flag. Returns updated card. Errors: 404, 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 311.7 Tm
+(- DELETE /community/admin/videos/:videoId ? Unpublishes \(soft-deletes\) the card; keeps video and analytics.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 299.6 Tm
+(Returns data:null. Errors: 404, 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 287.4 Tm
+(- POST /community/admin/sync-youtube ? Optional body {channelId,handle,maxResults} \(maxResults 1?20,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 275.3 Tm
+(default 6\). Fetches latest uploads, inserts missing cards, refreshes counters on existing cards, and may) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 263.1 Tm
+(return cached results within the channel cooldown. Returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 251.0 Tm
+(data:{channelId,fetched,created,updated,alreadyPresent,syncedAt,cached}. Errors: 400 invalid body; 502) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 238.8 Tm
+(YouTube API error; 503 API key/config missing; 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 226.7 Tm
+(- GET /community/admin/youtube-grants?status=active|revoked|all&page=1&limit=25&q=... ? Paginated grant) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 214.5 Tm
+(list \(default active\) with meta.summary. Search matches user name/email. Refresh tokens are never returned;) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 202.4 Tm
+(rows expose presence/encryption flags only. Errors: 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 190.2 Tm
+(- POST /community/admin/youtube-grants/:userId/revoke ? Revokes the active YouTube grant and removes that) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 178.1 Tm
+(user's per-video unlock records. Returns {userId,revoked:true}. Errors: 404 no active grant; 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 165.9 Tm
+(- POST /community/admin/youtube-grants/re-encrypt ? Idempotently seals any legacy plaintext refresh tokens.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 153.8 Tm
+(Returns counts such as {scanned,sealed} and a message. Errors: 401, 403, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 141.6 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 134.9 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 129.9 Tm
+(12. Other admin-gated endpoint families) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 109.6 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 104.6 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 97.9 Tm
+(These operations use requirePermission and require a valid admin session, even though their URL is outside) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 85.7 Tm
+(/admin.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 73.6 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 66.8 Tm
+() Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 8) Tj
+ET
+endstream
+endobj
+22 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 23 0 R >>
+endobj
+23 0 obj
+<< /Length 5892 >>
+stream
+BT
+/F2 11.0 Tf
+1 0 0 1 54.0 744.0 Tm
+(Tours \(/tours\)) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 729.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 724.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 717.4 Tm
+(- POST /tours ? tours.edit; creates a tour from the validated tour schema. Success is 201 with the created) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 705.2 Tm
+(tour and message. Errors: 400, 401, 403, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 693.1 Tm
+(- PUT /tours/:id ? tours.edit; updates tour details \(title, descriptions, category, duration, price,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 681.0 Tm
+(currency, status, featured/trending, cover image\). Returns updated tour. Errors: 400, 401, 403, 404, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 668.8 Tm
+(- DELETE /tours/:id ? tours.delete; permanently deletes a tour. Returns a success message. Errors: 401,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 656.7 Tm
+(403, 404, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 644.5 Tm
+(- POST /tours/:id/itinerary ? tours.edit; adds an itinerary day. Body includes dayNumber, title, optional) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 632.4 Tm
+(description/meal booleans/accommodation fields, and optional activities array. Returns 201 with the created) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 620.2 Tm
+(itinerary and its activity rows. Errors: 400 invalid data, 401, 403, 404 tour not found, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 608.1 Tm
+(- PUT /tours/itinerary/:id ? tours.edit; updates an itinerary day using the same day/activity fields.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 595.9 Tm
+(Supplying activities replaces the existing activity list; an empty array clears it. Returns updated) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 583.8 Tm
+(itinerary with activities; decimal values serialize as strings. Errors: 400, 401, 403, 404 itinerary not) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 571.6 Tm
+(found, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 559.5 Tm
+(- DELETE /tours/itinerary/:id ? tours.edit; deletes the itinerary day. Returns) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 547.3 Tm
+({success:true,data:null,message:"Tour itinerary deleted successfully"}. Errors: 401, 403, 404 itinerary not) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 535.2 Tm
+(found, 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 523.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 516.3 Tm
+(All these handlers return the standard response envelope. Tour create/update schemas and itinerary activity) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 504.1 Tm
+(field constraints are documented inline in src/routes/tour.routes.ts.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 492.0 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 485.2 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 480.2 Tm
+(FAQ \(/faq/admin\)) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 465.4 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 460.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 453.6 Tm
+(All listed routes require settings.full.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 441.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 434.7 Tm
+(- GET /faq/admin ? Returns all FAQ rows, including unpublished items.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 422.6 Tm
+(- POST /faq/admin ? Body requires {question,answer}; optionally category, sortOrder \(default 0\), and) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 410.4 Tm
+(published \(default true\). Creates and returns the FAQ item.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 398.3 Tm
+(- PUT /faq/admin/:id ? Partial update of FAQ fields; returns updated item.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 386.1 Tm
+(- DELETE /faq/admin/:id ? Deletes the item; returns success.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 374.0 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 367.2 Tm
+(Validation errors are 400; missing items 404 on update/delete; permission/auth failures 401/403; unexpected) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 355.1 Tm
+(failures 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 342.9 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 336.2 Tm
+() Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 331.2 Tm
+(Data policy \(/data-policy/admin/policy\)) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 316.3 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 311.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 304.6 Tm
+(Both routes require settings.full.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 292.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 285.7 Tm
+(- GET /data-policy/admin/policy ? Returns the full policy record for editing. Errors: 401, 403, 404 if no) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 273.5 Tm
+(policy record exists, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 261.4 Tm
+(- PUT /data-policy/admin/policy ? Body requires content; optional title. Returns the updated policy.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 249.2 Tm
+(Errors: 400 validation, 401, 403, 404 \(policy must first be seeded\), 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 237.1 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 230.3 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 225.3 Tm
+(13. Source of truth and implementation notes) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 205.1 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 200.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 193.3 Tm
+(The route mounts are registered in src/server.ts; endpoint guards and payload schemas are in src/routes/;) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 181.2 Tm
+(behavior and output projections are in the corresponding controller files. The main RBAC matrix is) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 169.0 Tm
+(src/middleware/permissions.ts, and the separate payment-gateway scopes are in) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 156.9 Tm
+(src/middleware/admin-permission.ts.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 144.7 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 138.0 Tm
+(Notable implementation details:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 125.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 119.1 Tm
+(- Admin registration currently creates a PENDING account \(not an active account\).) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 106.9 Tm
+(- /admin/users/:userId/terminate, /approve, and /reject are registered routes and are included here despite) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 94.8 Tm
+(being absent from some older admin references.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 82.6 Tm
+(- /admin/profile-verifications is unpaginated; mutation responses are raw rows while the list is flattened.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 70.5 Tm
+(- The payment gateway client secret never appears in a read response. A successful connection test alone) Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 9) Tj
+ET
+endstream
+endobj
+24 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 25 0 R >>
+endobj
+25 0 obj
+<< /Length 682 >>
+stream
+BT
+/F1 9.0 Tf
+1 0 0 1 64.0 744.0 Tm
+(does not mark the gateway connected; /connect performs that state change.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 731.9 Tm
+(- There are two route registrations for GET /admin/departments \(from the auth and departments routers\).) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 719.7 Tm
+(Both currently return the same static department/role payload.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 707.6 Tm
+(- Admin actions are guarded by endpoint permission keys, not by frontend-only role checks. Use 403 as the) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 695.4 Tm
+(definitive permission outcome.) Tj
+/F1 8 Tf
+1 0 0 1 54 30 Tm
+(DAGH Admin API - Endpoint Reference) Tj
+/F1 8 Tf
+1 0 0 1 504 30 Tm
+(Page 10) Tj
+ET
+endstream
+endobj
+xref
+0 26
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000184 00000 n 
+0000000281 00000 n 
+0000000383 00000 n 
+0000000478 00000 n 
+0000000624 00000 n 
+0000005939 00000 n 
+0000006085 00000 n 
+0000011522 00000 n 
+0000011670 00000 n 
+0000017571 00000 n 
+0000017719 00000 n 
+0000023511 00000 n 
+0000023659 00000 n 
+0000029483 00000 n 
+0000029631 00000 n 
+0000036120 00000 n 
+0000036268 00000 n 
+0000042513 00000 n 
+0000042661 00000 n 
+0000048887 00000 n 
+0000049035 00000 n 
+0000054980 00000 n 
+0000055128 00000 n 
+trailer
+<< /Size 26 /Root 1 0 R >>
+startxref
+55862
+%%EOF

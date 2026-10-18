@@ -24,6 +24,7 @@ import * as paymentService from "../../services/payment.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
+import { getCategoryAlbum, getRegionAlbum, listAlbums } from "./tour-album.service.js";
 
 export class UserTourController {
   //get all tours
@@ -635,6 +636,53 @@ export class UserTourController {
     } catch (error) {
       console.error("Error fetching tour details:", error);
       return fail(res, 500, "Failed to fetch tour details");
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Album structure (§5): category / region bundles over tour_sites + packages
+  // ─────────────────────────────────────────────────────────────────────────────
+  async getAlbumByCategory(req: Request, res: Response) {
+    try {
+      const { tag } = req.params;
+      const pageNum = Number(req.query.page) || 1;
+      const limitNum = Number(req.query.limit) || 20;
+
+      const album = await getCategoryAlbum(tag as string, pageNum, limitNum);
+      return ok(res, album, "Category album retrieved successfully");
+    } catch (error) {
+      if (error instanceof Error && error.message === "ALBUM_TAG_REQUIRED") {
+        return fail(res, 400, "Category tag is required");
+      }
+      console.error("Error fetching category album:", error);
+      return fail(res, 500, "Failed to fetch album");
+    }
+  }
+
+  async getAlbumByRegion(req: Request, res: Response) {
+    try {
+      const { region } = req.params;
+      const pageNum = Number(req.query.page) || 1;
+      const limitNum = Number(req.query.limit) || 20;
+
+      const album = await getRegionAlbum(region as string, pageNum, limitNum);
+      return ok(res, album, "Region album retrieved successfully");
+    } catch (error) {
+      if (error instanceof Error && error.message === "ALBUM_REGION_REQUIRED") {
+        return fail(res, 400, "Region name is required");
+      }
+      console.error("Error fetching region album:", error);
+      return fail(res, 500, "Failed to fetch album");
+    }
+  }
+
+  async listAlbums(req: Request, res: Response) {
+    try {
+      const albums = await listAlbums();
+      return ok(res, albums, "Albums retrieved successfully");
+    } catch (error) {
+      console.error("Error fetching album index:", error);
+      return fail(res, 500, "Failed to fetch albums");
     }
   }
 }

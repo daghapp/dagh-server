@@ -26,6 +26,11 @@ export const itinerarySchemas = {
         type: "string",
         enum: ["NATURE", "CULTURAL", "HISTORICAL", "BEACH", "WILDLIFE", "RELIGIOUS", "SCENIC"],
       },
+      transitProfile: {
+        type: "string",
+        enum: ["URBAN_CENTER", "PERI_URBAN", "RURAL"],
+        description: "Accessibility tier driving the mobility engine (§2).",
+      },
     },
   },
 
@@ -57,11 +62,120 @@ export const itinerarySchemas = {
     },
   },
 
+  AccommodationOption: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      name: { type: "string" },
+      latitude: { type: "number" },
+      longitude: { type: "number" },
+      distanceKm: { type: "number" },
+      propertyType: {
+        type: "string",
+        nullable: true,
+        enum: ["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS", "MOTEL"],
+      },
+      source: {
+        type: "string",
+        enum: ["verified", "external"],
+        description: '"external" rows are geographic fallback discoveries.',
+      },
+      tag: {
+        type: "string",
+        example: "Suggested Alternative Accommodation",
+        description: "Present only on fallback injections.",
+      },
+    },
+  },
+
+  PublicTransportOption: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      mode: { type: "string", enum: ["INTERCITY_BUS", "TROTRO", "DOMESTIC_AIR"] },
+      operator: { type: "string", example: "STC" },
+      originCity: { type: "string", example: "Accra" },
+      originStation: { type: "string", nullable: true, example: "Kwame Nkrumah Circle (Accra)" },
+      originLat: { type: "number", nullable: true },
+      originLng: { type: "number", nullable: true },
+      destinationCity: { type: "string", nullable: true },
+      destinationRegion: { type: "string", nullable: true },
+      notes: { type: "string", nullable: true },
+      distanceKm: { type: "number", nullable: true },
+      source: { type: "string", enum: ["primary", "fallback"] },
+      tag: { type: "string", example: "Suggested Alternative Transport" },
+    },
+  },
+
+  CarRentalOption: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      name: { type: "string" },
+      latitude: { type: "number" },
+      longitude: { type: "number" },
+      distanceKm: { type: "number" },
+      transportType: { type: "string", nullable: true },
+      locationAddress: { type: "string" },
+      avgRating: { type: "number" },
+      imageUrl: { type: "string", nullable: true },
+      vehicleMake: { type: "string" },
+      vehicleModel: { type: "string" },
+      dailyRate: { type: "number" },
+      driverRequired: { type: "boolean" },
+      source: { type: "string", enum: ["verified"] },
+      tag: { type: "string", example: "Suggested Alternative Transport" },
+    },
+  },
+
+  SiteMobility: {
+    type: "object",
+    properties: {
+      siteId: { type: "string", format: "uuid" },
+      transitProfile: { type: "string", enum: ["URBAN_CENTER", "PERI_URBAN", "RURAL"] },
+      rideHailing: {
+        type: "array",
+        items: { type: "string" },
+        example: ["Uber", "Yango"],
+        description: "Only populated for URBAN_CENTER corridors.",
+      },
+      localTransit: { type: "array", items: { type: "string" } },
+      intercityBus: {
+        type: "array",
+        items: { $ref: "#/components/schemas/PublicTransportOption" },
+        description: "STC / VIP coach options from the nearest boarding point.",
+      },
+      trotro: {
+        type: "array",
+        items: { $ref: "#/components/schemas/PublicTransportOption" },
+      },
+      air: { type: "array", items: { $ref: "#/components/schemas/PublicTransportOption" } },
+      carRentals: { type: "array", items: { $ref: "#/components/schemas/CarRentalOption" } },
+      hints: { type: "array", items: { type: "string" } },
+    },
+  },
+
   ItinerarySite: {
     type: "object",
     properties: {
       visitOrder: { type: "integer" },
       site: { $ref: "#/components/schemas/TourSite" },
+      availableAccomodation: {
+        allOf: [{ $ref: "#/components/schemas/LocalProvider" }],
+        nullable: true,
+        description: "Relocation-interest lookup (only when relocationInterest is enabled).",
+      },
+      accommodationOptions: {
+        type: "array",
+        items: { $ref: "#/components/schemas/AccommodationOption" },
+        description:
+          "Tiered accommodation options within 5 km of the site; external fallbacks carry the Suggested Alternative Accommodation tag.",
+      },
+      mobility: {
+        allOf: [{ $ref: "#/components/schemas/SiteMobility" }],
+        nullable: true,
+        description: "Full mobility profile for this location (null on transport opt-out).",
+      },
     },
   },
 

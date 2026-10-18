@@ -8,6 +8,7 @@ import type {
   ItineraryDaySite as PrismaItineraryDaySite,
   TourSite as PrismaTourSite,
   ApartmentType,
+  TransitProfile,
 } from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/index.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
@@ -17,6 +18,7 @@ import {
   ORIGIN,
   MAX_DAILY_DISTANCE_KM,
 } from "../../helpers/haversine.js";
+import { deriveTransitProfile, getTransportHints } from "../../helpers/transit-profile.js";
 import {
   ACCRA_REGION,
   DEFAULT_START_REGION,
@@ -39,6 +41,15 @@ import type {
   ItineraryDayInput,
   DatingSocialBlock,
 } from "../../validator/itinerary-validator.js";
+import {
+  ACCOMMODATION_RADIUS_KM,
+  MIN_VERIFIED_ACCOMMODATIONS,
+  recommendAccommodationsForSites,
+} from "../../services/accommodation-recommendation.service.js";
+import {
+  loadActiveTransportServices,
+  resolveMobilityForSites,
+} from "../../services/mobility.service.js";
 
 const MAX_SITES_PER_DAY = 3;
 
@@ -457,8 +468,14 @@ function toSiteWithCoords(
   }));
 }
 
-function toCoordRef(site: { id: string; latitude: number; longitude: number }) {
-  return { id: site.id, latitude: site.latitude, longitude: site.longitude };
+function toCoordRef(site: PrismaTourSite) {
+  return {
+    id: site.id,
+    latitude: site.latitude,
+    longitude: site.longitude,
+    region: site.region,
+    transitProfile: site.transit_profile,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -697,6 +714,7 @@ type ProviderRecommendation = {
 
 type AccommodationRecommendation = ProviderRecommendation & {
   apartmentType: ApartmentType | null;
+  source: "verified" | "fallback";
 };
 
 type TransportRecommendation = ProviderRecommendation & {
@@ -746,15 +764,27 @@ async function mapItineraryToResponseWithRecommendations(
   params: {
     apartmentType: string | null;
     transportType: string | null;
-    itinerarySites: Array<{ id: string; latitude: number; longitude: number; region?: string }>;
+    itinerarySites: Array<{
+      id: string;
+      latitude: number;
+      longitude: number;
+      region?: string;
+      transitProfile?: TransitProfile | null;
+    }>;
     relocationInterest: boolean;
   },
 ): Promise<ItineraryResponse> {
+  // transportType NONE is an explicit opt-out ("no transport needed"), so no
+  // transport is recommended, mobility profiles stay null and per-day
+  // localTransport stays null by design.
+  const wantsNoTransport = params.transportType === "NONE";
+
   // Load verified supply once and allocate it in-memory. Previously each day /
   // site triggered its own findMany, which scaled with the itinerary length.
-  const [hotelProviders, transportProviders] = await Promise.all([
+  const [hotelProviders, transportProviders, publicTransportServices] = await Promise.all([
     loadHotelProviders(),
     loadTransportProviders(),
+    loadActiveTransportServices(),
   ]);
 
   const available_hotels = nearestWithTypeFallback(
@@ -763,11 +793,59 @@ async function mapItineraryToResponseWithRecommendations(
     (h) => h.apartmentType,
     params.apartmentType,
     { limit: 3 },
-  ).map(toHotelRecommendation);
+  ).map((h) => ({ ...toHotelRecommendation(h), source: "verified" }));
 
-  // transportType NONE is an explicit opt-out ("no transport needed"), so no
-  // transport is recommended and per-day localTransport stays null by design.
-  const wantsNoTransport = params.transportType === "NONE";
+  // ── §1 Accommodation engine: tiered verified (5 km radius, category
+  // preference) → external geographic fallback, one list per tour site.
+  const accommodationOptionsBySite = await recommendAccommodationsForSites(
+    params.itinerarySites,
+    params.apartmentType,
+    {
+      verifiedProviders: hotelProviders.map((h) => ({
+        id: h.id,
+        name: h.name,
+        latitude: h.latitude,
+        longitude: h.longitude,
+        propertyType: h.apartmentType,
+      })),
+      radiusKm: ACCOMMODATION_RADIUS_KM,
+      minResults: MIN_VERIFIED_ACCOMMODATIONS,
+      limit: 3,
+    },
+  );
+
+  // ── §2 Mobility engine: ride-hailing availability by transit profile,
+  // tiered car rentals + STC/VIP/trotro/air catalogue per tour site.
+  const mobilityBySite = wantsNoTransport
+    ? {}
+    : await resolveMobilityForSites(params.itinerarySites, {
+        wantedTransportType: params.transportType,
+        wantsNoTransport,
+        carRentals: transportProviders.map((t) => ({
+          id: t.id,
+          name: t.name,
+          latitude: t.latitude,
+          longitude: t.longitude,
+          transportType: t.transportType,
+          locationAddress: t.locationAddress,
+          avgRating: t.avgRating,
+          imageUrl: t.imageUrl,
+          vehicleMake: t.vehicleMake,
+          vehicleModel: t.vehicleModel,
+          dailyRate: t.dailyRate,
+          driverRequired: t.driverRequired,
+        })),
+        services: publicTransportServices,
+      });
+
+  // Transport hints derived from each site's stored transit_profile (§2),
+  // falling back to region derivation for rows that predate the column.
+  const transportHintsBySite: Record<string, string[]> = {};
+  for (const site of params.itinerarySites) {
+    const profile = site.transitProfile ?? deriveTransitProfile(site.region ?? "");
+    transportHintsBySite[site.id] = getTransportHints(profile);
+  }
+
   const available_transports = wantsNoTransport
     ? []
     : nearestWithTypeFallback(
@@ -788,7 +866,7 @@ async function mapItineraryToResponseWithRecommendations(
     !hotelProviders.some((h) => h.apartmentType === params.apartmentType)
   ) {
     responseWarnings.push(
-      `No verified ${params.apartmentType} stays are listed yet — showing the closest verified option instead.`,
+      `No verified ${params.apartmentType} stays are listed yet — showing the closest verified option instead. <span class="tag">Suggested Alternative Accommodation</span>`,
     );
   }
   if (
@@ -875,6 +953,14 @@ async function mapItineraryToResponseWithRecommendations(
         params.apartmentType,
         LOCAL_PROVIDER_RADIUS_KM,
       );
+      const localHotelWithSource = localHotel
+        ? {
+            ...localHotel,
+            source: (hotelProviders.some((h) => h.apartmentType === params.apartmentType)
+              ? "verified"
+              : "fallback") as "verified" | "fallback",
+          }
+        : null;
       const localTransport = pickLocalProvider(
         transportProviders,
         anchors,
@@ -883,6 +969,18 @@ async function mapItineraryToResponseWithRecommendations(
         LOCAL_PROVIDER_RADIUS_KM,
         wantsNoTransport,
       );
+      // Hints follow the day's actual sites and their stored transit_profile
+      // (§2) — urban corridors surface ride-hailing, peri/rural surface
+      // station-based trotro + intercity coach guidance.
+      const transportHints = [
+        ...new Set(
+          (day.sites ?? []).flatMap((ds) =>
+            getTransportHints(
+              ds.tourSite?.transit_profile ?? deriveTransitProfile(ds.tourSite?.region ?? ""),
+            ),
+          ),
+        ),
+      ];
 
       // Traveller's confirmed rental for this day, if any. Resolved from the
       // same verified supply so a de-verified provider degrades to the
@@ -920,11 +1018,19 @@ async function mapItineraryToResponseWithRecommendations(
                 | "WILDLIFE"
                 | "RELIGIOUS"
                 | "SCENIC",
+              transitProfile: ds.tourSite.transit_profile,
             },
             availableAccomodation,
+            // §1 tiered options around this exact site (external fallbacks
+            // arrive tagged "Suggested Alternative Accommodation").
+            accommodationOptions: accommodationOptionsBySite[String(touringSiteId)] ?? [],
+            // §2 mobility profile for this location — null on transport opt-out.
+            mobility: wantsNoTransport ? null : (mobilityBySite[String(touringSiteId)] ?? null),
           };
         }),
-        localAccommodation: localHotel ? toHotelRecommendation(localHotel) : null,
+        localAccommodation: localHotelWithSource
+          ? toHotelRecommendation(localHotelWithSource)
+          : null,
         localTransport: localTransport ? toTransportRecommendation(localTransport) : null,
         selectedTransport: selectedTransportProvider
           ? toTransportRecommendation({
@@ -934,12 +1040,14 @@ async function mapItineraryToResponseWithRecommendations(
               ),
             })
           : null,
+        transportHints,
         socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
       };
     }),
 
     available_hotels,
     available_transports,
+    transportHints: [...new Set(Object.values(transportHintsBySite).flat())],
 
     datingSelections: datingSelections.map((sel) => ({
       datingProfileId: sel.datingProfileId,
@@ -956,7 +1064,7 @@ async function mapItineraryToResponseWithRecommendations(
 }
 
 function toHotelRecommendation(
-  provider: RawHotelProvider & { distanceKm: number },
+  provider: RawHotelProvider & { distanceKm: number; source?: "verified" | "fallback" },
 ): AccommodationRecommendation {
   return {
     id: provider.id,
@@ -965,6 +1073,7 @@ function toHotelRecommendation(
     longitude: provider.longitude,
     distanceKm: provider.distanceKm,
     apartmentType: provider.apartmentType ?? null,
+    source: provider.source ?? "verified",
   };
 }
 
@@ -1072,6 +1181,10 @@ export function pickLocalProvider<T extends { latitude: number; longitude: numbe
   const [national] = nearestWithTypeFallback(providers, anchors, getType, wantedType, { limit: 1 });
   return national;
 }
+
+// Region → transit-profile derivation and profile → hint building moved to
+// src/helpers/transit-profile.ts (§2) so seeding, moderation and the itinerary
+// engine share one source of truth.
 
 async function loadHotelProviders(): Promise<RawHotelProvider[]> {
   const providers = await prisma.provider.findMany({

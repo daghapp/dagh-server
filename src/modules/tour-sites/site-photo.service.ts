@@ -1,0 +1,261 @@
+// ───────────────
+// SITE PHOTO SERVICE (§4) — business logic for community photo uploads
+// Plain-argument functions for testability. Enforces validation, moderation queue.
+// ───────────────
+
+import { prisma } from "../../config/index.js";
+import { validatePhotoUpload } from "../../validator/site-photo-validator.js";
+import { notifyAdmins } from "../../helpers/notify-admins.js";
+import type { SitePhoto } from "../../../generated/prisma/client.js";
+
+export interface CloudinaryUploadResult {
+  url: string;
+  publicId: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  thumbUrl: string;
+}
+
+export interface UploadBufferToCloudinaryOptions {
+  folder?: string;
+}
+
+// Injectable uploader seam for testing
+export const cloudinaryUploader = {
+  async uploadBufferToCloudinary(
+    buffer: Buffer,
+    options: UploadBufferToCloudinaryOptions = {},
+  ): Promise<CloudinaryUploadResult> {
+    const { v2: cloudinary } = await import("cloudinary");
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: options.folder || "dagh/site-photos",
+          resource_type: "image",
+          eager: [{ width: 400, height: 400, crop: "limit", fetch_format: "webp" }],
+        },
+        (error, result) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          if (!result) {
+            reject(new Error("Cloudinary upload failed"));
+            return;
+          }
+          // Compute thumbnail URL - Cloudinary can provide eager transformations
+          const thumbUrl = result.eager?.[0]?.secure_url || result.secure_url;
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+            width: result.width,
+            height: result.height,
+            sizeBytes: result.bytes || buffer.length,
+            thumbUrl,
+          });
+        },
+      );
+      uploadStream.end(buffer);
+    });
+  },
+};
+
+export function setCloudinaryUploaderForTesting(uploader: {
+  uploadBufferToCloudinary: (
+    buffer: Buffer,
+    options?: UploadBufferToCloudinaryOptions,
+  ) => Promise<CloudinaryUploadResult>;
+}): void {
+  cloudinaryUploader.uploadBufferToCloudinary = uploader.uploadBufferToCloudinary;
+}
+
+export function resetCloudinaryUploaderForTesting(): void {
+  // Will be reset by reassignment if needed in tests
+}
+
+export async function uploadSitePhoto({
+  tourSiteId,
+  uploaderId,
+  file,
+}: {
+  tourSiteId: string;
+  uploaderId: string | null;
+  file: { buffer: Buffer; mimetype: string; size: number };
+}): Promise<SitePhoto> {
+  const tourSite = await prisma.tourSite.findUnique({
+    where: { id: tourSiteId },
+  });
+
+  if (!tourSite) {
+    throw new Error("SITE_NOT_FOUND");
+  }
+
+  const uploadResult = await cloudinaryUploader.uploadBufferToCloudinary(file.buffer);
+
+  const validation = validatePhotoUpload({
+    sizeBytes: uploadResult.sizeBytes || file.size,
+    mimeType: file.mimetype,
+    width: uploadResult.width,
+    height: uploadResult.height,
+  });
+
+  if (!validation.ok) {
+    // Best-effort cleanup of uploaded asset
+    try {
+      const { v2: cloudinary } = await import("cloudinary");
+      await cloudinary.uploader.destroy(uploadResult.publicId);
+    } catch (destroyError) {
+      console.error("[site-photo] cleanup failed:", destroyError);
+    }
+    throw new Error(validation.code);
+  }
+
+  const photo = await prisma.sitePhoto.create({
+    data: {
+      tourSiteId,
+      uploaderId,
+      url: uploadResult.url,
+      publicId: uploadResult.publicId,
+      thumbUrl: uploadResult.thumbUrl,
+      width: uploadResult.width,
+      height: uploadResult.height,
+      sizeBytes: uploadResult.sizeBytes,
+      status: "PENDING",
+    },
+  });
+
+  // Fire-and-forget admin notification - never fail the upload
+  notifyAdmins({
+    category: "tours",
+    message: `New photo submitted for moderation: ${tourSite.name}`,
+    actionUrl: "/admin/site-photos",
+  }).catch((err) => {
+    console.error("[site-photo] notifyAdmins failed:", err);
+  });
+
+  return photo;
+}
+
+export async function listApprovedPhotos(
+  tourSiteId: string,
+  { page, limit }: { page: number; limit: number },
+): Promise<{
+  items: SitePhoto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  const tourSite = await prisma.tourSite.findUnique({
+    where: { id: tourSiteId },
+  });
+
+  if (!tourSite) {
+    throw new Error("SITE_NOT_FOUND");
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [items, total] = await Promise.all([
+    prisma.sitePhoto.findMany({
+      where: { tourSiteId, status: "APPROVED" },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.sitePhoto.count({
+      where: { tourSiteId, status: "APPROVED" },
+    }),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
+export async function moderationQueue({
+  status,
+  page,
+  limit,
+}: {
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  page: number;
+  limit: number;
+}): Promise<{
+  items: (SitePhoto & { tourSite: { name: string; region: string | null } })[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  const skip = (page - 1) * limit;
+  const where = status ? { status } : {};
+
+  const [items, total] = await Promise.all([
+    prisma.sitePhoto.findMany({
+      where,
+      include: {
+        tourSite: {
+          select: {
+            name: true,
+            region: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      skip,
+      take: limit,
+    }),
+    prisma.sitePhoto.count({ where }),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
+export async function moderatePhoto(
+  photoId: string,
+  adminId: string,
+  decision: "APPROVED" | "REJECTED",
+  rejectReason?: string,
+): Promise<SitePhoto> {
+  const photo = await prisma.sitePhoto.findUnique({
+    where: { id: photoId },
+  });
+
+  if (!photo) {
+    throw new Error("PHOTO_NOT_FOUND");
+  }
+
+  if (photo.status === decision) {
+    throw new Error("PHOTO_ALREADY_MODERATED");
+  }
+
+  if (decision === "REJECTED") {
+    if (!rejectReason || rejectReason.trim().length < 5) {
+      throw new Error("INVALID_REJECT_REASON");
+    }
+  }
+
+  const updated = await prisma.sitePhoto.update({
+    where: { id: photoId },
+    data: {
+      status: decision,
+      moderatedBy: adminId,
+      moderatedAt: new Date(),
+      rejectReason: decision === "REJECTED" ? rejectReason?.trim() : null,
+    },
+  });
+
+  return updated;
+}

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getTourSites,
+  getSiteMobility,
   postTourRequest,
   getItinerary,
   getUserTourRequests,
@@ -34,6 +35,36 @@ const itineraryPaymentController = new ItineraryPaymentController();
  *         description: Tour sites retrieved successfully
  */
 router.get("/sites", getTourSites);
+
+/**
+ * @swagger
+ * /itinerary/sites/{siteId}/mobility:
+ *   get:
+ *     summary: Mobility options for a single tour site (§2)
+ *     description: >
+ *       Ride-hailing availability by transit profile, intercity coach (STC/VIP),
+ *       trotro corridors, nearest airport, and verified car rentals — with
+ *       tiered national fallbacks tagged "Suggested Alternative Transport".
+ *     tags: [Itinerary]
+ *     parameters:
+ *       - in: path
+ *         name: siteId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: transportType
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [TROTRO, UBER, RENTED_VEHICLE, NONE]
+ *         description: Preferred transport type for car-rental category ordering
+ *     responses:
+ *       200:
+ *         description: Mobility options retrieved successfully
+ *       404:
+ *         description: Tour site not found
+ */
+router.get("/sites/:siteId/mobility", getSiteMobility);
 
 /**
  * @swagger

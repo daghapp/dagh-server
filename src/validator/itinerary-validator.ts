@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TourType, DayType, SiteCategory } from "../../generated/prisma/client.js";
+import { TourType, DayType, SiteCategory, TransitProfile } from "../../generated/prisma/client.js";
 import { GHANA_REGIONS, DEFAULT_START_REGION } from "../helpers/itinerary-routing.js";
 
 const regionEnum = z.enum(GHANA_REGIONS, {
@@ -75,11 +75,105 @@ export interface TourSiteResponse {
   description: string;
   imageUrl: string | null;
   category: SiteCategory;
+  // Accessibility tier driving the mobility engine (§2): URBAN_CENTER |
+  // PERI_URBAN | RURAL.
+  transitProfile?: string;
+}
+
+// ─────────────────────────────────────────
+// ACCOMMODATION ENGINE (§1) — tiered verified → external options
+// ─────────────────────────────────────────
+
+export interface AccommodationOption {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  // Platform property type (HOTEL | GUESTHOUSE | AIRBNB | APARTMENTS | MOTEL);
+  // null on external rows we could not confidently classify.
+  propertyType: string | null;
+  // "verified" = internal provider database; "external" = geographic
+  // fallback discovery around the tour site.
+  source: "verified" | "external";
+  // Present only on fallback injections ("Suggested Alternative Accommodation").
+  tag?: string;
+}
+
+// ─────────────────────────────────────────
+// MOBILITY ENGINE (§2) — transit profile + transit options per site
+// ─────────────────────────────────────────
+
+export type MobilityAnchor = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  region?: string;
+  transitProfile?: TransitProfile | null;
+};
+
+export interface PublicTransportOption {
+  id: string;
+  mode: "INTERCITY_BUS" | "TROTRO" | "DOMESTIC_AIR";
+  operator: string;
+  originCity: string;
+  originStation: string | null;
+  originLat: number | null;
+  originLng: number | null;
+  destinationCity: string | null;
+  destinationRegion: string | null;
+  notes: string | null;
+  // Distance from the tour site to the boarding point (null when the catalog
+  // row has no coordinates).
+  distanceKm: number | null;
+  source: "primary" | "fallback";
+  // Present only when the option was surfaced by the fallback tier
+  // ("Suggested Alternative Transport").
+  tag?: string;
+}
+
+export interface CarRentalOption {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  transportType: string | null;
+  locationAddress: string;
+  avgRating: number;
+  imageUrl: string | null;
+  vehicleMake: string;
+  vehicleModel: string;
+  dailyRate: number;
+  driverRequired: boolean;
+  source: "verified";
+  tag?: string;
+}
+
+export interface SiteMobility {
+  siteId: string;
+  transitProfile: string;
+  // Ride-hailing availability (URBAN_CENTER corridors only).
+  rideHailing: string[];
+  // On-the-ground local transit guidance (trotro/station-based for peri/rural).
+  localTransit: string[];
+  intercityBus: PublicTransportOption[];
+  trotro: PublicTransportOption[];
+  air: PublicTransportOption[];
+  carRentals: CarRentalOption[];
+  // Flat advisory list mirroring the legacy `transportHints` field.
+  hints: string[];
 }
 
 export interface ItineraryDaySiteResponse {
   visitOrder: number;
   site: TourSiteResponse;
+  // Tiered accommodation options within the default 5 km radius of this site;
+  // external fallbacks arrive tagged "Suggested Alternative Accommodation".
+  accommodationOptions: AccommodationOption[];
+  // Full mobility profile for this location (null when the traveller opted
+  // out of transport with transportType NONE).
+  mobility: SiteMobility | null;
 }
 
 export interface LocalProviderRecommendation {
@@ -151,6 +245,7 @@ export interface ItineraryDayResponse {
   // localTransport recommendation). Set via
   // POST /itinerary/:tourRequestId/days/:dayNumber/transport.
   selectedTransport: TransportRecommendation | null;
+  transportHints: string[]; // Dynamic transport suggestions based on transit profile
   socialBlocks: DatingSocialBlock[];
 }
 
@@ -182,6 +277,7 @@ export interface ItineraryResponse {
   // Recommendations derived from the user's selected accommodation/transport preferences
   available_hotels: ItineraryLocationRecommendation[];
   available_transports: TransportRecommendation[];
+  transportHints: string[]; // Dynamic transport suggestions per transit profile
 
   // Tour → dating: selected dating profiles merged into the itinerary timeline.
   datingSelections: (DatingSocialBlockProfile & { selectedAt: Date })[];

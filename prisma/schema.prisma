@@ -373,6 +373,8 @@ model tour_packages {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime?
   publishedAt        DateTime?          @default(now())
+  // Multi-tag categories for album structure (§5): e.g. ["Adventure", "Historical", "Wildlife"]
+  categories         String[]           @default([])
   bookings           tour_bookings[]
   pricing_excludes   pricing_excludes[]
   pricing_includes   pricing_includes[]
@@ -1018,18 +1020,119 @@ enum AdminRole {
 model TourSite {
   id          String       @id @default(uuid())
   name        String       @unique
-  region      String
-  latitude    Float
-  longitude   Float
-  description String
-  imageUrl    String?
-  category    SiteCategory
-  createdAt   DateTime     @default(now())
+   region      String
+   latitude    Float
+   longitude   Float
+   description String
+   imageUrl    String?
+   category    SiteCategory
+   // Multi-tag album keys (§5): supplementary tags beyond the primary `category`,
+   // e.g. ["Adventure", "Historical"]. Album endpoints match either source.
+   categories         String[]           @default([])
+   // Accessibility tier used by the mobility engine (§2). Default mirrors the
+   // original column default so pre-existing rows stay valid.
+   transit_profile TransitProfile @default(RURAL) // Urban Center | Peri_Urban | Rural
+   createdAt   DateTime     @default(now())
+ 
+   requestSites      TourRequestSite[]
+   itineraryDaySites ItineraryDaySite[]
+   photos            SitePhoto[]
+ 
+   @@map("tour_sites")
+}
 
-  requestSites      TourRequestSite[]
-  itineraryDaySites ItineraryDaySite[]
+enum TransitProfile {
+  URBAN_CENTER
+  PERI_URBAN
+  RURAL
+}
 
-  @@map("tour_sites")
+// ─────────────────────────────────────────
+// USER-SUBMITTED TOUR SITES — pending approval workflow
+// Users submit new tour site forms written to this staging collection.
+// Admins review and either approve (migrate to main tour_sites) or reject.
+// ─────────────────────────────────────────
+model PendingSite {
+  id                String       @id @default(uuid())
+  name              String
+  region            String
+  latitude          Float
+  longitude         Float
+  description       String?
+  category          String // free-text category/tag
+  imageUrl          String?
+  status            String     @default("pending") // pending, approved, rejected
+  submittedBy       String // userId
+  rejectReason      String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@map("pending_sites")
+}
+
+// ─────────────────────────────────────────
+// COMMUNITY PHOTO UPLOADS (§4) — moderated gallery enrichment for tour sites.
+// Uploads land here as PENDING; only APPROVED rows appear in the public gallery.
+// ─────────────────────────────────────────
+model SitePhoto {
+  id           String      @id @default(uuid())
+  tourSiteId   String
+  uploaderId   String? // userId (null for legacy/admin uploads)
+  url          String
+  publicId     String? // Cloudinary public id (used for deletion/moderation)
+  thumbUrl     String? // Optimized WebP thumbnail for fast mobile rendering
+  width        Int?
+  height       Int?
+  sizeBytes    Int?
+  status       PhotoStatus @default(PENDING)
+  rejectReason String?
+  moderatedBy  String? // admin userId
+  moderatedAt  DateTime?
+  createdAt    DateTime    @default(now())
+
+  tourSite TourSite @relation(fields: [tourSiteId], references: [id], onDelete: Cascade)
+
+  @@index([tourSiteId, status])
+  @@index([status, createdAt])
+  @@map("site_photos")
+}
+
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────
+// PUBLIC TRANSPORT CATALOG (§2) — intercity buses (STC/VIP), trotro corridors
+// and air ports used by the mobility engine when a tour site sits outside
+// ride-hailing coverage. Coordinates describe the boarding point.
+// ─────────────────────────────────────────
+model PublicTransportService {
+  id               String              @id @default(uuid())
+  mode             PublicTransportMode
+  operator         String // "STC", "VIP", "Metro Mass", "CTC", "Neoplan", "Ghana Airways"…
+  originCity       String
+  originStation    String? // primary station of origin, e.g. "Circle (Accra)"
+  originLat        Float?
+  originLng        Float?
+  destinationCity  String?
+  destinationRegion String?
+  destinationLat   Float?
+  destinationLng   Float?
+  notes            String? // boarding route, drop-off junctions, frequency hints
+  active           Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+
+  @@unique([mode, operator, originCity, destinationCity])
+  @@index([mode, destinationRegion])
+  @@map("public_transport_services")
+}
+
+enum PublicTransportMode {
+  INTERCITY_BUS // STC, VIP, Metro Mass…
+  TROTRO // local minibus corridors
+  DOMESTIC_AIR // domestic airports/airstrips
 }
 
 // ─────────────────────────────────────────
@@ -1205,6 +1308,9 @@ enum SiteCategory {
   WILDLIFE
   RELIGIOUS
   SCENIC
+  ADVENTURE
+  URBAN
+  HERITAGE
 }
 
 // Phase 3.1 — Added MEMBERSHIP_SUBSCRIPTION for membership payment routing
@@ -1383,6 +1489,7 @@ enum ApartmentType {
   GUESTHOUSE
   AIRBNB
   APARTMENTS
+  MOTEL
 }
 
 enum TransportType {

@@ -16,6 +16,10 @@ import {
 
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import {
+  loadActiveTransportServices,
+  resolveMobilityForSites,
+} from "../../services/mobility.service.js";
 
 // ─────────────────────────────────────────
 // GET /api/tours/sites
@@ -27,6 +31,50 @@ export async function getTourSites(_req: Request, res: Response) {
   } catch (error) {
     console.error("[getTourSites]", error);
     return fail(res, 500, "Failed to retrieve tour sites.");
+  }
+}
+
+// ─────────────────────────────────────────
+// GET /api/tours/sites/:siteId/mobility
+// Standalone §2 mobility lookup — same engine the itinerary response uses.
+// ─────────────────────────────────────────
+export async function getSiteMobility(req: Request, res: Response) {
+  try {
+    const siteId = req.params.siteId as string;
+    const transportType =
+      typeof req.query.transportType === "string" ? req.query.transportType : null;
+
+    const site = await prisma.tourSite.findUnique({
+      where: { id: siteId },
+      select: {
+        id: true,
+        latitude: true,
+        longitude: true,
+        region: true,
+        transit_profile: true,
+      },
+    });
+
+    if (!site) return fail(res, 404, "Tour site not found.");
+
+    const services = await loadActiveTransportServices();
+    const mobility = await resolveMobilityForSites(
+      [
+        {
+          id: site.id,
+          latitude: site.latitude,
+          longitude: site.longitude,
+          region: site.region,
+          transitProfile: site.transit_profile,
+        },
+      ],
+      { wantedTransportType: transportType, services },
+    );
+
+    return ok(res, mobility[site.id], "Mobility options retrieved successfully.");
+  } catch (error) {
+    console.error("[getSiteMobility]", error);
+    return fail(res, 500, "Failed to retrieve mobility options.");
   }
 }
 

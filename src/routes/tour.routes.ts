@@ -125,6 +125,344 @@ const adminTourController = new AdminTourController();
  *         description: Failed to fetch tours
  */
 router.get("/", userTourController.getAllTours.bind(userTourController));
+router.get("/albums/category/:tag", userTourController.getAlbumByCategory.bind(userTourController));
+router.get("/albums/region/:region", userTourController.getAlbumByRegion.bind(userTourController));
+router.get("/albums", userTourController.listAlbums.bind(userTourController));
+
+/**
+ * @swagger
+ * /tours/albums:
+ *   get:
+ *     summary: List all browsable albums
+ *     description: Index of category albums (SiteCategory values + supplementary tags found on sites/packages) and region albums, each with cover image and site count
+ *     tags: [Tours - User]
+ *     responses:
+ *       200:
+ *         description: Albums retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           key:
+ *                             type: string
+ *                             example: category:Adventure
+ *                           title:
+ *                             type: string
+ *                             example: Adventure
+ *                           coverImage:
+ *                             type: string
+ *                             format: uri
+ *                             nullable: true
+ *                           siteCount:
+ *                             type: integer
+ *                           packageCount:
+ *                             type: integer
+ *                     regions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           key:
+ *                             type: string
+ *                             example: region:Central
+ *                           title:
+ *                             type: string
+ *                             example: Central
+ *                           coverImage:
+ *                             type: string
+ *                             format: uri
+ *                             nullable: true
+ *                           siteCount:
+ *                             type: integer
+ *       500:
+ *         description: Failed to fetch albums
+ */
+
+/**
+ * @swagger
+ * /tours/albums/category/{tag}:
+ *   get:
+ *     summary: Get album by category tag
+ *     description: Bundles matching tour sites and tour packages into an album payload. Matching is case-insensitive against the site category enum and the multi-tag categories arrays.
+ *     tags: [Tours - User]
+ *     parameters:
+ *       - in: path
+ *         name: tag
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Category tag (e.g. Adventure, Historical, Wildlife)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *           description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *           description: Results per page
+ *     responses:
+ *       200:
+ *         description: Album retrieved successfully (empty sites/tours when the tag matches nothing)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     album:
+ *                       type: object
+ *                       properties:
+ *                         key:
+ *                           type: string
+ *                           example: category:Adventure
+ *                         type:
+ *                           type: string
+ *                           enum: [category, region]
+ *                         title:
+ *                           type: string
+ *                           example: Adventure
+ *                         coverImage:
+ *                           type: string
+ *                           format: uri
+ *                           nullable: true
+ *                         siteCount:
+ *                           type: integer
+ *                           example: 4
+ *                         packageCount:
+ *                           type: integer
+ *                           example: 1
+ *                     sites:
+ *                       type: array
+ *                       description: Paginated tour spots matching the tag
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                           name:
+ *                             type: string
+ *                           region:
+ *                             type: string
+ *                           latitude:
+ *                             type: number
+ *                           longitude:
+ *                             type: number
+ *                           category:
+ *                             type: string
+ *                           imageUrl:
+ *                             type: string
+ *                             format: uri
+ *                             nullable: true
+ *                           transitProfile:
+ *                             type: string
+ *                             enum: [URBAN_CENTER, PERI_URBAN, RURAL]
+ *                     tours:
+ *                       type: array
+ *                       description: Matching tour packages (max 20)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                           title:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           coverImage:
+ *                             type: string
+ *                             format: uri
+ *                           region:
+ *                             type: string
+ *                           category:
+ *                             type: string
+ *                           categories:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                           basePrice:
+ *                             type: number
+ *                           durationDays:
+ *                             type: integer
+ *                           status:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       description: Scoped to sites
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
+ *       400:
+ *         description: Category tag is required
+ *       500:
+ *         description: Failed to fetch album
+ */
+
+/**
+ * @swagger
+ * /tours/albums/region/{region}:
+ *   get:
+ *     summary: Get album by region
+ *     description: Groups localized attractions dynamically by case-insensitive region match. Returns a clean grid structure of all matching sites plus matching tour packages.
+ *     tags: [Tours - User]
+ *     parameters:
+ *       - in: path
+ *         name: region
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Region name (e.g. Central, Ashanti, Volta)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *           description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *           description: Results per page
+ *     responses:
+ *       200:
+ *         description: Album retrieved successfully (empty sites/tours when the region matches nothing)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     album:
+ *                       type: object
+ *                       properties:
+ *                         key:
+ *                           type: string
+ *                           example: region:Central
+ *                         type:
+ *                           type: string
+ *                           enum: [category, region]
+ *                         title:
+ *                           type: string
+ *                           example: Central
+ *                         coverImage:
+ *                           type: string
+ *                           format: uri
+ *                           nullable: true
+ *                         siteCount:
+ *                           type: integer
+ *                           example: 3
+ *                         packageCount:
+ *                           type: integer
+ *                           example: 0
+ *                     sites:
+ *                       type: array
+ *                       description: Paginated tour spots in the region
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                           name:
+ *                             type: string
+ *                           region:
+ *                             type: string
+ *                           latitude:
+ *                             type: number
+ *                           longitude:
+ *                             type: number
+ *                           category:
+ *                             type: string
+ *                           imageUrl:
+ *                             type: string
+ *                             format: uri
+ *                             nullable: true
+ *                           transitProfile:
+ *                             type: string
+ *                             enum: [URBAN_CENTER, PERI_URBAN, RURAL]
+ *                     tours:
+ *                       type: array
+ *                       description: Matching tour packages (max 20)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                           title:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           coverImage:
+ *                             type: string
+ *                             format: uri
+ *                           region:
+ *                             type: string
+ *                           category:
+ *                             type: string
+ *                           categories:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                           basePrice:
+ *                             type: number
+ *                           durationDays:
+ *                             type: integer
+ *                           status:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       description: Scoped to sites
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
+ *       400:
+ *         description: Region name is required
+ *       500:
+ *         description: Failed to fetch album
+ */
 
 /**
  * @swagger
