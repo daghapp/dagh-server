@@ -40,6 +40,8 @@ import type {
   CreateTourRequestInput,
   ItineraryDayInput,
   DatingSocialBlock,
+  AvailableTransport,
+  PublicTransportOption,
 } from "../../validator/itinerary-validator.js";
 import {
   ACCOMMODATION_RADIUS_KM,
@@ -48,8 +50,10 @@ import {
 } from "../../services/accommodation-recommendation.service.js";
 import {
   loadActiveTransportServices,
+  recommendPublicTransportForSites,
   resolveMobilityForSites,
 } from "../../services/mobility.service.js";
+import { dedupeById } from "../../helpers/tiered-recommendation.js";
 
 const MAX_SITES_PER_DAY = 3;
 
@@ -718,6 +722,7 @@ type AccommodationRecommendation = ProviderRecommendation & {
 };
 
 type TransportRecommendation = ProviderRecommendation & {
+  kind: "car_rental";
   transportType: string | null;
   locationAddress: string;
   avgRating: number;
@@ -838,6 +843,16 @@ async function mapItineraryToResponseWithRecommendations(
         services: publicTransportServices,
       });
 
+  // ── §2 Public-transport engine, shaped like accommodationOptions: one
+  // tiered list per tour site (STC/VIP intercity coaches, domestic air, trotro
+  // corridors) with primary in-radius options ahead of tagged national
+  // fallbacks. Reuses the preloaded catalogue — no extra query.
+  const publicTransportBySite: Record<string, PublicTransportOption[]> = wantsNoTransport
+    ? {}
+    : await recommendPublicTransportForSites(params.itinerarySites, {
+        services: publicTransportServices,
+      });
+
   // Transport hints derived from each site's stored transit_profile (§2),
   // falling back to region derivation for rows that predate the column.
   const transportHintsBySite: Record<string, string[]> = {};
@@ -846,15 +861,20 @@ async function mapItineraryToResponseWithRecommendations(
     transportHintsBySite[site.id] = getTransportHints(profile);
   }
 
-  const available_transports = wantsNoTransport
-    ? []
-    : nearestWithTypeFallback(
-        transportProviders,
-        params.itinerarySites,
-        (t) => t.transportType,
-        params.transportType,
-        { limit: 3 },
-      ).map(toTransportRecommendation);
+  // Verified car rentals first, then the tiered public-transport suggestions
+  // (STC/VIP coaches, air, trotro) collected across every tour site.
+  const available_transports: AvailableTransport[] = [
+    ...(wantsNoTransport
+      ? []
+      : nearestWithTypeFallback(
+          transportProviders,
+          params.itinerarySites,
+          (t) => t.transportType,
+          params.transportType,
+          { limit: 3 },
+        ).map(toTransportRecommendation)),
+    ...dedupeById(Object.values(publicTransportBySite).flat()),
+  ];
 
   // Surface a read-time advisory when the requested type has no verified
   // supply at all, so the frontend can explain why a fallback is shown.
@@ -1024,6 +1044,9 @@ async function mapItineraryToResponseWithRecommendations(
             // §1 tiered options around this exact site (external fallbacks
             // arrive tagged "Suggested Alternative Accommodation").
             accommodationOptions: accommodationOptionsBySite[String(touringSiteId)] ?? [],
+            // §2 tiered public-transport options (STC/VIP, air, trotro) around
+            // this exact site — national fallbacks tagged like accommodation.
+            publicTransportOptions: publicTransportBySite[String(touringSiteId)] ?? [],
             // §2 mobility profile for this location — null on transport opt-out.
             mobility: wantsNoTransport ? null : (mobilityBySite[String(touringSiteId)] ?? null),
           };
@@ -1081,6 +1104,7 @@ function toTransportRecommendation(
   provider: RawTransportProvider & { distanceKm: number },
 ): TransportRecommendation {
   return {
+    kind: "car_rental",
     id: provider.id,
     name: provider.name,
     latitude: provider.latitude,

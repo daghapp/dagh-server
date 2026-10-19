@@ -377,6 +377,11 @@ per touring day, `socialBlocks`. See the dating module for recommendation filter
 - `accommodationOptions` — tiered lodging within 5 km of that site: verified supply
   first (category-preferred), then external Google Places discoveries tagged
   `"Suggested Alternative Accommodation"` with `source: "external"`.
+- `publicTransportOptions` — the same tiered, accommodation-shaped list for transport:
+  STC/VIP intercity coaches, domestic air, and trotro corridors merged into one
+  distance-ordered list per site, in-radius boarding points (`source: "primary"`)
+  ahead of national fallbacks (`source: "fallback"`, tagged
+  `"Suggested Alternative Transport"`).
 - `mobility` — the site's full mobility profile: `rideHailing` (urban corridors only),
   `localTransit`, `intercityBus` (STC/VIP from the nearest boarding point, tagged
   `"Suggested Alternative Transport"` when escalated nationally), `trotro`, `air`,
@@ -384,6 +389,10 @@ per touring day, `socialBlocks`. See the dating module for recommendation filter
   `transportType: "NONE"`.
 
 Day-level `transportHints` are derived from each day's sites' transit profiles.
+
+The top-level `available_transports` list is a discriminated union: verified car
+rentals (`kind: "car_rental"`) come first, followed by the tiered public-transport
+suggestions collected across every site (`kind: "public_transport"`).
 
 ---
 

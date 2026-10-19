@@ -27,7 +27,7 @@ export const itineraryRequestSchema = z.object({
 
   relocationInterest: z.boolean().optional().default(false),
 
-  apartmentType: z.enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"]).optional(),
+  apartmentType: z.enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS", "MOTEL"]).optional(),
 
   transportType: z.enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"]).optional(),
 

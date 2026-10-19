@@ -122,6 +122,7 @@ function toPublicTransportOption(
   source: "primary" | "fallback",
 ): PublicTransportOption {
   return {
+    kind: "public_transport",
     id: service.id,
     mode: service.mode,
     operator: service.operator,
@@ -168,6 +169,55 @@ export async function selectPublicTransportForSite(
   });
 
   return tiered.options;
+}
+
+/**
+ * Per-site public-transport recommendation shaped like `accommodationOptions`
+ * (§2). Mirrors `recommendAccommodationsForSites`: one tiered list per tour
+ * site, merging the three public-transport modes — intercity coaches (STC/VIP),
+ * domestic air, and trotro corridors.
+ *
+ * Each mode is resolved by `selectPublicTransportForSite` (the same
+ * primary-within-radius → tagged national-fallback strategy the accommodation
+ * engine uses), then merged primary-first and distance-ordered so the nearest,
+ * genuinely-vetted boarding points lead.
+ *
+ * @param sites anchors (itinerary tour sites) — one list each
+ * @param opts.services preloaded catalogue (the itinerary mapper loads it once)
+ */
+export async function recommendPublicTransportForSites(
+  sites: MobilityAnchor[],
+  opts: {
+    services?: PublicTransportService[];
+    radiusKm?: number;
+    airRadiusKm?: number;
+    limit?: number;
+  } = {},
+): Promise<Record<string, PublicTransportOption[]>> {
+  const radiusKm = opts.radiusKm ?? MOBILITY_RADIUS_KM;
+  const airRadiusKm = opts.airRadiusKm ?? MOBILITY_AIR_RADIUS_KM;
+  const limit = opts.limit ?? OPTIONS_PER_MODE;
+  const services = opts.services ?? (await loadActiveTransportServices());
+
+  const out: Record<string, PublicTransportOption[]> = {};
+  for (const site of sites) {
+    const [intercityBus, trotro, air] = await Promise.all([
+      selectPublicTransportForSite(site, services, "INTERCITY_BUS", radiusKm, limit),
+      selectPublicTransportForSite(site, services, "TROTRO", radiusKm, limit),
+      selectPublicTransportForSite(site, services, "DOMESTIC_AIR", airRadiusKm, limit),
+    ]);
+
+    out[site.id] = [...intercityBus, ...air, ...trotro]
+      .sort((a, b) => {
+        const tier = (a.source === "primary" ? 0 : 1) - (b.source === "primary" ? 0 : 1);
+        if (tier !== 0) return tier;
+        return (
+          (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY)
+        );
+      })
+      .slice(0, limit);
+  }
+  return out;
 }
 
 /** Category-first ordering of car rentals (mirrors the accommodation engine). */

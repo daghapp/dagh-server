@@ -90,12 +90,29 @@ describe("itinerary per-day car rental selection", () => {
     const itinerary = await getItineraryByRequestId(tourRequestId, userId);
     expect(itinerary.available_transports.length).toBeGreaterThan(0);
 
-    const first = itinerary.available_transports[0];
+    const first = itinerary.available_transports.find((t) => t.kind === "car_rental")!;
+    expect(first).toBeTruthy();
     expect(first.transportType).toBe("RENTED_VEHICLE");
     expect(first.vehicleMake).toBeTruthy();
     expect(first.vehicleModel).toBeTruthy();
     expect(typeof first.dailyRate).toBe("number");
     expect(typeof first.driverRequired).toBe("boolean");
+  });
+
+  it("surfaces tiered public transport (STC/VIP/air) in available_transports and per site", async () => {
+    const itinerary = await getItineraryByRequestId(tourRequestId, userId);
+
+    const publicTransport = itinerary.available_transports.filter(
+      (t) => t.kind === "public_transport",
+    );
+    expect(publicTransport.length).toBeGreaterThan(0);
+    expect(publicTransport.some((t) => t.mode === "INTERCITY_BUS")).toBe(true);
+
+    // Every touring day site carries its own tiered list (accommodation-shaped).
+    const touringSites = itinerary.days.flatMap((d) => d.sites);
+    expect(touringSites.length).toBeGreaterThan(0);
+    expect(touringSites.every((s) => Array.isArray(s.publicTransportOptions))).toBe(true);
+    expect(touringSites.some((s) => s.publicTransportOptions.length > 0)).toBe(true);
   });
 
   it("persists a selection and echoes it back as selectedTransport", async () => {

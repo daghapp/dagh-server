@@ -103,7 +103,7 @@ router.get("/sites/:siteId/mobility", getSiteMobility);
  *                 type: boolean
  *               apartmentType:
  *                 type: string
- *                 enum: [HOTEL, GUESTHOUSE, AIRBNB, APARTMENTS]
+ *                 enum: [HOTEL, GUESTHOUSE, AIRBNB, APARTMENTS, MOTEL]
  *                 nullable: true
  *               transportType:
  *                 type: string

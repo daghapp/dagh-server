@@ -91,6 +91,7 @@ export const itinerarySchemas = {
   PublicTransportOption: {
     type: "object",
     properties: {
+      kind: { type: "string", enum: ["public_transport"] },
       id: { type: "string" },
       mode: { type: "string", enum: ["INTERCITY_BUS", "TROTRO", "DOMESTIC_AIR"] },
       operator: { type: "string", example: "STC" },
@@ -170,6 +171,12 @@ export const itinerarySchemas = {
         items: { $ref: "#/components/schemas/AccommodationOption" },
         description:
           "Tiered accommodation options within 5 km of the site; external fallbacks carry the Suggested Alternative Accommodation tag.",
+      },
+      publicTransportOptions: {
+        type: "array",
+        items: { $ref: "#/components/schemas/PublicTransportOption" },
+        description:
+          "Tiered public-transport options (STC/VIP coaches, domestic air, trotro corridors) around the site; national fallbacks carry the Suggested Alternative Transport tag.",
       },
       mobility: {
         allOf: [{ $ref: "#/components/schemas/SiteMobility" }],

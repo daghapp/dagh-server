@@ -31,7 +31,7 @@ export const createTourRequestSchema = z.object({
 
   relocationInterest: z.boolean().optional().default(false),
 
-  apartmentType: z.enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS"]).optional(),
+  apartmentType: z.enum(["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS", "MOTEL"]).optional(),
 
   transportType: z.enum(["TROTRO", "UBER", "RENTED_VEHICLE", "NONE"]).optional(),
 
@@ -113,6 +113,10 @@ export type MobilityAnchor = {
 };
 
 export interface PublicTransportOption {
+  // Discriminant for the `available_transports` union — distinguishes a
+  // public-transport suggestion (STC/VIP coach, trotro, domestic air) from a
+  // car-rental recommendation (TransportRecommendation).
+  kind: "public_transport";
   id: string;
   mode: "INTERCITY_BUS" | "TROTRO" | "DOMESTIC_AIR";
   operator: string;
@@ -171,6 +175,10 @@ export interface ItineraryDaySiteResponse {
   // Tiered accommodation options within the default 5 km radius of this site;
   // external fallbacks arrive tagged "Suggested Alternative Accommodation".
   accommodationOptions: AccommodationOption[];
+  // Tiered public-transport options (STC/VIP intercity coaches, trotro
+  // corridors, domestic air) around this site — same primary/fallback strategy
+  // as accommodationOptions, fallbacks tagged "Suggested Alternative Transport".
+  publicTransportOptions: PublicTransportOption[];
   // Full mobility profile for this location (null when the traveller opted
   // out of transport with transportType NONE).
   mobility: SiteMobility | null;
@@ -193,6 +201,8 @@ export interface LocalProviderRecommendation {
 // because selecting a rental is a real decision: the fleet, price and terms
 // must be visible to the traveller, not just the provider's name.
 export interface TransportRecommendation {
+  // Discriminant for the `available_transports` union (see PublicTransportOption).
+  kind: "car_rental";
   id: string;
   name: string;
   latitude: number;
@@ -211,6 +221,12 @@ export interface TransportRecommendation {
   dailyRate: number;
   driverRequired: boolean;
 }
+
+// Top-level `available_transports` list: verified car rentals plus tiered
+// public-transport suggestions (STC/VIP, trotro, domestic air). Discriminate on
+// `kind` — car rentals carry fleet/pricing detail, public transport carries the
+// operator/boarding-point detail.
+export type AvailableTransport = TransportRecommendation | PublicTransportOption;
 
 export interface DatingSocialBlockProfile {
   datingProfileId: string;
@@ -276,7 +292,9 @@ export interface ItineraryResponse {
 
   // Recommendations derived from the user's selected accommodation/transport preferences
   available_hotels: ItineraryLocationRecommendation[];
-  available_transports: TransportRecommendation[];
+  // Verified car rentals first, then tiered public-transport suggestions
+  // (STC/VIP, trotro, air) — discriminate on `kind`.
+  available_transports: AvailableTransport[];
   transportHints: string[]; // Dynamic transport suggestions per transit profile
 
   // Tour → dating: selected dating profiles merged into the itinerary timeline.

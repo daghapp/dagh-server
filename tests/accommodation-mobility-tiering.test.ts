@@ -9,9 +9,11 @@ import {
 import {
   selectCarRentalsForSite,
   selectPublicTransportForSite,
+  recommendPublicTransportForSites,
   resolveMobilityForSites,
   SUGGESTED_ALTERNATIVE_TRANSPORT_TAG,
 } from "../src/services/mobility.service.js";
+import { createTourRequestSchema } from "../src/validator/itinerary-validator.js";
 import {
   deriveTransitProfile,
   getMobilityHints,
@@ -432,6 +434,64 @@ describe("deriveTransitProfile", () => {
     expect(deriveTransitProfile("Eastern")).toBe("PERI_URBAN");
     expect(deriveTransitProfile("Bono")).toBe("PERI_URBAN");
     expect(deriveTransitProfile("")).toBe("PERI_URBAN");
+  });
+});
+
+describe("recommendPublicTransportForSites (§2 — accommodation-shaped)", () => {
+  it("merges STC/VIP, air and trotro into one tiered list per site", async () => {
+    const out = await recommendPublicTransportForSites([ACCRA], {
+      services: catalogue,
+      limit: 5,
+    });
+    const options = out[ACCRA.id];
+
+    const ids = options.map((o) => o.id);
+    expect(ids).toContain("bus-accra");
+    expect(ids).toContain("air-kotoka");
+    // Cape Coast trotro is outside Accra's 25 km trotro radius → national fallback.
+    expect(ids).toContain("trotro-cc");
+
+    const bus = options.find((o) => o.id === "bus-accra")!;
+    expect(bus.source).toBe("primary");
+    expect(bus.tag).toBeUndefined();
+
+    const trotro = options.find((o) => o.id === "trotro-cc")!;
+    expect(trotro.source).toBe("fallback");
+    expect(trotro.tag).toBe(SUGGESTED_ALTERNATIVE_TRANSPORT_TAG);
+
+    // Primary (in-radius) boarding points lead the merged list.
+    expect(options[0].source).toBe("primary");
+    // Every row carries the union discriminant used by available_transports.
+    expect(options.every((o) => o.kind === "public_transport")).toBe(true);
+  });
+
+  it("tags every option as a suggested alternative for a remote site", async () => {
+    const out = await recommendPublicTransportForSites([TAMALE], { services: catalogue, limit: 5 });
+    const options = out[TAMALE.id];
+
+    expect(options.length).toBeGreaterThan(0);
+    expect(options.every((o) => o.tag === SUGGESTED_ALTERNATIVE_TRANSPORT_TAG)).toBe(true);
+    expect(options.every((o) => o.source === "fallback")).toBe(true);
+  });
+});
+
+describe("createTourRequestSchema apartmentType (§1)", () => {
+  const base = {
+    tourSiteIds: ["00000000-0000-4000-8000-000000000000"],
+    tourType: "SINGLE" as const,
+    durationDays: 3,
+  };
+
+  it("accepts MOTEL alongside the other lodging types", () => {
+    for (const apartmentType of ["HOTEL", "GUESTHOUSE", "AIRBNB", "APARTMENTS", "MOTEL"] as const) {
+      const parsed = createTourRequestSchema.safeParse({ ...base, apartmentType });
+      expect(parsed.success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown lodging type", () => {
+    const parsed = createTourRequestSchema.safeParse({ ...base, apartmentType: "HOSTEL" });
+    expect(parsed.success).toBe(false);
   });
 });
 

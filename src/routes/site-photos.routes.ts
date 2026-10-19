@@ -59,26 +59,33 @@ const controller = new SitePhotoController();
  *       500:
  *         description: Upload failed
  */
+// Single multer pass with mapped errors. Multer must run exactly once per
+// request: it consumes the multipart stream, so invoking it again (as an
+// earlier revision did) left req.file unset / errored the second parse.
+const handleSitePhotoUpload = (
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) => {
+  sitePhotoUpload.single("image")(req, res, (err: unknown) => {
+    if (err) {
+      const message = (err as Error).message;
+      if (message.includes("Only JPG") || message.includes("Only JPG and PNG")) {
+        return res.status(400).json({ success: false, error: message });
+      }
+      if (message.includes("File too large") || message.includes("10MB")) {
+        return res.status(400).json({ success: false, error: "Image must be smaller than 10MB" });
+      }
+      return res.status(400).json({ success: false, error: message || "Upload failed" });
+    }
+    next();
+  });
+};
+
 router.post(
   "/:siteId/photos",
   protectedRoute,
-  sitePhotoUpload.single("image"),
-  (req, res, next) => {
-    // Handle multer errors
-    sitePhotoUpload.single("image")(req, res, (err: unknown) => {
-      if (err) {
-        const message = (err as Error).message;
-        if (message.includes("Only JPG") || message.includes("Only JPG and PNG")) {
-          return res.status(400).json({ success: false, error: message });
-        }
-        if (message.includes("File too large") || message.includes("10MB")) {
-          return res.status(400).json({ success: false, error: "Image must be smaller than 10MB" });
-        }
-        return res.status(400).json({ success: false, error: message || "Upload failed" });
-      }
-      next();
-    });
-  },
+  handleSitePhotoUpload,
   controller.uploadPhoto.bind(controller),
 );
 
