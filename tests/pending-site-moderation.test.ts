@@ -39,7 +39,10 @@ describe("pending-site moderation workflow (§3)", () => {
     latitude: 7.0131,
     longitude: 0.5126,
     description: "A beautiful waterfall near Hohoe in the Volta region.",
+    history: "Long used as a sacred site by the communities around Hohoe.",
     category: "Waterfall",
+    imageUrl: "https://example.com/wli.jpg",
+    imageCredit: "Wikimedia Commons",
   };
 
   const fortInput: SubmitPendingSiteInput = {
@@ -144,6 +147,9 @@ describe("pending-site moderation workflow (§3)", () => {
       expect(row.status).toBe("pending");
       expect(row.submittedBy).toBe(userId);
       expect(row.category).toBe("Waterfall");
+      expect(row.history).toBe(waterfallInput.history);
+      expect(row.imageUrl).toBe(waterfallInput.imageUrl);
+      expect(row.imageCredit).toBe(waterfallInput.imageCredit);
     });
 
     it("rejects a duplicate name (case-insensitive) against another pending row", async () => {
@@ -187,6 +193,10 @@ describe("pending-site moderation workflow (§3)", () => {
       expect(tourSite!.name).toBe(waterfallInput.name);
       expect(tourSite!.region).toBe("Volta");
       expect(tourSite!.description).toBe(waterfallInput.description);
+      // Detail-page fields carry through the approval migration.
+      expect(tourSite!.history).toBe(waterfallInput.history);
+      expect(tourSite!.imageUrl).toBe(waterfallInput.imageUrl);
+      expect(tourSite!.imageCredit).toBe(waterfallInput.imageCredit);
       // "Waterfall" keyword-maps to NATURE and is NOT redundant with the enum
       // name, so the user's wording is preserved as an album tag (§5).
       expect(tourSite!.category).toBe("NATURE");

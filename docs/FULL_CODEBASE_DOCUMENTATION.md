@@ -610,6 +610,10 @@ User selects tour → POST /tours/bookings or /tours/initiate-booking-momo
 | GET    | `/itinerary/requests`               | Yes  | Get user's tour requests  |
 | GET    | `/itinerary/:tourRequestId`         | Yes  | Get specific itinerary    |
 
+Every `TourSite` also exposes `history`, `imageUrl` and `imageCredit` for the
+destination-detail page, and each site has a moderated photo gallery
+(`GET /tour-sites/:siteId/photos`).
+
 ### Tour Request Flow
 
 ```

@@ -38,7 +38,7 @@ npx prisma migrate dev
 # Generate Prisma client (output: generated/prisma, importFileExtension = "js")
 npx prisma generate
 
-# Seed database (25 tour sites + ledger accounts + 9 membership plans + demo users/tours)
+# Seed database (156 tour sites across all 16 regions + ledger accounts + 9 membership plans + demo users/tours)
 npm run db:seed
 
 # Build (runs `prisma generate && tsc`; the Prisma client is compiled into dist/generated)
@@ -228,7 +228,7 @@ generated/prisma/               # Generated Prisma client (compiled into dist/ge
 src/
 ├── index.ts                    # Server start + graceful shutdown
 ├── server.ts                   # Express app setup, middleware, route mounting
-├── seed.ts                     # Database seed (25 Ghana tour sites + ledger accounts + 9 membership plans)
+├── seed.ts                     # Database seed (156 Ghana tour sites, all 16 regions + ledger accounts + 9 membership plans)
 ├── config/                     # Prisma, Passport, Hubtel, session, Swagger, pricing, Cloudinary, Resend
 ├── helpers/                    # OTP, JWT, client refs, ledger, payment, encryption, payment gateway logger, admin activity, haversine, response, safety, call state machine, call logger, push notifications, presence, livekit
 ├── jobs/                       # Cron jobs (pending payments, user cleanup, call expiry, push delivery)
@@ -438,6 +438,34 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 | GET    | `/tours/bookings/my`                   | Bearer | Get user's bookings                |
 | PATCH  | `/tours/user-itineraries/:itineraryId` | Bearer | Update user itinerary              |
 | DELETE | `/tours/bookings/:bookingId`           | Bearer | Cancel booking                     |
+
+#### Albums
+
+`GET /tours/albums` returns category and region albums (`key`, `title`, `coverImage`, `siteCount`, `packageCount`);
+`GET /tours/albums/category/:tag` and `GET /tours/albums/region/:region` return `{ album, sites, tours, pagination }`.
+
+#### Destination detail content
+
+Every `TourSite` carries `history`, `imageUrl` and `imageCredit` for the frontend destination-detail page
+(the seed fills all 156 sites across the 16 regions). A moderated gallery sits alongside the hero image:
+
+| Method | Endpoint                             | Auth   | Description                                                   |
+| ------ | ------------------------------------ | ------ | ------------------------------------------------------------- |
+| GET    | `/tour-sites/:siteId/photos`         | Public | List the site's approved gallery photos                       |
+| POST   | `/tour-sites/:siteId/photos`         | Bearer | Upload a photo (multipart `image`, max 10 MB); stored PENDING  |
+| GET    | `/tour-sites/admin/photos`           | Admin  | Photo moderation queue (`?status=PENDING&page=&limit=`)       |
+| POST   | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a pending photo                              |
+| POST   | `/tour-sites/admin/photos/:photoId/reject`  | Admin | Reject a photo (body: `rejectReason`)                |
+
+#### User-submitted tour sites
+
+| Method | Endpoint                            | Auth   | Description                                                                                          |
+| ------ | ----------------------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| POST   | `/pending-sites`                    | Bearer | Submit a site (name, region, lat/lng, free-text category, `description`, `history`, `imageUrl`, `imageCredit`) |
+| GET    | `/pending-sites/mine`               | Bearer | The caller's own submissions and their moderation status                                             |
+| GET    | `/pending-sites/admin`              | Admin  | Moderation queue (`?status=pending&page=&limit=`)                                                    |
+| POST   | `/pending-sites/admin/:siteId/approve` | Admin | Approve — migrates into `tour_sites`, carrying `history`/`imageCredit`, and emails the submitter  |
+| POST   | `/pending-sites/admin/:siteId/reject`  | Admin | Reject with a reason and email the submitter                                                     |
 
 ### Itinerary Generation
 
@@ -959,7 +987,10 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `TourRequestSite`                                 | Selected sites per request                                                                                                                                                                                         |
 | `TourRequestDatingSelection`                      | Dating profiles merged into a tour's itinerary                                                                                                                                                                     |
 | `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries                                                                                                                                                                                              |
-| `TourSite`                                        | Ghana tourism sites (seeded: 25 sites)                                                                                                                                                                             |
+| `TourSite`                                        | Ghana tourism sites (seeded: 156 sites across all 16 regions), each with `history`, `imageUrl`, `imageCredit` for the destination detail page                                                                                                               |
+| `PendingSite`                                     | User-submitted tour sites awaiting moderation (`status`), carrying `description`, `history`, `imageUrl`, `imageCredit` through to approval                                                                                                              |
+| `SitePhoto`                                       | Moderated community photo gallery per tour site (PENDING → APPROVED/REJECTED); seeded with one approved photo per site                                                                                                                    |
+| `PublicTransportService`                          | Intercity bus / trotro / domestic-air catalog used by the mobility engine                                                                                                                                          |
 | `MembershipPlan`                                  | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador)                                                                                                                                        |
 | `PrioritySupportRequest`                          | Priority support tickets from paid-tier members                                                                                                                                                                    |
 | `VisaOnArrivalRequest`                            | Visa-on-arrival applications                                                                                                                                                                                       |

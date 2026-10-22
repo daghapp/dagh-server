@@ -32,7 +32,9 @@ export interface AlbumSite {
   latitude: number;
   longitude: number;
   category: SiteCategory;
+  history: string | null;
   imageUrl: string | null;
+  imageCredit: string | null;
   transitProfile: TransitProfile | null;
 }
 
@@ -146,7 +148,9 @@ function toAlbumSite(row: {
   latitude: number;
   longitude: number;
   category: SiteCategory;
+  history: string | null;
   imageUrl: string | null;
+  imageCredit: string | null;
   transit_profile: TransitProfile | null;
 }): AlbumSite {
   return {
@@ -156,7 +160,9 @@ function toAlbumSite(row: {
     latitude: row.latitude,
     longitude: row.longitude,
     category: row.category,
+    history: row.history,
     imageUrl: row.imageUrl,
+    imageCredit: row.imageCredit,
     transitProfile: row.transit_profile,
   };
 }

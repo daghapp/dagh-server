@@ -243,6 +243,9 @@ sites/packages) and `regions` — each entry carrying `key`, `title`, `coverImag
 `{ album, sites, tours, pagination }` (tours capped at 20; enum matching is
 case-sensitive, so tags must be upper-cased for SiteCategory values).
 
+Album `sites[]` entries include the destination-detail fields `history`,
+`imageUrl` and `imageCredit` alongside the site's `transitProfile`.
+
 ### POST /tours/bookings
 
 ```json
@@ -267,6 +270,14 @@ Returns `bookingId`, `paymentId`, and the raw `hubtelResponse`. Final status arr
 User-generated content around tour sites: community photo uploads (§4) and
 user-submitted tour sites with admin approval (§3).
 
+### Destination detail fields
+
+Every tour site row exposes `history`, `imageUrl` and `imageCredit` for the
+destination-detail page. The seed populates all 156 sites across the 16 regions
+and inserts one APPROVED gallery photo per site (idempotency marker
+`publicId=seed-gallery:<name>`), so `GET /tour-sites/:siteId/photos` is never
+empty out of the box.
+
 ### Community photos (§4)
 
 | Method | Endpoint | Auth | What it does |
@@ -281,10 +292,10 @@ user-submitted tour sites with admin approval (§3).
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/pending-sites` | Bearer | Submit a new tour site for moderation (name, region, lat/lng, free-text category, description, optional image). |
-| GET | `/pending-sites/mine` | Bearer | The caller's own submissions and their status. |
-| GET | `/pending-sites/admin` | Admin | Moderation queue of pending submissions. |
-| POST | `/pending-sites/admin/:siteId/approve` | Admin | Approve — migrates the submission into a production `tour_sites` row (normalizes the category, derives the transit profile from the region, preserves album tags) and notifies the submitter by email. |
+| POST | `/pending-sites` | Bearer | Submit a new tour site for moderation (name, region, lat/lng, free-text category, `description`, `history`, optional `imageUrl` + `imageCredit`). |
+| GET | `/pending-sites/mine` | Bearer | The caller's own submissions and their status (includes `imageUrl`/`imageCredit`). |
+| GET | `/pending-sites/admin` | Admin | Moderation queue of pending submissions (full rows, including `history`/`imageCredit`). |
+| POST | `/pending-sites/admin/:siteId/approve` | Admin | Approve — migrates the submission into a production `tour_sites` row (normalizes the category, derives the transit profile from the region, preserves album tags, carries `history`/`imageCredit` through) and notifies the submitter by email. |
 | POST | `/pending-sites/admin/:siteId/reject` | Admin | Reject with a reason (body: `reason`) — the submitter is notified by email. |
 
 ---
@@ -293,7 +304,7 @@ user-submitted tour sites with admin approval (§3).
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker). |
+| GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker) — full rows including `history`, `imageUrl`, `imageCredit`. |
 | GET | `/itinerary/sites/:siteId/mobility` | Public | Mobility options for one site (§2): ride-hailing availability by transit profile, STC/VIP intercity coaches, trotro corridors, nearest airport, verified car rentals. Query: `transportType` (optional) prefers a car-rental category. |
 | POST | `/itinerary/request` | Bearer | Create a custom tour request (site + preferences; `casualDatingInterest` opts into dating recommendations and requires KYC). |
 | GET | `/itinerary/my-itineraries` | Bearer | List the user's generated itineraries. |

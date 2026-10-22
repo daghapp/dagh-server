@@ -55,6 +55,10 @@ const pendingSite = new PendingSiteController();
  *                 minLength: 10
  *                 maxLength: 2000
  *                 example: The highest waterfall in West Africa, set in the Agumatsa Range.
+ *               history:
+ *                 type: string
+ *                 maxLength: 5000
+ *                 example: Long used as a sacred site by the communities around Hohoe, the falls became a protected tourism site in the 1990s.
  *               category:
  *                 type: string
  *                 maxLength: 50
@@ -63,6 +67,10 @@ const pendingSite = new PendingSiteController();
  *                 type: string
  *                 format: uri
  *                 example: https://example.com/wli.jpg
+ *               imageCredit:
+ *                 type: string
+ *                 maxLength: 200
+ *                 example: Wikimedia Commons
  *     responses:
  *       201:
  *         description: Site submitted for admin review
@@ -86,8 +94,10 @@ const pendingSite = new PendingSiteController();
  *                     latitude: { type: number }
  *                     longitude: { type: number }
  *                     description: { type: string, nullable: true }
+ *                     history: { type: string, nullable: true }
  *                     category: { type: string }
  *                     imageUrl: { type: string, nullable: true }
+ *                     imageCredit: { type: string, nullable: true }
  *                     status: { type: string, example: pending }
  *                     submittedBy: { type: string, format: uuid }
  *                     createdAt: { type: string, format: date-time }
@@ -134,6 +144,7 @@ router.post("/", protectedRoute, validate(submitPendingSiteSchema), pendingSite.
  *                       status: { type: string, enum: [pending, approved, rejected] }
  *                       rejectReason: { type: string, nullable: true }
  *                       imageUrl: { type: string, nullable: true }
+ *                       imageCredit: { type: string, nullable: true }
  *                       createdAt: { type: string, format: date-time }
  *       401:
  *         description: Unauthenticated
@@ -197,8 +208,10 @@ router.get("/mine", protectedRoute, pendingSite.mySubmissions);
  *                           latitude: { type: number }
  *                           longitude: { type: number }
  *                           description: { type: string, nullable: true }
+ *                           history: { type: string, nullable: true }
  *                           category: { type: string }
  *                           imageUrl: { type: string, nullable: true }
+ *                           imageCredit: { type: string, nullable: true }
  *                           status: { type: string, enum: [pending, approved, rejected] }
  *                           submittedBy: { type: string, format: uuid }
  *                           rejectReason: { type: string, nullable: true }

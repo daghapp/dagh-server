@@ -95,8 +95,10 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
       latitude: input.latitude,
       longitude: input.longitude,
       description: input.description,
+      history: input.history,
       category: input.category ?? "",
       imageUrl: input.imageUrl,
+      imageCredit: input.imageCredit,
       status: "pending",
       submittedBy: userId,
     },
@@ -163,6 +165,7 @@ export async function getMySubmissions(userId: string) {
       rejectReason: true,
       createdAt: true,
       imageUrl: true,
+      imageCredit: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -202,7 +205,9 @@ export async function approvePendingSite(siteId: string, _adminId: string) {
           latitude: pendingSite.latitude,
           longitude: pendingSite.longitude,
           description: pendingSite.description ?? "",
+          history: pendingSite.history,
           imageUrl: pendingSite.imageUrl,
+          imageCredit: pendingSite.imageCredit,
           // Free-text category normalized into the enum + kept as an album tag
           // so user wording like "Slave Route Tour" stays searchable (§5).
           category: mapToSiteCategory(pendingSite.category),

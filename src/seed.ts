@@ -4,6 +4,7 @@
 import { prisma } from "./config";
 import type { Prisma } from "../generated/prisma/client.js";
 import { deriveTransitProfile } from "./helpers/transit-profile.js";
+import { tourSiteCatalogue } from "./seed-data/tour-catalogue.js";
 import {
   AccountStatus,
   AccountType,
@@ -33,282 +34,6 @@ import crypto from "crypto";
 
 const DEMO_PASSWORD = "Demo@12345";
 const ADMIN_PASSWORD = "Admin@12345";
-
-const rawTourSites: Prisma.TourSiteCreateInput[] = [
-  // ── Greater Accra ──────────────────────────────────────────────────
-  {
-    name: "Kwame Nkrumah Mausoleum",
-    region: "Greater Accra",
-    latitude: 5.5502,
-    longitude: -0.2009,
-    description:
-      "The final resting place of Ghana's first president and independence hero, surrounded by a beautifully landscaped park and museum.",
-    imageUrl: null,
-    category: "HISTORICAL",
-    transit_profile: "RURAL",
-  },
-  {
-    name: "Labadi Beach",
-    region: "Greater Accra",
-    latitude: 5.5559,
-    longitude: -0.1496,
-    description:
-      "Accra's most popular public beach, known for lively weekends, local food, live music and stunning Atlantic views.",
-    imageUrl: null,
-    category: "BEACH",
-    transit_profile: "RURAL",
-  },
-  {
-    name: "Shai Hills Resource Reserve",
-    region: "Greater Accra",
-    latitude: 5.9167,
-    longitude: -0.05,
-    description:
-      "A scenic reserve just outside Accra with baboons, antelopes, caves, and ancient Shai people settlements.",
-    imageUrl: null,
-    category: "WILDLIFE",
-  },
-  // ── Eastern Region ─────────────────────────────────────────────────
-  {
-    name: "Aburi Botanical Gardens",
-    region: "Eastern",
-    latitude: 5.8478,
-    longitude: -0.1747,
-    description:
-      "Established in 1890, these lush highland gardens sit 450m above sea level and offer a cool escape from the city with exotic flora.",
-    imageUrl: null,
-    category: "NATURE",
-  },
-  {
-    name: "Boti Falls",
-    region: "Eastern",
-    latitude: 6.5333,
-    longitude: -0.1,
-    description:
-      "A twin waterfall in the Yilo Krobo district, surrounded by lush forest. The two streams merge during the rainy season.",
-    imageUrl: null,
-    category: "NATURE",
-  },
-  {
-    name: "Akosombo Dam",
-    region: "Eastern",
-    latitude: 6.2993,
-    longitude: 0.0597,
-    description:
-      "One of the largest hydroelectric dams in the world, creating Lake Volta — the world's largest man-made lake by surface area.",
-    imageUrl: null,
-    category: "SCENIC",
-  },
-  {
-    name: "Krobo Beads Market",
-    region: "Eastern",
-    latitude: 6.0833,
-    longitude: -0.0833,
-    description:
-      "A vibrant cultural market in the Krobo District famous for handmade Krobo beads, one of Ghana's most iconic traditional crafts.",
-    imageUrl: null,
-    category: "CULTURAL",
-  },
-  // ── Central Region ─────────────────────────────────────────────────
-  {
-    name: "Cape Coast Castle",
-    region: "Central",
-    latitude: 5.1031,
-    longitude: -1.2425,
-    description:
-      "A UNESCO World Heritage Site and one of the most significant slave castles on the West African coast.",
-    imageUrl: null,
-    category: "HISTORICAL",
-    transit_profile: "RURAL",
-  },
-  {
-    name: "Elmina Castle",
-    region: "Central",
-    latitude: 5.0847,
-    longitude: -1.3497,
-    description:
-      "Built by the Portuguese in 1482, Elmina Castle is the oldest European building in sub-Saharan Africa and a UNESCO World Heritage Site.",
-    imageUrl: null,
-    category: "HISTORICAL",
-    transit_profile: "RURAL",
-  },
-  {
-    name: "Kakum National Park",
-    region: "Central",
-    latitude: 5.35,
-    longitude: -1.3833,
-    description:
-      "Famous for its canopy walkway suspended 30m above the forest floor, home to forest elephants, leopards and over 350 bird species.",
-    imageUrl: null,
-    category: "WILDLIFE",
-  },
-  // ── Western Region ─────────────────────────────────────────────────
-  {
-    name: "Busua Beach",
-    region: "Western",
-    latitude: 4.7333,
-    longitude: -1.9667,
-    description:
-      "One of Ghana's finest beaches, known for safe swimming, surfing, and a laid-back fishing village atmosphere.",
-    imageUrl: null,
-    category: "BEACH",
-    transit_profile: "RURAL",
-  },
-  {
-    name: "Nzulezo Stilt Village",
-    region: "Western",
-    latitude: 4.9833,
-    longitude: -2.4667,
-    description:
-      "A remarkable village built entirely on stilts over Lake Tadane, inhabited for over 500 years. Accessible only by dugout canoe.",
-    imageUrl: null,
-    category: "CULTURAL",
-  },
-  {
-    name: "Ankasa Conservation Area",
-    region: "Western",
-    latitude: 5.2667,
-    longitude: -2.6833,
-    description:
-      "Ghana's only remaining primary rainforest, home to chimpanzees, forest elephants, and extraordinary bird life.",
-    imageUrl: null,
-    category: "WILDLIFE",
-  },
-  // ── Volta Region ───────────────────────────────────────────────────
-  {
-    name: "Wli Waterfalls",
-    region: "Volta",
-    latitude: 7.0667,
-    longitude: 0.6333,
-    description:
-      "The highest waterfall in West Africa at 80m, nested in the Agumatsa Wildlife Sanctuary near the Togo border.",
-    imageUrl: null,
-    category: "NATURE",
-  },
-  {
-    name: "Mount Afadjato",
-    region: "Volta",
-    latitude: 6.9833,
-    longitude: 0.5833,
-    description:
-      "Ghana's highest peak at 885m above sea level, offering panoramic views across the Volta Region into Togo.",
-    imageUrl: null,
-    category: "SCENIC",
-  },
-  {
-    name: "Tafi Atome Monkey Sanctuary",
-    region: "Volta",
-    latitude: 7.3333,
-    longitude: 0.4167,
-    description:
-      "A community-run sanctuary where sacred Mona monkeys roam freely and visitors can hand-feed them.",
-    imageUrl: null,
-    category: "WILDLIFE",
-  },
-  // ── Ashanti Region ─────────────────────────────────────────────────
-  {
-    name: "Manhyia Palace Museum",
-    region: "Ashanti",
-    latitude: 6.7,
-    longitude: -1.6167,
-    description:
-      "The official seat of the Asantehene, showcasing Ashanti royal history, regalia, and culture.",
-    imageUrl: null,
-    category: "CULTURAL",
-  },
-  {
-    name: "Kejetia Market",
-    region: "Ashanti",
-    latitude: 6.6954,
-    longitude: -1.6233,
-    description:
-      "One of the largest open-air markets in West Africa — a sensory explosion of kente cloth, spices and local crafts.",
-    imageUrl: null,
-    category: "CULTURAL",
-  },
-  {
-    name: "Lake Bosomtwe",
-    region: "Ashanti",
-    latitude: 6.4833,
-    longitude: -1.4167,
-    description:
-      "Ghana's only natural lake, formed by a meteorite impact. Sacred to the Ashanti people, offering swimming and beautiful scenery.",
-    imageUrl: null,
-    category: "SCENIC",
-  },
-  // ── Bono East ──────────────────────────────────────────────────────
-  {
-    name: "Kintampo Waterfalls",
-    region: "Bono East",
-    latitude: 8.05,
-    longitude: -1.7333,
-    description:
-      "A beautiful three-tiered waterfall at the geographical centre of Ghana, with natural swimming pools.",
-    imageUrl: null,
-    category: "NATURE",
-  },
-  // ── Northern / Savannah ────────────────────────────────────────────
-  {
-    name: "Mole National Park",
-    region: "Savannah",
-    latitude: 9.2667,
-    longitude: -1.85,
-    description:
-      "Ghana's largest wildlife refuge and premier safari destination, home to elephants, hippos, warthogs, baboons and 300+ bird species.",
-    imageUrl: null,
-    category: "WILDLIFE",
-  },
-  {
-    name: "Larabanga Mosque",
-    region: "Savannah",
-    latitude: 9.2333,
-    longitude: -1.8667,
-    description:
-      "One of the oldest mosques in West Africa, built in Sudanese architectural style, believed to date back to 1421.",
-    imageUrl: null,
-    category: "RELIGIOUS",
-  },
-  {
-    name: "Tamale Central Mosque",
-    region: "Northern",
-    latitude: 9.4008,
-    longitude: -0.8393,
-    description:
-      "The largest mosque in Ghana and one of the most iconic in West Africa, a landmark of Islamic heritage.",
-    imageUrl: null,
-    category: "RELIGIOUS",
-  },
-  // ── Upper East ─────────────────────────────────────────────────────
-  {
-    name: "Paga Crocodile Pond",
-    region: "Upper East",
-    latitude: 10.9833,
-    longitude: -1.1167,
-    description:
-      "A sacred pond where wild crocodiles are considered ancestral spirits of the community and can be safely touched.",
-    imageUrl: null,
-    category: "CULTURAL",
-  },
-  {
-    name: "Bolgatanga Market",
-    region: "Upper East",
-    latitude: 10.7833,
-    longitude: -0.85,
-    description:
-      "A vibrant regional market famous for hand-woven baskets, leather goods and traditional crafts unique to the Upper East.",
-    imageUrl: null,
-    category: "CULTURAL",
-  },
-];
-
-// Region → accessibility tier (§2). Hand-maintaining transit_profile per entry
-// drifted (urban sites marked RURAL), so the seed always derives the profile
-// from the region via the shared helper — one source of truth with the
-// pending-site approval pipeline.
-const tourSites: Prisma.TourSiteCreateInput[] = rawTourSites.map((site) => ({
-  ...site,
-  transit_profile: deriveTransitProfile(site.region),
-}));
 
 const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = [
   { code: "US", name: "United States" },
@@ -2461,16 +2186,73 @@ async function seedPublicTransportServices() {
   );
 }
 
+async function seedSitePhotoGalleries() {
+  const sites = await prisma.tourSite.findMany({
+    select: { id: true, name: true, imageUrl: true },
+  });
+
+  let created = 0;
+  for (const site of sites) {
+    if (!site.imageUrl) continue;
+
+    // `publicId` acts as the idempotency marker so re-seeding never stacks
+    // duplicate gallery rows on top of the seeded hero image.
+    const marker = `seed-gallery:${site.name}`;
+    const existing = await prisma.sitePhoto.findFirst({
+      where: { tourSiteId: site.id, publicId: marker },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    await prisma.sitePhoto.create({
+      data: {
+        tourSiteId: site.id,
+        url: site.imageUrl,
+        thumbUrl: site.imageUrl,
+        publicId: marker,
+        status: "APPROVED",
+        moderatedAt: new Date(),
+      },
+    });
+    created += 1;
+  }
+
+  console.log(`Site photo gallery: ${created} created across ${sites.length} sites.`);
+}
+
 async function main() {
   console.log("Seeding tour sites...");
-  const siteCount = await prisma.tourSite.count();
-  if (siteCount == 0) {
-    for (const site of tourSites) {
+  const existingSites = await prisma.tourSite.findMany({
+    select: { id: true, name: true, history: true, imageUrl: true, imageCredit: true },
+  });
+  const existingByName = new Map(existingSites.map((site) => [site.name, site]));
+
+  let created = 0;
+  let enriched = 0;
+  for (const site of tourSiteCatalogue) {
+    const existing = existingByName.get(site.name);
+
+    if (!existing) {
       await prisma.tourSite.create({ data: site });
+      created += 1;
+      continue;
     }
 
-    console.log(`Seeded ${tourSites.length} tour sites successfully.`);
+    // Fill content gaps on existing rows without overwriting admin edits.
+    const patch: Prisma.TourSiteUpdateInput = {};
+    if (!existing.history && site.history) patch.history = site.history;
+    if (!existing.imageUrl && site.imageUrl) patch.imageUrl = site.imageUrl;
+    if (!existing.imageCredit && site.imageCredit) patch.imageCredit = site.imageCredit;
+
+    if (Object.keys(patch).length > 0) {
+      await prisma.tourSite.update({ where: { id: existing.id }, data: patch });
+      enriched += 1;
+    }
   }
+
+  console.log(
+    `Tour site catalogue: ${created} created, ${enriched} enriched, ${tourSiteCatalogue.length} total.`,
+  );
 
   // Backfill transit_profile for rows that predate the column (they all carry
   // the RURAL column default). Region-derivation is deterministic, so re-seeding
@@ -2492,6 +2274,8 @@ async function main() {
   if (profileCorrections > 0) {
     console.log(`Backfilled transit_profile on ${profileCorrections} tour sites.`);
   }
+
+  await seedSitePhotoGalleries();
 
   await seedPublicTransportServices();
 

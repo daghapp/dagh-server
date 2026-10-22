@@ -459,7 +459,9 @@ function toSiteWithCoords(
     latitude: number;
     longitude: number;
     description: string;
+    history?: string | null;
     imageUrl: string | null;
+    imageCredit?: string | null;
     category: SiteCategory;
   }>,
 ): SiteWithCoords[] {
@@ -1029,7 +1031,9 @@ async function mapItineraryToResponseWithRecommendations(
               latitude: ds.tourSite.latitude,
               longitude: ds.tourSite.longitude,
               description: ds.tourSite.description,
+              history: ds.tourSite.history,
               imageUrl: ds.tourSite.imageUrl,
+              imageCredit: ds.tourSite.imageCredit,
               category: ds.tourSite.category as
                 | "NATURE"
                 | "CULTURAL"

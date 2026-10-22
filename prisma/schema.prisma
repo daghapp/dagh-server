@@ -1024,7 +1024,11 @@ model TourSite {
    latitude    Float
    longitude   Float
    description String
+   // Long-form historical background for the destination detail page.
+   history     String?
    imageUrl    String?
+   // Attribution shown alongside the hero/site photo.
+   imageCredit String?
    category    SiteCategory
    // Multi-tag album keys (§5): supplementary tags beyond the primary `category`,
    // e.g. ["Adventure", "Historical"]. Album endpoints match either source.
@@ -1059,8 +1063,12 @@ model PendingSite {
   latitude          Float
   longitude         Float
   description       String?
+  // Long-form historical background carried through to the production site.
+  history           String?
   category          String // free-text category/tag
   imageUrl          String?
+  // Attribution for the submitted photo, carried through on approval.
+  imageCredit       String?
   status            String     @default("pending") // pending, approved, rejected
   submittedBy       String // userId
   rejectReason      String?

@@ -73,7 +73,9 @@ export interface TourSiteResponse {
   latitude: number;
   longitude: number;
   description: string;
+  history?: string | null;
   imageUrl: string | null;
+  imageCredit?: string | null;
   category: SiteCategory;
   // Accessibility tier driving the mobility engine (§2): URBAN_CENTER |
   // PERI_URBAN | RURAL.
@@ -322,7 +324,9 @@ export interface SiteWithCoords {
   latitude: number;
   longitude: number;
   description: string;
+  history?: string | null;
   imageUrl: string | null;
+  imageCredit?: string | null;
   category: SiteCategory;
   distanceFromOrigin: number; // km — calculated at runtime
 }

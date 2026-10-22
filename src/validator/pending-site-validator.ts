@@ -39,6 +39,13 @@ export const submitPendingSiteSchema = z.object({
     .max(2000, { message: "Description cannot exceed 2000 characters" })
     .optional(),
 
+  // Long-form historical background shown on the destination detail page.
+  history: z
+    .string()
+    .trim()
+    .max(5000, { message: "History cannot exceed 5000 characters" })
+    .optional(),
+
   // Free-text tag supplied by the submitter; mapped to SiteCategory on approval.
   category: z
     .string()
@@ -47,6 +54,13 @@ export const submitPendingSiteSchema = z.object({
     .optional(),
 
   imageUrl: z.string().url({ message: "imageUrl must be a valid URL" }).optional(),
+
+  // Attribution for the submitted photo, e.g. "Wikimedia Commons".
+  imageCredit: z
+    .string()
+    .trim()
+    .max(200, { message: "imageCredit cannot exceed 200 characters" })
+    .optional(),
 });
 
 export type SubmitPendingSiteInput = z.infer<typeof submitPendingSiteSchema>;

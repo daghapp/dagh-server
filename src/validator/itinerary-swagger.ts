@@ -21,7 +21,9 @@ export const itinerarySchemas = {
       latitude: { type: "number" },
       longitude: { type: "number" },
       description: { type: "string" },
+      history: { type: "string", nullable: true },
       imageUrl: { type: "string", nullable: true },
+      imageCredit: { type: "string", nullable: true },
       category: {
         type: "string",
         enum: ["NATURE", "CULTURAL", "HISTORICAL", "BEACH", "WILDLIFE", "RELIGIOUS", "SCENIC"],
