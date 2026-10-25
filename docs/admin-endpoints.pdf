@@ -1773,7 +1773,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 23 0 R >>
 endobj
 23 0 obj
-<< /Length 5892 >>
+<< /Length 6185 >>
 stream
 BT
 /F2 11.0 Tf
@@ -1850,7 +1850,7 @@ BT
 () Tj
 /F2 11.0 Tf
 1 0 0 1 54.0 480.2 Tm
-(FAQ \(/faq/admin\)) Tj
+(Tour sites \(/tour-sites, /pending-sites\)) Tj
 /F1 2.0 Tf
 1 0 0 1 54.0 465.4 Tm
 () Tj
@@ -1858,119 +1858,116 @@ BT
 1 0 0 1 54.0 460.4 Tm
 () Tj
 /F1 9.0 Tf
-1 0 0 1 54.0 453.6 Tm
-(All listed routes require settings.full.) Tj
+1 0 0 1 64.0 453.6 Tm
+(- POST /tour-sites/admin ? tours.edit; adds a live TourSite directly, bypassing the pending review queue.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 441.5 Tm
+(Required body: name, region, latitude, longitude, description. Optional: history, category \(free text,) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 429.3 Tm
+(normalized to the SiteCategory enum\), categories \(extra album tags, max 10\), imageUrl, imageCredit. The) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 417.2 Tm
+(transit_profile is derived from region. Returns 201 with the created row. Errors: 400 validation, 401, 403) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 405.0 Tm
+(missing tours.edit, 409 duplicate name \(case-insensitive\), 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 392.9 Tm
+(- GET /tour-sites/admin/photos ? Admin; community photo moderation queue. Defaults to PENDING; pass) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 380.7 Tm
+(status=APPROVED|REJECTED to filter, plus page/limit.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 368.6 Tm
+(- POST /tour-sites/admin/photos/:photoId/approve ? Admin; makes the photo visible in the public gallery.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 356.4 Tm
+(- POST /tour-sites/admin/photos/:photoId/reject ? Admin; body { "rejectReason": "..." } \(5?500 chars\).) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 344.3 Tm
+(- GET /pending-sites/admin ? Admin; queue of user-submitted tour sites) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 332.1 Tm
+(\(?status=pending|approved|rejected&page=&limit=\).) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 320.0 Tm
+(- POST /pending-sites/admin/:siteId/approve ? Admin; migrates a submission into the live tour_sites) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 307.8 Tm
+(catalogue \(normalizes category, derives transit_profile, preserves album tags\) and emails the submitter.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 295.7 Tm
+(- POST /pending-sites/admin/:siteId/reject ? Admin; body { "rejectReason": "..." } \(5+ chars\); emails the) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 283.5 Tm
+(submitter.) Tj
 /F1 5.0 Tf
-1 0 0 1 54.0 441.5 Tm
+1 0 0 1 54.0 271.4 Tm
 () Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 434.7 Tm
-(- GET /faq/admin ? Returns all FAQ rows, including unpublished items.) Tj
+1 0 0 1 54.0 264.6 Tm
+(Photo moderation errors: 404 photo not found, 409 already moderated, 400 invalid reason. Pending-site) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 422.6 Tm
-(- POST /faq/admin ? Body requires {question,answer}; optionally category, sortOrder \(default 0\), and) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 410.4 Tm
-(published \(default true\). Creates and returns the FAQ item.) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 398.3 Tm
-(- PUT /faq/admin/:id ? Partial update of FAQ fields; returns updated item.) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 386.1 Tm
-(- DELETE /faq/admin/:id ? Deletes the item; returns success.) Tj
+1 0 0 1 54.0 252.5 Tm
+(moderation errors: 404 submission not found, 400 not pending, 409 name conflict.) Tj
 /F1 5.0 Tf
-1 0 0 1 54.0 374.0 Tm
-() Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 367.2 Tm
-(Validation errors are 400; missing items 404 on update/delete; permission/auth failures 401/403; unexpected) Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 355.1 Tm
-(failures 500.) Tj
-/F1 5.0 Tf
-1 0 0 1 54.0 342.9 Tm
+1 0 0 1 54.0 240.3 Tm
 () Tj
 /F1 3.0 Tf
-1 0 0 1 54.0 336.2 Tm
+1 0 0 1 54.0 233.6 Tm
 () Tj
 /F2 11.0 Tf
-1 0 0 1 54.0 331.2 Tm
-(Data policy \(/data-policy/admin/policy\)) Tj
+1 0 0 1 54.0 228.6 Tm
+(FAQ \(/faq/admin\)) Tj
 /F1 2.0 Tf
-1 0 0 1 54.0 316.3 Tm
+1 0 0 1 54.0 213.7 Tm
 () Tj
 /F1 5.0 Tf
-1 0 0 1 54.0 311.3 Tm
+1 0 0 1 54.0 208.7 Tm
 () Tj
 /F1 9.0 Tf
-1 0 0 1 54.0 304.6 Tm
-(Both routes require settings.full.) Tj
+1 0 0 1 54.0 202.0 Tm
+(All listed routes require settings.full.) Tj
 /F1 5.0 Tf
-1 0 0 1 54.0 292.4 Tm
+1 0 0 1 54.0 189.8 Tm
 () Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 285.7 Tm
-(- GET /data-policy/admin/policy ? Returns the full policy record for editing. Errors: 401, 403, 404 if no) Tj
+1 0 0 1 64.0 183.1 Tm
+(- GET /faq/admin ? Returns all FAQ rows, including unpublished items.) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 273.5 Tm
-(policy record exists, 500.) Tj
+1 0 0 1 64.0 170.9 Tm
+(- POST /faq/admin ? Body requires {question,answer}; optionally category, sortOrder \(default 0\), and) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 261.4 Tm
-(- PUT /data-policy/admin/policy ? Body requires content; optional title. Returns the updated policy.) Tj
+1 0 0 1 64.0 158.8 Tm
+(published \(default true\). Creates and returns the FAQ item.) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 249.2 Tm
-(Errors: 400 validation, 401, 403, 404 \(policy must first be seeded\), 500.) Tj
+1 0 0 1 64.0 146.6 Tm
+(- PUT /faq/admin/:id ? Partial update of FAQ fields; returns updated item.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 134.5 Tm
+(- DELETE /faq/admin/:id ? Deletes the item; returns success.) Tj
 /F1 5.0 Tf
-1 0 0 1 54.0 237.1 Tm
+1 0 0 1 54.0 122.3 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 115.6 Tm
+(Validation errors are 400; missing items 404 on update/delete; permission/auth failures 401/403; unexpected) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 103.4 Tm
+(failures 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 91.3 Tm
 () Tj
 /F1 3.0 Tf
-1 0 0 1 54.0 230.3 Tm
+1 0 0 1 54.0 84.5 Tm
 () Tj
-/F2 15.0 Tf
-1 0 0 1 54.0 225.3 Tm
-(13. Source of truth and implementation notes) Tj
+/F2 11.0 Tf
+1 0 0 1 54.0 79.5 Tm
+(Data policy \(/data-policy/admin/policy\)) Tj
 /F1 2.0 Tf
-1 0 0 1 54.0 205.1 Tm
+1 0 0 1 54.0 64.7 Tm
 () Tj
-/F1 5.0 Tf
-1 0 0 1 54.0 200.1 Tm
-() Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 193.3 Tm
-(The route mounts are registered in src/server.ts; endpoint guards and payload schemas are in src/routes/;) Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 181.2 Tm
-(behavior and output projections are in the corresponding controller files. The main RBAC matrix is) Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 169.0 Tm
-(src/middleware/permissions.ts, and the separate payment-gateway scopes are in) Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 156.9 Tm
-(src/middleware/admin-permission.ts.) Tj
-/F1 5.0 Tf
-1 0 0 1 54.0 144.7 Tm
-() Tj
-/F1 9.0 Tf
-1 0 0 1 54.0 138.0 Tm
-(Notable implementation details:) Tj
-/F1 5.0 Tf
-1 0 0 1 54.0 125.8 Tm
-() Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 119.1 Tm
-(- Admin registration currently creates a PENDING account \(not an active account\).) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 106.9 Tm
-(- /admin/users/:userId/terminate, /approve, and /reject are registered routes and are included here despite) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 94.8 Tm
-(being absent from some older admin references.) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 82.6 Tm
-(- /admin/profile-verifications is unpaginated; mutation responses are raw rows while the list is flattened.) Tj
-/F1 9.0 Tf
-1 0 0 1 64.0 70.5 Tm
-(- The payment gateway client secret never appears in a read response. A successful connection test alone) Tj
 /F1 8 Tf
 1 0 0 1 54 30 Tm
 (DAGH Admin API - Endpoint Reference) Tj
@@ -1984,23 +1981,95 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 25 0 R >>
 endobj
 25 0 obj
-<< /Length 682 >>
+<< /Length 2796 >>
 stream
 BT
+/F1 5.0 Tf
+1 0 0 1 54.0 744.0 Tm
+() Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 744.0 Tm
+1 0 0 1 54.0 737.2 Tm
+(Both routes require settings.full.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 725.1 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 718.4 Tm
+(- GET /data-policy/admin/policy ? Returns the full policy record for editing. Errors: 401, 403, 404 if no) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 706.2 Tm
+(policy record exists, 500.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 694.1 Tm
+(- PUT /data-policy/admin/policy ? Body requires content; optional title. Returns the updated policy.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 681.9 Tm
+(Errors: 400 validation, 401, 403, 404 \(policy must first be seeded\), 500.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 669.8 Tm
+() Tj
+/F1 3.0 Tf
+1 0 0 1 54.0 663.0 Tm
+() Tj
+/F2 15.0 Tf
+1 0 0 1 54.0 658.0 Tm
+(13. Source of truth and implementation notes) Tj
+/F1 2.0 Tf
+1 0 0 1 54.0 637.8 Tm
+() Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 632.8 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 626.0 Tm
+(The route mounts are registered in src/server.ts; endpoint guards and payload schemas are in src/routes/;) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 613.9 Tm
+(behavior and output projections are in the corresponding controller files. The main RBAC matrix is) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 601.7 Tm
+(src/middleware/permissions.ts, and the separate payment-gateway scopes are in) Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 589.6 Tm
+(src/middleware/admin-permission.ts.) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 577.4 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 54.0 570.7 Tm
+(Notable implementation details:) Tj
+/F1 5.0 Tf
+1 0 0 1 54.0 558.5 Tm
+() Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 551.8 Tm
+(- Admin registration currently creates a PENDING account \(not an active account\).) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 539.6 Tm
+(- /admin/users/:userId/terminate, /approve, and /reject are registered routes and are included here despite) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 527.5 Tm
+(being absent from some older admin references.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 515.3 Tm
+(- /admin/profile-verifications is unpaginated; mutation responses are raw rows while the list is flattened.) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 503.2 Tm
+(- The payment gateway client secret never appears in a read response. A successful connection test alone) Tj
+/F1 9.0 Tf
+1 0 0 1 64.0 491.0 Tm
 (does not mark the gateway connected; /connect performs that state change.) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 731.9 Tm
+1 0 0 1 64.0 478.9 Tm
 (- There are two route registrations for GET /admin/departments \(from the auth and departments routers\).) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 719.7 Tm
+1 0 0 1 64.0 466.7 Tm
 (Both currently return the same static department/role payload.) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 707.6 Tm
+1 0 0 1 64.0 454.6 Tm
 (- Admin actions are guarded by endpoint permission keys, not by frontend-only role checks. Use 403 as the) Tj
 /F1 9.0 Tf
-1 0 0 1 64.0 695.4 Tm
+1 0 0 1 64.0 442.4 Tm
 (definitive permission outcome.) Tj
 /F1 8 Tf
 1 0 0 1 54 30 Tm
@@ -2037,10 +2106,10 @@ xref
 0000042661 00000 n 
 0000048887 00000 n 
 0000049035 00000 n 
-0000054980 00000 n 
-0000055128 00000 n 
+0000055273 00000 n 
+0000055421 00000 n 
 trailer
 << /Size 26 /Root 1 0 R >>
 startxref
-55862
+58270
 %%EOF

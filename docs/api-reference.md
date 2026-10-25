@@ -282,9 +282,9 @@ empty out of the box.
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/tour-sites/:siteId/photos` | Bearer | Upload a photo of a site (multipart, field `image`; JPEG/PNG/WebP, max 10 MB). Stored PENDING; a WebP thumbnail is generated on upload. |
+| POST | `/tour-sites/:siteId/photos` | Bearer | Upload a photo of a site (multipart, field `image`; JPEG/PNG, max 10 MB, min 800×600). Stored PENDING; a WebP thumbnail is generated on upload. |
 | GET | `/tour-sites/:siteId/photos` | Public | List the site's approved photos. |
-| GET | `/tour-sites/admin/photos` | Admin | Moderation queue (`?status=PENDING&page=&limit=`). |
+| GET | `/tour-sites/admin/photos` | Admin | Moderation queue (`?status=PENDING&page=&limit=`; defaults to `PENDING`). |
 | POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a photo — it becomes visible on the site. |
 | POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject a photo (body: `rejectReason`). |
 
@@ -292,6 +292,7 @@ empty out of the box.
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
+| POST | `/tour-sites/admin` | Admin | Add a site directly to the live catalogue (requires `tours.edit`; same fields as a submission but `description` is required). Normalizes the category, merges album tags, derives the transit profile from the region. |
 | POST | `/pending-sites` | Bearer | Submit a new tour site for moderation (name, region, lat/lng, free-text category, `description`, `history`, optional `imageUrl` + `imageCredit`). |
 | GET | `/pending-sites/mine` | Bearer | The caller's own submissions and their status (includes `imageUrl`/`imageCredit`). |
 | GET | `/pending-sites/admin` | Admin | Moderation queue of pending submissions (full rows, including `history`/`imageCredit`). |
@@ -1528,10 +1529,11 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 | GET | `/admin/reports` | Admin | List user reports (`?status=`, `?page=`, `?limit=`). |
 | PATCH | `/admin/reports/:reportId` | Admin | Set a report's status + optional note. |
 | POST | `/admin/reports/:reportId/suspend` | Admin | Suspend the reported user and resolve the report. |
+| POST | `/tour-sites/admin` | Admin | Add a live tour site (`tours.edit`); same fields as a pending submission, `description` required. |
 | GET | `/pending-sites/admin` | Admin | Queue of user-submitted tour sites (§3). |
 | POST | `/pending-sites/admin/:siteId/approve` | Admin | Approve a submission into a production tour site. |
 | POST | `/pending-sites/admin/:siteId/reject` | Admin | Reject a submission with a reason (notifies the submitter). |
-| GET | `/tour-sites/admin/photos` | Admin | Community photo moderation queue (§4). |
+| GET | `/tour-sites/admin/photos` | Admin | Community photo moderation queue (§4); defaults to `PENDING`. |
 | POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a photo — it becomes visible on the site. |
 | POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject a photo (body: `rejectReason`). |
 

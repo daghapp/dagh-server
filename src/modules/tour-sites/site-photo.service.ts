@@ -194,7 +194,9 @@ export async function moderationQueue({
   totalPages: number;
 }> {
   const skip = (page - 1) * limit;
-  const where = status ? { status } : {};
+  // Default to the moderation backlog: without a filter the queue would page
+  // through every seeded APPROVED photo before reaching anything pending.
+  const where = { status: status ?? "PENDING" };
 
   const [items, total] = await Promise.all([
     prisma.sitePhoto.findMany({

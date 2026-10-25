@@ -614,6 +614,11 @@ Every `TourSite` also exposes `history`, `imageUrl` and `imageCredit` for the
 destination-detail page, and each site has a moderated photo gallery
 (`GET /tour-sites/:siteId/photos`).
 
+Admins can add a site directly to the live catalogue with
+`POST /tour-sites/admin` (`tours.edit` permission). User submissions continue to
+flow through `/pending-sites` and the admin approval queue. The photo
+moderation queue (`GET /tour-sites/admin/photos`) defaults to `PENDING` rows.
+
 ### Tour Request Flow
 
 ```

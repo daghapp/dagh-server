@@ -453,14 +453,15 @@ Every `TourSite` carries `history`, `imageUrl` and `imageCredit` for the fronten
 | ------ | ------------------------------------ | ------ | ------------------------------------------------------------- |
 | GET    | `/tour-sites/:siteId/photos`         | Public | List the site's approved gallery photos                       |
 | POST   | `/tour-sites/:siteId/photos`         | Bearer | Upload a photo (multipart `image`, max 10 MB); stored PENDING  |
-| GET    | `/tour-sites/admin/photos`           | Admin  | Photo moderation queue (`?status=PENDING&page=&limit=`)       |
+| GET    | `/tour-sites/admin/photos`           | Admin  | Photo moderation queue (`?status=`; defaults to `PENDING`)    |
 | POST   | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a pending photo                              |
 | POST   | `/tour-sites/admin/photos/:photoId/reject`  | Admin | Reject a photo (body: `rejectReason`)                |
 
-#### User-submitted tour sites
+#### User-submitted and admin-created tour sites
 
 | Method | Endpoint                            | Auth   | Description                                                                                          |
 | ------ | ----------------------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| POST   | `/tour-sites/admin`                 | Admin  | Add a site directly to the live catalogue (`tours.edit`; same fields, `description` required)         |
 | POST   | `/pending-sites`                    | Bearer | Submit a site (name, region, lat/lng, free-text category, `description`, `history`, `imageUrl`, `imageCredit`) |
 | GET    | `/pending-sites/mine`               | Bearer | The caller's own submissions and their moderation status                                             |
 | GET    | `/pending-sites/admin`              | Admin  | Moderation queue (`?status=pending&page=&limit=`)                                                    |
@@ -1073,6 +1074,9 @@ database and several assert on global singleton rows.
 Swagger UI available at `/api-docs` when the server is running. 170+ documented
 operations across 28 route files (source of truth: JSDoc annotations in
 `src/routes/*.ts` — update the annotation, not the spec).
+
+Frontend integration guide for the tour catalogue, destination detail pages,
+galleries and user-submitted sites: [`docs/frontend-tour-sites-guide.md`](docs/frontend-tour-sites-guide.md).
 
 ---
 

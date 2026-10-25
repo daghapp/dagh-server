@@ -197,6 +197,9 @@ Maps to Payment Transactions.
 | `GET/POST/PUT/DELETE /admin/tour-sites` | CRUD on `TourSite` |
 | `GET/POST/PUT /admin/providers` | Hotels / guides / rentals as needed for console |
 
+> Implemented today: `POST /tour-sites/admin` (`tours.edit`) creates a live
+> `TourSite`. Update/delete and the `/admin/tour-sites` aliases remain planned.
+
 **Reports:**
 
 - Keep dating `/admin/reports`.

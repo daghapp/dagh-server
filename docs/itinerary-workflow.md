@@ -165,6 +165,9 @@ site-picker list/map.
 `GET /tour-sites/:siteId/photos` returns the site's moderated gallery, which the
 seed pre-populates with one approved photo per site.
 
+Admins can add new catalogue rows with `POST /tour-sites/admin` (permission
+`tours.edit`); they appear in `GET /itinerary/sites` immediately.
+
 ### `GET /itinerary/sites/:siteId/mobility` — public
 
 Optional per-site call for a transport detail panel. Returns the same mobility
