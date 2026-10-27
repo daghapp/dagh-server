@@ -11,6 +11,7 @@ import type {
   TransitProfile,
 } from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/index.js";
+import sendEmail from "../../config/resend.config.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
 import {
   haversineDistance,
@@ -131,6 +132,17 @@ export async function createTourRequest(
       },
     },
   });
+
+  // Best-effort email notification to the account handling tour requests.
+  try {
+    await sendEmail({
+      email: "josephbekoe15@gmail.com",
+      subject: "New tour request submitted",
+      html: `<p>A new tour request has been submitted (id: <strong>${tourRequest.id}</strong>).</p><p>Duration: ${durationDays} days</p><p>— The DAGH Team</p>`,
+    });
+  } catch (error) {
+    console.error("[itinerary] tour request email failed:", error);
+  }
 
   // If not feasible: keep behavior consistent: return 422 from controller path.
   if (!plan.feasible) {

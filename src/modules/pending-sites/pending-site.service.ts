@@ -112,6 +112,17 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
     actionUrl: "/admin/pending-sites",
   }).catch(() => {});
 
+  // Best-effort email notification to the account handling tour submissions.
+  try {
+    await sendEmail({
+      email: "josephbekoe15@gmail.com",
+      subject: "New tour site submitted for review",
+      html: `<p>A new tour site has been submitted for review: <strong>${name}</strong>.</p><p>Region: ${input.region}</p><p>— The DAGH Team</p>`,
+    });
+  } catch (error) {
+    console.error("[pending-sites] submission email failed:", error);
+  }
+
   return pendingSite;
 }
 
