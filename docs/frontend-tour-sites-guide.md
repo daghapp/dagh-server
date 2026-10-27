@@ -18,6 +18,8 @@ All endpoints are relative to the API host (for example
 
 The catalogue is **156 seeded sites across all 16 regions**. Every seeded site
 has `history`, `imageUrl` and `imageCredit`, and one approved gallery photo.
+Gallery items can also be user experiences: a caption, an optional image, or
+both.
 
 ---
 
@@ -100,7 +102,8 @@ interface SitePhoto {
   id: string;
   tourSiteId: string;
   uploaderId: string | null;
-  url: string;
+  caption: string | null;
+  url: string | null; // null for text-only experience posts
   publicId: string | null;
   thumbUrl: string | null;
   width: number | null;
@@ -114,7 +117,9 @@ interface SitePhoto {
 }
 ```
 
-For gallery grids prefer `thumbUrl ?? url`; use `url` for the lightbox.
+For gallery grids prefer `thumbUrl ?? url`; use `url` for the lightbox. When both
+`caption` and `url` are present render the caption under the image. Text-only
+posts have `url: null` and should be rendered as a caption card.
 
 ### `PendingSite` (user submission)
 
@@ -302,6 +307,7 @@ Public. Query: `page` (default `1`), `limit` (default `20`, max `100`). Only
         "id": "…",
         "tourSiteId": "…",
         "uploaderId": null,
+        "caption": "The canopy walk at sunrise was unforgettable.",
         "url": "https://…/photo.jpg",
         "publicId": "seed-gallery:Kakum National Park",
         "thumbUrl": "https://…/photo.jpg",
@@ -326,23 +332,39 @@ Public. Query: `page` (default `1`), `limit` (default `20`, max `100`). Only
 Pagination lives **inside `data`**, unlike the album endpoints. Errors: `400`
 invalid query, `404` site not found, `500`.
 
-### 2.6 `POST /tour-sites/:siteId/photos` — upload a gallery photo
+### 2.6 `POST /tour-sites/:siteId/photos` — submit an experience
 
-Bearer auth. `multipart/form-data` with the file in the field `image`.
+Bearer auth. Submit an experience with a caption, a photo, or both:
+
+- `multipart/form-data`: `caption` (text) and/or `image` (file).
+- `application/json`: `{ "caption": "…" }` for a text-only experience.
 
 Constraints:
 
+- Caption: optional only when an image is attached; max 2000 characters.
 - Formats: JPEG or PNG.
 - Maximum size: 10 MB.
 - Minimum resolution: 800 × 600.
-- The photo is stored with `status: "PENDING"` and only appears publicly after
-  an admin approves it.
+- The submission is stored with `status: "PENDING"` and only appears publicly
+  after an admin approves it.
 
-**Response `201`** returns the created `SitePhoto` (with its `id` and
-`status: "PENDING"`) inside the standard success envelope.
+**Response `201`** returns the created `SitePhoto` (with its `id`,
+`caption`, and `status: "PENDING"`) inside the standard success envelope.
+Text-only posts have `url: null`.
 
-Errors: `400` (no file, wrong format, too large, too small), `401`, `404` tour
-site not found, `500`.
+Errors: `400` (no caption and no image, wrong format, too large, too small),
+`401`, `404` tour site not found, `500`.
+
+### 2.6.1 `PATCH /tour-sites/:siteId/photos/:photoId` — edit your caption
+
+Bearer auth, owner only. JSON body `{ "caption": "…" }` (1–2000 chars).
+Editing resets the submission to `PENDING` so the new text is moderated again.
+Errors: `400` invalid caption, `401`, `403` not the owner, `404`, `500`.
+
+### 2.6.2 `DELETE /tour-sites/:siteId/photos/:photoId` — delete an experience
+
+Bearer auth, owner or admin. Removes the gallery item and its Cloudinary asset.
+Errors: `401`, `403` not the owner, `404`, `500`.
 
 ### 2.7 `POST /pending-sites` — submit a missing site
 

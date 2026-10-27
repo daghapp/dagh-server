@@ -267,7 +267,7 @@ Returns `bookingId`, `paymentId`, and the raw `hubtelResponse`. Final status arr
 
 ## Tour Sites — Community Pipeline
 
-User-generated content around tour sites: community photo uploads (§4) and
+User-generated content around tour sites: community experience uploads (§4) and
 user-submitted tour sites with admin approval (§3).
 
 ### Destination detail fields
@@ -278,15 +278,17 @@ and inserts one APPROVED gallery photo per site (idempotency marker
 `publicId=seed-gallery:<name>`), so `GET /tour-sites/:siteId/photos` is never
 empty out of the box.
 
-### Community photos (§4)
+### Community experiences (§4)
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/tour-sites/:siteId/photos` | Bearer | Upload a photo of a site (multipart, field `image`; JPEG/PNG, max 10 MB, min 800×600). Stored PENDING; a WebP thumbnail is generated on upload. |
-| GET | `/tour-sites/:siteId/photos` | Public | List the site's approved photos. |
+| POST | `/tour-sites/:siteId/photos` | Bearer | Submit an experience with `caption` and/or `image`. Multipart for files (JPEG/PNG, max 10 MB, min 800×600) or JSON `{ "caption": "…" }` for text-only posts (max 2000 chars). Stored PENDING; a WebP thumbnail is generated for images. |
+| PATCH | `/tour-sites/:siteId/photos/:photoId` | Bearer (owner) | Edit the caption (body: `caption`). Resets the row to PENDING for re-moderation. |
+| DELETE | `/tour-sites/:siteId/photos/:photoId` | Bearer (owner/admin) | Delete the experience and its Cloudinary asset. |
+| GET | `/tour-sites/:siteId/photos` | Public | List the site's approved experiences (text-only rows have `url: null`). |
 | GET | `/tour-sites/admin/photos` | Admin | Moderation queue (`?status=PENDING&page=&limit=`; defaults to `PENDING`). |
-| POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a photo — it becomes visible on the site. |
-| POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject a photo (body: `rejectReason`). |
+| POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve an experience — it becomes visible on the site. |
+| POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject an experience (body: `rejectReason`). |
 
 ### User-submitted tour sites (§3)
 
@@ -1533,9 +1535,9 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 | GET | `/pending-sites/admin` | Admin | Queue of user-submitted tour sites (§3). |
 | POST | `/pending-sites/admin/:siteId/approve` | Admin | Approve a submission into a production tour site. |
 | POST | `/pending-sites/admin/:siteId/reject` | Admin | Reject a submission with a reason (notifies the submitter). |
-| GET | `/tour-sites/admin/photos` | Admin | Community photo moderation queue (§4); defaults to `PENDING`. |
-| POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a photo — it becomes visible on the site. |
-| POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject a photo (body: `rejectReason`). |
+| GET | `/tour-sites/admin/photos` | Admin | Community experience moderation queue (§4); defaults to `PENDING`. |
+| POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve an experience — it becomes visible on the site. |
+| POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject an experience (body: `rejectReason`). |
 
 ### PATCH /admin/reports/:reportId
 

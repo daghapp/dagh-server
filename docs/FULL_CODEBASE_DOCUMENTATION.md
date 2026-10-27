@@ -611,8 +611,10 @@ User selects tour → POST /tours/bookings or /tours/initiate-booking-momo
 | GET    | `/itinerary/:tourRequestId`         | Yes  | Get specific itinerary    |
 
 Every `TourSite` also exposes `history`, `imageUrl` and `imageCredit` for the
-destination-detail page, and each site has a moderated photo gallery
-(`GET /tour-sites/:siteId/photos`).
+destination-detail page, and each site has a moderated experience gallery
+(`GET /tour-sites/:siteId/photos`). Gallery items accept a caption and an
+optional image, so users can post text-only experiences; owners can edit or
+delete their own submissions (edits return to `PENDING`).
 
 Admins can add a site directly to the live catalogue with
 `POST /tour-sites/admin` (`tours.edit` permission). User submissions continue to

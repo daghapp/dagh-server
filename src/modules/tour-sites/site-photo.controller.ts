@@ -10,17 +10,26 @@ import {
   listApprovedPhotos,
   moderationQueue,
   moderatePhoto,
+  updateSitePhotoCaption,
+  deleteSitePhoto,
 } from "./site-photo.service.js";
-import { rejectPhotoSchema, listPhotosQuerySchema } from "../../validator/site-photo-validator.js";
+import {
+  rejectPhotoSchema,
+  listPhotosQuerySchema,
+  uploadSitePhotoBodySchema,
+  updatePhotoCaptionSchema,
+} from "../../validator/site-photo-validator.js";
 
 export class SitePhotoController {
   async uploadPhoto(req: Request, res: Response): Promise<Response> {
     try {
       const siteId = req.params.siteId as string;
       const file = req.file;
+      const body = uploadSitePhotoBodySchema.parse(req.body ?? {});
+      const caption = body.caption ?? null;
 
-      if (!file) {
-        return fail(res, 400, "No file uploaded");
+      if (!file && !caption) {
+        return fail(res, 400, "Provide an image or a caption");
       }
 
       const uploaderId = req.user?.id || null;
@@ -28,17 +37,22 @@ export class SitePhotoController {
       const result = await uploadSitePhoto({
         tourSiteId: siteId,
         uploaderId,
-        file: {
-          buffer: file.buffer,
-          mimetype: file.mimetype,
-          size: file.size,
-        },
+        caption,
+        ...(file
+          ? {
+              file: {
+                buffer: file.buffer,
+                mimetype: file.mimetype,
+                size: file.size,
+              },
+            }
+          : {}),
       });
 
       return created(
         res,
         result,
-        "Photo uploaded successfully. It will be reviewed by moderators before appearing in the gallery.",
+        "Experience submitted successfully. It will be reviewed by moderators before appearing in the gallery.",
       );
     } catch (error: unknown) {
       const err = error as Error;
@@ -46,6 +60,12 @@ export class SitePhotoController {
 
       if (message === "SITE_NOT_FOUND") {
         return fail(res, 404, "Tour site not found");
+      }
+      if (message === "CAPTION_REQUIRED") {
+        return fail(res, 400, "Provide an image or a caption");
+      }
+      if (message === "CAPTION_TOO_LONG") {
+        return fail(res, 400, "Caption must be 2000 characters or fewer");
       }
       if (message === "FILE_TOO_LARGE") {
         return fail(res, 400, "Image must be smaller than 10MB");
@@ -56,9 +76,91 @@ export class SitePhotoController {
       if (message === "RESOLUTION_TOO_LOW") {
         return fail(res, 400, "Image must be at least 800x600 pixels");
       }
+      if (message.includes("Invalid") || message.includes("Zod") || message.includes("too_big")) {
+        return fail(res, 400, "Invalid request body");
+      }
 
       console.error("[site-photo] upload failed:", error);
       return fail(res, 500, "Upload failed");
+    }
+  }
+
+  async updatePhoto(req: Request, res: Response): Promise<Response> {
+    try {
+      const siteId = req.params.siteId as string;
+      const photoId = req.params.photoId as string;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return fail(res, 401, "Unauthorized");
+      }
+
+      const body = updatePhotoCaptionSchema.parse(req.body ?? {});
+      const result = await updateSitePhotoCaption({
+        photoId,
+        tourSiteId: siteId,
+        userId,
+        caption: body.caption,
+      });
+
+      return ok(
+        res,
+        result,
+        "Experience updated successfully. It will be reviewed by moderators again.",
+      );
+    } catch (error: unknown) {
+      const err = error as Error;
+      const message = err.message;
+
+      if (message === "PHOTO_NOT_FOUND") {
+        return fail(res, 404, "Experience not found");
+      }
+      if (message === "NOT_OWNER") {
+        return fail(res, 403, "You can only edit your own experiences");
+      }
+      if (message === "CAPTION_REQUIRED") {
+        return fail(res, 400, "Caption cannot be empty");
+      }
+      if (message.includes("Invalid") || message.includes("Zod") || message.includes("too_big")) {
+        return fail(res, 400, "Invalid request body");
+      }
+
+      console.error("[site-photo] update failed:", error);
+      return fail(res, 500, "Failed to update experience");
+    }
+  }
+
+  async deletePhoto(req: Request, res: Response): Promise<Response> {
+    try {
+      const siteId = req.params.siteId as string;
+      const photoId = req.params.photoId as string;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return fail(res, 401, "Unauthorized");
+      }
+
+      const result = await deleteSitePhoto({
+        photoId,
+        tourSiteId: siteId,
+        userId,
+        isAdmin: req.user?.accountType === "ADMIN",
+      });
+
+      return ok(res, result, "Experience deleted successfully");
+    } catch (error: unknown) {
+      const err = error as Error;
+      const message = err.message;
+
+      if (message === "PHOTO_NOT_FOUND") {
+        return fail(res, 404, "Experience not found");
+      }
+      if (message === "NOT_OWNER") {
+        return fail(res, 403, "You can only delete your own experiences");
+      }
+
+      console.error("[site-photo] delete failed:", error);
+      return fail(res, 500, "Failed to delete experience");
     }
   }
 

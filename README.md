@@ -451,11 +451,13 @@ Every `TourSite` carries `history`, `imageUrl` and `imageCredit` for the fronten
 
 | Method | Endpoint                             | Auth   | Description                                                   |
 | ------ | ------------------------------------ | ------ | ------------------------------------------------------------- |
-| GET    | `/tour-sites/:siteId/photos`         | Public | List the site's approved gallery photos                       |
-| POST   | `/tour-sites/:siteId/photos`         | Bearer | Upload a photo (multipart `image`, max 10 MB); stored PENDING  |
-| GET    | `/tour-sites/admin/photos`           | Admin  | Photo moderation queue (`?status=`; defaults to `PENDING`)    |
-| POST   | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a pending photo                              |
-| POST   | `/tour-sites/admin/photos/:photoId/reject`  | Admin | Reject a photo (body: `rejectReason`)                |
+| GET    | `/tour-sites/:siteId/photos`         | Public | List the site's approved experiences (text-only rows have `url: null`) |
+| POST   | `/tour-sites/:siteId/photos`         | Bearer | Submit a `caption` and/or image (multipart or JSON); stored PENDING |
+| PATCH  | `/tour-sites/:siteId/photos/:photoId` | Bearer (owner) | Edit the caption; resets the row to PENDING |
+| DELETE | `/tour-sites/:siteId/photos/:photoId` | Bearer (owner/admin) | Delete the experience and its Cloudinary asset |
+| GET    | `/tour-sites/admin/photos`           | Admin  | Moderation queue (`?status=`; defaults to `PENDING`)    |
+| POST   | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve a pending experience                          |
+| POST   | `/tour-sites/admin/photos/:photoId/reject`  | Admin | Reject an experience (body: `rejectReason`)           |
 
 #### User-submitted and admin-created tour sites
 
@@ -990,7 +992,7 @@ Any unmatched endpoint returns a 404 via the catch-all middleware in `server.ts`
 | `Itinerary` / `ItineraryDay` / `ItineraryDaySite` | Generated itineraries                                                                                                                                                                                              |
 | `TourSite`                                        | Ghana tourism sites (seeded: 156 sites across all 16 regions), each with `history`, `imageUrl`, `imageCredit` for the destination detail page                                                                                                               |
 | `PendingSite`                                     | User-submitted tour sites awaiting moderation (`status`), carrying `description`, `history`, `imageUrl`, `imageCredit` through to approval                                                                                                              |
-| `SitePhoto`                                       | Moderated community photo gallery per tour site (PENDING → APPROVED/REJECTED); seeded with one approved photo per site                                                                                                                    |
+| `SitePhoto`                                       | Moderated community experience gallery per tour site (caption + optional image, PENDING → APPROVED/REJECTED); seeded with one approved photo per site                                                                                                                    |
 | `PublicTransportService`                          | Intercity bus / trotro / domestic-air catalog used by the mobility engine                                                                                                                                          |
 | `MembershipPlan`                                  | Membership tier definitions (seeded: 9 plans from Free to Elite Ambassador)                                                                                                                                        |
 | `PrioritySupportRequest`                          | Priority support tickets from paid-tier members                                                                                                                                                                    |

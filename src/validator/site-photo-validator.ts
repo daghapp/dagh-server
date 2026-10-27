@@ -19,7 +19,14 @@ export const PHOTO_UPLOAD_CONSTRAINTS: PhotoUploadConstraints = {
   allowedMimeTypes: ["image/jpeg", "image/jpg", "image/png"],
 };
 
-export type PhotoUploadErrorCode = "FILE_TOO_LARGE" | "UNSUPPORTED_FORMAT" | "RESOLUTION_TOO_LOW";
+export const CAPTION_MAX_LENGTH = 2000;
+
+export type PhotoUploadErrorCode =
+  | "FILE_TOO_LARGE"
+  | "UNSUPPORTED_FORMAT"
+  | "RESOLUTION_TOO_LOW"
+  | "CAPTION_REQUIRED"
+  | "CAPTION_TOO_LONG";
 
 export function validatePhotoUpload(input: {
   sizeBytes: number;
@@ -61,11 +68,26 @@ export const rejectPhotoSchema = z.object({
   rejectReason: z.string().trim().min(5).max(500),
 });
 
+export const uploadSitePhotoBodySchema = z.object({
+  caption: z.string().trim().max(CAPTION_MAX_LENGTH).optional(),
+});
+
+export const updatePhotoCaptionSchema = z.object({
+  caption: z.string().trim().min(1).max(CAPTION_MAX_LENGTH),
+});
+
 export const listPhotosQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
 });
 
+export function normalizeCaption(caption?: string | null): string | null {
+  const trimmed = caption?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export type RejectPhotoInput = z.infer<typeof rejectPhotoSchema>;
+export type UploadSitePhotoBodyInput = z.infer<typeof uploadSitePhotoBodySchema>;
+export type UpdatePhotoCaptionInput = z.infer<typeof updatePhotoCaptionSchema>;
 export type ListPhotosQueryInput = z.infer<typeof listPhotosQuerySchema>;

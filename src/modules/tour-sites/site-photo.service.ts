@@ -4,9 +4,19 @@
 // ───────────────
 
 import { prisma } from "../../config/index.js";
-import { validatePhotoUpload } from "../../validator/site-photo-validator.js";
+import {
+  CAPTION_MAX_LENGTH,
+  normalizeCaption,
+  validatePhotoUpload,
+} from "../../validator/site-photo-validator.js";
 import { notifyAdmins } from "../../helpers/notify-admins.js";
 import type { SitePhoto } from "../../../generated/prisma/client.js";
+
+export interface SitePhotoFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
 
 export interface CloudinaryUploadResult {
   url: string;
@@ -78,10 +88,12 @@ export async function uploadSitePhoto({
   tourSiteId,
   uploaderId,
   file,
+  caption,
 }: {
   tourSiteId: string;
   uploaderId: string | null;
-  file: { buffer: Buffer; mimetype: string; size: number };
+  file?: SitePhotoFile;
+  caption?: string | null;
 }): Promise<SitePhoto> {
   const tourSite = await prisma.tourSite.findUnique({
     where: { id: tourSiteId },
@@ -91,36 +103,69 @@ export async function uploadSitePhoto({
     throw new Error("SITE_NOT_FOUND");
   }
 
-  const uploadResult = await cloudinaryUploader.uploadBufferToCloudinary(file.buffer);
+  const normalizedCaption = normalizeCaption(caption);
 
-  const validation = validatePhotoUpload({
-    sizeBytes: uploadResult.sizeBytes || file.size,
-    mimeType: file.mimetype,
-    width: uploadResult.width,
-    height: uploadResult.height,
-  });
-
-  if (!validation.ok) {
-    // Best-effort cleanup of uploaded asset
-    try {
-      const { v2: cloudinary } = await import("cloudinary");
-      await cloudinary.uploader.destroy(uploadResult.publicId);
-    } catch (destroyError) {
-      console.error("[site-photo] cleanup failed:", destroyError);
-    }
-    throw new Error(validation.code);
+  if (!file && !normalizedCaption) {
+    throw new Error("CAPTION_REQUIRED");
   }
 
-  const photo = await prisma.sitePhoto.create({
-    data: {
-      tourSiteId,
-      uploaderId,
+  if (normalizedCaption && normalizedCaption.length > CAPTION_MAX_LENGTH) {
+    throw new Error("CAPTION_TOO_LONG");
+  }
+
+  let uploadData: {
+    url: string | null;
+    publicId: string | null;
+    thumbUrl: string | null;
+    width: number | null;
+    height: number | null;
+    sizeBytes: number | null;
+  } = {
+    url: null,
+    publicId: null,
+    thumbUrl: null,
+    width: null,
+    height: null,
+    sizeBytes: null,
+  };
+
+  if (file) {
+    const uploadResult = await cloudinaryUploader.uploadBufferToCloudinary(file.buffer);
+
+    const validation = validatePhotoUpload({
+      sizeBytes: uploadResult.sizeBytes || file.size,
+      mimeType: file.mimetype,
+      width: uploadResult.width,
+      height: uploadResult.height,
+    });
+
+    if (!validation.ok) {
+      // Best-effort cleanup of uploaded asset
+      try {
+        const { v2: cloudinary } = await import("cloudinary");
+        await cloudinary.uploader.destroy(uploadResult.publicId);
+      } catch (destroyError) {
+        console.error("[site-photo] cleanup failed:", destroyError);
+      }
+      throw new Error(validation.code);
+    }
+
+    uploadData = {
       url: uploadResult.url,
       publicId: uploadResult.publicId,
       thumbUrl: uploadResult.thumbUrl,
       width: uploadResult.width,
       height: uploadResult.height,
       sizeBytes: uploadResult.sizeBytes,
+    };
+  }
+
+  const photo = await prisma.sitePhoto.create({
+    data: {
+      tourSiteId,
+      uploaderId,
+      caption: normalizedCaption,
+      ...uploadData,
       status: "PENDING",
     },
   });
@@ -128,13 +173,101 @@ export async function uploadSitePhoto({
   // Fire-and-forget admin notification - never fail the upload
   notifyAdmins({
     category: "tours",
-    message: `New photo submitted for moderation: ${tourSite.name}`,
+    message: file
+      ? `New photo submitted for moderation: ${tourSite.name}`
+      : `New experience story submitted for moderation: ${tourSite.name}`,
     actionUrl: "/admin/site-photos",
   }).catch((err) => {
     console.error("[site-photo] notifyAdmins failed:", err);
   });
 
   return photo;
+}
+
+async function destroyCloudinaryAsset(publicId: string | null): Promise<void> {
+  // Seeded rows point at existing hero images, not assets we own.
+  if (!publicId || publicId.startsWith("seed-gallery:")) return;
+
+  try {
+    const { v2: cloudinary } = await import("cloudinary");
+    await cloudinary.uploader.destroy(publicId);
+  } catch (error) {
+    console.error("[site-photo] asset cleanup failed:", error);
+  }
+}
+
+export async function updateSitePhotoCaption({
+  photoId,
+  tourSiteId,
+  userId,
+  caption,
+}: {
+  photoId: string;
+  tourSiteId: string;
+  userId: string;
+  caption: string;
+}): Promise<SitePhoto> {
+  const photo = await prisma.sitePhoto.findUnique({
+    where: { id: photoId },
+  });
+
+  if (!photo || photo.tourSiteId !== tourSiteId) {
+    throw new Error("PHOTO_NOT_FOUND");
+  }
+
+  if (photo.uploaderId !== userId) {
+    throw new Error("NOT_OWNER");
+  }
+
+  const normalizedCaption = normalizeCaption(caption);
+  if (!normalizedCaption) {
+    throw new Error("CAPTION_REQUIRED");
+  }
+
+  // Edited experiences go back through moderation so approved text cannot be
+  // swapped for unreviewed content.
+  return prisma.sitePhoto.update({
+    where: { id: photoId },
+    data: {
+      caption: normalizedCaption,
+      status: "PENDING",
+      rejectReason: null,
+      moderatedBy: null,
+      moderatedAt: null,
+    },
+  });
+}
+
+export async function deleteSitePhoto({
+  photoId,
+  tourSiteId,
+  userId,
+  isAdmin,
+}: {
+  photoId: string;
+  tourSiteId: string;
+  userId: string;
+  isAdmin: boolean;
+}): Promise<SitePhoto> {
+  const photo = await prisma.sitePhoto.findUnique({
+    where: { id: photoId },
+  });
+
+  if (!photo || photo.tourSiteId !== tourSiteId) {
+    throw new Error("PHOTO_NOT_FOUND");
+  }
+
+  if (!isAdmin && photo.uploaderId !== userId) {
+    throw new Error("NOT_OWNER");
+  }
+
+  const deleted = await prisma.sitePhoto.delete({
+    where: { id: photoId },
+  });
+
+  await destroyCloudinaryAsset(photo.publicId);
+
+  return deleted;
 }
 
 export async function listApprovedPhotos(

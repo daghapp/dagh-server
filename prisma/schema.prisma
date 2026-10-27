@@ -1086,7 +1086,8 @@ model SitePhoto {
   id           String      @id @default(uuid())
   tourSiteId   String
   uploaderId   String? // userId (null for legacy/admin uploads)
-  url          String
+  caption      String? // user's experience/story (text-only posts allowed)
+  url          String? // null for text-only experience posts
   publicId     String? // Cloudinary public id (used for deletion/moderation)
   thumbUrl     String? // Optimized WebP thumbnail for fast mobile rendering
   width        Int?

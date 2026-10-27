@@ -23,8 +23,13 @@ const controller = new SitePhotoController();
  * @swagger
  * /tour-sites/{siteId}/photos:
  *   post:
- *     summary: Upload a photo for a tour site
- *     description: Uploads a photo to a tour site (JPEG/PNG, max 10MB, min 800x600). Photos go to moderation queue as PENDING before appearing in public gallery.
+ *     summary: Upload an experience (caption and/or photo) for a tour site
+ *     description: |
+ *       Submit a user experience for a tour site. Send either a caption, a photo,
+ *       or both. Photos (JPEG/PNG, max 10MB, min 800x600) and captions (max 2000
+ *       chars) go to the moderation queue as PENDING before appearing in the
+ *       public gallery. Use `multipart/form-data` when sending a file, or
+ *       `application/json` for a text-only experience.
  *     tags: [Tour Site Photos]
  *     security:
  *       - bearerAuth: []
@@ -40,18 +45,29 @@ const controller = new SitePhotoController();
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required:
- *               - image
  *             properties:
+ *               caption:
+ *                 type: string
+ *                 maxLength: 2000
+ *                 description: The user's experience/comment
  *               image:
  *                 type: string
  *                 format: binary
- *                 description: Image file (JPEG/PNG, 800x600 minimum, 10MB max)
+ *                 description: Optional image file (JPEG/PNG, 800x600 minimum, 10MB max)
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - caption
+ *             properties:
+ *               caption:
+ *                 type: string
+ *                 maxLength: 2000
  *     responses:
  *       201:
- *         description: Photo uploaded successfully (pending moderation)
+ *         description: Experience submitted successfully (pending moderation)
  *       400:
- *         description: Invalid file (size, format, or resolution)
+ *         description: Missing caption and image, or invalid file/caption
  *       401:
  *         description: Unauthorized
  *       404:
@@ -88,6 +104,85 @@ router.post(
   handleSitePhotoUpload,
   controller.uploadPhoto.bind(controller),
 );
+
+/**
+ * @swagger
+ * /tour-sites/{siteId}/photos/{photoId}:
+ *   patch:
+ *     summary: Edit your experience caption
+ *     description: Owner-only. Updating the caption moves the experience back to PENDING for re-moderation.
+ *     tags: [Tour Site Photos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: siteId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: photoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - caption
+ *             properties:
+ *               caption:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 2000
+ *     responses:
+ *       200:
+ *         description: Experience updated (pending moderation)
+ *       400:
+ *         description: Invalid caption
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not the owner
+ *       404:
+ *         description: Experience not found
+ *       500:
+ *         description: Failed to update experience
+ *   delete:
+ *     summary: Delete your experience
+ *     description: Owner or admin. Removes the gallery item and its Cloudinary asset.
+ *     tags: [Tour Site Photos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: siteId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: photoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Experience deleted
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not the owner
+ *       404:
+ *         description: Experience not found
+ *       500:
+ *         description: Failed to delete experience
+ */
+router.patch("/:siteId/photos/:photoId", protectedRoute, controller.updatePhoto.bind(controller));
+
+router.delete("/:siteId/photos/:photoId", protectedRoute, controller.deletePhoto.bind(controller));
 
 /**
  * @swagger

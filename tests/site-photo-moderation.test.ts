@@ -11,9 +11,12 @@ import {
   PHOTO_UPLOAD_CONSTRAINTS,
 } from "../src/validator/site-photo-validator.js";
 import {
+  deleteSitePhoto,
   listApprovedPhotos,
   moderationQueue,
   moderatePhoto,
+  updateSitePhotoCaption,
+  uploadSitePhoto,
 } from "../src/modules/tour-sites/site-photo.service.js";
 
 describe("site photo moderation", () => {
@@ -138,6 +141,93 @@ describe("site photo moderation", () => {
         height: 768,
       });
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe("text-only experiences", () => {
+    it("uploads a caption without an image", async () => {
+      const photo = await uploadSitePhoto({
+        tourSiteId,
+        uploaderId: userId,
+        caption: "  The canopy walk at dawn was unforgettable.  ",
+      });
+      createdPhotoIds.push(photo.id);
+
+      expect(photo.caption).toBe("The canopy walk at dawn was unforgettable.");
+      expect(photo.url).toBeNull();
+      expect(photo.status).toBe("PENDING");
+    });
+
+    it("rejects a submission with neither caption nor image", async () => {
+      await expect(
+        uploadSitePhoto({ tourSiteId, uploaderId: userId, caption: "   " }),
+      ).rejects.toThrow("CAPTION_REQUIRED");
+    });
+
+    it("updates the caption and returns the row to moderation", async () => {
+      const photo = await prisma.sitePhoto.create({
+        data: {
+          tourSiteId,
+          uploaderId: userId,
+          caption: "Original caption",
+          url: "https://example.com/original.jpg",
+          status: "APPROVED",
+        },
+      });
+      createdPhotoIds.push(photo.id);
+
+      const updated = await updateSitePhotoCaption({
+        photoId: photo.id,
+        tourSiteId,
+        userId,
+        caption: "A better caption",
+      });
+
+      expect(updated.caption).toBe("A better caption");
+      expect(updated.status).toBe("PENDING");
+      expect(updated.moderatedAt).toBeNull();
+    });
+
+    it("allows only the owner to edit a caption", async () => {
+      const photo = await prisma.sitePhoto.create({
+        data: {
+          tourSiteId,
+          uploaderId: adminId,
+          caption: "Admin's experience",
+          status: "APPROVED",
+        },
+      });
+      createdPhotoIds.push(photo.id);
+
+      await expect(
+        updateSitePhotoCaption({
+          photoId: photo.id,
+          tourSiteId,
+          userId,
+          caption: "Hijacked",
+        }),
+      ).rejects.toThrow("NOT_OWNER");
+    });
+
+    it("deletes an experience owned by the caller", async () => {
+      const photo = await prisma.sitePhoto.create({
+        data: {
+          tourSiteId,
+          uploaderId: userId,
+          caption: "Temporary experience",
+          status: "APPROVED",
+        },
+      });
+
+      const deleted = await deleteSitePhoto({
+        photoId: photo.id,
+        tourSiteId,
+        userId,
+        isAdmin: false,
+      });
+
+      expect(deleted.id).toBe(photo.id);
+      await expect(prisma.sitePhoto.findUnique({ where: { id: photo.id } })).resolves.toBeNull();
     });
   });
 

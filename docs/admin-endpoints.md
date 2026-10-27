@@ -313,14 +313,15 @@ All these handlers return the standard response envelope. Tour create/update sch
 ### Tour sites (`/tour-sites`, `/pending-sites`)
 
 - `POST /tour-sites/admin` — `tours.edit`; adds a live `TourSite` directly, bypassing the pending review queue. Required body: `name`, `region`, `latitude`, `longitude`, `description`. Optional: `history`, `category` (free text, normalized to the `SiteCategory` enum), `categories` (extra album tags, max 10), `imageUrl`, `imageCredit`. The `transit_profile` is derived from `region`. Returns `201` with the created row. Errors: `400` validation, `401`, `403` missing `tours.edit`, `409` duplicate name (case-insensitive), `500`.
-- `GET /tour-sites/admin/photos` — Admin; community photo moderation queue. Defaults to `PENDING`; pass `status=APPROVED|REJECTED` to filter, plus `page`/`limit`.
-- `POST /tour-sites/admin/photos/:photoId/approve` — Admin; makes the photo visible in the public gallery.
+- `GET /tour-sites/admin/photos` — Admin; community experience moderation queue. Defaults to `PENDING`; pass `status=APPROVED|REJECTED` to filter, plus `page`/`limit`. Rows may be text-only (`caption` with `url: null`).
+- `POST /tour-sites/admin/photos/:photoId/approve` — Admin; makes the experience visible in the public gallery.
 - `POST /tour-sites/admin/photos/:photoId/reject` — Admin; body `{ "rejectReason": "…" }` (5–500 chars).
+- Owner endpoints (bearer auth, outside the admin queue): `PATCH /tour-sites/:siteId/photos/:photoId` edits the caption and returns the row to `PENDING`; `DELETE /tour-sites/:siteId/photos/:photoId` removes the owner's experience (admins may delete any).
 - `GET /pending-sites/admin` — Admin; queue of user-submitted tour sites (`?status=pending|approved|rejected&page=&limit=`).
 - `POST /pending-sites/admin/:siteId/approve` — Admin; migrates a submission into the live `tour_sites` catalogue (normalizes category, derives `transit_profile`, preserves album tags) and emails the submitter.
 - `POST /pending-sites/admin/:siteId/reject` — Admin; body `{ "rejectReason": "…" }` (5+ chars); emails the submitter.
 
-Photo moderation errors: `404` photo not found, `409` already moderated, `400` invalid reason. Pending-site moderation errors: `404` submission not found, `400` not pending, `409` name conflict.
+Experience moderation errors: `404` experience not found, `409` already moderated, `400` invalid reason. Pending-site moderation errors: `404` submission not found, `400` not pending, `409` name conflict.
 
 ### FAQ (`/faq/admin`)
 
