@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { ProviderNearbyHotelsController } from "../modules/provider-management/provider-nearby-hotels.controller.js";
 import { ProviderNearbyRentalsController } from "../modules/provider-management/provider-nearby-rentals.controller.js";
+import { ProviderDetailController } from "../modules/provider-management/provider-detail.controller.js";
 import protectedRoute from "../middleware/protected.js";
 
 const router = Router();
 const controller = new ProviderNearbyHotelsController();
 const rentalsController = new ProviderNearbyRentalsController();
+const detailController = new ProviderDetailController();
 
 /**
  * @swagger
@@ -103,4 +105,36 @@ router.get(
   rentalsController.getNearbyRentals.bind(rentalsController),
 );
 
+/**
+ * @swagger
+ * /providers/{id}:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get provider details by ID or external Google Places ID
+ *     description: >
+ *       Returns complete details including images (media assets), short description
+ *       (bio or Google Places editorial overview), address, ratings, Google Maps link,
+ *       and type-specific attributes (hotel price/type or car rental fleet info).
+ *       Supports both internal provider UUIDs and external Google Places IDs (prefixed with 'ext:').
+ *     tags: [Providers]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Provider UUID or external place ID (e.g. ext:ChIJ...)
+ *     responses:
+ *       200:
+ *         description: Provider details retrieved successfully
+ *       400:
+ *         description: Provider ID is required
+ *       404:
+ *         description: Provider not found
+ *       500:
+ *         description: Failed to get provider details
+ */
+router.get("/:id", protectedRoute, detailController.getProviderById.bind(detailController));
+
 export { router };
+

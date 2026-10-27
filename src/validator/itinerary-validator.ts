@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { TourType, DayType, SiteCategory, TransitProfile } from "../../generated/prisma/client.js";
 import { GHANA_REGIONS, DEFAULT_START_REGION } from "../helpers/itinerary-routing.js";
+import type { TravelNote } from "../helpers/transit-profile.js";
+
+export type { TravelNote };
 
 const regionEnum = z.enum(GHANA_REGIONS, {
   message: "startRegion must be a valid Ghanaian region",
@@ -100,6 +103,15 @@ export interface AccommodationOption {
   source: "verified" | "external";
   // Present only on fallback injections ("Suggested Alternative Accommodation").
   tag?: string;
+  // Rich media, descriptions, and ratings to aid decision-making (both DB and Google Places)
+  imageUrl?: string | null;
+  images?: string[];
+  description?: string | null;
+  address?: string | null;
+  basePricePerNight?: number | null;
+  avgRating?: number;
+  reviewCount?: number;
+  googleMapsUrl?: string | null;
 }
 
 // ─────────────────────────────────────────
@@ -169,6 +181,8 @@ export interface SiteMobility {
   carRentals: CarRentalOption[];
   // Flat advisory list mirroring the legacy `transportHints` field.
   hints: string[];
+  // Rich structured travel notes with descriptions and practical tips for user decision-making
+  structuredTravelNotes?: TravelNote[];
 }
 
 export interface ItineraryDaySiteResponse {
@@ -264,6 +278,7 @@ export interface ItineraryDayResponse {
   // POST /itinerary/:tourRequestId/days/:dayNumber/transport.
   selectedTransport: TransportRecommendation | null;
   transportHints: string[]; // Dynamic transport suggestions based on transit profile
+  structuredTravelNotes?: TravelNote[];
   socialBlocks: DatingSocialBlock[];
 }
 
@@ -275,6 +290,13 @@ export interface ItineraryLocationRecommendation {
   region?: string;
   distanceKm?: number;
   imageUrl?: string | null;
+  images?: string[];
+  description?: string | null;
+  address?: string | null;
+  basePricePerNight?: number | null;
+  avgRating?: number;
+  reviewCount?: number;
+  googleMapsUrl?: string | null;
 }
 
 export interface ItineraryResponse {
@@ -298,6 +320,7 @@ export interface ItineraryResponse {
   // (STC/VIP, trotro, air) — discriminate on `kind`.
   available_transports: AvailableTransport[];
   transportHints: string[]; // Dynamic transport suggestions per transit profile
+  structuredTravelNotes?: TravelNote[];
 
   // Tour → dating: selected dating profiles merged into the itinerary timeline.
   datingSelections: (DatingSocialBlockProfile & { selectedAt: Date })[];

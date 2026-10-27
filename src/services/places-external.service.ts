@@ -25,6 +25,13 @@ export interface ExternalLodgingResult {
   latitude: number;
   longitude: number;
   propertyType: ExternalPropertyType | null;
+  imageUrl?: string | null;
+  images?: string[];
+  description?: string | null;
+  address?: string | null;
+  avgRating?: number;
+  reviewCount?: number;
+  googleMapsUrl?: string | null;
 }
 
 const PLACES_NEARBY_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
@@ -101,8 +108,33 @@ interface PlacesNearbyResponse {
     geometry?: { location?: { lat?: number; lng?: number } };
     types?: string[];
     vicinity?: string;
+    photos?: Array<{ photo_reference: string; height?: number; width?: number }>;
+    rating?: number;
+    user_ratings_total?: number;
   }>;
   status?: string;
+}
+
+const PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json";
+const PLACES_FIND_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json";
+
+export interface GooglePlaceDetails {
+  placeId: string;
+  name: string;
+  description: string | null;
+  address: string | null;
+  imageUrl: string | null;
+  images: string[];
+  avgRating: number;
+  reviewCount: number;
+  googleMapsUrl: string | null;
+  website: string | null;
+  phoneNumber: string | null;
+}
+
+function buildPhotoUrl(photoReference: string, maxWidth = 800): string {
+  const key = process.env.GOOGLE_PLACES_API_KEY ?? "";
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${encodeURIComponent(photoReference)}&key=${encodeURIComponent(key)}`;
 }
 
 /**
@@ -142,13 +174,24 @@ export async function fetchNearbyLodging(
           r.geometry?.location?.lat != null &&
           r.geometry?.location?.lng != null,
       )
-      .map((r) => ({
-        id: `ext:${r.place_id}`,
-        name: r.name!,
-        latitude: r.geometry!.location!.lat!,
-        longitude: r.geometry!.location!.lng!,
-        propertyType: classifyPropertyType(r.name, r.types?.join(" "), r.vicinity),
-      }));
+      .map((r) => {
+        const photoUrls = (r.photos ?? []).map((p) => buildPhotoUrl(p.photo_reference));
+        const primaryImage = photoUrls[0] ?? null;
+        return {
+          id: `ext:${r.place_id}`,
+          name: r.name!,
+          latitude: r.geometry!.location!.lat!,
+          longitude: r.geometry!.location!.lng!,
+          propertyType: classifyPropertyType(r.name, r.types?.join(" "), r.vicinity),
+          imageUrl: primaryImage,
+          images: photoUrls,
+          description: r.vicinity ? `Lodging near ${r.vicinity}` : null,
+          address: r.vicinity ?? null,
+          avgRating: r.rating ?? 0,
+          reviewCount: r.user_ratings_total ?? 0,
+          googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.name!)}&query_place_id=${r.place_id}`,
+        };
+      });
 
     nearbyCache.set(key, { expiresAt: Date.now() + EXTERNAL_CACHE_TTL_MS, results });
     return results;
@@ -170,3 +213,101 @@ export async function fetchLodgingWithinRadius(
     .filter((r) => r.distanceKm <= radiusKm)
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }
+
+/**
+ * Fetch detailed place info from Google Places Place Details API.
+ * Returns photos, editorial description overview, rating, address, and Google Maps URL.
+ */
+export async function fetchPlaceDetails(placeId: string): Promise<GooglePlaceDetails | null> {
+  if (!isExternalPlacesConfigured()) return null;
+
+  try {
+    const rawPlaceId = placeId.startsWith("ext:") ? placeId.slice(4) : placeId;
+    const params = new URLSearchParams({
+      place_id: rawPlaceId,
+      fields:
+        "name,editorial_summary,photos,formatted_address,rating,user_ratings_total,url,website,formatted_phone_number",
+      key: process.env.GOOGLE_PLACES_API_KEY!,
+    });
+
+    const response = await fetch(`${PLACES_DETAILS_URL}?${params.toString()}`, {
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      result?: {
+        name?: string;
+        editorial_summary?: { overview?: string };
+        photos?: Array<{ photo_reference: string }>;
+        formatted_address?: string;
+        rating?: number;
+        user_ratings_total?: number;
+        url?: string;
+        website?: string;
+        formatted_phone_number?: string;
+      };
+    };
+
+    const result = payload.result;
+    if (!result) return null;
+
+    const photos = (result.photos ?? []).map((p) => buildPhotoUrl(p.photo_reference, 1200));
+
+    return {
+      placeId: rawPlaceId,
+      name: result.name ?? "",
+      description: result.editorial_summary?.overview ?? null,
+      address: result.formatted_address ?? null,
+      imageUrl: photos[0] ?? null,
+      images: photos,
+      avgRating: result.rating ?? 0,
+      reviewCount: result.user_ratings_total ?? 0,
+      googleMapsUrl: result.url ?? `https://www.google.com/maps/search/?api=1&query_place_id=${rawPlaceId}`,
+      website: result.website ?? null,
+      phoneNumber: result.formatted_phone_number ?? null,
+    };
+  } catch (error) {
+    console.warn("[places] fetchPlaceDetails failed:", (error as Error).message);
+    return null;
+  }
+}
+
+/**
+ * Searches Google Places by name and coordinates to enrich an internal provider
+ * that may be missing photos or descriptions.
+ */
+export async function findPlaceByNameAndLocation(
+  name: string,
+  latitude: number,
+  longitude: number,
+): Promise<GooglePlaceDetails | null> {
+  if (!isExternalPlacesConfigured()) return null;
+
+  try {
+    const params = new URLSearchParams({
+      input: name,
+      inputtype: "textquery",
+      locationbias: `point:${latitude},${longitude}`,
+      fields: "place_id",
+      key: process.env.GOOGLE_PLACES_API_KEY!,
+    });
+
+    const response = await fetch(`${PLACES_FIND_URL}?${params.toString()}`, {
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{ place_id?: string }>;
+    };
+    const candidate = payload.candidates?.[0];
+    if (!candidate?.place_id) return null;
+
+    return fetchPlaceDetails(candidate.place_id);
+  } catch (error) {
+    console.warn("[places] findPlaceByNameAndLocation failed:", (error as Error).message);
+    return null;
+  }
+}
+

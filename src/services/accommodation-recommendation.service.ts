@@ -34,6 +34,14 @@ export interface VerifiedAccommodation {
   latitude: number;
   longitude: number;
   propertyType: ApartmentType | null;
+  imageUrl?: string | null;
+  images?: string[];
+  description?: string | null;
+  address?: string | null;
+  basePricePerNight?: number | null;
+  avgRating?: number;
+  reviewCount?: number;
+  googleMapsUrl?: string | null;
 }
 
 export type AccommodationAnchor = { id: string; latitude: number; longitude: number };
@@ -53,6 +61,14 @@ export async function loadVerifiedAccommodations(): Promise<VerifiedAccommodatio
       latitude: p.location_lat,
       longitude: p.location_lng,
       propertyType: p.hotel!.apartment_type,
+      imageUrl: p.media_assets[0] ?? null,
+      images: p.media_assets,
+      description: p.bio_description ?? null,
+      address: p.location_address ?? null,
+      basePricePerNight: p.hotel!.base_price_per_night ?? null,
+      avgRating: p.avg_rating ?? 0,
+      reviewCount: p.review_count ?? 0,
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.display_name)}`,
     }));
 }
 
@@ -83,8 +99,19 @@ function toVerifiedOption(
     distanceKm: item.distanceKm,
     propertyType: item.propertyType,
     source: "verified",
+    imageUrl: item.imageUrl ?? null,
+    images: item.images ?? (item.imageUrl ? [item.imageUrl] : []),
+    description: item.description ?? null,
+    address: item.address ?? null,
+    basePricePerNight: item.basePricePerNight ?? null,
+    avgRating: item.avgRating ?? 0,
+    reviewCount: item.reviewCount ?? 0,
+    googleMapsUrl:
+      item.googleMapsUrl ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}`,
   };
 }
+
 
 /**
  * Tiered per-site accommodation recommendations.
@@ -137,8 +164,17 @@ export async function recommendAccommodationsForSites(
             propertyType: e.propertyType,
             source: "external" as const,
             tag: SUGGESTED_ALTERNATIVE_TAG,
+            imageUrl: e.imageUrl ?? null,
+            images: e.images ?? (e.imageUrl ? [e.imageUrl] : []),
+            description: e.description ?? null,
+            address: e.address ?? null,
+            basePricePerNight: null,
+            avgRating: e.avgRating ?? 0,
+            reviewCount: e.reviewCount ?? 0,
+            googleMapsUrl: e.googleMapsUrl ?? null,
           }));
       },
+
       minResults,
       limit,
     });

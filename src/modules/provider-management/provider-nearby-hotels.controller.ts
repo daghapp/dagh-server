@@ -108,6 +108,14 @@ export class ProviderNearbyHotelsController {
               distanceKm: p.distanceKm,
               propertyType: p.propertyType,
               source: "verified" as const,
+              imageUrl: p.media_assets[0] ?? null,
+              images: p.media_assets,
+              description: p.bio_description ?? null,
+              address: p.location_address ?? null,
+              basePricePerNight: p.hotel?.base_price_per_night ?? null,
+              avgRating: p.avg_rating ?? 0,
+              reviewCount: p.review_count ?? 0,
+              googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.display_name)}`,
             })),
         queryFallback: async () => {
           const external = isExternalPlacesConfigured()
@@ -124,8 +132,17 @@ export class ProviderNearbyHotelsController {
               propertyType: e.propertyType,
               source: "external" as const,
               tag: SUGGESTED_ALTERNATIVE_TAG,
+              imageUrl: e.imageUrl ?? null,
+              images: e.images ?? (e.imageUrl ? [e.imageUrl] : []),
+              description: e.description ?? null,
+              address: e.address ?? null,
+              basePricePerNight: null,
+              avgRating: e.avgRating ?? 0,
+              reviewCount: e.reviewCount ?? 0,
+              googleMapsUrl: e.googleMapsUrl ?? null,
             }));
         },
+
         minResults: MIN_VERIFIED_ACCOMMODATIONS,
         limit,
       });

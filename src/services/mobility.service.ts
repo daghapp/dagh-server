@@ -6,6 +6,7 @@ import {
   deriveTransitProfile,
   getMobilityHints,
   getTransportHints,
+  getStructuredTravelNotes,
 } from "../helpers/transit-profile.js";
 import type {
   CarRentalOption,
@@ -318,6 +319,7 @@ export async function resolveMobilityForSites(
       air,
       carRentals: rentals,
       hints: getTransportHints(transitProfile),
+      structuredTravelNotes: getStructuredTravelNotes(transitProfile),
     };
   }
   return out;

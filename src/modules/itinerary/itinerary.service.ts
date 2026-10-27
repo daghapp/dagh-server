@@ -19,7 +19,12 @@ import {
   ORIGIN,
   MAX_DAILY_DISTANCE_KM,
 } from "../../helpers/haversine.js";
-import { deriveTransitProfile, getTransportHints } from "../../helpers/transit-profile.js";
+import {
+  deriveTransitProfile,
+  getTransportHints,
+  getStructuredTravelNotes,
+  type TravelNote,
+} from "../../helpers/transit-profile.js";
 import {
   ACCRA_REGION,
   DEFAULT_START_REGION,
@@ -733,6 +738,14 @@ type ProviderRecommendation = {
 type AccommodationRecommendation = ProviderRecommendation & {
   apartmentType: ApartmentType | null;
   source: "verified" | "fallback";
+  imageUrl?: string | null;
+  images?: string[];
+  description?: string | null;
+  address?: string | null;
+  basePricePerNight?: number | null;
+  avgRating?: number;
+  reviewCount?: number;
+  googleMapsUrl?: string | null;
 };
 
 type TransportRecommendation = ProviderRecommendation & {
@@ -757,6 +770,14 @@ interface RawHotelProvider {
   latitude: number;
   longitude: number;
   apartmentType: ApartmentType | null;
+  imageUrl: string | null;
+  images: string[];
+  description: string | null;
+  address: string | null;
+  basePricePerNight: number | null;
+  avgRating: number;
+  reviewCount: number;
+  googleMapsUrl: string;
 }
 
 interface RawTransportProvider {
@@ -826,6 +847,14 @@ async function mapItineraryToResponseWithRecommendations(
         latitude: h.latitude,
         longitude: h.longitude,
         propertyType: h.apartmentType,
+        imageUrl: h.imageUrl,
+        images: h.images,
+        description: h.description,
+        address: h.address,
+        basePricePerNight: h.basePricePerNight,
+        avgRating: h.avgRating,
+        reviewCount: h.reviewCount,
+        googleMapsUrl: h.googleMapsUrl,
       })),
       radiusKm: ACCOMMODATION_RADIUS_KM,
       minResults: MIN_VERIFIED_ACCOMMODATIONS,
@@ -870,9 +899,11 @@ async function mapItineraryToResponseWithRecommendations(
   // Transport hints derived from each site's stored transit_profile (§2),
   // falling back to region derivation for rows that predate the column.
   const transportHintsBySite: Record<string, string[]> = {};
+  const structuredNotesBySite: Record<string, TravelNote[]> = {};
   for (const site of params.itinerarySites) {
     const profile = site.transitProfile ?? deriveTransitProfile(site.region ?? "");
     transportHintsBySite[site.id] = getTransportHints(profile);
+    structuredNotesBySite[site.id] = getStructuredTravelNotes(profile);
   }
 
   // Verified car rentals first, then the tiered public-transport suggestions
@@ -1006,15 +1037,11 @@ async function mapItineraryToResponseWithRecommendations(
       // Hints follow the day's actual sites and their stored transit_profile
       // (§2) — urban corridors surface ride-hailing, peri/rural surface
       // station-based trotro + intercity coach guidance.
-      const transportHints = [
-        ...new Set(
-          (day.sites ?? []).flatMap((ds) =>
-            getTransportHints(
-              ds.tourSite?.transit_profile ?? deriveTransitProfile(ds.tourSite?.region ?? ""),
-            ),
-          ),
-        ),
-      ];
+      const daySiteProfiles = (day.sites ?? []).map((ds) =>
+        ds.tourSite?.transit_profile ?? deriveTransitProfile(ds.tourSite?.region ?? ""),
+      );
+      const transportHints = [...new Set(daySiteProfiles.flatMap(getTransportHints))];
+      const structuredTravelNotes = dedupeNotes(daySiteProfiles.flatMap(getStructuredTravelNotes));
 
       // Traveller's confirmed rental for this day, if any. Resolved from the
       // same verified supply so a de-verified provider degrades to the
@@ -1080,6 +1107,7 @@ async function mapItineraryToResponseWithRecommendations(
             })
           : null,
         transportHints,
+        structuredTravelNotes,
         socialBlocks: daySocialBlocks[day.dayNumber] ?? [],
       };
     }),
@@ -1087,6 +1115,7 @@ async function mapItineraryToResponseWithRecommendations(
     available_hotels,
     available_transports,
     transportHints: [...new Set(Object.values(transportHintsBySite).flat())],
+    structuredTravelNotes: dedupeNotes(Object.values(structuredNotesBySite).flat()),
 
     datingSelections: datingSelections.map((sel) => ({
       datingProfileId: sel.datingProfileId,
@@ -1102,6 +1131,18 @@ async function mapItineraryToResponseWithRecommendations(
   };
 }
 
+function dedupeNotes(notes: TravelNote[]): TravelNote[] {
+  const seen = new Set<string>();
+  const out: TravelNote[] = [];
+  for (const n of notes) {
+    if (!seen.has(n.title)) {
+      seen.add(n.title);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
 function toHotelRecommendation(
   provider: RawHotelProvider & { distanceKm: number; source?: "verified" | "fallback" },
 ): AccommodationRecommendation {
@@ -1113,6 +1154,16 @@ function toHotelRecommendation(
     distanceKm: provider.distanceKm,
     apartmentType: provider.apartmentType ?? null,
     source: provider.source ?? "verified",
+    imageUrl: provider.imageUrl ?? null,
+    images: provider.images ?? (provider.imageUrl ? [provider.imageUrl] : []),
+    description: provider.description ?? null,
+    address: provider.address ?? null,
+    basePricePerNight: provider.basePricePerNight ?? null,
+    avgRating: provider.avgRating ?? 0,
+    reviewCount: provider.reviewCount ?? 0,
+    googleMapsUrl:
+      provider.googleMapsUrl ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.name)}`,
   };
 }
 
@@ -1240,6 +1291,14 @@ async function loadHotelProviders(): Promise<RawHotelProvider[]> {
       latitude: p.location_lat,
       longitude: p.location_lng,
       apartmentType: p.hotel!.apartment_type,
+      imageUrl: p.media_assets[0] ?? null,
+      images: p.media_assets,
+      description: p.bio_description ?? null,
+      address: p.location_address ?? null,
+      basePricePerNight: p.hotel!.base_price_per_night ?? null,
+      avgRating: p.avg_rating ?? 0,
+      reviewCount: p.review_count ?? 0,
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.display_name)}`,
     }));
 }
 
