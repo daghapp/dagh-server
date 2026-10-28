@@ -1037,8 +1037,8 @@ async function mapItineraryToResponseWithRecommendations(
       // Hints follow the day's actual sites and their stored transit_profile
       // (§2) — urban corridors surface ride-hailing, peri/rural surface
       // station-based trotro + intercity coach guidance.
-      const daySiteProfiles = (day.sites ?? []).map((ds) =>
-        ds.tourSite?.transit_profile ?? deriveTransitProfile(ds.tourSite?.region ?? ""),
+      const daySiteProfiles = (day.sites ?? []).map(
+        (ds) => ds.tourSite?.transit_profile ?? deriveTransitProfile(ds.tourSite?.region ?? ""),
       );
       const transportHints = [...new Set(daySiteProfiles.flatMap(getTransportHints))];
       const structuredTravelNotes = dedupeNotes(daySiteProfiles.flatMap(getStructuredTravelNotes));

@@ -247,4 +247,3 @@ export function getStructuredTravelNotes(profile: TransitProfileValue): TravelNo
     );
   });
 }
-

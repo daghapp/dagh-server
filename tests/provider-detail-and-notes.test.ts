@@ -24,7 +24,8 @@ describe("Provider details and structured travel notes (§1 & §2 decision aids)
         location_address: "Labadi Beach Road, Accra",
         avg_rating: 4.8,
         review_count: 34,
-        bio_description: "A 4-star beachfront resort featuring private ocean terraces and fine dining.",
+        bio_description:
+          "A 4-star beachfront resort featuring private ocean terraces and fine dining.",
         hotel: {
           create: {
             apartment_type: ApartmentType.HOTEL,
@@ -97,7 +98,9 @@ describe("Provider details and structured travel notes (§1 & §2 decision aids)
     const rentalNote = ruralNotes.find((n) => n.title.includes("Car Rental with Driver"));
     expect(rentalNote).toBeTruthy();
     expect(rentalNote?.category).toBe("car_rental");
-    expect(rentalNote?.tips).toContain("Driver knows local terrain, shortcuts, and police checkpoints");
+    expect(rentalNote?.tips).toContain(
+      "Driver knows local terrain, shortcuts, and police checkpoints",
+    );
 
     const urbanNotes = getStructuredTravelNotes("URBAN_CENTER");
     const uberNote = urbanNotes.find((n) => n.title === "Uber");

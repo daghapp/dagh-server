@@ -263,7 +263,8 @@ export async function fetchPlaceDetails(placeId: string): Promise<GooglePlaceDet
       images: photos,
       avgRating: result.rating ?? 0,
       reviewCount: result.user_ratings_total ?? 0,
-      googleMapsUrl: result.url ?? `https://www.google.com/maps/search/?api=1&query_place_id=${rawPlaceId}`,
+      googleMapsUrl:
+        result.url ?? `https://www.google.com/maps/search/?api=1&query_place_id=${rawPlaceId}`,
       website: result.website ?? null,
       phoneNumber: result.formatted_phone_number ?? null,
     };
@@ -310,4 +311,3 @@ export async function findPlaceByNameAndLocation(
     return null;
   }
 }
-

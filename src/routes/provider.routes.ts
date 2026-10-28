@@ -137,4 +137,3 @@ router.get(
 router.get("/:id", protectedRoute, detailController.getProviderById.bind(detailController));
 
 export { router };
-

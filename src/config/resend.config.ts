@@ -8,8 +8,7 @@ if (!apiKey && process.env.NODE_ENV !== "test") {
 }
 
 const emailFrom =
-  process.env.EMAIL_FROM ??
-  "Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>";
+  process.env.EMAIL_FROM ?? "Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>";
 
 interface EmailParams {
   email: string;

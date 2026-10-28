@@ -112,7 +112,6 @@ function toVerifiedOption(
   };
 }
 
-
 /**
  * Tiered per-site accommodation recommendations.
  *
