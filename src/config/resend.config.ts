@@ -7,6 +7,10 @@ if (!apiKey && process.env.NODE_ENV !== "test") {
   throw new Error("RESEND_API_KEY is not defined in environment variables");
 }
 
+const emailFrom =
+  process.env.EMAIL_FROM ??
+  "Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>";
+
 interface EmailParams {
   email: string;
   subject: string;
@@ -16,7 +20,7 @@ interface EmailParams {
 async function sendEmail({ email, subject, html }: EmailParams) {
   const resend = new Resend(process.env.RESEND_API_KEY ?? "");
   const { error } = await resend.emails.send({
-    from: "Dagh Production <onboarding@resend.dev>",
+    from: emailFrom,
     to: [email],
     subject: subject,
     html: html,

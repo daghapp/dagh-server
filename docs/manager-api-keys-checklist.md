@@ -59,7 +59,7 @@ These are in place for the rest of the product; listed only so you know they're 
 | PostgreSQL (Neon) | `DATABASE_URL`, `DIRECT_URL` | All data, incl. push outbox rows | Backend/ops |
 | Redis | `REDIS_URL` | Distributed cron locks, socket adapter, rate limits | Backend/ops |
 | Hubtel | `HUBTEL_*` | SMS | Existing |
-| Resend | `RESEND_API_KEY` | Email | Existing |
+| Resend | `RESEND_API_KEY`, `EMAIL_FROM` | Email (sender: `noreply@diasporaadvocacygh.org`) | Existing |
 | Cloudinary | `CLOUDINARY_*` | Media uploads | Existing |
 | Sentry | `SENTRY_*` | Error/performance monitoring | Backend |
 

@@ -36,3 +36,7 @@ services:
       # Still needed by the admin channel-sync endpoint (uploads playlist fetch).
       - key: YOUTUBE_API_KEY
         sync: false
+      # Sender identity for all outgoing Resend email. The domain must be
+      # verified in the Resend dashboard before production sends will succeed.
+      - key: EMAIL_FROM
+        value: "Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>"

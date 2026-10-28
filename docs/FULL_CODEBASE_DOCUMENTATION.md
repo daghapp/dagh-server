@@ -1063,6 +1063,7 @@ Client connects with: io(url, { auth: { token: "<JWT>" } })
 | `CLOUDINARY_*`        | Yes      | Cloudinary credentials                     |
 | `HUBTEL_*`            | Yes      | Hubtel payment credentials                 |
 | `RESEND_API_KEY`      | Yes      | Resend email service key                   |
+| `EMAIL_FROM`          | No       | Sender address (defaults to `Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>`) |
 | `SENTRY_DSN`          | No       | Sentry error tracking                      |
 | `LIVEKIT_*`           | Yes      | LiveKit call service credentials           |
 

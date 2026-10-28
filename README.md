@@ -162,7 +162,10 @@ CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 
 # Email (Resend)
+# EMAIL_FROM defaults to the line below. The domain must be verified in the
+# Resend dashboard (DNS records) before production sends will succeed.
 RESEND_API_KEY=
+EMAIL_FROM=Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>
 
 # CORS (comma-separated origins, required)
 ALLOWED_ORIGINS=http://localhost:3000
