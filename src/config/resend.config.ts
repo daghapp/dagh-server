@@ -16,7 +16,7 @@ interface EmailParams {
 async function sendEmail({ email, subject, html }: EmailParams) {
   const resend = new Resend(process.env.RESEND_API_KEY ?? "");
   const { error } = await resend.emails.send({
-    from: "Dagh Production <support@frankmawuli.dev>",
+    from: "Dagh Production <onboarding@resend.dev>",
     to: [email],
     subject: subject,
     html: html,
