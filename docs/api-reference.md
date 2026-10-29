@@ -310,8 +310,8 @@ empty out of the box.
 | GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker) — full rows including `history`, `imageUrl`, `imageCredit`. |
 | GET | `/itinerary/sites/:siteId/mobility` | Public | Mobility options for one site (§2): ride-hailing availability by transit profile, STC/VIP intercity coaches, trotro corridors, nearest airport, verified car rentals. Query: `transportType` (optional) prefers a car-rental category. |
 | POST | `/itinerary/request` | Bearer | Create a custom tour request (site + preferences; `casualDatingInterest` opts into dating recommendations and requires KYC). |
-| GET | `/itinerary/my-itineraries` | Bearer | List the user's generated itineraries. |
-| GET | `/itinerary/requests` | Bearer | List the user's tour requests. |
+| GET | `/itinerary/my-itineraries` | Bearer | List the user's generated itineraries. Provider catalogues and dating selections load once per request, with bounded DB concurrency. |
+| GET | `/itinerary/requests` | Bearer | List the user's tour requests, newest first. Query: `page` (default 1), `limit` (default 50, max 100). `selectedSites[].tourSite` omits long-form `history`. |
 | GET | `/itinerary/:tourRequestId` | Bearer | Fetch a generated itinerary (only after payment; includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected). |
 | POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate Hubtel payment for a tour request; returns top-level `checkoutUrl`. |
 | POST | `/itinerary/payment-callback` | Hubtel | Hubtel callback; marks the request paid. |

@@ -852,8 +852,20 @@ Re-fetch the itinerary; the day's `selectedTransport` now reflects the choice.
 ### 9.4 List the user's requests
 
 `GET /itinerary/requests` — Bearer. Returns `data[]` of raw tour-request rows,
-each with `selectedSites[].tourSite`, plus `paymentStatus` and `status`
-(`PENDING | CONFIRMED | FAILED`). Useful for a "My trips" list before payment.
+newest first, each with `selectedSites[].tourSite`, plus `paymentStatus` and
+`status` (`PENDING | CONFIRMED | FAILED`). Useful for a "My trips" list before
+payment.
+
+Query parameters:
+
+| Name | Type | Default | Notes |
+| ---- | ---- | ------- | ----- |
+| `page` | integer | `1` | 1-based page number. |
+| `limit` | integer | `50` | Capped at `100`. |
+
+`selectedSites[].tourSite` intentionally omits the long-form `history` field so
+the list stays small (previously this response reached ~660 KB). Fetch
+`GET /itinerary/sites` when the full destination-detail row is needed.
 
 ### 9.5 List the user's itineraries
 
@@ -861,6 +873,12 @@ each with `selectedSites[].tourSite`, plus `paymentStatus` and `status`
 itinerary objects (the §8 shape). Calls the same lazy-generation path as the
 single fetch, so entries may be generated on this call. Rows are filtered to
 paid requests (all requests when payments are disabled).
+
+Verified provider catalogues (hotels, car rentals, public transport) and dating
+selections are loaded **once per HTTP request** and reused for every itinerary.
+Itineraries are built through a small worker pool (default concurrency `3`,
+override with `MY_ITINERARIES_CONCURRENCY`) so accounts with many trips do not
+exhaust the database connection pool.
 
 ---
 

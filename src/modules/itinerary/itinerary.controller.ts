@@ -230,7 +230,16 @@ export async function getUserTourRequests(req: Request, res: Response) {
       return fail(res, 401, "Unauthorized");
     }
 
-    const requests = await getTourRequestsByUserId(userId);
+    const limitRaw = Number(req.query.limit);
+    const pageRaw = Number(req.query.page);
+    const take =
+      Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 100) : 50;
+    const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+
+    const requests = await getTourRequestsByUserId(userId, {
+      take,
+      skip: (page - 1) * take,
+    });
 
     return ok(res, requests, "Tour requests retrieved successfully.");
   } catch (error) {

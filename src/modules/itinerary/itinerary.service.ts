@@ -8,6 +8,7 @@ import type {
   ItineraryDaySite as PrismaItineraryDaySite,
   TourSite as PrismaTourSite,
   ApartmentType,
+  PublicTransportService,
   TransitProfile,
 } from "../../../generated/prisma/client.js";
 import { prisma } from "../../config/index.js";
@@ -180,6 +181,7 @@ export async function createTourRequest(
 export async function getItineraryByRequestId(
   tourRequestId: string,
   requesterId: string,
+  deps: ItineraryMappingDeps = {},
 ): Promise<ItineraryResponse> {
   // Payment gating: itinerary is only visible after payment SUCCESS
   const tourRequest = await prisma.tourRequest.findUnique({
@@ -246,7 +248,7 @@ export async function getItineraryByRequestId(
   };
 
   if (existing) {
-    return mapItineraryToResponseWithRecommendations(existing, requestParams);
+    return mapItineraryToResponseWithRecommendations(existing, requestParams, deps);
   }
 
   // Otherwise generate itinerary lazily now that payment succeeded
@@ -305,19 +307,26 @@ export async function getItineraryByRequestId(
     },
   });
 
-  return mapItineraryToResponseWithRecommendations(itinerary, requestParams);
+  return mapItineraryToResponseWithRecommendations(itinerary, requestParams, deps);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC: Get all itinerary requests for the authenticated user
 // ─────────────────────────────────────────────────────────────────────────────
-export async function getTourRequestsByUserId(userId: string) {
+export async function getTourRequestsByUserId(
+  userId: string,
+  opts: { take?: number; skip?: number } = {},
+) {
   return prisma.tourRequest.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
+    take: opts.take,
+    skip: opts.skip,
     include: {
       selectedSites: {
-        include: { tourSite: true },
+        // `history` is long-form copy for the destination detail page; leaving
+        // it out keeps this list response small (was ~660 KB for some users).
+        include: { tourSite: { omit: { history: true } } },
       },
     },
   });
@@ -395,6 +404,44 @@ export async function getDatingSelectionsForTour(tourRequestId: string) {
       },
     },
   });
+}
+
+/**
+ * Batch variant of `getDatingSelectionsForTour` — one query for many tour
+ * requests, grouped in memory. Used by /itinerary/my-itineraries so the dating
+ * lookup does not add one query per itinerary.
+ */
+export async function getDatingSelectionsForTours(
+  tourRequestIds: string[],
+): Promise<Map<string, DatingSelections>> {
+  const byRequest = new Map<string, DatingSelections>();
+  if (!tourRequestIds.length) return byRequest;
+
+  const selections = await prisma.tourRequestDatingSelection.findMany({
+    where: { tourRequestId: { in: tourRequestIds } },
+    orderBy: { createdAt: "asc" },
+    include: {
+      datingProfile: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  for (const selection of selections) {
+    const list = byRequest.get(selection.tourRequestId) ?? [];
+    list.push(selection);
+    byRequest.set(selection.tourRequestId, list);
+  }
+
+  return byRequest;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -799,6 +846,34 @@ interface RawTransportProvider {
   driverRequired: boolean;
 }
 
+/**
+ * Verified supply needed to build itinerary responses. Loaded once per request
+ * and shared across every itinerary so a multi-itinerary read (e.g.
+ * /itinerary/my-itineraries) does not re-query the same provider tables N
+ * times and exhaust the pg pool.
+ */
+export interface ItineraryCatalogues {
+  hotelProviders: RawHotelProvider[];
+  transportProviders: RawTransportProvider[];
+  publicTransportServices: PublicTransportService[];
+}
+
+type DatingSelections = Awaited<ReturnType<typeof getDatingSelectionsForTour>>;
+
+interface ItineraryMappingDeps {
+  catalogues?: ItineraryCatalogues;
+  datingSelections?: DatingSelections;
+}
+
+export async function loadItineraryCatalogues(): Promise<ItineraryCatalogues> {
+  const [hotelProviders, transportProviders, publicTransportServices] = await Promise.all([
+    loadHotelProviders(),
+    loadTransportProviders(),
+    loadActiveTransportServices(),
+  ]);
+  return { hotelProviders, transportProviders, publicTransportServices };
+}
+
 async function mapItineraryToResponseWithRecommendations(
   itinerary: ItineraryWithDays,
   params: {
@@ -813,19 +888,18 @@ async function mapItineraryToResponseWithRecommendations(
     }>;
     relocationInterest: boolean;
   },
+  deps: ItineraryMappingDeps = {},
 ): Promise<ItineraryResponse> {
   // transportType NONE is an explicit opt-out ("no transport needed"), so no
   // transport is recommended, mobility profiles stay null and per-day
   // localTransport stays null by design.
   const wantsNoTransport = params.transportType === "NONE";
 
-  // Load verified supply once and allocate it in-memory. Previously each day /
-  // site triggered its own findMany, which scaled with the itinerary length.
-  const [hotelProviders, transportProviders, publicTransportServices] = await Promise.all([
-    loadHotelProviders(),
-    loadTransportProviders(),
-    loadActiveTransportServices(),
-  ]);
+  // Load verified supply once and allocate it in-memory. Callers that build
+  // several itineraries in one request pass a shared catalogue so this runs
+  // once per HTTP request instead of once per itinerary.
+  const { hotelProviders, transportProviders, publicTransportServices } =
+    deps.catalogues ?? (await loadItineraryCatalogues());
 
   const available_hotels = nearestWithTypeFallback(
     hotelProviders,
@@ -967,7 +1041,8 @@ async function mapItineraryToResponseWithRecommendations(
 
   // Tour → dating: merge selected dating profiles as social / leisure blocks,
   // one per touring day (cycled if there are more profiles than touring days).
-  const datingSelections = await getDatingSelectionsForTour(itinerary.tourRequestId);
+  const datingSelections =
+    deps.datingSelections ?? (await getDatingSelectionsForTour(itinerary.tourRequestId));
   const touringDays = (itinerary.days ?? []).filter((d) => d.dayType === DayType.TOURING);
 
   const daySocialBlocks: Record<number, DatingSocialBlock[]> = {};

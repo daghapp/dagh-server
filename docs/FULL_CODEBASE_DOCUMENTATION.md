@@ -604,10 +604,10 @@ User selects tour → POST /tours/bookings or /tours/initiate-booking-momo
 | ------ | ----------------------------------- | ---- | ------------------------- |
 | GET    | `/itinerary/sites`                  | No   | List available tour sites |
 | POST   | `/itinerary/request`                | Yes  | Submit a tour request     |
-| GET    | `/itinerary/my-itineraries`         | Yes  | Get user's itineraries    |
+| GET    | `/itinerary/my-itineraries`         | Yes  | Get user's itineraries (shared catalogues, bounded concurrency) |
 | POST   | `/itinerary/:tourRequestId/payment` | Yes  | Pay for itinerary         |
 | POST   | `/itinerary/payment-callback`       | No   | Hubtel payment callback   |
-| GET    | `/itinerary/requests`               | Yes  | Get user's tour requests  |
+| GET    | `/itinerary/requests`               | Yes  | Get user's tour requests (`page`, `limit`; omits site `history`) |
 | GET    | `/itinerary/:tourRequestId`         | Yes  | Get specific itinerary    |
 
 Every `TourSite` also exposes `history`, `imageUrl` and `imageCredit` for the

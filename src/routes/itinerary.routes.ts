@@ -130,6 +130,12 @@ router.post("/request", protectedRoute, postTourRequest);
  *     security:
  *       - bearerAuth: []
  *     summary: Get all created itineraries for the authenticated user
+ *     description: >
+ *       Builds each paid tour request's itinerary (lazily generating any that
+ *       do not exist yet). Verified provider catalogues and dating selections
+ *       are loaded once per request and reused across itineraries; work is
+ *       bounded by a small concurrency limit so large accounts do not exhaust
+ *       the database connection pool.
  *     tags: [Itinerary]
  *     responses:
  *       200:
@@ -198,7 +204,20 @@ router.post(
  *     security:
  *       - bearerAuth: []
  *     summary: Get all itinerary requests for the authenticated user
+ *     description: >
+ *       Newest first, paginated (default `limit=50`, max `100`). `selectedSites[].tourSite`
+ *       omits the long-form `history` field to keep this list response small; fetch
+ *       `/itinerary/sites` for the full destination-detail rows.
  *     tags: [Itinerary]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema: { type: integer, minimum: 1, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
  *     responses:
  *       200:
  *         description: Tour requests retrieved successfully
