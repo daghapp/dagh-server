@@ -204,6 +204,12 @@ router.post(
  *                       nullable: true
  *                     tierCode:
  *                       type: string
+ *                     accessSource:
+ *                       type: string
+ *                       enum: [SUBSCRIPTION, GRANT, FREE, FREE_MODE]
+ *                     waiveServiceFees:
+ *                       type: boolean
+ *                       description: True when an admin granted lifetime free access; no service should be charged.
  *                     paymentReference:
  *                       type: string
  *                       nullable: true

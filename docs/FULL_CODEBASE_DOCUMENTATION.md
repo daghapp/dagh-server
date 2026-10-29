@@ -505,7 +505,7 @@ live in `UserNotificationPreference`, read/written via
 | ------ | ------------------------------ | ---- | ------------------------------------------ |
 | GET    | `/membership/plans`            | No   | List all active membership plans           |
 | POST   | `/membership/subscribe`        | Yes  | Subscribe to a plan                        |
-| GET    | `/membership/my-subscription`  | Yes  | Get current subscription                   |
+| GET    | `/membership/my-subscription`  | Yes  | Get current subscription (`waiveServiceFees` when lifetime free) |
 | POST   | `/membership/support`          | Yes  | Create priority support ticket (paid only) |
 | POST   | `/membership/payment-callback` | No   | Hubtel payment callback                    |
 
@@ -522,6 +522,19 @@ FREE → BASELINE → SENIOR_PIONEER → SANKOFA_SETTALLED → BASIC → SILVER 
 FREE plan → Activate immediately (no payment) → Generate memberCode
 Paid plan → Initialize Hubtel checkout → Redirect to payment page → Callback activates subscription
 ```
+
+### Complimentary Access & Lifetime Free (admin)
+
+Admins grant access through `/admin/access-grants`; grants live in
+`subscription_access_grants` and coexist with paid subscriptions.
+
+- Identify the grantee by `email` (case-insensitive) or `userId`.
+- `waiveServiceFees: true` exempts the user from itinerary fees, tour bookings,
+  and paid-plan checkout. With `endDate: null` this is **lifetime free**.
+- A waived user selecting a paid plan gets no checkout and no subscription row;
+  the grant's `tierCode` is their tier, so only an admin changes it.
+- Revoking the grant or setting `endDate` in the past removes the exemption.
+- `GET /membership/my-subscription` returns `waiveServiceFees` and grant details.
 
 ### Priority Support
 

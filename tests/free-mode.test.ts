@@ -106,6 +106,7 @@ describe("Free mode (payments disabled ⇒ paid features are free)", () => {
       grantId: null,
       includePaidPerks: false,
       perksTierCode: "FREE",
+      waiveServiceFees: false,
       ...over,
     });
 

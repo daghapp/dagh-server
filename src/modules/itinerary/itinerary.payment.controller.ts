@@ -9,6 +9,7 @@ import { pricing } from "../../config/pricing.js";
 // Imported from ./payments directly, matching helpers/membership.ts: the barrel
 // re-exports ./payments, and this module already imports the barrel for prisma.
 import { isPaymentsEnabled } from "../../config/payments.js";
+import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 
 export class ItineraryPaymentController {
   async initiateItineraryPayment(req: Request, res: Response) {
@@ -75,10 +76,13 @@ export class ItineraryPaymentController {
       // pass-through to an operator or government, so it is released rather than
       // demanded. Tour bookings are waived too (product decision); visa fees are
       // pass-throughs and stay closed (docs/disabling-payments.md §4).
-      const paymentsOff = !(await isPaymentsEnabled());
+      const [paymentsOff, feeWaiver] = await Promise.all([
+        isPaymentsEnabled().then((enabled) => !enabled),
+        hasServiceFeeWaiver(userId),
+      ]);
       const feeWaived = amount === 0;
 
-      if (paymentsOff || feeWaived) {
+      if (paymentsOff || feeWaived || feeWaiver) {
         await prisma.tourRequest.update({
           where: { id: tourRequest.id },
           data: { paymentStatus: "SUCCESS", paymentId: null, feeWaived: true },
@@ -94,10 +98,13 @@ export class ItineraryPaymentController {
             clientReference: null,
             paymentData: null,
             freeMode: paymentsOff,
+            waiveServiceFees: feeWaiver,
           },
-          paymentsOff
-            ? "Payments are temporarily disabled. The itinerary fee has been waived."
-            : "Payment successful. Itinerary is free.",
+          feeWaiver
+            ? "Your lifetime-free access has waived the itinerary fee."
+            : paymentsOff
+              ? "Payments are temporarily disabled. The itinerary fee has been waived."
+              : "Payment successful. Itinerary is free.",
         );
       }
 

@@ -281,7 +281,8 @@ src/
 > `docs/youtube-video-feed-setup.md` for the credentials and steps required to
 > populate the community YouTube video feed, and
 > `docs/access-grants.md` for **complimentary (comped) membership** — how an
-> admin grants a specific user paid-tier access without a payment.
+> admin grants a specific user paid-tier access without a payment, including
+> admin-controlled **lifetime free** accounts that waive every service fee.
 
 All endpoints return responses in a standardized envelope:
 
@@ -740,11 +741,29 @@ overwriting each other, and revoking a comp is distinct from a cancellation.
 priority support, so a fee waiver never outranks paying members. See
 [`docs/access-grants.md`](docs/access-grants.md).
 
+`waiveServiceFees` is separate: when true, the user is exempt from **every**
+service charge — itinerary fees, tour bookings, and paid membership checkout.
+Combine it with `endDate: null` for a lifetime free account. The grantee can be
+identified by `email` (matched case-insensitively) or `userId`. Selecting a paid
+plan then returns no checkout and writes no subscription row; the grant's
+`tierCode` is the tier, so only an admin can change it.
+
+```http
+POST /admin/access-grants
+{
+  "email": "person@example.com",
+  "tierCode": "BASELINE",
+  "waiveServiceFees": true,
+  "reason": "Lifetime free access — approved by board",
+  "endDate": null
+}
+```
+
 | Method | Endpoint                        | Auth   | Description                                              |
 | ------ | ------------------------------- | ------ | -------------------------------------------------------- |
-| GET    | `/admin/access-grants`          | Admin  | List grants; filter by `userId`, `tierCode`, `status`     |
-| POST   | `/admin/access-grants`          | Admin  | Comp a user into a paid tier (`reason` required)          |
-| PATCH  | `/admin/access-grants/{id}`     | Admin  | Amend tier, perks flag, reason, or dates                  |
+| GET    | `/admin/access-grants`          | Admin  | List grants; filter by `userId`, `email`, `tierCode`, `status` |
+| POST   | `/admin/access-grants`          | Admin  | Comp a user by `userId`/`email` (`reason` required)      |
+| PATCH  | `/admin/access-grants/{id}`     | Admin  | Amend tier, perks/waiver flags, reason, or dates         |
 | POST   | `/admin/access-grants/{id}/revoke` | Admin | Soft revoke; the record is kept for the audit trail    |
 | GET    | `/admin/users/{userId}/access`  | Admin  | Effective access now, plus grant history                  |
 

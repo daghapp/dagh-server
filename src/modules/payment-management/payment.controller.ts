@@ -11,6 +11,7 @@ import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
 import * as paymentService from "../../services/payment.service.js";
 import { ok, fail } from "../../helpers/response.js";
+import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 import { PaymentTargetType } from "../../../generated/prisma/client.js";
 
 export class PaymentController {
@@ -33,6 +34,9 @@ export class PaymentController {
       const user = req.user as { id: string; email: string } | undefined;
       if (!user) {
         return fail(res, 401, "Unauthorized");
+      }
+      if (await hasServiceFeeWaiver(user.id)) {
+        return fail(res, 409, "Your account is exempt from service fees. No payment is required.");
       }
 
       const body = req.body;
@@ -66,6 +70,9 @@ export class PaymentController {
       if (!user) {
         return fail(res, 401, "Unauthorized");
       }
+      if (await hasServiceFeeWaiver(user.id)) {
+        return fail(res, 409, "Your account is exempt from service fees. No payment is required.");
+      }
       const payload = initializePaymentSchema_momo.parse(req.body);
       const result = await paymentService.initializePaymentMOMO(payload);
 
@@ -89,6 +96,9 @@ export class PaymentController {
       const user = req.user as { id: string; email: string } | undefined;
       if (!user) {
         return fail(res, 401, "Unauthorized");
+      }
+      if (await hasServiceFeeWaiver(user.id)) {
+        return fail(res, 409, "Your account is exempt from service fees. No payment is required.");
       }
 
       const payload = req.body as SubscriptionPaymentSchema;

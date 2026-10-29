@@ -16,6 +16,7 @@ import {
 } from "../helpers/client-ref.js";
 import { mapMomoProvider } from "../helpers/stringHelper.js";
 import { paymentStatusFromHubtel } from "../helpers/payment.js";
+import { hasServiceFeeWaiver } from "../helpers/membership.js";
 import {
   PaymentProvider,
   PaymentStatus,
@@ -67,6 +68,14 @@ export async function initializePayment(input: InitPaymentInput): Promise<InitPa
     return {
       success: false,
       message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+  if (await hasServiceFeeWaiver(input.userId)) {
+    return {
+      success: false,
+      message: "This account is exempt from service fees; no payment is required.",
       paymentId: "",
       paymentStatus: "",
     };
@@ -167,6 +176,14 @@ export async function initializePaymentMOMO(
     return {
       success: false,
       message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+  if (await hasServiceFeeWaiver(input.userId)) {
+    return {
+      success: false,
+      message: "This account is exempt from service fees; no payment is required.",
       paymentId: "",
       paymentStatus: "",
     };

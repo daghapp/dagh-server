@@ -50,6 +50,12 @@ export interface EffectiveAccess {
   includePaidPerks: boolean;
   /** Tier to use for boost/priority-support. "FREE" when perks don't apply. */
   perksTierCode: string;
+  /**
+   * True when an in-force grant waives every service fee (itinerary, tour
+   * bookings, membership). Independent of `tierCode`: a lifetime-free grant
+   * keeps waiving fees even when a real subscription outranks it on tier.
+   */
+  waiveServiceFees: boolean;
 }
 
 /** Minimal shape needed from a grant row; keeps the resolver testable. */
@@ -57,6 +63,11 @@ export interface GrantLike {
   id: string;
   tierCode: string;
   includePaidPerks: boolean;
+  /**
+   * Optional because ranking-only call sites (e.g. discovery) select only the
+   * fields needed for the tier boost. Missing means false.
+   */
+  waiveServiceFees?: boolean;
   startDate: Date;
   endDate: Date | null;
   revokedAt: Date | null;
@@ -131,6 +142,14 @@ export function resolveEffectiveAccess(input: {
 
   const grant = selectGoverningGrant(input.grants, now);
 
+  // Fee waiver is deliberately independent of which record governs the tier.
+  // A lifetime-free grant must keep waiving service fees even if the user
+  // later buys a subscription that outranks it, otherwise purchasing would
+  // silently remove the exemption an admin granted.
+  const waiveServiceFees = input.grants.some(
+    (g) => g.waiveServiceFees === true && isGrantInForce(g, now),
+  );
+
   if (subIsPaid && grant) {
     // Both in force — keep the stronger entitlement, and only inherit the
     // grant's perks setting if the grant is what actually won.
@@ -143,6 +162,7 @@ export function resolveEffectiveAccess(input: {
       grantId: subWins ? null : grant.id,
       includePaidPerks,
       perksTierCode: includePaidPerks ? tierCode : "FREE",
+      waiveServiceFees,
     };
   }
 
@@ -153,6 +173,7 @@ export function resolveEffectiveAccess(input: {
       grantId: grant.id,
       includePaidPerks: grant.includePaidPerks,
       perksTierCode: grant.includePaidPerks ? grant.tierCode : "FREE",
+      waiveServiceFees,
     };
   }
 
@@ -163,6 +184,7 @@ export function resolveEffectiveAccess(input: {
       grantId: null,
       includePaidPerks: true,
       perksTierCode: sub!.tierCode,
+      waiveServiceFees,
     };
   }
 
@@ -172,6 +194,7 @@ export function resolveEffectiveAccess(input: {
     grantId: null,
     includePaidPerks: false,
     perksTierCode: "FREE",
+    waiveServiceFees,
   };
 }
 
@@ -287,7 +310,21 @@ export function applyFreeMode(
     // tier itself: nobody can buy the perk, so nobody is held to it.
     includePaidPerks: true,
     perksTierCode: freeModeTier,
+    // Free mode is an outage workaround, not an admin grant. Preserve any
+    // lifetime waiver so the entitlement survives payments coming back on.
+    waiveServiceFees: access.waiveServiceFees,
   };
+}
+
+/**
+ * True when an admin has issued this user an in-force fee waiver (typically a
+ * perpetual grant, i.e. lifetime free access). Every payment gate must consult
+ * this before charging, and should treat a true value exactly like the global
+ * payment kill switch for that specific user.
+ */
+export async function hasServiceFeeWaiver(userId: string): Promise<boolean> {
+  const access = await getEffectiveAccess(userId);
+  return access.waiveServiceFees;
 }
 
 /**
@@ -309,6 +346,7 @@ export async function getEffectiveAccess(userId: string): Promise<EffectiveAcces
         id: true,
         tierCode: true,
         includePaidPerks: true,
+        waiveServiceFees: true,
         startDate: true,
         endDate: true,
         revokedAt: true,

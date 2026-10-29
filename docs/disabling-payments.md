@@ -300,7 +300,7 @@ also stops a double-tap from charging twice.
 This is what makes it safe to leave on during a long incident: the blast radius
 is bounded by the switch, and recovery is a single `PATCH`.
 
-**`accessSource` reports `FREE_MODE`.** `GET /membership/subscription` surfaces
+**`accessSource` reports `FREE_MODE`.** `GET /membership/my-subscription` surfaces
 `accessSource` so the app can say *"everything is open while payments are
 paused"* rather than telling a user to go and pay for something they cannot pay
 for. Handle the new value in any client switch on that field.
@@ -500,7 +500,8 @@ if you used the legacy endpoint), with the reason in the note.
 
 **Tests:** `tests/free-mode.test.ts` (15), `tests/admin-payment-control.test.ts`,
 `tests/payment-gateway-settings.test.ts`, `tests/access-grants.test.ts`,
-`tests/itinerary-free-mode.test.ts` (4), `tests/superlike-free-mode.test.ts` (4),
+`tests/lifetime-free-access.test.ts`, `tests/itinerary-free-mode.test.ts` (4),
+`tests/superlike-free-mode.test.ts` (4),
 `tests/priority-support-free-mode.test.ts` (3)
 
 ```bash

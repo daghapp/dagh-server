@@ -21,6 +21,7 @@ function grant(overrides: Partial<GrantLike> = {}): GrantLike {
     id: "g1",
     tierCode: "SILVER",
     includePaidPerks: false,
+    waiveServiceFees: false,
     startDate: new Date("2026-01-01T00:00:00.000Z"),
     endDate: null,
     revokedAt: null,
@@ -138,6 +139,7 @@ describe("resolveEffectiveAccess — comp without a subscription", () => {
       grantId: "g1",
       includePaidPerks: false,
       perksTierCode: "FREE",
+      waiveServiceFees: false,
     });
   });
 
@@ -206,6 +208,7 @@ describe("resolveEffectiveAccess — paid subscription without a comp", () => {
       grantId: null,
       includePaidPerks: true,
       perksTierCode: "SILVER",
+      waiveServiceFees: false,
     });
   });
 
@@ -244,6 +247,7 @@ describe("resolveEffectiveAccess — paid subscription without a comp", () => {
       grantId: null,
       includePaidPerks: false,
       perksTierCode: "FREE",
+      waiveServiceFees: false,
     });
   });
 });
@@ -331,6 +335,73 @@ describe("resolveEffectiveAccess — comp and subscription coexist", () => {
 });
 
 // ─────────────────────────────────────────
+// resolveEffectiveAccess — service-fee waivers
+// ─────────────────────────────────────────
+describe("resolveEffectiveAccess — lifetime service-fee waiver", () => {
+  it("waives fees when a perpetual grant sets the flag", () => {
+    const access = resolveEffectiveAccess({
+      subscription: null,
+      grants: [grant({ waiveServiceFees: true, endDate: null })],
+      now: NOW,
+    });
+    expect(access.waiveServiceFees).toBe(true);
+  });
+
+  it("does not waive fees for a tier-only comp", () => {
+    const access = resolveEffectiveAccess({
+      subscription: null,
+      grants: [grant({ waiveServiceFees: false })],
+      now: NOW,
+    });
+    expect(access.waiveServiceFees).toBe(false);
+  });
+
+  it("waives fees even when a different, higher-tier grant governs", () => {
+    // The waiver is a per-user entitlement, not a property of the winning tier.
+    const access = resolveEffectiveAccess({
+      subscription: null,
+      grants: [
+        grant({ id: "basic-waiver", tierCode: "BASIC", waiveServiceFees: true }),
+        grant({ id: "gold", tierCode: "GOLD_INVESTOR", waiveServiceFees: false }),
+      ],
+      now: NOW,
+    });
+    expect(access.tierCode).toBe("GOLD_INVESTOR");
+    expect(access.grantId).toBe("gold");
+    expect(access.waiveServiceFees).toBe(true);
+  });
+
+  it("keeps waiving fees after a paid subscription outranks the grant", () => {
+    // Buying a plan must not silently cancel the admin's exemption.
+    const access = resolveEffectiveAccess({
+      subscription: sub({ tierCode: "ELITE_AMBASSADOR" }),
+      grants: [grant({ tierCode: "BASIC", waiveServiceFees: true })],
+      now: NOW,
+    });
+    expect(access.source).toBe("SUBSCRIPTION");
+    expect(access.waiveServiceFees).toBe(true);
+  });
+
+  it("drops the waiver when the grant expires", () => {
+    const access = resolveEffectiveAccess({
+      subscription: null,
+      grants: [grant({ waiveServiceFees: true, endDate: new Date("2026-05-01") })],
+      now: NOW,
+    });
+    expect(access.waiveServiceFees).toBe(false);
+  });
+
+  it("drops the waiver when the grant is revoked", () => {
+    const access = resolveEffectiveAccess({
+      subscription: null,
+      grants: [grant({ waiveServiceFees: true, revokedAt: new Date("2026-05-01") })],
+      now: NOW,
+    });
+    expect(access.waiveServiceFees).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────
 // Tier ordering consistency
 // ─────────────────────────────────────────
 describe("tier ordering", () => {
@@ -375,10 +446,52 @@ describe("createAccessGrantSchema", () => {
     const parsed = createAccessGrantSchema.parse(valid);
     expect(parsed.endDate).toBeUndefined();
     expect(parsed.includePaidPerks).toBe(false);
+    expect(parsed.waiveServiceFees).toBe(false);
   });
 
   it("defaults includePaidPerks to false so a comp is fee-only by default", () => {
     expect(createAccessGrantSchema.parse(valid).includePaidPerks).toBe(false);
+  });
+
+  it("accepts an explicit all-service fee waiver", () => {
+    expect(
+      createAccessGrantSchema.parse({ ...valid, waiveServiceFees: true }).waiveServiceFees,
+    ).toBe(true);
+  });
+
+  it("accepts an email instead of a userId", () => {
+    const parsed = createAccessGrantSchema.parse({
+      email: "person@example.com",
+      tierCode: "SILVER",
+      reason: "Email lookup",
+    });
+    expect(parsed.email).toBe("person@example.com");
+    expect(parsed.userId).toBeUndefined();
+  });
+
+  it("accepts both identifiers, leaving precedence to the controller", () => {
+    expect(
+      createAccessGrantSchema.safeParse({
+        ...valid,
+        email: "person@example.com",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("requires at least one identifier", () => {
+    expect(
+      createAccessGrantSchema.safeParse({ tierCode: "SILVER", reason: "No identifier" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a malformed email", () => {
+    expect(
+      createAccessGrantSchema.safeParse({
+        email: "not-an-email",
+        tierCode: "SILVER",
+        reason: "Bad email",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects a FREE grant", () => {
@@ -429,6 +542,11 @@ describe("createAccessGrantSchema", () => {
 describe("updateAccessGrantSchema", () => {
   it("accepts a partial update", () => {
     expect(updateAccessGrantSchema.safeParse({ includePaidPerks: true }).success).toBe(true);
+  });
+
+  it("accepts turning the service-fee waiver on or off", () => {
+    expect(updateAccessGrantSchema.safeParse({ waiveServiceFees: true }).success).toBe(true);
+    expect(updateAccessGrantSchema.safeParse({ waiveServiceFees: false }).success).toBe(true);
   });
 
   it("rejects downgrading a grant to FREE", () => {

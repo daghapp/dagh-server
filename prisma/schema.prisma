@@ -233,6 +233,10 @@ model SubscriptionAccessGrant {
   /// support). When false the user is only spared the fee and stays functionally
   /// equivalent to FREE, so comped users never outrank paying members.
   includePaidPerks Boolean            @default(false)
+  /// When true this comp also waives every service fee in the app (itinerary,
+  /// tour bookings, etc.), not just the membership tier. Combined with a null
+  /// endDate it represents a "lifetime free" account.
+  waiveServiceFees Boolean            @default(false)
   reason           String // Why this comp exists, e.g. "Board member - 2026"
   startDate        DateTime           @default(now())
   /// null means perpetual. Grants never auto-renew; they run to endDate or forever.

@@ -24,6 +24,7 @@ import * as paymentService from "../../services/payment.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
+import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 import { getCategoryAlbum, getRegionAlbum, listAlbums } from "./tour-album.service.js";
 
 export class UserTourController {
@@ -167,11 +168,16 @@ export class UserTourController {
       let feeWaived = totalPrice === 0;
 
       if (totalPrice > 0) {
-        // When the kill-switch is off, bypass the checkout and book for free. Tour
-        // bookings are a pass-through to operators, but the product decision is
-        // to waive them during outages (see docs/disabling-payments.md §4).
-        const paymentsOff = !(await isPaymentsEnabled());
-        if (paymentsOff) {
+        // When the kill-switch is off, or an admin granted this user lifetime
+        // free access, bypass the checkout and book for free. Tour bookings are
+        // a pass-through to operators, but the product decision is to waive them
+        // during outages (see docs/disabling-payments.md §4) and for
+        // admin-exempted accounts.
+        const [paymentsOff, feeWaiver] = await Promise.all([
+          isPaymentsEnabled().then((enabled) => !enabled),
+          hasServiceFeeWaiver(userId),
+        ]);
+        if (paymentsOff || feeWaiver) {
           feeWaived = true;
           paymentStatus = PaymentStatus.SUCCESS;
         } else {
@@ -443,9 +449,13 @@ export class UserTourController {
 
       // 3. Validate payload with Zod
 
-      // 4. Call universal payment controller — skip when kill-switch is off.
-      const paymentsOff = !(await isPaymentsEnabled());
-      if (paymentsOff) {
+      // 4. Call universal payment controller — skip when the kill-switch is off
+      // or the user holds an admin-granted lifetime fee waiver.
+      const [paymentsOff, feeWaiver] = await Promise.all([
+        isPaymentsEnabled().then((enabled) => !enabled),
+        hasServiceFeeWaiver(userId),
+      ]);
+      if (paymentsOff || feeWaiver) {
         const booking = await prisma.tour_bookings.create({
           data: {
             userId,
@@ -464,8 +474,16 @@ export class UserTourController {
         });
         return ok(
           res,
-          { bookingId: booking.id, paymentId: null, checkoutUrl: null, freeMode: true },
-          "Payments are temporarily disabled. Tour booked for free.",
+          {
+            bookingId: booking.id,
+            paymentId: null,
+            checkoutUrl: null,
+            freeMode: paymentsOff,
+            waiveServiceFees: feeWaiver,
+          },
+          feeWaiver
+            ? "Your lifetime-free access has waived the tour booking fee."
+            : "Payments are temporarily disabled. Tour booked for free.",
         );
       }
 

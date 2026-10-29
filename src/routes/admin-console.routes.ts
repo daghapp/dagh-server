@@ -588,8 +588,9 @@ router.delete(
  *     summary: List complimentary access grants (console)
  *     description: >
  *       Lists admin-issued comps. Filter with `status=active|revoked|expired`,
- *       or narrow by `userId` / `tierCode`. `active` means not revoked, already
- *       started, and not past endDate.
+ *       or narrow by `userId` / `email` / `tierCode`. Email is matched
+ *       case-insensitively. `active` means not revoked, already started, and not
+ *       past endDate.
  *     tags: [Admin - Access Grants]
  *     security:
  *       - bearerAuth: []
@@ -597,6 +598,9 @@ router.delete(
  *       - in: query
  *         name: userId
  *         schema: { type: string }
+ *       - in: query
+ *         name: email
+ *         schema: { type: string, format: email }
  *       - in: query
  *         name: tierCode
  *         schema:
@@ -631,8 +635,12 @@ router.get(
  *       auto-renew. Set `includePaidPerks` to true only when the comp should also
  *       confer ranking perks (matching boost, priority support) — leave it false
  *       to waive the fee while keeping the user equivalent to FREE, so comped
- *       users never outrank paying members. Rejected if the user already has an
- *       in-force grant for the same tier.
+ *       users never outrank paying members. Set `waiveServiceFees` to true to
+ *       exempt the user from every service fee (itinerary, tour bookings, paid
+ *       plan checkout); combine it with an omitted `endDate` for lifetime free
+ *       access. Rejected if the user already has an in-force grant for the same
+ *       tier. Identify the grantee with either `userId` or `email`; email is
+ *       matched case-insensitively and `userId` wins when both are sent.
  *     tags: [Admin - Access Grants]
  *     security:
  *       - bearerAuth: []
@@ -642,9 +650,15 @@ router.get(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [userId, tierCode, reason]
+ *             required: [tierCode, reason]
  *             properties:
- *               userId: { type: string }
+ *               userId:
+ *                 type: string
+ *                 description: User id. Provide this or email.
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Grantee email, matched case-insensitively. Provide this or userId.
  *               tierCode:
  *                 type: string
  *                 enum: [BASELINE, SENIOR_PIONEER, SANKOFA_SETTLED, BASIC, SILVER, GOLD_INVESTOR, ELITE_AMBASSADOR, FAMILY_PLAN]
@@ -652,6 +666,10 @@ router.get(
  *                 type: boolean
  *                 default: false
  *                 description: Confer matching boost and priority support, not just content access.
+ *               waiveServiceFees:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Exempt the user from all service fees. Use with a null endDate for lifetime free access.
  *               reason:
  *                 type: string
  *                 description: Why this comp exists. Kept in the audit trail.
@@ -690,9 +708,11 @@ router.post(
  *   patch:
  *     summary: Amend an access grant (console)
  *     description: >
- *       Updates tier, perks flag, reason, or dates. Setting `endDate` to a past
- *       date is an early revoke that preserves the grant record. Revoked grants
- *       cannot be modified.
+ *       Updates tier, perks flag, service-fee waiver, reason, or dates. Setting
+ *       `endDate` to a past date is an early revoke that preserves the grant
+ *       record. Setting `waiveServiceFees` to false removes the all-service
+ *       exemption without revoking tier access. Revoked grants cannot be
+ *       modified.
  *     tags: [Admin - Access Grants]
  *     security:
  *       - bearerAuth: []
@@ -712,6 +732,7 @@ router.post(
  *                 type: string
  *                 enum: [BASELINE, SENIOR_PIONEER, SANKOFA_SETTLED, BASIC, SILVER, GOLD_INVESTOR, ELITE_AMBASSADOR, FAMILY_PLAN]
  *               includePaidPerks: { type: boolean }
+ *               waiveServiceFees: { type: boolean }
  *               reason: { type: string }
  *               startDate: { type: string, format: date-time }
  *               endDate: { type: string, format: date-time, nullable: true }

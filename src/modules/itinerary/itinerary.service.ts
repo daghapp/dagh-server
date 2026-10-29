@@ -14,6 +14,7 @@ import type {
 import { prisma } from "../../config/index.js";
 import sendEmail from "../../config/resend.config.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
+import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 import {
   haversineDistance,
   maxPairwiseDistance,
@@ -211,11 +212,20 @@ export async function getItineraryByRequestId(
     throw new Error("FORBIDDEN");
   }
   if (tourRequest.paymentStatus !== "SUCCESS") {
-    // When the payment kill-switch is off, waive the fee in-place so this and
-    // every subsequent fetch pass without requiring the user to call the payment
-    // endpoint first. Mirrors the same logic in initiateItineraryPayment.
-    const paymentsOff = !(await isPaymentsEnabled());
-    if (!paymentsOff) {
+    // When payments are off or an admin granted a lifetime fee waiver, waive the
+    // fee in-place so this and every subsequent fetch pass without requiring the
+    // user to call the payment endpoint first. Mirrors initiateItineraryPayment.
+    // The caller can resolve access once and pass it down (the "my itineraries"
+    // list would otherwise do three lookups per itinerary).
+    let paymentAccess = deps.paymentAccess;
+    if (!paymentAccess) {
+      const [paymentsOff, feeWaiver] = await Promise.all([
+        isPaymentsEnabled().then((enabled) => !enabled),
+        hasServiceFeeWaiver(requesterId),
+      ]);
+      paymentAccess = { paymentsOff, feeWaiver };
+    }
+    if (!paymentAccess.paymentsOff && !paymentAccess.feeWaiver) {
       throw new Error("PAYMENT_REQUIRED");
     }
     await prisma.tourRequest.update({
@@ -860,9 +870,16 @@ export interface ItineraryCatalogues {
 
 type DatingSelections = Awaited<ReturnType<typeof getDatingSelectionsForTour>>;
 
+interface ItineraryPaymentAccess {
+  paymentsOff: boolean;
+  feeWaiver: boolean;
+}
+
 interface ItineraryMappingDeps {
   catalogues?: ItineraryCatalogues;
   datingSelections?: DatingSelections;
+  /** Resolved once by list endpoints and reused across every itinerary. */
+  paymentAccess?: ItineraryPaymentAccess;
 }
 
 export async function loadItineraryCatalogues(): Promise<ItineraryCatalogues> {

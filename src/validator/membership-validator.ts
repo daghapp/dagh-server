@@ -80,13 +80,21 @@ const TIER_CODE_ENUM = [
  */
 export const createAccessGrantSchema = z
   .object({
-    userId: z.string().min(1, "User ID is required"),
+    // Identify the grantee by id or email. The admin console accepts either;
+    // email is matched case-insensitively, and userId wins if both are sent.
+    userId: z.string().min(1, "User ID must not be empty").optional(),
+    email: z.string().email("Enter a valid email address").optional(),
     // FREE is rejected below: a grant must give more than the user already has.
     tierCode: z.enum(TIER_CODE_ENUM),
     includePaidPerks: z.boolean().default(false),
+    waiveServiceFees: z.boolean().default(false),
     reason: z.string().min(3, "A reason is required for the audit trail").max(500),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().nullable().optional(),
+  })
+  .refine((data) => !!data.userId || !!data.email, {
+    message: "Provide either userId or email",
+    path: ["userId"],
   })
   .refine((data) => data.tierCode !== "FREE", {
     message: "A grant must confer a paid tier, not FREE",
@@ -102,6 +110,7 @@ export const updateAccessGrantSchema = z
   .object({
     tierCode: z.enum(TIER_CODE_ENUM).optional(),
     includePaidPerks: z.boolean().optional(),
+    waiveServiceFees: z.boolean().optional(),
     reason: z.string().min(3).max(500).optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().nullable().optional(),

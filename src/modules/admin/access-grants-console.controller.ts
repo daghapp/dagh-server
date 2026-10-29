@@ -24,11 +24,14 @@ export class AdminAccessGrantsConsoleController {
    */
   async list(req: Request, res: Response) {
     try {
-      const { userId, tierCode, status } = req.query as Record<string, string | undefined>;
+      const { userId, email, tierCode, status } = req.query as Record<string, string | undefined>;
       const now = new Date();
 
       const where: Record<string, unknown> = {};
       if (userId) where.userId = userId;
+      if (email) {
+        where.user = { email: { equals: email, mode: "insensitive" } };
+      }
       if (tierCode) where.tierCode = tierCode as MembershipTierCode;
 
       if (status === "active") {
@@ -65,28 +68,63 @@ export class AdminAccessGrantsConsoleController {
   async create(req: Request, res: Response) {
     try {
       const actor = req.user!;
-      const { userId, tierCode, includePaidPerks, reason, startDate, endDate } = req.body as {
-        userId: string;
+      const {
+        userId,
+        email,
+        tierCode,
+        includePaidPerks,
+        waiveServiceFees,
+        reason,
+        startDate,
+        endDate,
+      } = req.body as {
+        userId?: string;
+        email?: string;
         tierCode: MembershipTierCode;
         includePaidPerks?: boolean;
+        waiveServiceFees?: boolean;
         reason: string;
         startDate?: Date;
         endDate?: Date | null;
       };
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, email: true, fullName: true },
-      });
-      if (!user) {
-        return fail(res, 404, { code: "USER_NOT_FOUND", message: "User not found" });
+      // Admins normally know the person's email, not their internal id. Match
+      // case-insensitively because historical rows were not normalised; if two
+      // accounts collide on case, require the id rather than guessing.
+      let user: { id: string; email: string; fullName: string } | null = null;
+      if (userId) {
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, email: true, fullName: true },
+        });
+      } else if (email) {
+        const matches = await prisma.user.findMany({
+          where: { email: { equals: email, mode: "insensitive" } },
+          select: { id: true, email: true, fullName: true },
+          take: 2,
+        });
+        if (matches.length > 1) {
+          return fail(res, 409, {
+            code: "AMBIGUOUS_EMAIL",
+            message: "Multiple accounts use that email. Provide userId instead.",
+          });
+        }
+        user = matches[0] ?? null;
       }
+
+      if (!user) {
+        return fail(res, 404, {
+          code: "USER_NOT_FOUND",
+          message: email ? "No user found with that email" : "User not found",
+        });
+      }
+      const resolvedUserId = user.id;
 
       // One live grant per user per tier keeps "who approved this" answerable;
       // a second grant for the same tier is almost always a mistake.
       const duplicate = await prisma.subscriptionAccessGrant.findFirst({
         where: {
-          userId,
+          userId: resolvedUserId,
           tierCode,
           revokedAt: null,
           OR: [{ endDate: null }, { endDate: { gt: new Date() } }],
@@ -101,9 +139,10 @@ export class AdminAccessGrantsConsoleController {
 
       const grant = await prisma.subscriptionAccessGrant.create({
         data: {
-          userId,
+          userId: resolvedUserId,
           tierCode,
           includePaidPerks: includePaidPerks ?? false,
+          waiveServiceFees: waiveServiceFees ?? false,
           reason,
           startDate: startDate ?? new Date(),
           endDate: endDate ?? null,
@@ -116,11 +155,13 @@ export class AdminAccessGrantsConsoleController {
         entityType: AdminEntityType.SUBSCRIPTION_ACCESS_GRANT,
         entityId: grant.id,
         action: "GRANT_ACCESS",
-        note: `Granted ${tierCode} to ${user.email}${includePaidPerks ? " (with paid perks)" : " (fee waived only)"}`,
+        note: `Granted ${tierCode} to ${user.email}${includePaidPerks ? " (with paid perks)" : " (tier access only)"}${waiveServiceFees ? " — all service fees waived" : ""}`,
         metadata: {
-          userId,
+          userId: resolvedUserId,
+          email: user.email,
           tierCode,
           includePaidPerks: includePaidPerks ?? false,
+          waiveServiceFees: waiveServiceFees ?? false,
           endDate: endDate ?? null,
           perpetual: !endDate,
           reason,
@@ -145,6 +186,7 @@ export class AdminAccessGrantsConsoleController {
       const body = req.body as {
         tierCode?: MembershipTierCode;
         includePaidPerks?: boolean;
+        waiveServiceFees?: boolean;
         reason?: string;
         startDate?: Date;
         endDate?: Date | null;
@@ -178,6 +220,9 @@ export class AdminAccessGrantsConsoleController {
         data: {
           ...(body.tierCode !== undefined && { tierCode: body.tierCode }),
           ...(body.includePaidPerks !== undefined && { includePaidPerks: body.includePaidPerks }),
+          ...(body.waiveServiceFees !== undefined && {
+            waiveServiceFees: body.waiveServiceFees,
+          }),
           ...(body.reason !== undefined && { reason: body.reason }),
           ...(body.startDate !== undefined && { startDate: body.startDate }),
           ...(body.endDate !== undefined && { endDate: body.endDate }),
@@ -189,13 +234,22 @@ export class AdminAccessGrantsConsoleController {
         entityType: AdminEntityType.SUBSCRIPTION_ACCESS_GRANT,
         entityId: grant.id,
         action: "UPDATE_ACCESS",
-        note: `Updated ${grant.tierCode} grant`,
+        note:
+          body.waiveServiceFees === undefined
+            ? `Updated ${grant.tierCode} grant`
+            : grant.waiveServiceFees
+              ? `Updated ${grant.tierCode} grant — all service fees waived`
+              : `Updated ${grant.tierCode} grant — service fee waiver removed`,
         metadata: {
           userId: grant.userId,
           tierCode: { from: existing.tierCode, to: grant.tierCode },
           includePaidPerks: {
             from: existing.includePaidPerks,
             to: grant.includePaidPerks,
+          },
+          waiveServiceFees: {
+            from: existing.waiveServiceFees,
+            to: grant.waiveServiceFees,
           },
           endDate: { from: existing.endDate, to: grant.endDate },
         },

@@ -7,6 +7,7 @@ import {
 } from "./itinerary.service.js";
 import { ok, fail } from "../../helpers/response.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
+import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 
 // Building one itinerary costs several queries, so fanning out over every tour
 // request at once can exhaust the pg pool (and its 5s connect timeout). A small
@@ -41,15 +42,21 @@ export async function getUserItineraries(req: Request, res: Response) {
       return fail(res, 401, "Unauthorized");
     }
 
-    // When payments are off every tour request is effectively paid — the
-    // individual fetch (getItineraryByRequestId) auto-waives STATUS in that
-    // case, so filtering to SUCCESS here would return an empty list for
-    // requests that haven't been fetched individually yet.
-    const paymentsOff = !(await isPaymentsEnabled());
+    // When payments are off — or the user has an admin-granted lifetime fee
+    // waiver — every tour request is effectively paid. The individual fetch
+    // (getItineraryByRequestId) auto-waives STATUS in that case, so filtering to
+    // SUCCESS here would return an empty list for requests that haven't been
+    // fetched individually yet. Resolve once and pass it down so the list does
+    // not repeat the lookup for every itinerary.
+    const [paymentsOff, feeWaiver] = await Promise.all([
+      isPaymentsEnabled().then((enabled) => !enabled),
+      hasServiceFeeWaiver(userId),
+    ]);
+    const freeAccess = paymentsOff || feeWaiver;
     const paidRequests = await prisma.tourRequest.findMany({
       where: {
         userId,
-        ...(paymentsOff ? {} : { paymentStatus: "SUCCESS" }),
+        ...(freeAccess ? {} : { paymentStatus: "SUCCESS" }),
       },
       select: {
         id: true,
@@ -75,6 +82,7 @@ export async function getUserItineraries(req: Request, res: Response) {
       getItineraryByRequestId(r.id, userId, {
         catalogues,
         datingSelections: datingSelectionsByRequest.get(r.id) ?? [],
+        paymentAccess: { paymentsOff, feeWaiver },
       }),
     );
 

@@ -491,7 +491,7 @@ external Google Places fallback is injected with `source: "external"` and the ta
 |--------|----------|------|--------------|
 | GET | `/membership/plans` | Public | List active plans with pricing, intervals, features. |
 | POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free = instant, paid = Hubtel checkout). |
-| GET | `/membership/my-subscription` | Bearer | Current user's subscription + plan + member code. |
+| GET | `/membership/my-subscription` | Bearer | Current user's subscription + plan + member code, plus `waiveServiceFees` when an admin granted lifetime free access. |
 | POST | `/membership/support` | Bearer | Open a priority support ticket (paid tiers only). |
 | POST | `/membership/payment-callback` | Hubtel | Hubtel callback; activates the subscription. |
 

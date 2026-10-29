@@ -14,7 +14,7 @@ import {
   type MembershipTierCode,
 } from "../../generated/prisma/client.js";
 import type { SubscribeMembershipSchema, PrioritySupportSchema } from "../validator/index.js";
-import { getEffectiveAccess } from "../helpers/membership.js";
+import { getEffectiveAccess, hasServiceFeeWaiver } from "../helpers/membership.js";
 
 // Generates a random member code in the format "89345-SGF" and checks uniqueness in the DB.
 // Retries up to 5 times on collision before throwing.
@@ -77,6 +77,25 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
       success: false,
       code: "PLAN_NOT_PURCHASABLE",
       message: "This plan is not available for subscription. Please contact support.",
+    };
+  }
+
+  // Admins can exempt an account from every charge. Such users are never sent
+  // to a checkout. Crucially we do NOT write a free subscription row for them:
+  // that row would outlive a revoked waiver and leave them on a paid tier
+  // without a payment. The admin's grant already defines their tier, so the
+  // exemption stays under admin control and disappears when the grant does.
+  const feeWaiver = await hasServiceFeeWaiver(userId);
+  if (feeWaiver) {
+    return {
+      success: true,
+      message: "Your account already has complimentary lifetime access. No payment is required.",
+      data: {
+        subscriptionId: existingSub?.id ?? null,
+        status: "ACTIVE",
+        checkoutUrl: null,
+        waiveServiceFees: true,
+      },
     };
   }
 
@@ -420,12 +439,14 @@ export async function getUserSubscription(userId: string) {
       status: "ACTIVE" as const,
       autoRenew: false,
       accessSource: access.source,
+      waiveServiceFees: access.waiveServiceFees,
       accessGrant: governingGrant
         ? {
             id: governingGrant.id,
             tierCode: governingGrant.tierCode,
             reason: governingGrant.reason,
             includePaidPerks: governingGrant.includePaidPerks,
+            waiveServiceFees: governingGrant.waiveServiceFees,
             startDate: governingGrant.startDate,
             endDate: governingGrant.endDate,
           }
@@ -451,6 +472,7 @@ export async function getUserSubscription(userId: string) {
     activatedAt: subscription.startDate,
     paymentReference: latestPayment?.reference ?? null,
     accessSource: access.source,
+    waiveServiceFees: access.waiveServiceFees,
     // Non-null when a comp outranks the user's own subscription, so the app can
     // explain why their tier looks higher than the plan they picked.
     accessGrantId: access.source === "GRANT" ? access.grantId : null,
