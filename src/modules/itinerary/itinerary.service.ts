@@ -175,7 +175,7 @@ export async function createTourRequest(
         <p>A new tour request has been submitted:</p>
         <p><strong>Duration:</strong> ${durationDays} days</p>
         <p><strong>Region:</strong> ${startRegion ?? "unknown"}</p>
-        <p><strong>Tour sites:</strong> ${rawSites.length} site(s) selected</p>
+        <p><strong>Tour sites:</strong> ${rawSites.slice(0, 3).map(s => s.name).join(', ')} ${rawSites.length > 3 ? `+${rawSites.length - 3} more` : ''}</p>
         <p><strong>Requested by:</strong> ${requester?.fullName ?? requester?.email ?? "unknown"}</p>
       </div>
       <div class="footer">
