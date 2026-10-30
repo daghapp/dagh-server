@@ -144,7 +144,7 @@ export async function createTourRequest(
   try {
     const requester = await prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: { fullName: true, email: true },
     });
     await sendEmail({
       email: "josephbekoe15@gmail.com",
@@ -173,9 +173,9 @@ export async function createTourRequest(
       </div>
       <div class="content">
         <p>A new tour request has been submitted:</p>
-        <p><strong>Request ID:</strong> ${tourRequest.id}</p>
         <p><strong>Duration:</strong> ${durationDays} days</p>
-        <p><strong>Requested by:</strong> ${requester?.email ?? "unknown"}</p>
+        <p><strong>Region:</strong> ${startRegion ?? "unknown"}</p>
+        <p><strong>Requested by:</strong> ${requester?.fullName ?? requester?.email ?? "unknown"}</p>
       </div>
       <div class="footer">
         — The DAGH Team

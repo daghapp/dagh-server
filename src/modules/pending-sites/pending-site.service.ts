@@ -116,7 +116,7 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
   try {
     const submitter = await prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: { fullName: true, email: true },
     });
     await sendEmail({
       email: "josephbekoe15@gmail.com",
@@ -152,7 +152,7 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
         </div>
         <div class="info-row">
           <span class="info-label">Submitted by:</span>
-          <span class="info-value">${submitter?.email ?? "unknown"}</span>
+          <span class="info-value">${submitter?.fullName ?? submitter?.email ?? "unknown"}</span>
         </div>
       </div>
       <div class="footer">
