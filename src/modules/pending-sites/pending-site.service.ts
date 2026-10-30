@@ -114,10 +114,53 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
 
   // Best-effort email notification to the account handling tour submissions.
   try {
+    const submitter = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
     await sendEmail({
       email: "josephbekoe15@gmail.com",
       subject: "New tour site submitted for review",
-      html: `<p>A new tour site has been submitted for review: <strong>${name}</strong>.</p><p>Region: ${input.region}</p><p>— The DAGH Team</p>`,
+      html: `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      body {font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;}
+      .container {background: #ffffff; max-width: 600px; margin: 0 auto; border-radius: 8px; overflow: hidden;}
+      .header {background: #667eea; color: #ffffff; padding: 20px; text-align: center;}
+      .content {padding: 30px; color: #333333;}
+      .content h2 {color: #667eea; margin-top: 0;}
+      .info-row {margin: 20px 0; padding: 10px; background: #f9f9f9; border-radius: 4px;}
+      .info-label {font-weight: bold; color: #555555; display: inline-block; width: 30%;}
+      .info-value {margin-left: 5%;}
+      .footer {background: #667eea; color: #ffffff; padding: 15px; text-align: center; font-size: 12px;}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>New Tour Site Submission</h1>
+      </div>
+      <div class="content">
+        <p>A new tour site has been submitted for review:</p>
+        <h2><strong>${name}</strong></h2>
+        <div class="info-row">
+          <span class="info-label">Region:</span>
+          <span class="info-value">${input.region}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Submitted by:</span>
+          <span class="info-value">${submitter?.email ?? "unknown"}</span>
+        </div>
+      </div>
+      <div class="footer">
+        — The DAGH Team
+      </div>
+    </div>
+  </body>
+</html>`,
     });
   } catch (error) {
     console.error("[pending-sites] submission email failed:", error);

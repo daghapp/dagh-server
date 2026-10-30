@@ -142,10 +142,47 @@ export async function createTourRequest(
 
   // Best-effort email notification to the account handling tour requests.
   try {
+    const requester = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
     await sendEmail({
       email: "josephbekoe15@gmail.com",
       subject: "New tour request submitted",
-      html: `<p>A new tour request has been submitted (id: <strong>${tourRequest.id}</strong>).</p><p>Duration: ${durationDays} days</p><p>— The DAGH Team</p>`,
+      html: `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      body {font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;}
+      .container {background: #ffffff; max-width: 600px; margin: 0 auto; border-radius: 8px; overflow: hidden;}
+      .header {background: #667eea; color: #ffffff; padding: 20px; text-align: center;}
+      .content {padding: 30px; color: #333333;}
+      .content h2 {color: #667eea; margin-top: 0;}
+      .info-row {margin: 20px 0; padding: 10px; background: #f9f9f9; border-radius: 4px;}
+      .info-label {font-weight: bold; color: #555555; display: inline-block; width: 30%;}
+      .info-value {margin-left: 5%;}
+      .footer {background: #667eea; color: #ffffff; padding: 15px; text-align: center; font-size: 12px;}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>New Tour Request Submitted</h1>
+      </div>
+      <div class="content">
+        <p>A new tour request has been submitted:</p>
+        <p><strong>Request ID:</strong> ${tourRequest.id}</p>
+        <p><strong>Duration:</strong> ${durationDays} days</p>
+        <p><strong>Requested by:</strong> ${requester?.email ?? "unknown"}</p>
+      </div>
+      <div class="footer">
+        — The DAGH Team
+      </div>
+    </div>
+  </body>
+</html>`,
     });
   } catch (error) {
     console.error("[itinerary] tour request email failed:", error);
