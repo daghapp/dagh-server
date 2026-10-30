@@ -152,7 +152,11 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
         </div>
         <div class="info-row">
           <span class="info-label">Submitted by:</span>
-          <span class="info-value">${submitter?.fullName ?? submitter?.email ?? "unknown"}</span>
+          <span class="info-value">${submitter?.fullName ?? "unknown"}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email:</span>
+          <span class="info-value">${submitter?.email ?? "unknown"}</span>
         </div>
       </div>
       <div class="footer">
