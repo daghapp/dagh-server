@@ -1,4 +1,13 @@
 import "dotenv/config";
+// Force IPv4 DNS resolution for Prisma's own (CLI) connections. Without this,
+// Node's Happy Eyeballs tries blackholed IPv6 addresses and can time out.
+import dns from "node:dns";
+const _origLookup = dns.lookup;
+(dns as any).lookup = function (hostname: string, options: any, callback: any) {
+  if (typeof options === "function") { callback = options; options = {}; }
+  options = Object.assign({}, options, { family: 4 });
+  return _origLookup(hostname, options, callback);
+};
 import { defineConfig } from "prisma/config";
 
 const DATABASE_URL = process.env.DATABASE_URL;

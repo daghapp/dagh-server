@@ -107,6 +107,8 @@ NODE_ENV=production
 API_URL=https://dagh-server-fo64.onrender.com
 
 # Database
+# Note: the server pins DB connections to IPv4 to avoid hangs on hosts (e.g. Neon)
+# whose IPv6 path is blackholed.
 DATABASE_URL=postgresql://user:password@localhost:5432/dagh
 DATABASE_POOL_MAX=10            # pg pool per instance (optional, default 10)
 

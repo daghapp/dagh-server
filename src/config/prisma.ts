@@ -2,16 +2,25 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
 import pg from "pg";
+import net from "node:net";
 
 const connectionString = process.env.DATABASE_URL!;
 
-const adapter = new PrismaPg({
+// Force IPv4 at the socket level. `family: 4` on the pool config is silently
+// ignored by pg (it never reaches net.connect), so Node's Happy Eyeballs still
+// tries the (blackholed) IPv6 addresses and can hang past the connect timeout.
+// Overriding the stream's connect method is the only reliable way to pin IPv4.
+function createSocket() {
+  const socket = new net.Socket();
+  (socket as any).connect = function (port: number, host: string) {
+    return (net.Socket.prototype.connect as any).call(this, { port, host, family: 4 });
+  };
+  return socket;
+}
+
+const pool = new pg.Pool({
   connectionString,
-  // Force IPv4: some hosts advertise AAAA records but their IPv6 path is
-  // blackholed, and Node's Happy Eyeballs fallback can hang before switching.
-  // `family` is a valid pg runtime option but is not declared in @types/pg,
-  // so it requires the cast below.
-  family: 4,
+  stream: createSocket,
   // Bound the pg pool so a slow/paused database fails fast instead of hanging
   // the request queue (previously defaulted to 10 connections, no timeouts).
   max: Number(process.env.DATABASE_POOL_MAX) || 10,
@@ -20,6 +29,8 @@ const adapter = new PrismaPg({
   query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 10000,
   statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS) || 10000,
 } as pg.PoolConfig);
+
+const adapter = new PrismaPg(pool);
 
 const basePrisma = new PrismaClient({ adapter });
 
