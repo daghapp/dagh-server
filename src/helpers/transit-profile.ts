@@ -37,9 +37,14 @@ const RURAL_REGIONS = new Set([
  * peri-urban. Exported for seeding and the pending-site approval pipeline.
  */
 export function deriveTransitProfile(region: string): TransitProfileValue {
-  const normalized = region.trim();
-  if (URBAN_REGIONS.has(normalized)) return "URBAN_CENTER";
-  if (RURAL_REGIONS.has(normalized)) return "RURAL";
+  const normalized = (region ?? "").trim().toLowerCase();
+  if (["greater accra", "ashanti", "central", "western"].includes(normalized))
+    return "URBAN_CENTER";
+  if (
+    ["volta", "oti", "northern", "north east", "upper east", "upper west", "savannah"]
+      .includes(normalized)
+  )
+    return "RURAL";
   return "PERI_URBAN";
 }
 
