@@ -146,12 +146,11 @@ export async function createTourRequest(
       where: { id: userId },
       select: { fullName: true, email: true },
     });
-    // Extract unique regions from selected tour sites
+    // List every selected region and every selected site so the handling
+    // organization has the complete picture (no truncation).
     const selectedRegions = [...new Set(rawSites.map((s) => s.region))];
-    const regionDisplay =
-      selectedRegions.length === 1
-        ? selectedRegions[0]
-        : `${selectedRegions.slice(0, 3).join(", ")}${selectedRegions.length > 3 ? ` +${selectedRegions.length - 3} more` : ""}`;
+    const regionDisplay = selectedRegions.join(", ");
+    const siteList = rawSites.map((s) => s.name).join(", ");
     await sendEmail({
       email: "josephbekoe15@gmail.com",
       subject: "New tour request submitted",
@@ -180,8 +179,16 @@ export async function createTourRequest(
       <div class="content">
         <p>A new tour request has been submitted:</p>
         <p><strong>Duration:</strong> ${durationDays} days</p>
-        <p><strong>Region:</strong> ${regionDisplay}</p>
-        <p><strong>Tour sites:</strong> ${rawSites.slice(0, 3).map(s => s.name).join(', ')} ${rawSites.length > 3 ? `+${rawSites.length - 3} more` : ''}</p>
+        <p><strong>Tour type:</strong> ${tourType}</p>
+        <p><strong>Start region:</strong> ${startRegion}</p>
+        <p><strong>Regions visited:</strong> ${regionDisplay}</p>
+        <p><strong>Tour sites (${rawSites.length}):</strong> ${siteList}</p>
+        <p><strong>Transport:</strong> ${transportType ?? "not specified"}</p>
+        <p><strong>Accommodation:</strong> ${apartmentType ?? "not specified"}</p>
+        <p><strong>Relocation interest:</strong> ${relocationInterest ? "Yes" : "No"}</p>
+        <p><strong>Companion interest:</strong> ${companionInterest ? "Yes" : "No"}</p>
+        <p><strong>Casual dating interest:</strong> ${casualDatingInterest ? "Yes" : "No"}</p>
+        <p><strong>Allow Accra overnight:</strong> ${allowAccraOvernight ? "Yes" : "No"}</p>
         <p><strong>Requested by:</strong> ${requester?.fullName ?? "unknown"}</p>
         <p><strong>Email:</strong> ${requester?.email ?? "unknown"}</p>
       </div>
