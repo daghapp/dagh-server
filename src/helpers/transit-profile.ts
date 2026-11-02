@@ -41,8 +41,9 @@ export function deriveTransitProfile(region: string): TransitProfileValue {
   if (["greater accra", "ashanti", "central", "western"].includes(normalized))
     return "URBAN_CENTER";
   if (
-    ["volta", "oti", "northern", "north east", "upper east", "upper west", "savannah"]
-      .includes(normalized)
+    ["volta", "oti", "northern", "north east", "upper east", "upper west", "savannah"].includes(
+      normalized,
+    )
   )
     return "RURAL";
   return "PERI_URBAN";

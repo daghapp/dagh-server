@@ -140,7 +140,7 @@ export async function createTourRequest(
     },
   });
 
-// Best-effort email notification to the account handling tour requests.
+  // Best-effort email notification to the account handling tour requests.
   try {
     const requester = await prisma.user.findUnique({
       where: { id: userId },
