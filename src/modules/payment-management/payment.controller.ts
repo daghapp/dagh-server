@@ -12,6 +12,12 @@ import { generateClientReference } from "../../helpers/client-ref.js";
 import * as paymentService from "../../services/payment.service.js";
 import { ok, fail } from "../../helpers/response.js";
 import { hasServiceFeeWaiver } from "../../helpers/membership.js";
+import {
+  getClientPlatform,
+  shouldBlockIosDigitalPurchase,
+  IOS_IAP_REQUIRED_CODE,
+  IOS_IAP_REQUIRED_MESSAGE,
+} from "../../helpers/client-platform.js";
 import { PaymentTargetType } from "../../../generated/prisma/client.js";
 
 export class PaymentController {
@@ -41,13 +47,31 @@ export class PaymentController {
 
       const body = req.body;
       const payload = initializePaymentSchema.parse(body);
+      const targetType = (body.targetType as PaymentTargetType) ?? PaymentTargetType.TOUR_BOOKING;
+
+      // /payment/initialize accepts a raw targetType, so it is a second door to
+      // the same digital subscription. Gate it identically to /membership/subscribe.
+      if (
+        targetType === PaymentTargetType.MEMBERSHIP_SUBSCRIPTION &&
+        shouldBlockIosDigitalPurchase({
+          platform: getClientPlatform(req),
+          price: payload.totalAmount,
+          tierCode: "PAID",
+        })
+      ) {
+        return fail(res, 403, {
+          code: IOS_IAP_REQUIRED_CODE,
+          message: IOS_IAP_REQUIRED_MESSAGE,
+        });
+      }
+
       const result = await paymentService.initializePayment({
         totalAmount: payload.totalAmount,
         description: payload.description,
         returnUrl: payload.returnUrl,
         callbackUrl: payload.callbackUrl,
         cancellationUrl: payload.cancellationUrl,
-        targetType: (body.targetType as PaymentTargetType) ?? PaymentTargetType.TOUR_BOOKING,
+        targetType,
         targetId: body.targetId ?? "",
         userId: user.id,
         currency: body.currency ?? "GHS",

@@ -32,7 +32,10 @@ FACEBOOK_CALLBACK_URL=https://dagh-server-fo64.onrender.com/auth/facebook/callba
 APPLE_CLIENT_ID=<Services ID bundle id>
 APPLE_TEAM_ID=<10-char Team ID>
 APPLE_KEY_ID=<10-char Key ID>
-APPLE_PRIVATE_KEY_PATH=/etc/secrets/AuthKey_<keyid>.p8   # path ON the host
+# Supply the .p8 EITHER inline (Render-friendly) ...
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+# ... OR as a file mounted on the host. Inline wins; a missing path counts as unconfigured.
+# APPLE_PRIVATE_KEY_PATH=/etc/secrets/AuthKey_<keyid>.p8
 APPLE_CALLBACK_URL=https://dagh-server-fo64.onrender.com/auth/apple/callback
 ```
 
@@ -74,8 +77,10 @@ Observed bug: the deployed app pointed its callback at the **old** domain
 
 ## 5. Apple Sign In
 
-`/auth/apple` returns **503 until all five vars are set** — that is the
-intended guard, not a bug (`src/routes/apple-auth.routes.ts:25`).
+`/auth/apple` returns **503 until the credentials and a usable private key are
+set** — that is the intended guard, not a bug. Both `APPLE_PRIVATE_KEY` (inline)
+and `APPLE_PRIVATE_KEY_PATH` (existing file) satisfy the key requirement; see
+`src/config/apple.ts`.
 
 Steps:
 
@@ -89,9 +94,10 @@ Steps:
      Services ID, and download the `.p8` file (`APPLE_KEY_ID` is on the file:
      `AuthKey_<keyid>.p8`).
 2. **On the server host:**
-   - Upload the `.p8` and set `APPLE_PRIVATE_KEY_PATH` to that path. On Render,
-     mount it as a secret file (e.g. `/etc/secrets/AuthKey_<keyid>.p8`) and point
-     the env var there — do not commit the key.
+   - Add the `.p8` contents as `APPLE_PRIVATE_KEY` (keep the newlines as `\n`
+     escapes), or mount it as a secret file and set `APPLE_PRIVATE_KEY_PATH` to
+     that path (e.g. `/etc/secrets/AuthKey_<keyid>.p8`). Inline wins when both
+     are present. Never commit the key.
    - Set `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CALLBACK_URL`.
 3. Apple posts the callback as `application/x-www-form-urlencoded` POST. The
    server's session cookie uses `sameSite: none` in production so it survives
@@ -137,7 +143,7 @@ What to check:
 | ------- | ----- | --- |
 | Facebook init redirects to old domain callback | `FACEBOOK_CALLBACK_URL` stale on server | Set to current domain, redeploy |
 | Facebook login error "redirect_uri is not an authorized URI" | Missing in Facebook console | Add to **Valid OAuth Redirect URIs** |
-| `/auth/apple` → 503 | Apple env vars not all set | Fill all five, mount `.p8` on host |
+| `/auth/apple` → 503 | Apple env vars or private key missing | Set all vars and supply `APPLE_PRIVATE_KEY` (inline) or a valid `APPLE_PRIVATE_KEY_PATH` |
 | Apple consent error "redirect URL not validated" | Redirect URL not re-entered on first save | Edit Services ID → re-enter URL → Save |
 | App never reopens after success page | Browser (not app) hit `/auth/google/success` | Use `WebBrowser.openAuthSessionAsync` with the `redirect` param |
 
@@ -147,6 +153,11 @@ What to check:
 
 - Random 32-byte, single-use `state` bound to the server session; validated and
   consumed on callback — `src/modules/authentication/oauth-state.ts`.
+- Apple accounts are keyed by Apple's stable `sub` (`users.appleId`), never by a
+  missing-email fallback; a legacy email-matched account is linked on first
+  Apple login — `src/modules/authentication/apple-identity.ts`.
+- Apple refresh tokens are stored encrypted and revoked on account deletion —
+  `src/services/apple-token.service.ts`.
 - Only `diasporansync:///oauth` is an approved return destination.
 - Provider codes are exchanged server-side by Passport; the app only ever
   receives backend-issued JWTs.

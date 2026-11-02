@@ -15,6 +15,12 @@ import {
 } from "../../generated/prisma/client.js";
 import type { SubscribeMembershipSchema, PrioritySupportSchema } from "../validator/index.js";
 import { getEffectiveAccess, hasServiceFeeWaiver } from "../helpers/membership.js";
+import {
+  shouldBlockIosDigitalPurchase,
+  IOS_IAP_REQUIRED_CODE,
+  IOS_IAP_REQUIRED_MESSAGE,
+  type ClientPlatform,
+} from "../helpers/client-platform.js";
 
 // Generates a random member code in the format "89345-SGF" and checks uniqueness in the DB.
 // Retries up to 5 times on collision before throwing.
@@ -45,7 +51,10 @@ export async function getMembershipPlans() {
 // - Free plans: activates immediately via upsert, generates memberCode if missing
 // - Paid plans: initializes a Hubtel checkout payment; activation happens in the callback handler
 // Returns the payment initialization result or the activated subscription
-export async function subscribeToPlan(userId: string, payload: SubscribeMembershipSchema) {
+export async function subscribeToPlan(
+  userId: string,
+  payload: SubscribeMembershipSchema & { clientPlatform?: ClientPlatform },
+) {
   const plan = await prisma.membershipPlan.findUnique({
     where: { id: payload.planId },
   });
@@ -96,6 +105,25 @@ export async function subscribeToPlan(userId: string, payload: SubscribeMembersh
         checkoutUrl: null,
         waiveServiceFees: true,
       },
+    };
+  }
+
+  // App Store Guideline 3.1.1: a paid digital membership cannot be unlocked
+  // from an external (Hubtel) checkout inside an iOS app. The app must either
+  // sell this tier through StoreKit or hide it on iOS. Web/Android are
+  // unaffected, and a deployment holding Apple's external-purchase entitlement
+  // can opt back in with IOS_EXTERNAL_DIGITAL_PURCHASES=true.
+  if (
+    shouldBlockIosDigitalPurchase({
+      platform: payload.clientPlatform ?? "unknown",
+      price: plan.price,
+      tierCode: plan.code,
+    })
+  ) {
+    return {
+      success: false,
+      code: IOS_IAP_REQUIRED_CODE,
+      message: IOS_IAP_REQUIRED_MESSAGE,
     };
   }
 

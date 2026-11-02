@@ -182,8 +182,12 @@ FACEBOOK_CALLBACK_URL=
 APPLE_CLIENT_ID=
 APPLE_TEAM_ID=
 APPLE_KEY_ID=
+# Supply the .p8 either inline (with \n escapes) or as a mounted file path.
+APPLE_PRIVATE_KEY=
 APPLE_PRIVATE_KEY_PATH=
 APPLE_CALLBACK_URL=
+# App Store 3.1.1 — leave false unless the build has Apple's external-purchase entitlement.
+IOS_EXTERNAL_DIGITAL_PURCHASES=false
 
 # Currency
 USD_TO_GHS_RATE=15.5
@@ -193,6 +197,9 @@ VISA_STANDARD_FEE_GHS=464
 VISA_EXPEDITED_FEE_GHS=1450
 VISA_STATUTORY_FEE_USD=200
 ```
+
+Apple deployment runbook (Services ID, callback URL, key mounting, and the 503
+checklist): [`docs/oauth-deployment-config.md`](docs/oauth-deployment-config.md).
 
 ---
 
@@ -284,7 +291,10 @@ src/
 > populate the community YouTube video feed, and
 > `docs/access-grants.md` for **complimentary (comped) membership** — how an
 > admin grants a specific user paid-tier access without a payment, including
-> admin-controlled **lifetime free** accounts that waive every service fee.
+> admin-controlled **lifetime free** accounts that waive every service fee, and
+> `docs/app-store-review-remediation.md` for the **iOS App Store review
+> checklist** (membership IAP gate, Sign in with Apple, account deletion,
+> icon, and cold-start mitigation).
 
 All endpoints return responses in a standardized envelope:
 
@@ -348,13 +358,27 @@ All endpoints return responses in a standardized envelope:
 | GET    | `/auth/apple/failed`           | Public | Apple OAuth failure page                |
 | GET    | `/auth/apple/success`          | Public | Apple OAuth success page                |
 
+Apple accounts are keyed by Apple's stable `sub` claim (`User.appleId`), not by
+email or provider alone. A first-time Apple user must supply an email (Apple can
+hide it with a private relay address); existing linked accounts can sign in
+without one. `/auth/apple` returns `503` when the Apple key/client configuration
+is missing or unreadable.
+
 ### Profile Management
 
 | Method | Endpoint             | Auth   | Description                                                 |
 | ------ | -------------------- | ------ | ----------------------------------------------------------- |
 | POST   | `/profile/init`      | Bearer | Initialize profile                                          |
+| GET    | `/profile/account`   | Bearer | Get own login profile                                       |
+| PATCH  | `/profile/account`   | Bearer | Update own username, name, or profile image                 |
+| DELETE | `/profile/account`   | Bearer | Permanently delete the account and owned data               |
 | PATCH  | `/profile`           | Bearer | Update own `fullName`, `gender`, `dateOfBirth`, `ethnicity` |
 | PATCH  | `/profile/ethnicity` | Bearer | Set ethnicity                                               |
+
+`DELETE /profile/account` requires the current `password` for email/password
+accounts; OAuth-only accounts are deleted on authentication alone. Sign in with
+Apple accounts also have their Apple grant revoked (best-effort) before deletion,
+satisfying App Store account-deletion requirements.
 
 ### Profile Verification
 
@@ -548,6 +572,10 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 | GET    | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status                                                                                |
 | GET    | `/payment/processing`                     | Public | Payment processing page                                                                                 |
 | GET    | `/payment/p.js`                           | Public | Payment redirect script                                                                                 |
+
+`POST /payment/initialize` applies the same iOS 3.1.1 gate when
+`targetType=MEMBERSHIP_SUBSCRIPTION`: iOS clients get
+`403 DIGITAL_PURCHASE_REQUIRES_IAP` before a payment row or Hubtel call is made.
 
 ### Messaging & Chat
 
@@ -803,6 +831,14 @@ Paid plans return a validated HTTPS checkout URL:
 
 The `checkoutUrl` is validated before returning: must be absolute, HTTPS in production, valid hostname, no backticks/quotes/spaces. Mobile deep links are bridged through HTTPS redirect endpoints (`/membership/payment/return?appUrl=...`).
 
+**iOS App Store 3.1.1:** clients must send `X-Client-Platform: ios` (a body
+`platform` field and a User-Agent fallback are also accepted). A paid digital
+plan on iOS returns `403 DIGITAL_PURCHASE_REQUIRES_IAP` instead of a Hubtel
+checkout, because the app must use Apple In-App Purchase or hide the purchase.
+Free plans and non-iOS clients are unaffected. Set
+`IOS_EXTERNAL_DIGITAL_PURCHASES=true` only when the build is entitled to link
+out for external purchases.
+
 #### Subscription status lifecycle
 
 ```
@@ -818,6 +854,7 @@ ACTIVE → EXPIRED
 | ---- | -------------------------------- | ----------------------------------------------- |
 | 400  | `INVALID_PLAN_ID`                | Plan does not exist or is inactive              |
 | 400  | `INVALID_RETURN_URL`             | Supplied return/cancellation URL is unsupported |
+| 403  | `DIGITAL_PURCHASE_REQUIRES_IAP`  | Paid digital plan blocked on iOS (use StoreKit) |
 | 409  | `SUBSCRIPTION_ALREADY_ACTIVE`    | User already has the requested active plan      |
 | 422  | `CHECKOUT_INITIALIZATION_FAILED` | Provider could not create checkout              |
 | 502  | `PAYMENT_PROVIDER_ERROR`         | Provider returned an invalid or failed response |

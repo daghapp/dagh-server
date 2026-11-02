@@ -4,6 +4,12 @@ import { Strategy as FacebookStrategy } from "passport-facebook";
 import AppleStrategy from "passport-apple";
 import jwt from "jsonwebtoken";
 import { prisma } from "./prisma.js";
+import { getAppleSignInConfig } from "./apple.js";
+import {
+  isAppleIdTokenPayloadValid,
+  resolveAppleUser,
+} from "../modules/authentication/apple-identity.js";
+import { storeAppleRefreshToken } from "../services/apple-token.service.js";
 import type { Request } from "express";
 
 const {
@@ -13,11 +19,6 @@ const {
   FACEBOOK_APP_ID,
   FACEBOOK_APP_SECRET,
   FACEBOOK_CALLBACK_URL,
-  APPLE_CLIENT_ID,
-  APPLE_TEAM_ID,
-  APPLE_KEY_ID,
-  APPLE_PRIVATE_KEY_PATH,
-  APPLE_CALLBACK_URL,
 } = process.env;
 
 // Google OAuth Strategy (registered only when credentials are configured,
@@ -109,80 +110,71 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET && FACEBOOK_CALLBACK_URL) {
 }
 
 // Apple Sign In Strategy
-if (
-  APPLE_CLIENT_ID &&
-  APPLE_TEAM_ID &&
-  APPLE_KEY_ID &&
-  APPLE_PRIVATE_KEY_PATH &&
-  APPLE_CALLBACK_URL
-) {
+const appleConfig = getAppleSignInConfig();
+if (appleConfig) {
   passport.use(
     // @ts-expect-error — passport-apple has no TypeScript types; callback signature differs from OAuth2Strategy
     new AppleStrategy(
       {
-        clientID: APPLE_CLIENT_ID,
-        teamID: APPLE_TEAM_ID,
-        keyID: APPLE_KEY_ID,
-        privateKeyLocation: APPLE_PRIVATE_KEY_PATH,
-        callbackURL: APPLE_CALLBACK_URL,
+        clientID: appleConfig.clientID,
+        teamID: appleConfig.teamID,
+        keyID: appleConfig.keyID,
+        ...(appleConfig.privateKeyString
+          ? { privateKeyString: appleConfig.privateKeyString }
+          : { privateKeyLocation: appleConfig.privateKeyLocation }),
+        callbackURL: appleConfig.callbackURL,
         passReqToCallback: true,
       },
       async (
         req: Request,
         _accessToken: string,
-        _refreshToken: string,
+        refreshToken: string,
         idToken: string,
         _profile: unknown,
         done: (err: Error | null, user?: Express.User | false) => void,
       ) => {
         try {
-          // Decode the id_token JWT to get user info
+          // The id_token comes directly from Apple's token endpoint over TLS.
+          // Decode it for the stable `sub` claim and optional profile fields.
           const decoded = jwt.decode(idToken) as Record<string, unknown> | null;
-          if (!decoded || typeof decoded.sub !== "string") {
+          if (
+            !decoded ||
+            typeof decoded.sub !== "string" ||
+            !isAppleIdTokenPayloadValid(decoded, appleConfig.clientID)
+          ) {
             return done(new Error("No valid id_token from Apple"), false);
           }
 
           const email = typeof decoded.email === "string" ? decoded.email : undefined;
 
-          // Apple may not provide email if user chose to hide it
-          // In that case, we need to handle the case where email is undefined
-          // The user profile may be in req.body.user (JSON string)
+          // Apple only sends the user's name on first authorization, inside the
+          // form-posted `user` field.
           let fullName: string | undefined;
-          if (req.body && req.body.user) {
+          if (req.body?.user) {
             const userProfile = JSON.parse(req.body.user);
             fullName = userProfile.name
               ? `${userProfile.name.firstName || ""} ${userProfile.name.lastName || ""}`.trim()
               : undefined;
           }
 
-          // Try to find user by email first, then by appleId
-          let user = email
-            ? await prisma.user.findUnique({ where: { email } })
-            : await prisma.user.findFirst({ where: { authProvider: "ICLOUD" } });
-
-          if (user) {
-            // Update auth provider if it was PASSWORD
-            if (user.authProvider === "PASSWORD") {
-              user = await prisma.user.update({
-                where: { id: user.id },
-                data: { authProvider: "ICLOUD" },
-              });
-            }
-            return done(null, user);
-          }
-
-          // Create new user
-          if (!email) {
-            return done(new Error("No email provided by Apple"), false);
-          }
-
-          user = await prisma.user.create({
-            data: {
-              fullName: fullName || email.split("@")[0],
-              email,
-              authProvider: "ICLOUD",
-            },
+          const user = await resolveAppleUser({
+            appleId: decoded.sub,
+            email,
+            fullName,
           });
+
+          // Retained only for revocation when the user later deletes the
+          // account. A storage failure must not block sign-in.
+          if (refreshToken) {
+            try {
+              await storeAppleRefreshToken(user.id, refreshToken);
+            } catch (error) {
+              console.error(
+                "[apple] failed to store refresh token for revocation:",
+                error instanceof Error ? error.message : error,
+              );
+            }
+          }
 
           done(null, user);
         } catch (err) {

@@ -231,10 +231,23 @@ Identical format to Google. `provider` is `"apple"`.
 - **Email hiding**: Apple lets users hide their email. When the user chooses
   this, the backend receives a relay address (`xyz@privaterelay.appleid.com`).
   The app should treat this as a valid email.
+- **Stable account identity**: The backend links Apple accounts by Apple's
+  stable `sub` claim (`User.appleId`), not by email. This keeps the same local
+  account even if Apple changes the relay address.
+- **Missing email**: Apple only returns an email on the first authorization. A
+  new account therefore needs that first email; an existing linked account can
+  sign in again without one. If Apple returns no email for a brand-new account,
+  the sign-in fails and the backend redirects with the generic
+  `error=OAuth authorization failed` — show it and offer retry.
 - **First-login name**: On the first sign-in, Apple sends a `user` JSON object
   in the POST body with `name.firstName` and `name.lastName`. The backend uses
   this to populate the user's `fullName`. On subsequent logins, the name is
   **not** sent.
+- **Unconfigured backend**: `GET /auth/apple` returns `503` when the server is
+  missing `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, or a readable
+  `APPLE_PRIVATE_KEY`/`APPLE_PRIVATE_KEY_PATH`. This is a deployment error, not
+  something the app can fix — show a "Sign in with Apple is unavailable" message
+  and keep the other sign-in options visible.
 - **Post-checkout redirect**: Apple may redirect to the app without tokens if
   the user cancels. The callback screen must check for the presence of
   `accessToken` before persisting a session.

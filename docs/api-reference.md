@@ -54,6 +54,13 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 | GET | `/auth/apple/failed` | Public | Renders "auth failed" page (401). |
 | GET | `/auth/apple/success` | Public | Renders "auth success" page. |
 
+Apple accounts are linked by Apple's stable `sub` claim (`User.appleId`). A new
+Apple user must provide an email; existing linked accounts may sign in without
+one. Hiding the email still works via Apple's `@privaterelay.appleid.com` relay
+address. `/auth/apple` returns `503` when `APPLE_CLIENT_ID`, the team/key IDs, or
+the private key (inline `APPLE_PRIVATE_KEY` or `APPLE_PRIVATE_KEY_PATH`) are
+missing or unreadable.
+
 ### POST /auth/register
 
 ```json
@@ -132,8 +139,25 @@ device store; `403` if the account is no longer active; `404` if the user is gon
 | POST | `/profile/init` | Bearer | Create the user's `UserProfile` + empty `ProfileVerification` row (idempotent). |
 | GET | `/profile/account` | Bearer | Get the authenticated user's login profile: `username`, `firstName`, `lastName`, `fullName`, `profileImageUrl`, plus account fields. |
 | PATCH | `/profile/account` | Bearer | Update own login profile: `username`, `firstName`, `lastName`, `profileImageUrl` (send `null` on `profileImageUrl` to remove the picture). |
+| DELETE | `/profile/account` | Bearer | Permanently delete the account and all owned data. |
 | PATCH | `/profile` | Bearer | Update own account fields: `fullName`, `gender`, `dateOfBirth`, `ethnicity`. |
 | PATCH | `/profile/ethnicity` | Bearer | Set the user's ethnicity (used for itinerary personalization). |
+
+### DELETE /profile/account
+
+Self-service account deletion. Email/password accounts must send the current
+password; OAuth-only accounts (no password hash) are deleted after
+authentication alone.
+
+```json
+{ "password": "current-password" }
+```
+
+- `400` when a password is required but missing, or is incorrect.
+- `401` unauthenticated; `404` user not found.
+- Sign in with Apple grants are revoked best-effort before the user row is
+  deleted, so an Apple outage never blocks account deletion.
+- Success: `200` with `data: null` and `"Account deleted successfully"`.
 
 ### PATCH /profile
 
@@ -466,6 +490,11 @@ Image fields should be URLs from `POST /upload`.
 
 Returns `data: { paymentReference }`. Payment routes are rate-limited (50 req/15 min).
 
+When `targetType` is `MEMBERSHIP_SUBSCRIPTION`, the same iOS 3.1.1 gate as
+`/membership/subscribe` applies: an iOS client receives
+`403 DIGITAL_PURCHASE_REQUIRES_IAP` before a payment row or Hubtel checkout is
+created.
+
 ---
 
 ## Providers
@@ -500,6 +529,25 @@ external Google Places fallback is injected with `source: "external"` and the ta
 ```json
 { "planId": "uuid", "returnUrl": "https://...", "callbackUrl": "https://...", "cancellationUrl": "https://..." }
 ```
+
+iOS clients must identify themselves with `X-Client-Platform: ios`; a body
+`platform` field is the fallback, then the User-Agent. A paid digital plan on
+iOS returns `403`:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "DIGITAL_PURCHASE_REQUIRES_IAP",
+    "message": "Digital memberships on iOS must be purchased through Apple In-App Purchase."
+  }
+}
+```
+
+This is App Store Guideline 3.1.1. Free plans and non-iOS clients are unaffected.
+Set `IOS_EXTERNAL_DIGITAL_PURCHASES=true` only when the iOS build holds Apple's
+external-purchase entitlement. On iOS, hide paid-plan checkout and route users
+to StoreKit (or hide the purchase entirely); never present the Hubtel URL.
 
 ### POST /membership/support
 

@@ -8,19 +8,13 @@ import {
 } from "../modules/authentication/oauth-state.js";
 import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
 import { viewsPath } from "../helpers/view-path.js";
+import { isAppleSignInConfigured } from "../config/apple.js";
 
 const router = Router();
 
 const appleAuthController = new AppleAuthController();
 
-const appleStrategyConfigured = () =>
-  Boolean(
-    process.env.APPLE_CLIENT_ID &&
-    process.env.APPLE_TEAM_ID &&
-    process.env.APPLE_KEY_ID &&
-    process.env.APPLE_PRIVATE_KEY_PATH &&
-    process.env.APPLE_CALLBACK_URL,
-  );
+const appleStrategyConfigured = () => isAppleSignInConfigured();
 
 const appleStrategyGuard = (
   req: import("express").Request,

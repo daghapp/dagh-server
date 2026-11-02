@@ -15,6 +15,12 @@ model User {
   ethnicity    Ethnicity?
 
   email                   String                   @unique
+  // Stable Sign in with Apple identifier (Apple's `sub`). Apple may withhold
+  // the email or return a private-relay address, so this — not email — is the
+  // account key for Apple logins.
+  appleId                 String?                  @unique
+  // Encrypted Apple refresh token, retained so account deletion can revoke it.
+  appleRefreshToken       String?
   passwordHash            String?
   passwordLastChanged     DateTime?
   accountStatus           AccountStatus            @default(PENDING_VERIFICATION)

@@ -15,6 +15,9 @@ export const subscribeMembershipSchema = z.object({
   returnUrl: z.string().min(1, "Return URL is required"),
   callbackUrl: z.string().url("Invalid callback URL"),
   cancellationUrl: z.string().min(1, "Cancellation URL must not be empty").optional(),
+  // Optional fallback for clients that cannot set X-Client-Platform. Used to
+  // enforce Apple Guideline 3.1.1 for paid digital memberships on iOS.
+  platform: z.enum(["ios", "iphone", "ipad", "ipados", "android", "web"]).optional(),
 });
 
 // Schema for creating a priority support ticket (paid tier members only)

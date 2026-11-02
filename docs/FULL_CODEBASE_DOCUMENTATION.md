@@ -95,7 +95,10 @@ Register/Login → { accessToken, refreshToken }
 - **Email/Password** — traditional register + login
 - **Google OAuth** — `GET /auth/google` → callback
 - **Facebook OAuth** — `GET /auth/facebook` → callback
-- **Apple Sign-In** — `GET /auth/apple` → callback (POST)
+- **Apple Sign-In** — `GET /auth/apple` → callback (POST). Accounts are linked by
+  Apple's stable `sub` claim (`User.appleId`); a new account requires an email,
+  while an existing linked account may sign in without one. The Apple refresh
+  token is encrypted at rest and the grant is revoked on self-service deletion.
 
 ### Middleware Chain
 
@@ -183,6 +186,9 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 | Method | Path                 | Auth | Description                          |
 | ------ | -------------------- | ---- | ------------------------------------ |
 | POST   | `/profile/init`      | Yes  | Initialize user profile (idempotent) |
+| GET    | `/profile/account`   | Yes  | Get the login profile                |
+| PATCH  | `/profile/account`   | Yes  | Update username, names, profile image |
+| DELETE | `/profile/account`   | Yes  | Permanently delete the account       |
 | PATCH  | `/profile/`          | Yes  | Update profile settings              |
 | PATCH  | `/profile/ethnicity` | Yes  | Set user ethnicity                   |
 
@@ -191,6 +197,9 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 - Profile initialization creates a `UserProfile` record linked to the `User`
 - Profile settings include `bio_profile_image_url`, `bio_document_urls`, etc.
 - Ethnicity is stored on the `User` model directly
+- Account deletion requires the current password for password accounts; OAuth-only
+  accounts are deleted on authentication alone. Sign in with Apple accounts also
+  revoke their Apple grant best-effort before deletion.
 
 ### Frontend Implementation
 
@@ -521,7 +530,15 @@ FREE → BASELINE → SENIOR_PIONEER → SANKOFA_SETTALLED → BASIC → SILVER 
 ```
 FREE plan → Activate immediately (no payment) → Generate memberCode
 Paid plan → Initialize Hubtel checkout → Redirect to payment page → Callback activates subscription
+iOS + paid plan → 403 DIGITAL_PURCHASE_REQUIRES_IAP (use StoreKit or hide the plan)
 ```
+
+App Store Guideline 3.1.1: the iOS client declares itself with
+`X-Client-Platform: ios` (body `platform` and User-Agent fallbacks also work).
+Paid digital memberships on iOS are blocked from the external Hubtel checkout
+unless the deployment sets `IOS_EXTERNAL_DIGITAL_PURCHASES=true` and holds
+Apple's external-purchase entitlement. Free plans and non-iOS clients are not
+affected.
 
 ### Complimentary Access & Lifetime Free (admin)
 
@@ -544,8 +561,8 @@ Admins grant access through `/admin/access-grants`; grants live in
 ### Frontend Implementation
 
 1. **Plans page:** `GET /membership/plans` — display pricing cards
-2. **Subscribe:** `POST /membership/subscribe` with `{ planId, callbackUrl, returnUrl }`
-3. **Payment redirect:** Redirect user to Hubtel checkout URL from response
+2. **Subscribe:** `POST /membership/subscribe` with `{ planId, callbackUrl, returnUrl }` and `X-Client-Platform: ios` on iOS
+3. **Payment redirect:** Redirect user to Hubtel checkout URL from response; on iOS, hide paid plans or route to StoreKit and handle `403 DIGITAL_PURCHASE_REQUIRES_IAP`
 4. **Payment callback:** Handle `POST /membership/payment-callback` (server-side, not frontend)
 5. **Subscription status:** `GET /membership/my-subscription` — check `tierCode` and `status`
 6. **Feature gating:** Check `tierCode !== "FREE"` for premium features
@@ -553,6 +570,8 @@ Admins grant access through `/admin/access-grants`; grants live in
 ### Potential Problems
 
 - **Payment callback:** This is server-to-server — frontend should NOT call it directly
+- **iOS purchases:** A paid digital plan on iOS returns `403 DIGITAL_PURCHASE_REQUIRES_IAP`; do not retry without the platform header, and do not present the Hubtel URL. Use Apple In-App Purchase or hide the purchase.
+- **Missing platform header:** The server falls back to the User-Agent, but mobile clients should still send `X-Client-Platform` so the iOS gate is deterministic.
 - **Subscription activation delay:** Paid plans activate on callback, not immediately; poll subscription status
 - **Member code:** Generated once; if null after creation, a background job fixes it
 - **Plan interval:** Subscription has `endDate` based on billing interval; check `status === "ACTIVE"` AND `endDate > now`
@@ -741,9 +760,14 @@ PENDING → APPROVED / REJECTED / PAYMENT_FAILED / READY_FOR_GIS_SUBMISSION / EX
   "description": "string",
   "returnUrl": "URL (redirect after payment)",
   "callbackUrl": "URL (server-to-server webhook)",
-  "cancellationUrl": "URL (redirect on cancel)"
+  "cancellationUrl": "URL (redirect on cancel)",
+  "targetType": "MEMBERSHIP_SUBSCRIPTION (optional; applies the iOS gate)"
 }
 ```
+
+The generic payment endpoint cannot be used to bypass App Store Guideline 3.1.1:
+a `targetType` of `MEMBERSHIP_SUBSCRIPTION` from an iOS client is rejected with
+`403 DIGITAL_PURCHASE_REQUIRES_IAP` before any payment row or Hubtel call.
 
 ### Payment Flow
 
@@ -1079,6 +1103,18 @@ Client connects with: io(url, { auth: { token: "<JWT>" } })
 | `EMAIL_FROM`          | No       | Sender address (defaults to `Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>`) |
 | `SENTRY_DSN`          | No       | Sentry error tracking                      |
 | `LIVEKIT_*`           | Yes      | LiveKit call service credentials           |
+| `APPLE_CLIENT_ID`     | Apple    | Apple Services ID (Sign in with Apple)     |
+| `APPLE_TEAM_ID`       | Apple    | Apple Developer Team ID                    |
+| `APPLE_KEY_ID`        | Apple    | Apple private key ID                       |
+| `APPLE_PRIVATE_KEY`   | Apple*   | Inline `.p8` key (use `\n` escapes)        |
+| `APPLE_PRIVATE_KEY_PATH` | Apple* | Mounted `.p8` file path (alternative to inline) |
+| `APPLE_CALLBACK_URL`  | Apple    | `{API_URL}/auth/apple/callback`            |
+| `IOS_EXTERNAL_DIGITAL_PURCHASES` | No | Set `true` only with Apple's external-purchase entitlement |
+| `PAYMENT_GATEWAY_ENCRYPTION_KEY` | Yes | AES-256-GCM key; also seals Apple refresh tokens |
+
+Apple requires `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and one of
+`APPLE_PRIVATE_KEY` / `APPLE_PRIVATE_KEY_PATH`; otherwise `GET /auth/apple`
+returns `503`. `*` = one of the two key sources is required for Apple sign-in.
 
 ---
 

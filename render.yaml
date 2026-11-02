@@ -4,6 +4,9 @@ services:
     runtime: node
     buildCommand: npm ci && npm run build
     startCommand: npm start
+    # Render uses this for zero-downtime deploys and keeps the instance marked
+    # healthy. The endpoint is DB-free, so it stays cheap during cold starts.
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
@@ -40,3 +43,22 @@ services:
       # verified in the Resend dashboard before production sends will succeed.
       - key: EMAIL_FROM
         value: "Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>"
+      # Apple Sign In is required by App Store Guideline 4.8 while Google and
+      # Facebook remain. /auth/apple returns 503 until every value below is set.
+      # Prefer APPLE_PRIVATE_KEY (the .p8 contents, with \n escapes) over a
+      # mounted file; both are supported.
+      - key: APPLE_CLIENT_ID
+        sync: false
+      - key: APPLE_TEAM_ID
+        sync: false
+      - key: APPLE_KEY_ID
+        sync: false
+      - key: APPLE_PRIVATE_KEY
+        sync: false
+      - key: APPLE_CALLBACK_URL
+        value: https://dagh-server-fo64.onrender.com/auth/apple/callback
+      # App Store Guideline 3.1.1: leave false unless this build carries Apple's
+      # External Purchase Link entitlement. Paid memberships are then blocked on
+      # iOS while web/Android continue to use Hubtel checkout.
+      - key: IOS_EXTERNAL_DIGITAL_PURCHASES
+        value: "false"

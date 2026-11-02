@@ -8,6 +8,7 @@ import { Request, Response } from "express";
 import * as membershipService from "../../services/membership.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 import { ok, created, fail } from "../../helpers/response.js";
+import { getClientPlatform, IOS_IAP_REQUIRED_CODE } from "../../helpers/client-platform.js";
 import type { SubscribeMembershipSchema } from "../../validator/index.js";
 
 export class MembershipController {
@@ -28,6 +29,7 @@ export class MembershipController {
 
     try {
       const payload = req.body as SubscribeMembershipSchema;
+      const clientPlatform = getClientPlatform(req);
 
       const apiUrl = process.env.API_URL || `${req.protocol}://${req.get("host")}`;
       let returnUrl = payload.returnUrl;
@@ -88,12 +90,14 @@ export class MembershipController {
         cancellationUrlHost: cancelParsed.hostname,
         isCancelBridged: isCancelBridgeable,
         callbackUrlHost: new URL(payload.callbackUrl).hostname,
+        clientPlatform,
       });
 
       const result = await membershipService.subscribeToPlan(userId, {
         ...payload,
         returnUrl,
         cancellationUrl,
+        clientPlatform,
       });
 
       if (!result.success) {
@@ -102,10 +106,12 @@ export class MembershipController {
         if (code === "INVALID_PLAN_ID" || code === "INVALID_RETURN_URL") status = 400;
         else if (code === "SUBSCRIPTION_ALREADY_ACTIVE") status = 409;
         else if (code === "PAYMENT_PROVIDER_ERROR") status = 502;
+        else if (code === IOS_IAP_REQUIRED_CODE) status = 403;
 
         console.log("[MEMBERSHIP_SUBSCRIBE_FAIL]", {
           userId,
           planId: payload.planId,
+          clientPlatform,
           code,
           status,
         });

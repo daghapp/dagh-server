@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as bcrypt from "bcrypt";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import { revokeAppleRefreshToken } from "../../services/apple-token.service.js";
 
 const ACCOUNT_PROFILE_SELECT = {
   id: true,
@@ -145,7 +146,7 @@ export async function deleteAccount(req: Request, res: Response) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, passwordHash: true },
+      select: { id: true, passwordHash: true, authProvider: true, appleRefreshToken: true },
     });
 
     if (!user) {
@@ -161,6 +162,12 @@ export async function deleteAccount(req: Request, res: Response) {
       if (!passwordMatch) {
         return fail(res, 400, "Incorrect password");
       }
+    }
+
+    // Revoke the Sign in with Apple grant before the token row disappears.
+    // Best-effort: an Apple outage must not block account deletion.
+    if (user.authProvider === "ICLOUD" && user.appleRefreshToken) {
+      await revokeAppleRefreshToken({ id: user.id, appleRefreshToken: user.appleRefreshToken });
     }
 
     await prisma.$transaction([

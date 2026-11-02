@@ -100,6 +100,21 @@ router.get("/plans", controller.getPlans.bind(controller));
  *                 description: |
  *                   URL to redirect if user cancels. Accepts HTTPS URLs or mobile deep links.
  *                   Optional — defaults to returnUrl when omitted.
+ *               platform:
+ *                 type: string
+ *                 enum: [ios, android, web]
+ *                 description: |
+ *                   Client platform fallback when X-Client-Platform is unavailable. Paid
+ *                   digital memberships on iOS return 403 DIGITAL_PURCHASE_REQUIRES_IAP
+ *                   unless the deployment holds Apple's external-purchase entitlement.
+ *     parameters:
+ *       - in: header
+ *         name: X-Client-Platform
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [ios, android, web]
+ *         description: Preferred way for the app to declare its platform.
  *     responses:
  *       200:
  *         description: Plan activated (free) or checkout initialized (paid)
@@ -158,6 +173,10 @@ router.get("/plans", controller.getPlans.bind(controller));
  *               $ref: '#/components/schemas/StableError'
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: |
+ *           Paid digital membership on iOS without Apple's external-purchase
+ *           entitlement. Error code: DIGITAL_PURCHASE_REQUIRES_IAP
  *       409:
  *         description: Subscription already active for this plan
  *       422:
