@@ -61,6 +61,7 @@ import { router as DataPolicyRoutes } from "./routes/data-policy.routes.js";
 import { router as FaqRoutes } from "./routes/faq.routes.js";
 // Community video feed (YouTube funnel)
 import { router as CommunityRoutes } from "./routes/community.routes.js";
+import { ShareRoutes } from "./modules/share/share.routes.js";
 
 import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
@@ -282,6 +283,7 @@ app.use("/data-policy", DataPolicyRoutes);
 app.use("/faq", FaqRoutes);
 // Community video feed (YouTube subscribe funnel + analytics)
 app.use("/community", CommunityRoutes);
+app.use("/share", ShareRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({

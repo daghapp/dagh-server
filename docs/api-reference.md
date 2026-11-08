@@ -1615,3 +1615,27 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 - Uploads: 5 MB (images/documents) or 15 MB (voice notes); auth required.
 - Unknown paths return `404` via a catch-all middleware.
 - `passwordHash` is never serialized in responses.
+
+---
+
+## Shareable Preview Links
+
+Public, unauthenticated HTML preview pages for sharing a profile, a group event,
+or a community post via WhatsApp, Facebook, SMS, etc. Each page carries Open
+Graph / Twitter metadata for rich previews and attempts to open the app via the
+configured deep-link scheme, falling back to the Play Store / App Store URLs
+configured in the environment.
+
+| Method | Endpoint | Auth | What it does |
+|--------|----------|------|--------------|
+| GET | `/share/profile/:id` | Public | Preview page for a user profile. |
+| GET | `/share/event/:id` | Public | Preview page for a group event (tour package). |
+| GET | `/share/post/:id` | Public | Preview page for a community post (video card). |
+| POST | `/share/links` | Bearer | Generate a share URL + title + image for a given `{ type, id }`. |
+
+### Environment
+
+- `PLAY_STORE_URL` — Play Store listing URL used as the Android fallback.
+- `APP_STORE_URL` — App Store listing URL used as the iOS fallback.
+- `APP_DEEP_LINK_SCHEME` — app scheme used for deep links (default `diasporansync`).
+- `API_URL` / `RENDER_EXTERNAL_URL` — base URL used to build share URLs.
