@@ -3,7 +3,7 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 
 const PLAY_STORE_URL =
-  process.env.PLAY_STORE_URL?.trim() || "https://play.google.com/store/search?q=Diasporan+sync&c=apps&pli=1";
+  process.env.PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.simplymark.diasporansync";
 const APP_STORE_URL = process.env.APP_STORE_URL?.trim() || "";
 const APP_SCHEME = process.env.APP_DEEP_LINK_SCHEME?.trim() || "diasporansync";
 const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");

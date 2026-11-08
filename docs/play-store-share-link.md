@@ -1,9 +1,9 @@
-# Play Store Search Link (Android Share Fallback)
+# Play Store Listing Link (Android Share Fallback)
 
-The Android fallback URL used when sharing profiles/events/posts is a **Play Store search link**:
+The Android fallback URL used when sharing profiles/events/posts is the app's **direct Play Store listing**:
 
 ```
-https://play.google.com/store/search?q=Diasporan+sync&c=apps&pli=1
+https://play.google.com/store/apps/details?id=com.simplymark.diasporansync
 ```
 
 ## How it works
@@ -23,7 +23,7 @@ Set in environment (see `src/modules/share/share.controller.ts`):
 
 | Env var | Purpose | Default |
 |---|---|---|
-| `PLAY_STORE_URL` | Android fallback URL | `https://play.google.com/store/search?q=Diasporan+sync&c=apps&pli=1` |
+| `PLAY_STORE_URL` | Android fallback URL | `https://play.google.com/store/apps/details?id=com.simplymark.diasporansync` |
 | `APP_STORE_URL` | iOS fallback URL | (empty) |
 | `APP_DEEP_LINK_SCHEME` | App scheme for deep links | `diasporansync` |
 
