@@ -60,5 +60,8 @@ services:
       # App Store Guideline 3.1.1: leave false unless this build carries Apple's
       # External Purchase Link entitlement. Paid memberships are then blocked on
       # iOS while web/Android continue to use Hubtel checkout.
-      - key: IOS_EXTERNAL_DIGITAL_PURCHASES
-        value: "false"
+  - key: IOS_EXTERNAL_DIGITAL_PURCHASES
+    value: "false"
+  # Android fallback used by shareable preview links when the app isn't installed.
+  - key: PLAY_STORE_URL
+    value: "https://play.google.com/store/search?q=Diasporan+sync&c=apps&pli=1"

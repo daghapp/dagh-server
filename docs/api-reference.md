@@ -1635,7 +1635,7 @@ configured in the environment.
 
 ### Environment
 
-- `PLAY_STORE_URL` — Play Store listing URL used as the Android fallback.
+- `PLAY_STORE_URL` — Play Store listing URL used as the Android fallback. Defaults to `https://play.google.com/store/search?q=Diasporan+sync&c=apps&pli=1`.
 - `APP_STORE_URL` — App Store listing URL used as the iOS fallback.
 - `APP_DEEP_LINK_SCHEME` — app scheme used for deep links (default `diasporansync`).
 - `API_URL` / `RENDER_EXTERNAL_URL` — base URL used to build share URLs.
