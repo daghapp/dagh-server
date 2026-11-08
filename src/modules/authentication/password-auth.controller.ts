@@ -27,6 +27,7 @@ import {
   resolveChannelAccessForLogin,
   resolveChannelAccessForRead,
 } from "../../services/community.service.js";
+import { isAllowedAppReturnDestination } from "./oauth-state.js";
 
 export class PasswordAuthController {
   async register(req: Request, res: Response) {
@@ -224,11 +225,17 @@ export class PasswordAuthController {
       // rather than failing the sign-in, and it never opens anything.
       const communityAccess = await resolveChannelAccessForLogin(user.id);
 
-      const response: any = {
-        ...toAuthUser(user, communityAccess),
-        accessToken,
-        refreshToken,
-      };
+       const response: any = {
+         ...toAuthUser(user, communityAccess),
+         accessToken,
+         refreshToken,
+       };
+
+       // Echo a validated app return destination so password login can mirror
+       // the OAuth deep-link redirect flow. Only allowlisted destinations pass.
+       if (loginData.redirect && isAllowedAppReturnDestination(loginData.redirect)) {
+         response.redirectUrl = loginData.redirect;
+       }
 
       if (user.accountType === "ADMIN") {
         const adminProfile = await prisma.adminProfile.findUnique({

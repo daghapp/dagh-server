@@ -44,6 +44,10 @@ the app's registered scheme (`diasporansync:///oauth`), the backend stores it in
 the session and redirects back to it with tokens on success, or with `error` on
 failure. Without `redirect`, the backend returns an HTML success page instead.
 
+The password login endpoint (`POST /auth/login`) also accepts an optional
+`redirect` field; when it is an allowlisted app destination, the response
+includes `redirectUrl` so the client can perform the same deep-link handoff.
+
 **Never use `fetch` or a JSON API helper to call the initiation URL.** The
 provider's consent screen must open in a real browser so cookies and session
 handoff work. Use `WebBrowser.openAuthSessionAsync`.
