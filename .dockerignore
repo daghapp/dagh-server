@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+node_modules
+.git
+dist
+tests
+docs
+*.md
+ts_errors.txt
+endpoints.txt

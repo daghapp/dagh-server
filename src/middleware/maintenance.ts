@@ -48,7 +48,7 @@ async function activeModules(): Promise<string[]> {
       select: { modules: true },
     });
     const modules = Array.isArray(window?.modules) ? (window.modules as string[]) : [];
-    cached = { modules, expires: Date.now() + 30_000 };
+    cached = { modules, expires: Date.now() + 10_000 };
     return modules;
   } catch {
     return [];
