@@ -30,11 +30,15 @@ function shadowDatabaseUrl(): string {
 function postgresqlUrlFor(dbName: string): string {
   const base = process.env.DIRECT_URL || DATABASE_URL;
   if (!base) return `postgresql://prisma:prisma@localhost:5432/${dbName}`;
-  const url = new URL(base);
-  url.pathname = `/${dbName}`;
-  url.searchParams.delete("schema");
-  url.searchParams.delete("connect_timeout");
-  return url.toString();
+  try {
+    const url = new URL(base);
+    url.pathname = `/${dbName}`;
+    url.searchParams.delete("schema");
+    url.searchParams.delete("connect_timeout");
+    return url.toString();
+  } catch {
+    return `postgresql://prisma:prisma@localhost:5432/${dbName}`;
+  }
 }
 
 export default defineConfig({

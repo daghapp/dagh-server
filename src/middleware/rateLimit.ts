@@ -31,16 +31,12 @@ export class RedisRateLimitStore {
       return { totalHits: 1, resetTime: new Date(Date.now() + this.windowMs) };
     }
 
-    const result = await redis.multi().incr(fullKey).pTTL(fullKey).exec();
-    const totalHits = Number(result?.[0] ?? 1);
-    let ttlMs = Number(result?.[1] ?? -2);
-
-    if (ttlMs < 0) {
+    const totalHits = Number(await redis.incr(fullKey));
+    if (totalHits === 1) {
       await redis.pExpire(fullKey, this.windowMs);
-      ttlMs = this.windowMs;
     }
-
-    return { totalHits, resetTime: new Date(Date.now() + ttlMs) };
+    const ttlMs = Number(await redis.pTTL(fullKey));
+    return { totalHits, resetTime: new Date(Date.now() + (ttlMs > 0 ? ttlMs : this.windowMs)) };
   }
 
   async decrement(key: string): Promise<void> {

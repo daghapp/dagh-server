@@ -322,6 +322,7 @@ export const getConversations = async (req: Request, res: Response) => {
       where: {
         OR: [{ blockerId: userId }, { blockedId: userId }],
       },
+      take: 500,
     });
 
     const blockedUserIds = new Set(
@@ -331,6 +332,7 @@ export const getConversations = async (req: Request, res: Response) => {
     const conversations = await prisma.conversation.findMany({
       where: { participants: { has: userId } },
       orderBy: { lastMessageAt: "desc" },
+      take: 100,
     });
 
     const filteredConversations = conversations.filter((conv) => {
@@ -406,6 +408,7 @@ export const getMessages = async (req: Request, res: Response) => {
     const messages = await prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: "asc" },
+      take: 200,
       include: {
         sender: {
           select: {

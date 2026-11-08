@@ -872,7 +872,10 @@ export const generateRtcToken = async (req: Request, res: Response) => {
       });
     }
 
-    const tokenSecret = process.env.JWT_ACCESS_SECRET || "default_call_secret";
+    const tokenSecret = process.env.JWT_ACCESS_SECRET;
+    if (!tokenSecret) {
+      return fail(res, 500, "Server misconfiguration: JWT access secret is not set");
+    }
     const tokenPayload = `${userId}:${roomId}:${Date.now()}`;
     const token = crypto.createHmac("sha256", tokenSecret).update(tokenPayload).digest("hex");
 

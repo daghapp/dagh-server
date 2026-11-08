@@ -1113,21 +1113,22 @@ export async function syncVideosFromChannel(payload: SyncVideosPayload) {
   let created = 0;
   let updated = 0;
 
-  for (const card of cards) {
-    const existing = await prisma.communityVideo.findUnique({
-      where: { youtubeVideoId: card.youtubeVideoId },
-      select: { id: true },
-    });
+  const existingRows = await prisma.communityVideo.findMany({
+    where: { youtubeVideoId: { in: cards.map((c) => c.youtubeVideoId) } },
+    select: { id: true, youtubeVideoId: true },
+  });
+  const existingMap = new Map(existingRows.map((r) => [r.youtubeVideoId, r.id]));
 
+  for (const card of cards) {
     const engagement = {
       viewCount: card.viewCount,
       likeCount: card.likeCount,
       statsSyncedAt: syncedAt,
     };
 
-    if (existing) {
-      // Counters only — everything else on the row is ours to curate.
-      await prisma.communityVideo.update({ where: { id: existing.id }, data: engagement });
+    const existingId = existingMap.get(card.youtubeVideoId);
+    if (existingId) {
+      await prisma.communityVideo.update({ where: { id: existingId }, data: engagement });
       updated += 1;
       continue;
     }

@@ -225,17 +225,17 @@ export class PasswordAuthController {
       // rather than failing the sign-in, and it never opens anything.
       const communityAccess = await resolveChannelAccessForLogin(user.id);
 
-       const response: any = {
-         ...toAuthUser(user, communityAccess),
-         accessToken,
-         refreshToken,
-       };
+      const response: any = {
+        ...toAuthUser(user, communityAccess),
+        accessToken,
+        refreshToken,
+      };
 
-       // Echo a validated app return destination so password login can mirror
-       // the OAuth deep-link redirect flow. Only allowlisted destinations pass.
-       if (loginData.redirect && isAllowedAppReturnDestination(loginData.redirect)) {
-         response.redirectUrl = loginData.redirect;
-       }
+      // Echo a validated app return destination so password login can mirror
+      // the OAuth deep-link redirect flow. Only allowlisted destinations pass.
+      if (loginData.redirect && isAllowedAppReturnDestination(loginData.redirect)) {
+        response.redirectUrl = loginData.redirect;
+      }
 
       if (user.accountType === "ADMIN") {
         const adminProfile = await prisma.adminProfile.findUnique({
@@ -428,7 +428,7 @@ export class PasswordAuthController {
       });
 
       if (!user) {
-        return fail(res, 404, "User not found");
+        return fail(res, 400, "Invalid request");
       }
 
       // Only block re-verification for EMAIL_VERIFICATION — a PASSWORD_RESET
@@ -586,7 +586,7 @@ export class PasswordAuthController {
       });
 
       if (!user || !user.passwordHash) {
-        return fail(res, 404, "User not found");
+        return fail(res, 400, "Invalid request");
       }
 
       const otpRecord = await prisma.otp.findFirst({

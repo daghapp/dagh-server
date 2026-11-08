@@ -261,6 +261,7 @@ export const getRecommendations = async (req: Request, res: Response) => {
             { swiperId: { in: targetIds }, targetId: userId },
           ],
         },
+        take: 200,
       }),
       prisma.userMatch.findMany({
         where: {
@@ -270,6 +271,7 @@ export const getRecommendations = async (req: Request, res: Response) => {
           ],
           status: "MATCHED",
         },
+        take: 200,
       }),
       prisma.userBlock.findMany({
         where: {
@@ -278,7 +280,7 @@ export const getRecommendations = async (req: Request, res: Response) => {
             { blockerId: { in: targetIds }, blockedId: userId },
           ],
         },
-        select: { blockerId: true, blockedId: true },
+        take: 200,
       }),
     ]);
 
@@ -338,6 +340,7 @@ export const getMyMatches = async (req: Request, res: Response) => {
       },
       include: matchUserInclude,
       orderBy: { createdAt: "desc" },
+      take: 100,
     });
 
     const formatted = matches.map((m) => {
@@ -412,6 +415,7 @@ export const getLikesReceived = async (req: Request, res: Response) => {
             },
           }
         : { id: true },
+      take: 200,
     });
 
     return ok(res, {
@@ -457,7 +461,7 @@ export const unmatchUser = async (req: Request, res: Response) => {
 
 export const getLikesSent = async (req: Request, res: Response) => {
   try {
-    const swiperId = req.user!.id;
+    const swiperId = String(req.user!.id);
     const limitRaw = Number(req.query.limit);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50) : 20;
     const cursor = req.query.cursor as string | undefined;
@@ -497,7 +501,7 @@ export const getLikesSent = async (req: Request, res: Response) => {
         ],
         status: "MATCHED",
       },
-      select: { userId: true, matchedId: true },
+      take: 200,
     });
 
     const matchSet = new Set(matches.map((m) => (m.userId === swiperId ? m.matchedId : m.userId)));
@@ -557,6 +561,7 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
             { swiperId: targetId, targetId: userId },
           ],
         },
+        take: 50,
       }),
       prisma.userMatch.findMany({
         where: {
@@ -566,6 +571,7 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
           ],
           status: "MATCHED",
         },
+        take: 50,
       }),
     ]);
 

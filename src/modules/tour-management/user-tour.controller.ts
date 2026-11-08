@@ -122,9 +122,9 @@ export class UserTourController {
       });
 
       // Copy activities into user_tour_itineraries_activities
-      for (const activity of itinerary.itinerary_activities) {
-        await prisma.user_tour_itineraries_activities.create({
-          data: {
+      if (itinerary.itinerary_activities.length > 0) {
+        await prisma.user_tour_itineraries_activities.createMany({
+          data: itinerary.itinerary_activities.map((activity) => ({
             userItineraryId: userItinerary.id,
             activityTime: activity.activityTime,
             activity: activity.activity,
@@ -133,7 +133,7 @@ export class UserTourController {
             cost: activity.cost,
             locationName: activity.locationName,
             locationAddress: activity.locationAddress,
-          },
+          })),
         });
       }
     }

@@ -2,6 +2,10 @@ import session from "express-session";
 import pg from "pg";
 import connectPgSimple from "connect-pg-simple";
 
+if (!process.env.SESSIONSECRET && process.env.NODE_ENV !== "test") {
+  throw new Error("Missing SESSIONSECRET environment variable. Please set it in your environment.");
+}
+
 const PgSession = connectPgSimple(session);
 
 // Persistent session store (Postgres) instead of the default in-memory

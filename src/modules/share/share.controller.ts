@@ -3,10 +3,14 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 
 const PLAY_STORE_URL =
-  process.env.PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.simplymark.diasporansync";
+  process.env.PLAY_STORE_URL?.trim() ||
+  "https://play.google.com/store/apps/details?id=com.simplymark.diasporansync";
 const APP_STORE_URL = process.env.APP_STORE_URL?.trim() || "";
 const APP_SCHEME = process.env.APP_DEEP_LINK_SCHEME?.trim() || "diasporansync";
-const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(
+  /\/$/,
+  "",
+);
 
 type ShareType = "profile" | "event" | "post";
 
@@ -40,7 +44,13 @@ async function fetchMeta(type: ShareType, id: string): Promise<ShareMeta | null>
   if (type === "profile") {
     const user = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, fullName: true, username: true, profileImageUrl: true, accountStatus: true },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        profileImageUrl: true,
+        accountStatus: true,
+      },
     });
     if (!user || user.accountStatus !== "ACTIVE") return null;
     const name = user.fullName || user.username || "Diaspora Sync member";
@@ -71,7 +81,13 @@ async function fetchMeta(type: ShareType, id: string): Promise<ShareMeta | null>
   if (type === "event") {
     const tour = await prisma.tour_packages.findUnique({
       where: { id },
-      select: { id: true, title: true, shortDescription: true, description: true, coverImage: true },
+      select: {
+        id: true,
+        title: true,
+        shortDescription: true,
+        description: true,
+        coverImage: true,
+      },
     });
     if (!tour) return null;
     return {
@@ -110,7 +126,9 @@ ${image ? `<meta property="og:image" content="${image}">` : ""}
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
 ${image ? `<meta name="twitter:image" content="${image}">` : ""}
-${!bot ? `<script>
+${
+  !bot
+    ? `<script>
 (function(){
   var deepLink = ${JSON.stringify(deepLink)};
   var storeUrl = ${JSON.stringify(storeUrl || "")};
@@ -122,7 +140,9 @@ ${!bot ? `<script>
     }
   }, 1500);
 })();
-</script>` : ""}
+</script>`
+    : ""
+}
 </head>
 <body>
 <h1>${title}</h1>
