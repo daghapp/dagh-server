@@ -91,7 +91,8 @@ const server = http.createServer(app);
 
 // Trust the first proxy hop (Render/Cloudflare) so express-rate-limit keys on the
 // real client IP instead of ::1 and stops logging ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
-app.set("trust proxy", 1);
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
+app.set("trust proxy", Number.isFinite(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1);
 
 // Phase 1.2 — CORS tightened: require ALLOWED_ORIGINS env var (no wildcard fallback).
 // Previously used `process.env.API_URL || '*'` which opened the API to any origin.
