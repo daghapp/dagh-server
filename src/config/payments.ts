@@ -17,6 +17,7 @@
  */
 import { prisma } from "./prisma.js";
 import { setProcessingEnabled } from "../services/payment-gateway-config.service.js";
+import { getRedisClient } from "./redis.js";
 
 export const PAYMENT_SETTING_KEY = "PAYMENTS_ENABLED";
 
@@ -67,6 +68,27 @@ function parseSettingValue(raw: string): { enabled: boolean; reason: string | nu
  */
 export async function getPaymentControlDetails(): Promise<PaymentControlDetails> {
   const now = Date.now();
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      const cachedRaw = await redis.get("payment:control");
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw) as PaymentControlCache;
+        if (now - parsed.cachedAt < CACHE_TTL_MS) {
+          paymentsEnabled = parsed.enabled;
+          return {
+            enabled: parsed.enabled,
+            reason: parsed.reason,
+            updatedAt: parsed.updatedAt,
+            updatedBy: parsed.updatedBy,
+          };
+        }
+      }
+    } catch (e) {
+      console.error("Redis payment cache read failed:", e);
+    }
+  }
+
   if (cache && now - cache.cachedAt < CACHE_TTL_MS) {
     return {
       enabled: cache.enabled,
@@ -96,6 +118,10 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
       };
       cache = { ...details, cachedAt: now };
       paymentsEnabled = details.enabled;
+      const r = getRedisClient();
+      if (r) {
+        try { await r.set("payment:control", JSON.stringify(cache), { EX: Math.ceil(CACHE_TTL_MS / 1000) }); } catch (e) { console.error("Redis payment cache write failed:", e); }
+      }
       return details;
     }
   } catch (error) {
@@ -109,14 +135,18 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
 
     if (record) {
       const { enabled, reason } = parseSettingValue(record.value);
-      cache = {
-        enabled,
-        reason,
-        updatedAt: record.updatedAt,
-        updatedBy: record.updatedBy,
-        cachedAt: now,
-      };
-      paymentsEnabled = enabled;
+       cache = {
+         enabled,
+         reason,
+         updatedAt: record.updatedAt,
+         updatedBy: record.updatedBy,
+         cachedAt: now,
+       };
+       paymentsEnabled = enabled;
+       const r2 = getRedisClient();
+       if (r2) {
+         try { await r2.set("payment:control", JSON.stringify(cache), { EX: Math.ceil(CACHE_TTL_MS / 1000) }); } catch (e) { console.error("Redis payment cache write failed:", e); }
+       }
       return {
         enabled,
         reason,
@@ -136,8 +166,12 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
     updatedAt: new Date(),
     updatedBy: null,
   };
-  cache = { ...fallback, cachedAt: now };
-  return fallback;
+   cache = { ...fallback, cachedAt: now };
+   const r3 = getRedisClient();
+   if (r3) {
+     try { await r3.set("payment:control", JSON.stringify(cache), { EX: Math.ceil(CACHE_TTL_MS / 1000) }); } catch (e) { console.error("Redis payment cache write failed:", e); }
+   }
+   return fallback;
 }
 
 /**
@@ -166,13 +200,15 @@ export async function setPaymentControlStatus(input: {
     select: { id: true },
   });
 
-  if (gateway) {
-    const outcome = await setProcessingEnabled({
-      enabled: input.enabled,
-      reason: input.reason ?? undefined,
-      actorId: input.updatedBy ?? null,
-    });
-    return {
+   if (gateway) {
+     const outcome = await setProcessingEnabled({
+       enabled: input.enabled,
+       reason: input.reason ?? undefined,
+       actorId: input.updatedBy ?? null,
+     });
+     const r = getRedisClient();
+     if (r) { try { await r.del("payment:control"); } catch (e) { console.error("Redis payment cache invalidate failed:", e); } }
+     return {
       enabled: outcome.paymentProcessingEnabled,
       reason: outcome.config.processingDisabledReason,
       updatedAt: outcome.effectiveAt,
@@ -208,9 +244,12 @@ export async function setPaymentControlStatus(input: {
     updatedBy: record.updatedBy,
     cachedAt: Date.now(),
   };
-  paymentsEnabled = enabled;
+   paymentsEnabled = enabled;
 
-  return {
+   const r2 = getRedisClient();
+   if (r2) { try { await r2.del("payment:control"); } catch (e) { console.error("Redis payment cache invalidate failed:", e); } }
+
+   return {
     enabled,
     reason,
     updatedAt: record.updatedAt,

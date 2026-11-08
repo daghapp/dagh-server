@@ -3,7 +3,6 @@ import { prisma } from "../../config/index.js";
 import { Server } from "socket.io";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
-// import { hasPaidActiveMembership } from "../../helpers/membership.js"; // TODO: re-enable with paid-tier gating
 import { MessageType } from "../../../generated/prisma/client.js";
 import { dispatchNotificationOutbox } from "../../helpers/pushNotifications.js";
 
@@ -26,20 +25,9 @@ export const getIoInstance = (): Server | undefined => {
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const senderId = req.user!.id;
-    const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
+     const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
 
-    // TODO: Re-enable paid-tier gating once membership is fully rolled out.
-    // During testing the FREE tier is allowed to message (see helpers/membership.ts).
-    // if (!(await hasPaidActiveMembership(senderId))) {
-    //   return fail(
-    //     res,
-    //     403,
-    //     { code: "PAID_TIER_REQUIRED", message: "Messaging requires an active paid membership" },
-    //     { action: "UPGRADE", redirect: "/membership" },
-    //   );
-    // }
-
-    if (await isUserBlocked(senderId, receiverId)) {
+     if (await isUserBlocked(senderId, receiverId)) {
       return fail(res, 403, "Cannot send message. Communication is blocked between users.");
     }
 
@@ -153,20 +141,9 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
       return fail(res, 400, "Voice note audio file is required");
     }
 
-    // TODO: Re-enable paid-tier gating once membership is fully rolled out.
-    // During testing the FREE tier is allowed to send voice notes.
-    // if (!(await hasPaidActiveMembership(senderId))) {
-    //   return fail(
-    //     res,
-    //     403,
-    //     { code: "PAID_TIER_REQUIRED", message: "Messaging requires an active paid membership" },
-    //     { action: "UPGRADE", redirect: "/membership" },
-    //   );
-    // }
-
-    if (await isUserBlocked(senderId, receiverId)) {
-      return fail(res, 403, "Cannot send voice note. User is blocked.");
-    }
+     if (await isUserBlocked(senderId, receiverId)) {
+       return fail(res, 403, "Cannot send voice note. User is blocked.");
+     }
 
     const audioUrl = req.file.path;
     const duration = mediaDuration ? parseInt(mediaDuration, 10) : 0;
