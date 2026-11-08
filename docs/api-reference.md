@@ -1289,6 +1289,7 @@ exists so the backfill does not need shell access to the database. Idempotent.
   "minAge": 25,
   "maxAge": 40,
   "maxDistanceKm": 50,
+  "globalDiscovery": true,
   "locationLat": 5.6,
   "locationLng": -0.2,
   "locationName": "Accra",
@@ -1297,7 +1298,7 @@ exists so the backfill does not need shell access to the database. Idempotent.
 }
 ```
 
-### PATCH /dating/profile
+`showProfile`/`showOnlineStatus` toggle visibility. `globalDiscovery` (default `true`) makes discovery worldwide and ignores `maxDistanceKm`/location; set to `false` to rank by proximity.
 
 Supports the multi-step "Profile Settings" flow (Basic Info, Education & Career,
 Cultural Background, Relationship Goals, Photos). All fields optional, so the

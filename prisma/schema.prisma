@@ -588,6 +588,7 @@ model DiscoveryPreference {
   minAge           Int         @default(18)
   maxAge           Int         @default(60)
   maxDistanceKm    Int         @default(50)
+  globalDiscovery  Boolean     @default(true)
   locationLat      Float?
   locationLng      Float?
   locationName     String?

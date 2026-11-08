@@ -20,6 +20,7 @@ export interface DiscoveryFilters {
   maxDistanceKm: number;
   locationLat?: number | null;
   locationLng?: number | null;
+  globalDiscovery?: boolean;
 }
 
 export interface MatchCandidate {
@@ -164,6 +165,7 @@ const DEFAULT_FILTERS: Omit<DiscoveryFilters, "genderPreference"> & {
   maxDistanceKm: 5000,
   locationLat: null,
   locationLng: null,
+  globalDiscovery: true,
 };
 
 export function resolveTierBoost(tierCode: string | null | undefined): number {
@@ -217,11 +219,14 @@ export function scoreCandidate(
     (candidate.headline ? 5 : 0);
   score += completeness;
 
-  // Distance (closer is better) when both have coordinates
-  if (travel && candidate.distanceKm !== null && candidate.distanceKm !== undefined) {
-    score += Math.max(0, 15 - candidate.distanceKm / 20);
-  } else if (filters.locationLat && filters.locationLng && candidate.distanceKm !== null) {
-    score += Math.max(0, 10 - candidate.distanceKm / 100);
+  // Distance scoring only applies when the user opted into nearby matching
+  // (globalDiscovery === false) and has a location set.
+  if (!filters.globalDiscovery) {
+    if (travel && candidate.distanceKm !== null && candidate.distanceKm !== undefined) {
+      score += Math.max(0, 15 - candidate.distanceKm / 20);
+    } else if (filters.locationLat && filters.locationLng && candidate.distanceKm !== null) {
+      score += Math.max(0, 10 - candidate.distanceKm / 100);
+    }
   }
 
   // Schedule overlap — bonus proportional to days the candidate is available
@@ -266,6 +271,7 @@ async function loadMyFilters(userId: string): Promise<{
     maxDistanceKm: preference?.maxDistanceKm ?? DEFAULT_FILTERS.maxDistanceKm,
     locationLat: preference?.locationLat ?? DEFAULT_FILTERS.locationLat,
     locationLng: preference?.locationLng ?? DEFAULT_FILTERS.locationLng,
+    globalDiscovery: preference?.globalDiscovery ?? DEFAULT_FILTERS.globalDiscovery,
   };
 
   return { filters, myInterests: profile?.interests ?? [] };
