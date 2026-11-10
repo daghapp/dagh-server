@@ -67,7 +67,7 @@ export async function createTourSite(adminId: string, input: CreateTourSiteInput
   }
 
   // Audit logging must never fail the create — the row is already committed.
-  logAdminActivity({
+  await logAdminActivity({
     actorId: adminId,
     entityType: AdminEntityType.TOUR_DESTINATION,
     entityId: site.id,
