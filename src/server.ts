@@ -133,9 +133,30 @@ if (redisPub && redisSub) {
   console.log("[socket.io] Redis adapter enabled");
 }
 
-const authLimiter = createRateLimiter("auth", 15 * 60 * 1000, {
+const strictAuthLimiter = createRateLimiter("auth-strict", 15 * 60 * 1000, {
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 20,
+  message: { success: false, error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const refreshLimiter = createRateLimiter("auth-refresh", 15 * 60 * 1000, {
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: { success: false, error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const logoutLimiter = createRateLimiter("auth-logout", 15 * 60 * 1000, {
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { success: false, error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const oauthLimiter = createRateLimiter("auth-oauth", 15 * 60 * 1000, {
+  windowMs: 15 * 60 * 1000,
+  max: 60,
   message: { success: false, error: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -213,10 +234,24 @@ app.get("/health", (_req, res) => {
   });
 });
 
-app.use("/auth", authLimiter, PasswordRoutes);
-app.use("/auth", authLimiter, OauthRoutes);
-app.use("/auth", authLimiter, FacebookRoutes);
-app.use("/auth", authLimiter, AppleRoutes);
+// Per-endpoint rate limits: strict on credential-bearing flows, generous on
+// token refresh and OAuth so legitimate clients are not blocked.
+app.use("/auth/login", strictAuthLimiter);
+app.use("/auth/register", strictAuthLimiter);
+app.use("/auth/verify-otp", strictAuthLimiter);
+app.use("/auth/resend-otp", strictAuthLimiter);
+app.use("/auth/request-reset-password", strictAuthLimiter);
+app.use("/auth/reset-password", strictAuthLimiter);
+app.use("/auth/refresh-token", refreshLimiter);
+app.use("/auth/logout", logoutLimiter);
+app.use("/auth/google", oauthLimiter);
+app.use("/auth/facebook", oauthLimiter);
+app.use("/auth/apple", oauthLimiter);
+
+app.use("/auth", PasswordRoutes);
+app.use("/auth", OauthRoutes);
+app.use("/auth", FacebookRoutes);
+app.use("/auth", AppleRoutes);
 // Dedicated admin-API limiter (§3.1): /admin/* previously had no throttle at
 // all. Admin login shares POST /auth/login with customers, so it stays under
 // authLimiter; everything under /admin/* gets this stricter bucket.
