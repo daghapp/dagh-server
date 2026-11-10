@@ -12,6 +12,11 @@ services:
         value: production
       - key: PAYMENTS_ENABLED
         value: "true"
+      # Required at boot (src/helpers/jwt.ts throws without it). Distinct
+      # from JWT_ACCESS_SECRET; signs the pre-2FA admin MFA token.
+      # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: JWT_MFA_SECRET
+        sync: false
       - key: API_URL
         value: https://dagh-server-fo64.onrender.com
       - key: ALLOWED_ORIGINS

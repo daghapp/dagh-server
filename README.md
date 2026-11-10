@@ -121,7 +121,7 @@ REDIS_URL=redis://localhost:6379
 # Auth
 JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
-JWT_MFA_SECRET=           # short-lived MFA token (optional, derives from JWT_ACCESS_SECRET)
+JWT_MFA_SECRET=           # REQUIRED (non-test): short-lived pre-2FA admin MFA token; must differ from JWT_ACCESS_SECRET
 JWT_SECRET=            # call/token signaling (optional, has a default)            # call/token signaling (optional, has a default)
 SESSIONSECRET=
 
