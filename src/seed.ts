@@ -1,7 +1,7 @@
 // import { PrismaClient } from "@prisma/client";
 // impor
 
-import { prisma } from "./config";
+import { prisma } from "./config/prisma.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { deriveTransitProfile } from "./helpers/transit-profile.js";
 import { tourSiteCatalogue } from "./seed-data/tour-catalogue.js";

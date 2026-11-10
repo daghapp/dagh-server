@@ -12,7 +12,7 @@ const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || 
   "",
 );
 
-type ShareType = "profile" | "event" | "post";
+type ShareType = "profile" | "event" | "post" | "app";
 
 interface ShareMeta {
   type: ShareType;
@@ -155,6 +155,40 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
 }
 
 export class ShareController {
+  async appPreview(req: Request, res: Response) {
+    const inviter = String(req.query.inviter || req.query.name || "Someone").trim() || "Someone";
+    const title = `${inviter} wants to connect with you on Diaspora Sync 💖`;
+    const description =
+      "Meet like-minded diaspora singles, build real connections, and unlock exclusive cultural events and travel experiences in Ghana. Download the app and start matching.";
+    const storeUrl = /iPhone|iPad|iPod/i.test(req.headers["user-agent"] || "")
+      ? APP_STORE_URL
+      : PLAY_STORE_URL;
+    const url = (API_BASE_URL || "") + "/share/app";
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtml(description)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:description" content="${escapeHtml(description)}">
+<meta property="og:url" content="${escapeHtml(url)}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="${escapeHtml(title)}">
+<meta name="twitter:description" content="${escapeHtml(description)}">
+</head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+<p>${escapeHtml(description)}</p>
+${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : ""}
+</body>
+</html>`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    return res.status(200).send(html);
+  }
   async preview(req: Request, res: Response) {
     const type = String(req.params.type) as ShareType;
     const id = String(req.params.id);
@@ -177,12 +211,25 @@ export class ShareController {
   async createLink(req: Request, res: Response) {
     const userId = req.user?.id as string;
     if (!userId) return fail(res, 401, "Unauthorized");
-    const { type, id } = req.body as { type?: ShareType; id?: string };
-    if (!type || !id || !["profile", "event", "post"].includes(type)) {
-      return fail(res, 400, "Invalid type or id");
-    }
-    const meta = await fetchMeta(type, id);
-    if (!meta) return fail(res, 404, "Not found");
-    return ok(res, { shareUrl: meta.url, title: meta.title, imageUrl: meta.image });
+  const { type, id } = req.body as { type?: ShareType; id?: string };
+  if (type === "app") {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true, username: true, profileImageUrl: true },
+    });
+    const name = user?.fullName || user?.username || "Diaspora Sync member";
+    const shareUrl = `${API_BASE_URL || ""}/share/app?inviter=${encodeURIComponent(name)}`;
+    return ok(res, {
+      shareUrl,
+      title: `${name} wants to connect with you on Diaspora Sync 💖`,
+      imageUrl: user?.profileImageUrl || null,
+    });
+  }
+  if (!type || !id || !["profile", "event", "post"].includes(type)) {
+    return fail(res, 400, "Invalid type or id");
+  }
+  const meta = await fetchMeta(type, id);
+  if (!meta) return fail(res, 404, "Not found");
+  return ok(res, { shareUrl: meta.url, title: meta.title, imageUrl: meta.image });
   }
 }

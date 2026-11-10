@@ -5,6 +5,8 @@ import protectedRoute from "../../middleware/protected.js";
 const router = express.Router();
 const controller = new ShareController();
 
+router.get("/app", controller.appPreview.bind(controller));
+
 // Public preview pages (no auth) for crawlers and browsers.
 router.get("/:type/:id", controller.preview.bind(controller));
 

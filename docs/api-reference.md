@@ -1637,7 +1637,8 @@ configured in the environment.
 | GET | `/share/profile/:id` | Public | Preview page for a user profile. |
 | GET | `/share/event/:id` | Public | Preview page for a group event (tour package). |
 | GET | `/share/post/:id` | Public | Preview page for a community post (video card). |
-| POST | `/share/links` | Bearer | Generate a share URL + title + image for a given `{ type, id }`. |
+| GET | `/share/app` | Public | Preview page for an app invite; `?inviter=Name` sets the inviter. |
+| POST | `/share/links` | Bearer | Generate a share URL + title + image for a given `{ type, id }` (`type` may be `profile`, `event`, `post`, or `app`). |
 
 ### Environment
 

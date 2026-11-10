@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dagh_ci
+      SESSIONSECRET: ci-session-secret-not-for-production
     services:
       postgres:
         image: postgres:16
