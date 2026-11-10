@@ -380,6 +380,11 @@ async function seedDemoUsers() {
         accountStatus: AccountStatus.ACTIVE,
         passwordHash: demo.hash,
         accountType: demo.accountType,
+        fullName: demo.fullName,
+        gender: demo.email === "demo@dagh.app" ? Gender.MALE : Gender.FEMALE,
+        dateOfBirth: new Date("1993-06-18"),
+        phoneNumber: demo.phoneNumber,
+        ethnicity: Ethnicity.Black_African_American,
       },
       create: {
         authProvider: AuthProvider.PASSWORD,
