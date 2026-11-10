@@ -62,6 +62,7 @@ import {
   resolveMobilityForSites,
 } from "../../services/mobility.service.js";
 import { dedupeById } from "../../helpers/tiered-recommendation.js";
+import { optimizeImageUrl } from "../../helpers/image-url.js";
 
 const MAX_SITES_PER_DAY = 3;
 
@@ -74,9 +75,10 @@ const LOCAL_PROVIDER_RADIUS_KM = 75;
 // PUBLIC: Get all available tour sites (for frontend listing)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function getAllTourSites() {
-  return prisma.tourSite.findMany({
+  const rows = await prisma.tourSite.findMany({
     orderBy: [{ region: "asc" }, { name: "asc" }],
   });
+  return rows.map((row) => ({ ...row, imageUrl: optimizeImageUrl(row.imageUrl, 800) }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1215,7 +1217,7 @@ async function mapItineraryToResponseWithRecommendations(
               longitude: ds.tourSite.longitude,
               description: ds.tourSite.description,
               history: ds.tourSite.history,
-              imageUrl: ds.tourSite.imageUrl,
+               imageUrl: optimizeImageUrl(ds.tourSite.imageUrl, 800),
               imageCredit: ds.tourSite.imageCredit,
               category: ds.tourSite.category as
                 | "NATURE"

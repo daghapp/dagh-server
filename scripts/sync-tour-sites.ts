@@ -11,6 +11,7 @@
  */
 import { prisma } from "../src/config/index.js";
 import { tourSiteCatalogue } from "../src/seed-data/tour-catalogue.js";
+import { optimizeImageUrl } from "../src/helpers/image-url.js";
 
 const REGIONS = [
   "Greater Accra",
@@ -87,8 +88,8 @@ async function main() {
       await prisma.sitePhoto.create({
         data: {
           tourSiteId: site.id,
-          url: site.imageUrl,
-          thumbUrl: site.imageUrl,
+           url: site.imageUrl,
+           thumbUrl: optimizeImageUrl(site.imageUrl, 400),
           publicId: marker,
           status: "APPROVED",
           moderatedAt: new Date(),

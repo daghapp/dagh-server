@@ -8,6 +8,8 @@ const storage = new CloudinaryStorage({
     folder: "dagh/uploads",
     resource_type: "auto",
     allowed_formats: ["jpg", "jpeg", "png", "pdf"],
+    quality: "auto",
+    fetch_format: "auto",
     public_id: `${Date.now()}-${file.originalname.split(".")[0]}`,
   }),
 });

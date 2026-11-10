@@ -11,6 +11,7 @@ import {
 } from "../../validator/site-photo-validator.js";
 import { notifyAdmins } from "../../helpers/notify-admins.js";
 import type { SitePhoto } from "../../../generated/prisma/client.js";
+import { optimizeImageUrl } from "../../helpers/image-url.js";
 
 export interface SitePhotoFile {
   buffer: Buffer;
@@ -43,7 +44,9 @@ export const cloudinaryUploader = {
         {
           folder: options.folder || "dagh/site-photos",
           resource_type: "image",
-          eager: [{ width: 400, height: 400, crop: "limit", fetch_format: "webp" }],
+          eager: [{ width: 400, height: 400, crop: "limit", fetch_format: "webp", quality: "auto" }],
+          quality: "auto",
+          fetch_format: "auto",
         },
         (error, result) => {
           if (error) {
@@ -302,8 +305,14 @@ export async function listApprovedPhotos(
     }),
   ]);
 
+  const optimizedItems = items.map((item) => ({
+    ...item,
+    url: optimizeImageUrl(item.url, 1200),
+    thumbUrl: optimizeImageUrl(item.thumbUrl ?? item.url, 400),
+  }));
+
   return {
-    items,
+    items: optimizedItems,
     total,
     page,
     limit,

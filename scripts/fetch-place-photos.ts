@@ -18,6 +18,7 @@
  * Always writes a report to /tmp/place-photos.json for auditing.
  */
 import { prisma } from "../src/config/index.js";
+import { optimizeImageUrl } from "../src/helpers/image-url.js";
 
 const SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const FIELD_MASK = "places.id,places.displayName,places.location,places.photos";
@@ -87,7 +88,7 @@ async function searchPlace(
 
 /** Follows the photo-media redirect and returns the final image URL. */
 async function resolvePhotoUrl(photoName: string, key: string): Promise<string | null> {
-  const url = `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=1600&key=${encodeURIComponent(key)}`;
+  const url = `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=1200&key=${encodeURIComponent(key)}`;
   const response = await fetch(url, {
     redirect: "manual",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -171,7 +172,7 @@ async function main() {
         });
         await prisma.sitePhoto.updateMany({
           where: { tourSiteId: site.id, publicId: `seed-gallery:${site.name}` },
-          data: { url, thumbUrl: url },
+           data: { url, thumbUrl: optimizeImageUrl(url, 400) },
         });
       }
     } catch (error) {

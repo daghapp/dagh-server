@@ -17,6 +17,7 @@
 //     `mode: "insensitive"` and use it directly.
 // ─────────────────────────────────────────────────────────────────────────────
 import { prisma } from "../../config/index.js";
+import { optimizeImageUrl } from "../../helpers/image-url.js";
 import { SiteCategory, TransitProfile } from "../../../generated/prisma/client.js";
 import type { Prisma } from "../../../generated/prisma/client.js";
 
@@ -161,7 +162,7 @@ function toAlbumSite(row: {
     longitude: row.longitude,
     category: row.category,
     history: row.history,
-    imageUrl: row.imageUrl,
+    imageUrl: optimizeImageUrl(row.imageUrl, 800),
     imageCredit: row.imageCredit,
     transitProfile: row.transit_profile,
   };
@@ -223,7 +224,7 @@ async function buildAlbum(params: {
   return {
     album: {
       ...params.meta,
-      coverImage: firstSite?.imageUrl ?? firstPackage?.coverImage ?? null,
+      coverImage: optimizeImageUrl(firstSite?.imageUrl ?? firstPackage?.coverImage ?? null, 800),
       siteCount,
       packageCount,
     },
@@ -358,12 +359,12 @@ export async function listAlbums(): Promise<{
     for (const site of sites) {
       if (!siteMatches(site, mapKey)) continue;
       entry.siteCount += 1;
-      if (!entry.coverImage && site.imageUrl) entry.coverImage = site.imageUrl;
+      if (!entry.coverImage && site.imageUrl) entry.coverImage = optimizeImageUrl(site.imageUrl, 800);
     }
     for (const pkg of packages) {
       if (!packageMatches(pkg, mapKey)) continue;
       entry.packageCount += 1;
-      if (!entry.coverImage && pkg.coverImage) entry.coverImage = pkg.coverImage;
+      if (!entry.coverImage && pkg.coverImage) entry.coverImage = optimizeImageUrl(pkg.coverImage, 800);
     }
   }
 
