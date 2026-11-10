@@ -358,14 +358,17 @@ router.get("/preferences", getDiscoveryPreference);
  *                 minimum: 1
  *               locationLat:
  *                 type: number
+ *                 nullable: true
  *                 minimum: -90
  *                 maximum: 90
  *               locationLng:
  *                 type: number
+ *                 nullable: true
  *                 minimum: -180
  *                 maximum: 180
  *               locationName:
  *                 type: string
+ *                 nullable: true
  *               showProfile:
  *                 type: boolean
  *               showOnlineStatus:

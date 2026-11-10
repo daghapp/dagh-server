@@ -310,9 +310,9 @@ fullName, gender (MALE | FEMALE | OTHER), dateOfBirth (must be 18+), ethnicity
   "maxAge": 18-99,
   "maxDistanceKm": 1-20000,
   "globalDiscovery": true/false,
-  "locationLat": -90 to 90,
-  "locationLng": -180 to 180,
-  "locationName": "string",
+  "locationLat": -90 to 90 | null,
+  "locationLng": -180 to 180 | null,
+  "locationName": "string | null",
   "showProfile": true/false,
   "showOnlineStatus": true/false
 }

@@ -79,9 +79,9 @@ export const discoveryPreferenceSchema = z.object({
   maxAge: z.number().int().min(18).max(99).optional(),
   maxDistanceKm: z.number().int().min(1).max(20000).optional(),
   globalDiscovery: z.boolean().optional(),
-  locationLat: z.number().min(-90).max(90).optional(),
-  locationLng: z.number().min(-180).max(180).optional(),
-  locationName: z.string().max(120).optional(),
+  locationLat: z.number().min(-90).max(90).nullable().optional(),
+  locationLng: z.number().min(-180).max(180).nullable().optional(),
+  locationName: z.string().max(120).nullable().optional(),
   showProfile: z.boolean().optional(),
   showOnlineStatus: z.boolean().optional(),
 });

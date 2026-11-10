@@ -1300,6 +1300,11 @@ exists so the backfill does not need shell access to the database. Idempotent.
 
 `showProfile`/`showOnlineStatus` toggle visibility. `globalDiscovery` (default `true`) makes discovery worldwide and ignores `maxDistanceKm`/location; set to `false` to rank by proximity.
 
+`locationLat`, `locationLng`, and `locationName` are nullable. Send `null` to
+clear a saved location; omitting a field leaves the stored value unchanged.
+Sending `null` is valid and will not fail validation ("expected number/string,
+received null").
+
 Supports the multi-step "Profile Settings" flow (Basic Info, Education & Career,
 Cultural Background, Relationship Goals, Photos). All fields optional, so the
 frontend can save each step independently.

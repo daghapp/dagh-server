@@ -97,6 +97,15 @@ describe("discoveryPreferenceSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts null location fields (apply filters clears location)", () => {
+    const result = discoveryPreferenceSchema.safeParse({
+      locationLat: null,
+      locationLng: null,
+      locationName: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("rejects minAge below 18", () => {
     const result = discoveryPreferenceSchema.safeParse({ minAge: 16 });
     expect(result.success).toBe(false);

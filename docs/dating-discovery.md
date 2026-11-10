@@ -25,6 +25,11 @@ module (`src/services/matching.service.ts`, `src/modules/dating/*`).
 
 Toggle via `PUT /dating/preferences` with `globalDiscovery: true|false`.
 
+`locationLat`, `locationLng`, and `locationName` are all nullable. Send `null`
+(not just omit them) to clear a previously saved location; the fields are
+validated as optional-and-nullable, so an unset location never fails the
+request.
+
 ## Scoring
 
 - Base score: interest overlap (up to 40), age proximity (up to 30), profile
