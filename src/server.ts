@@ -135,7 +135,7 @@ if (redisPub && redisSub) {
 
 const authLimiter = createRateLimiter("auth", 15 * 60 * 1000, {
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 100,
   message: { success: false, error: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
