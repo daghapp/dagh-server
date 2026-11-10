@@ -120,7 +120,13 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
       paymentsEnabled = details.enabled;
       const r = getRedisClient();
       if (r) {
-        try { await r.set("payment:control", JSON.stringify(cache), { EX: Math.ceil(CACHE_TTL_MS / 1000) }); } catch (e) { console.error("Redis payment cache write failed:", e); }
+        try {
+          await r.set("payment:control", JSON.stringify(cache), {
+            EX: Math.ceil(CACHE_TTL_MS / 1000),
+          });
+        } catch (e) {
+          console.error("Redis payment cache write failed:", e);
+        }
       }
       return details;
     }
@@ -135,18 +141,24 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
 
     if (record) {
       const { enabled, reason } = parseSettingValue(record.value);
-       cache = {
-         enabled,
-         reason,
-         updatedAt: record.updatedAt,
-         updatedBy: record.updatedBy,
-         cachedAt: now,
-       };
-       paymentsEnabled = enabled;
-       const r2 = getRedisClient();
-       if (r2) {
-         try { await r2.set("payment:control", JSON.stringify(cache), { EX: Math.ceil(CACHE_TTL_MS / 1000) }); } catch (e) { console.error("Redis payment cache write failed:", e); }
-       }
+      cache = {
+        enabled,
+        reason,
+        updatedAt: record.updatedAt,
+        updatedBy: record.updatedBy,
+        cachedAt: now,
+      };
+      paymentsEnabled = enabled;
+      const r2 = getRedisClient();
+      if (r2) {
+        try {
+          await r2.set("payment:control", JSON.stringify(cache), {
+            EX: Math.ceil(CACHE_TTL_MS / 1000),
+          });
+        } catch (e) {
+          console.error("Redis payment cache write failed:", e);
+        }
+      }
       return {
         enabled,
         reason,
@@ -166,12 +178,18 @@ export async function getPaymentControlDetails(): Promise<PaymentControlDetails>
     updatedAt: new Date(),
     updatedBy: null,
   };
-   cache = { ...fallback, cachedAt: now };
-   const r3 = getRedisClient();
-   if (r3) {
-     try { await r3.set("payment:control", JSON.stringify(cache), { EX: Math.ceil(CACHE_TTL_MS / 1000) }); } catch (e) { console.error("Redis payment cache write failed:", e); }
-   }
-   return fallback;
+  cache = { ...fallback, cachedAt: now };
+  const r3 = getRedisClient();
+  if (r3) {
+    try {
+      await r3.set("payment:control", JSON.stringify(cache), {
+        EX: Math.ceil(CACHE_TTL_MS / 1000),
+      });
+    } catch (e) {
+      console.error("Redis payment cache write failed:", e);
+    }
+  }
+  return fallback;
 }
 
 /**
@@ -200,15 +218,21 @@ export async function setPaymentControlStatus(input: {
     select: { id: true },
   });
 
-   if (gateway) {
-     const outcome = await setProcessingEnabled({
-       enabled: input.enabled,
-       reason: input.reason ?? undefined,
-       actorId: input.updatedBy ?? null,
-     });
-     const r = getRedisClient();
-     if (r) { try { await r.del("payment:control"); } catch (e) { console.error("Redis payment cache invalidate failed:", e); } }
-     return {
+  if (gateway) {
+    const outcome = await setProcessingEnabled({
+      enabled: input.enabled,
+      reason: input.reason ?? undefined,
+      actorId: input.updatedBy ?? null,
+    });
+    const r = getRedisClient();
+    if (r) {
+      try {
+        await r.del("payment:control");
+      } catch (e) {
+        console.error("Redis payment cache invalidate failed:", e);
+      }
+    }
+    return {
       enabled: outcome.paymentProcessingEnabled,
       reason: outcome.config.processingDisabledReason,
       updatedAt: outcome.effectiveAt,
@@ -244,12 +268,18 @@ export async function setPaymentControlStatus(input: {
     updatedBy: record.updatedBy,
     cachedAt: Date.now(),
   };
-   paymentsEnabled = enabled;
+  paymentsEnabled = enabled;
 
-   const r2 = getRedisClient();
-   if (r2) { try { await r2.del("payment:control"); } catch (e) { console.error("Redis payment cache invalidate failed:", e); } }
+  const r2 = getRedisClient();
+  if (r2) {
+    try {
+      await r2.del("payment:control");
+    } catch (e) {
+      console.error("Redis payment cache invalidate failed:", e);
+    }
+  }
 
-   return {
+  return {
     enabled,
     reason,
     updatedAt: record.updatedAt,

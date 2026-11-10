@@ -25,9 +25,9 @@ export const getIoInstance = (): Server | undefined => {
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const senderId = req.user!.id;
-     const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
+    const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
 
-     if (await isUserBlocked(senderId, receiverId)) {
+    if (await isUserBlocked(senderId, receiverId)) {
       return fail(res, 403, "Cannot send message. Communication is blocked between users.");
     }
 
@@ -141,9 +141,9 @@ export const sendVoiceNote = async (req: Request, res: Response) => {
       return fail(res, 400, "Voice note audio file is required");
     }
 
-     if (await isUserBlocked(senderId, receiverId)) {
-       return fail(res, 403, "Cannot send voice note. User is blocked.");
-     }
+    if (await isUserBlocked(senderId, receiverId)) {
+      return fail(res, 403, "Cannot send voice note. User is blocked.");
+    }
 
     const audioUrl = req.file.path;
     const duration = mediaDuration ? parseInt(mediaDuration, 10) : 0;

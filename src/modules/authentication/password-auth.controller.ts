@@ -447,27 +447,27 @@ export class PasswordAuthController {
         },
       });
 
-       if (!otpRecord) {
-         return fail(res, 400, "Invalid OTP code");
-       }
+      if (!otpRecord) {
+        return fail(res, 400, "Invalid OTP code");
+      }
 
-       if (otpRecord.attempts >= 5) {
-         await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
-         return fail(res, 429, "Too many invalid OTP attempts");
-       }
+      if (otpRecord.attempts >= 5) {
+        await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
+        return fail(res, 429, "Too many invalid OTP attempts");
+      }
 
-       if (new Date() > otpRecord.expiresAt) {
-         return fail(res, 400, "OTP has expired");
-       }
+      if (new Date() > otpRecord.expiresAt) {
+        return fail(res, 400, "OTP has expired");
+      }
 
-       const isOtpValid = await verifyOtp(otpRecord.code, otpData.code);
-       if (!isOtpValid) {
-         await prisma.otp.update({
-           where: { id: otpRecord.id },
-           data: { attempts: { increment: 1 } },
-         });
-         return fail(res, 400, "Invalid OTP code");
-       }
+      const isOtpValid = await verifyOtp(otpRecord.code, otpData.code);
+      if (!isOtpValid) {
+        await prisma.otp.update({
+          where: { id: otpRecord.id },
+          data: { attempts: { increment: 1 } },
+        });
+        return fail(res, 400, "Invalid OTP code");
+      }
 
       // Update user status to ACTIVE only for email verification
       if (otpData.purpose === "EMAIL_VERIFICATION") {
@@ -606,32 +606,32 @@ export class PasswordAuthController {
         orderBy: { createdAt: "desc" },
       });
 
-       if (!otpRecord) {
-         return fail(res, 400, "Invalid OTP code");
-       }
+      if (!otpRecord) {
+        return fail(res, 400, "Invalid OTP code");
+      }
 
-       if (otpRecord.attempts >= 5) {
-         await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
-         return fail(res, 429, "Too many invalid OTP attempts");
-       }
+      if (otpRecord.attempts >= 5) {
+        await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
+        return fail(res, 429, "Too many invalid OTP attempts");
+      }
 
-       if (new Date() > otpRecord.expiresAt) {
-         return fail(res, 400, "OTP has expired");
-       }
+      if (new Date() > otpRecord.expiresAt) {
+        return fail(res, 400, "OTP has expired");
+      }
 
-       const code = resetData.otp ?? resetData.token;
-       if (!code) {
-         return fail(res, 400, "Invalid OTP code");
-       }
+      const code = resetData.otp ?? resetData.token;
+      if (!code) {
+        return fail(res, 400, "Invalid OTP code");
+      }
 
-       const isOtpValid = await verifyOtp(otpRecord.code, code);
-       if (!isOtpValid) {
-         await prisma.otp.update({
-           where: { id: otpRecord.id },
-           data: { attempts: { increment: 1 } },
-         });
-         return fail(res, 400, "Invalid OTP code");
-       }
+      const isOtpValid = await verifyOtp(otpRecord.code, code);
+      if (!isOtpValid) {
+        await prisma.otp.update({
+          where: { id: otpRecord.id },
+          data: { attempts: { increment: 1 } },
+        });
+        return fail(res, 400, "Invalid OTP code");
+      }
 
       const hashedNewPassword = await bcrypt.hash(resetData.newPassword, 10);
       await prisma.user.update({

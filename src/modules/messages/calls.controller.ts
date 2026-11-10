@@ -117,12 +117,12 @@ export const initiateCall = async (req: Request, res: Response) => {
       }
     }
 
-     // 6. Check block status
-     if (await isUserBlocked(callerId, receiverId)) {
-       return fail(res, 403, { code: "USER_BLOCKED", message: "Cannot place call" });
-     }
+    // 6. Check block status
+    if (await isUserBlocked(callerId, receiverId)) {
+      return fail(res, 403, { code: "USER_BLOCKED", message: "Cannot place call" });
+    }
 
-     // 7. Atomically reject duplicate active calls and create the RINGING call.
+    // 7. Atomically reject duplicate active calls and create the RINGING call.
     //    Both user rows are locked (in stable sorted order) so two concurrent
     //    call attempts can never both pass the busy check.
     const callId = crypto.randomUUID();

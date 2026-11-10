@@ -31,7 +31,9 @@ const RefreshTokenSecret = process.env.JWT_REFRESH_SECRET as string;
  * exact thing two-factor auth exists to prevent.
  */
 if (!process.env.JWT_MFA_SECRET && process.env.NODE_ENV !== "test") {
-  throw new Error("Missing JWT_MFA_SECRET environment variable. Please set it in your environment.");
+  throw new Error(
+    "Missing JWT_MFA_SECRET environment variable. Please set it in your environment.",
+  );
 }
 
 const MfaTokenSecret = process.env.JWT_MFA_SECRET ?? `${AccessTokenSecret}:admin-mfa`;

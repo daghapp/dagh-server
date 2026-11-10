@@ -211,25 +211,25 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
   async createLink(req: Request, res: Response) {
     const userId = req.user?.id as string;
     if (!userId) return fail(res, 401, "Unauthorized");
-  const { type, id } = req.body as { type?: ShareType; id?: string };
-  if (type === "app") {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { fullName: true, username: true, profileImageUrl: true },
-    });
-    const name = user?.fullName || user?.username || "Diaspora Sync member";
-    const shareUrl = `${API_BASE_URL || ""}/share/app?inviter=${encodeURIComponent(name)}`;
-    return ok(res, {
-      shareUrl,
-      title: `${name} wants to connect with you on Diaspora Sync 💖`,
-      imageUrl: user?.profileImageUrl || null,
-    });
-  }
-  if (!type || !id || !["profile", "event", "post"].includes(type)) {
-    return fail(res, 400, "Invalid type or id");
-  }
-  const meta = await fetchMeta(type, id);
-  if (!meta) return fail(res, 404, "Not found");
-  return ok(res, { shareUrl: meta.url, title: meta.title, imageUrl: meta.image });
+    const { type, id } = req.body as { type?: ShareType; id?: string };
+    if (type === "app") {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { fullName: true, username: true, profileImageUrl: true },
+      });
+      const name = user?.fullName || user?.username || "Diaspora Sync member";
+      const shareUrl = `${API_BASE_URL || ""}/share/app?inviter=${encodeURIComponent(name)}`;
+      return ok(res, {
+        shareUrl,
+        title: `${name} wants to connect with you on Diaspora Sync 💖`,
+        imageUrl: user?.profileImageUrl || null,
+      });
+    }
+    if (!type || !id || !["profile", "event", "post"].includes(type)) {
+      return fail(res, 400, "Invalid type or id");
+    }
+    const meta = await fetchMeta(type, id);
+    if (!meta) return fail(res, 404, "Not found");
+    return ok(res, { shareUrl: meta.url, title: meta.title, imageUrl: meta.image });
   }
 }
