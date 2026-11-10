@@ -84,7 +84,7 @@ export function toAuthUser(user: AuthUserSource, communityAccess: ChannelAccessS
     email: user.email,
     fullName: user.fullName,
     accountType: user.accountType,
-    ethnicity: user.ethnicity,
+    ethnicity: user.ethnicity ?? null,
     communityAccess,
   };
 }

@@ -1217,7 +1217,7 @@ async function mapItineraryToResponseWithRecommendations(
               longitude: ds.tourSite.longitude,
               description: ds.tourSite.description,
               history: ds.tourSite.history,
-               imageUrl: optimizeImageUrl(ds.tourSite.imageUrl, 800),
+              imageUrl: optimizeImageUrl(ds.tourSite.imageUrl, 800),
               imageCredit: ds.tourSite.imageCredit,
               category: ds.tourSite.category as
                 | "NATURE"

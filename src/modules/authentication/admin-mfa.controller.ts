@@ -340,7 +340,13 @@ export function issueMfaToken(user: { id: string; email: string; accountType: st
 }
 
 async function buildSessionPayload(
-  user: { id: string; email: string; fullName: string; accountType: string },
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+    accountType: string;
+    ethnicity?: string | null;
+  },
   profile: { role: AdminRole; department: AdminDepartment },
 ) {
   const accessToken = generateAccessToken({
@@ -359,6 +365,7 @@ async function buildSessionPayload(
     email: user.email,
     fullName: user.fullName,
     accountType: user.accountType,
+    ethnicity: user.ethnicity ?? null,
     adminRole: profile.role,
     department: profile.department,
     permissions: getAdminPermissions(profile.role),

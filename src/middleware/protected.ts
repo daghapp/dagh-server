@@ -44,6 +44,7 @@ export default async function protectedRoute(req: Request, res: Response, next: 
         email: true,
         accountType: true,
         fullName: true,
+        ethnicity: true,
       },
     });
 

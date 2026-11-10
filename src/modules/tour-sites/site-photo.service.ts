@@ -44,7 +44,9 @@ export const cloudinaryUploader = {
         {
           folder: options.folder || "dagh/site-photos",
           resource_type: "image",
-          eager: [{ width: 400, height: 400, crop: "limit", fetch_format: "webp", quality: "auto" }],
+          eager: [
+            { width: 400, height: 400, crop: "limit", fetch_format: "webp", quality: "auto" },
+          ],
           quality: "auto",
           fetch_format: "auto",
         },

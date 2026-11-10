@@ -359,12 +359,14 @@ export async function listAlbums(): Promise<{
     for (const site of sites) {
       if (!siteMatches(site, mapKey)) continue;
       entry.siteCount += 1;
-      if (!entry.coverImage && site.imageUrl) entry.coverImage = optimizeImageUrl(site.imageUrl, 800);
+      if (!entry.coverImage && site.imageUrl)
+        entry.coverImage = optimizeImageUrl(site.imageUrl, 800);
     }
     for (const pkg of packages) {
       if (!packageMatches(pkg, mapKey)) continue;
       entry.packageCount += 1;
-      if (!entry.coverImage && pkg.coverImage) entry.coverImage = optimizeImageUrl(pkg.coverImage, 800);
+      if (!entry.coverImage && pkg.coverImage)
+        entry.coverImage = optimizeImageUrl(pkg.coverImage, 800);
     }
   }
 
