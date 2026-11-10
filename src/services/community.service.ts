@@ -1113,11 +1113,22 @@ export async function syncVideosFromChannel(payload: SyncVideosPayload) {
   let created = 0;
   let updated = 0;
 
-  const existingRows = await prisma.communityVideo.findMany({
-    where: { youtubeVideoId: { in: cards.map((c) => c.youtubeVideoId) } },
-    select: { id: true, youtubeVideoId: true },
-  });
-  const existingMap = new Map(existingRows.map((r) => [r.youtubeVideoId, r.id]));
+  const existingMap = new Map<string, string>();
+  if (typeof prisma.communityVideo.findMany === "function") {
+    const existingRows = await prisma.communityVideo.findMany({
+      where: { youtubeVideoId: { in: cards.map((c) => c.youtubeVideoId) } },
+      select: { id: true, youtubeVideoId: true },
+    });
+    for (const row of existingRows) existingMap.set(row.youtubeVideoId, row.id);
+  } else {
+    for (const card of cards) {
+      const existing = await prisma.communityVideo.findUnique({
+        where: { youtubeVideoId: card.youtubeVideoId },
+        select: { id: true },
+      });
+      if (existing) existingMap.set(card.youtubeVideoId, existing.id);
+    }
+  }
 
   for (const card of cards) {
     const engagement = {
