@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import { isProfileVerified } from "../../helpers/profileVerification.js";
 import * as contactsService from "./contacts.service.js";
 
 function extractContacts(body: any): any[] {
@@ -18,6 +19,9 @@ export class ContactsController {
     try {
       const userId = (req as any).user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
+      if (!(await isProfileVerified(userId))) {
+        return fail(res, 403, "Profile must be verified to use this feature");
+      }
       const contacts = extractContacts(req.body);
       const result = await contactsService.syncContacts(userId, contacts);
       return ok(res, result, "Contacts synced");
@@ -35,6 +39,9 @@ export class ContactsController {
     try {
       const userId = (req as any).user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
+      if (!(await isProfileVerified(userId))) {
+        return fail(res, 403, "Profile must be verified to use this feature");
+      }
       const matches = contactsService.getContactMatches(userId);
       const banner =
         matches.length === 0
@@ -51,6 +58,9 @@ export class ContactsController {
     try {
       const userId = (req as any).user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
+      if (!(await isProfileVerified(userId))) {
+        return fail(res, 403, "Profile must be verified to use this feature");
+      }
       contactsService.clearContactMatches(userId);
       return ok(res, { cleared: true });
     } catch (error) {

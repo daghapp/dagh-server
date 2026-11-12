@@ -1,11 +1,16 @@
 import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
+import { isProfileVerified } from "../../helpers/profileVerification.js";
 import * as deepLinkService from "./deep-link.service.js";
 
 export class DeepLinksController {
   async create(req: Request, res: Response) {
     try {
       const userId = (req as any).user?.id;
+      if (!userId) return fail(res, 401, "Unauthorized");
+      if (!(await isProfileVerified(userId))) {
+        return fail(res, 403, "Profile must be verified to use this feature");
+      }
       const { type, id } = req.body || {};
       if (!type || !id || !["profile", "event", "post", "app"].includes(type)) {
         return fail(res, 400, "Invalid type or id");
