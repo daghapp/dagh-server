@@ -85,7 +85,7 @@ missing or unreadable.
 { "email": "user@example.com", "password": "Password123!" }
 ```
 
-Returns `data: { id, email, fullName, accountType, ethnicity, accessToken, refreshToken }`.
+Returns `data: { id, email, fullName, firstName, lastName, username, accountType, ethnicity, accessToken, refreshToken }`.
 `403` if the email is not yet verified.
 
 `ethnicity` is `null` until the user chooses one — the column is nullable and
@@ -98,7 +98,7 @@ rather than invalid.
 { "refreshToken": "..." }
 ```
 
-Returns `data: { id, email, fullName, accountType, ethnicity, accessToken }` — the
+Returns `data: { id, email, fullName, firstName, lastName, username, accountType, ethnicity, accessToken }` — the
 **same user shape as `POST /auth/login`**, minus `refreshToken` (the caller
 already holds it; the token is not rotated).
 

@@ -37,6 +37,9 @@ export interface AuthUser {
   id: string;
   email: string;
   fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
   accountType: string | null;
   /**
    * `null` when never chosen — which is a real, valid state (the column is
@@ -65,6 +68,9 @@ export interface AuthUserSource {
   id: string;
   email: string;
   fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
   accountType: string | null;
   ethnicity: Ethnicity | null;
 }
@@ -83,6 +89,9 @@ export function toAuthUser(user: AuthUserSource, communityAccess: ChannelAccessS
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
+    username: user.username ?? null,
     accountType: user.accountType,
     ethnicity: user.ethnicity ?? null,
     communityAccess,
