@@ -1372,6 +1372,8 @@ enum Gender {
   MALE
   FEMALE
   OTHER
+  NON_BINARY
+  PREFER_NOT_TO_SAY
 }
 
 enum VerificationLevel {
