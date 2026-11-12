@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
+import * as deepLinkService from "../deep-links/deep-link.service.js";
 import { ok, fail } from "../../helpers/response.js";
 
 const PLAY_STORE_URL =
@@ -219,10 +220,15 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
       });
       const name = user?.fullName || user?.username || "Diaspora Sync member";
       const shareUrl = `${API_BASE_URL || ""}/share/app?inviter=${encodeURIComponent(name)}`;
+      const smart = await deepLinkService.createSmartLink({ type: "app", id: userId, inviterId: userId });
       return ok(res, {
         shareUrl,
         title: `${name} wants to connect with you on Diaspora Sync 💖`,
         imageUrl: user?.profileImageUrl || null,
+        token: smart.token,
+        deepLink: smart.deepLink,
+        deferredDeepLink: smart.deferredDeepLink,
+        storeUrl: smart.storeUrl,
       });
     }
     if (!type || !id || !["profile", "event", "post"].includes(type)) {
@@ -230,6 +236,15 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
     }
     const meta = await fetchMeta(type, id);
     if (!meta) return fail(res, 404, "Not found");
-    return ok(res, { shareUrl: meta.url, title: meta.title, imageUrl: meta.image });
+    const smart = await deepLinkService.createSmartLink({ type, id, inviterId: userId });
+    return ok(res, {
+      shareUrl: meta.url,
+      title: meta.title,
+      imageUrl: meta.image,
+      token: smart.token,
+      deepLink: smart.deepLink,
+      deferredDeepLink: smart.deferredDeepLink,
+      storeUrl: smart.storeUrl,
+    });
   }
 }

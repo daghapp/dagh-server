@@ -5,6 +5,7 @@ import type {
   VerifyPhoneOtpSchema,
 } from "../../validator/profile-phone-verification-validator.js";
 import { sendOtp, verifyOtp, normalizePhone, maskPhone } from "../../helpers/otp.js";
+import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { ok, fail } from "../../helpers/response.js";
 
 export class ProfileVerificationController {
@@ -42,6 +43,19 @@ export class ProfileVerificationController {
         where: { userId },
         data: { phoneNumber: phoneNormalized },
       });
+
+      try {
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            phoneNumber: phoneNormalized,
+            phoneNumberHash: hashPhoneNumber(phoneNormalized),
+            phoneHash: hashPhoneNumber(phoneNormalized),
+          },
+        });
+      } catch {
+        // ignore
+      }
 
       const updatedProfile = await prisma.userProfile.findUnique({
         where: { userId },

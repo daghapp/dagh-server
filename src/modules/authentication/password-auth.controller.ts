@@ -18,6 +18,7 @@ import {
 } from "../../helpers/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { toAuthUser } from "../../helpers/auth-user.js";
+import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { getAllPermissionsForRole } from "../../middleware/permissions.js";
 import { generateMfaToken } from "../../helpers/jwt.js";
 import { getSecuritySettings, isPasswordExpired } from "../../helpers/settings.js";
@@ -59,6 +60,8 @@ export class PasswordAuthController {
           fullName: userData.fullName,
           email: userData.email,
           phoneNumber: userData.phoneNumber,
+          phoneNumberHash: userData.phoneNumber ? hashPhoneNumber(userData.phoneNumber) : null,
+          phoneHash: userData.phoneNumber ? hashPhoneNumber(userData.phoneNumber) : null,
           dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : undefined,
           gender: userData.gender,
           ethnicity: (userData.ethnicity ?? undefined) as

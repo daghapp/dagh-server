@@ -1638,7 +1638,34 @@ configured in the environment.
 | GET | `/share/event/:id` | Public | Preview page for a group event (tour package). |
 | GET | `/share/post/:id` | Public | Preview page for a community post (video card). |
 | GET | `/share/app` | Public | Preview page for an app invite; `?inviter=Name` sets the inviter. |
-| POST | `/share/links` | Bearer | Generate a share URL + title + image for a given `{ type, id }` (`type` may be `profile`, `event`, `post`, or `app`). |
+| POST | `/share/links` | Bearer | Generate a share URL + title + image for a given `{ type, id }` (`type` may be `profile`, `event`, `post`, or `app`). Also returns `token`, `deepLink`, `deferredDeepLink`, and `storeUrl` for smart/deferred deep linking. |
+| POST | `/share/smart-links` | Bearer | Alias of `/share/links`. |
+| GET/POST | `/share/resolve` | Public | Resolve a deferred deep-link token (`?token=` or `{ token }`) to its `{ type, id }` target. |
+| GET | `/share/resolve/:token` | Public | Resolve a deferred deep-link token to its target. |
+
+### Smart Deep Links
+
+Device-aware smart link creation and resolution for contextual onboarding.
+
+| Method | Endpoint | Auth | What it does |
+|--------|----------|------|--------------|
+| POST | `/deep-links/links` | Bearer | Create a smart link (`{ type, id }`); returns `token`, `shareUrl`, `deepLink`, `deferredDeepLink`, `storeUrl`, `target`. |
+| GET/POST | `/deep-links/resolve` | Public | Resolve a token (`?token=` or `{ token }`) to its target. |
+| GET | `/deep-links/resolve/:token` | Public | Resolve a token to its target. |
+| POST | `/deep-links/claim` | Public | Alias of resolve (install-lifecycle claim). |
+| GET | `/deep-links/go/:type/:id` | Public | Device-aware redirect page that tries the deep link then falls back to the store. |
+
+### Contact Book & Social Graph Matching
+
+Securely match a user's hashed device contacts against existing users.
+
+| Method | Endpoint | Auth | What it does |
+|--------|----------|------|--------------|
+| POST | `/contacts/sync` | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); returns `matchedCount`, `matches`, `totalContacts`, and a `banner` message. |
+| POST | `/contacts/match` | Bearer | Alias of `/contacts/sync`. |
+| GET | `/contacts/matches` | Bearer | Cached contact matches + banner. |
+| GET | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches`. |
+| DELETE | `/contacts/matches` | Bearer | Clear cached contact matches. |
 
 ### Environment
 

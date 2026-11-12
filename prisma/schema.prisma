@@ -48,6 +48,8 @@ model User {
   dateOfBirth             DateTime?
   gender                  String?
   phoneNumber             String?                  @unique
+  phoneNumberHash         String?                  @unique
+  phoneHash               String?
   deviceTokens            DeviceToken[]
   payments                Payment[]
   profile                 UserProfile?

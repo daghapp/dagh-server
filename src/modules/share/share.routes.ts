@@ -1,5 +1,6 @@
 import express from "express";
 import { ShareController } from "./share.controller.js";
+import { deepLinksController } from "../deep-links/deep-links.controller.js";
 import protectedRoute from "../../middleware/protected.js";
 
 const router = express.Router();
@@ -12,6 +13,12 @@ router.get("/:type/:id", controller.preview.bind(controller));
 
 // Authenticated link generation for in-app sharing.
 router.post("/links", protectedRoute, controller.createLink.bind(controller));
+
+// Smart deep link helpers (aliases).
+router.post("/smart-links", protectedRoute, controller.createLink.bind(controller));
+router.get("/resolve", deepLinksController.resolve.bind(deepLinksController));
+router.get("/resolve/:token", deepLinksController.resolve.bind(deepLinksController));
+router.post("/resolve", deepLinksController.resolve.bind(deepLinksController));
 
 export { router as ShareRoutes };
 export default router;

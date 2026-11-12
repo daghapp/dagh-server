@@ -52,6 +52,8 @@ import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.rou
 import { router as MessageRoutes } from "./routes/message.routes.js";
 import { router as CallsRoutes } from "./routes/calls.routes.js";
 import { router as DevicesRoutes } from "./routes/devices.routes.js";
+import { router as ContactsRoutes } from "./routes/contacts.routes.js";
+import { router as DeepLinksRoutes } from "./routes/deep-links.routes.js";
 // Phase 3.1 — Membership Plans & Tiers
 import { router as MembershipRoutes } from "./routes/membership.routes.js";
 // Dating module
@@ -307,6 +309,10 @@ app.use("/providers", ProviderRoutes);
 app.use("/messages", MessageRoutes);
 app.use("/calls", CallsRoutes);
 app.use("/devices", DevicesRoutes);
+app.use("/contacts", ContactsRoutes);
+app.use("/deep-links", DeepLinksRoutes);
+app.use("/deferred-deep-links", DeepLinksRoutes);
+app.use("/install", DeepLinksRoutes);
 // Phase 3.1 — Membership Plans & Tiers
 app.use("/membership", MembershipRoutes);
 // Dating module
