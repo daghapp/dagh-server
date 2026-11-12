@@ -52,6 +52,8 @@ import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.rou
 import { router as MessageRoutes } from "./routes/message.routes.js";
 import { router as CallsRoutes } from "./routes/calls.routes.js";
 import { router as DevicesRoutes } from "./routes/devices.routes.js";
+import { router as SupportRoutes } from "./routes/support.routes.js";
+import { router as AdminSupportRoutes } from "./routes/admin-support.routes.js";
 import { router as ContactsRoutes } from "./routes/contacts.routes.js";
 import { router as DeepLinksRoutes } from "./routes/deep-links.routes.js";
 // Phase 3.1 — Membership Plans & Tiers
@@ -294,6 +296,7 @@ app.use("/admin", AdminSubscriptionsRoutes);
 app.use("/admin/settings", AdminSettingsRoutes);
 app.use("/admin/maintenance", AdminMaintenanceRoutes);
 app.use("/admin", AdminActivityRoutes);
+app.use("/admin/support", AdminSupportRoutes);
 app.use("/admin/dashboard", AdminDashboardRoutes);
 app.use("/admin/tours", AdminToursRoutes);
 app.use("/system", SystemRoutes);
@@ -309,6 +312,7 @@ app.use("/providers", ProviderRoutes);
 app.use("/messages", MessageRoutes);
 app.use("/calls", CallsRoutes);
 app.use("/devices", DevicesRoutes);
+app.use("/support", SupportRoutes);
 app.use("/contacts", ContactsRoutes);
 app.use("/deep-links", DeepLinksRoutes);
 app.use("/deferred-deep-links", DeepLinksRoutes);

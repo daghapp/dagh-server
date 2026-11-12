@@ -4,7 +4,10 @@ import type {
   SendPhoneOtpSchema,
   VerifyPhoneOtpSchema,
 } from "../../validator/profile-phone-verification-validator.js";
-import { sendOtp, verifyOtp, normalizePhone, maskPhone } from "../../helpers/otp.js";
+import { verifyOtp, normalizePhone, maskPhone } from "../../helpers/otp.js";
+import { sendSms } from "../../helpers/sms.js";
+import bcrypt from "bcrypt";
+import { randomInt } from "crypto";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { ok, fail } from "../../helpers/response.js";
 
@@ -74,11 +77,30 @@ export class ProfileVerificationController {
         },
       });
 
-      const otpResult = await sendOtp({
-        email: updatedProfile.user.email,
-        subject: "Phone Verification OTP",
-        purpose: "PHONE_VERIFICATION",
+      const otp = randomInt(100000, 999999);
+      const expirationTime = new Date(Date.now() + 10 * 60 * 1000);
+      const hashedOtp = await bcrypt.hash(otp.toString(), 10);
+
+      const otpRecord = await prisma.otp.create({
+        data: {
+          code: hashedOtp,
+          expiresAt: expirationTime,
+          email: updatedProfile.user.email,
+          purpose: "PHONE_VERIFICATION",
+        },
       });
+
+      // Send the verification code to the phone number via SMS.
+      try {
+        await sendSms({
+          to: phoneNormalized,
+          message: `Your Diaspora Sync verification code is: ${otp}. It expires in 10 minutes.`,
+        });
+      } catch (smsError) {
+        console.error("[SMS_SEND_ERROR]", smsError);
+      }
+
+      const otpResult = { challengeId: otpRecord.id, expiresAt: expirationTime };
 
       const resendAvailableAt = new Date(Date.now() + 60 * 1000);
 
@@ -89,7 +111,7 @@ export class ProfileVerificationController {
         expiresAt: otpResult.expiresAt.toISOString(),
         resendAvailableAt: resendAvailableAt.toISOString(),
         previousChallengesInvalidated: deleted.count,
-        deliveryChannel: "EMAIL",
+        deliveryChannel: "SMS",
       });
 
       return ok(
