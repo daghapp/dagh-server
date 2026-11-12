@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
-import { isProfileVerified } from "../../helpers/profileVerification.js";
 import * as deepLinkService from "../deep-links/deep-link.service.js";
 import { ok, fail } from "../../helpers/response.js";
 
@@ -213,12 +212,6 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
   async createLink(req: Request, res: Response) {
     const userId = req.user?.id as string;
     if (!userId) return fail(res, 401, "Unauthorized");
-    if (!(await isProfileVerified(userId))) {
-      return fail(res, 403, "Profile must be verified to use this feature");
-    }
-    if (!(await isProfileVerified(userId))) {
-      return fail(res, 403, "Profile must be verified to use this feature");
-    }
     const { type, id } = req.body as { type?: ShareType; id?: string };
     if (type === "app") {
       const user = await prisma.user.findUnique({
