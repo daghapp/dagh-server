@@ -18,6 +18,7 @@ import { setupSwagger } from "./config/swagger.js";
 import { router as FacebookRoutes } from "./routes/facebook-auth.routes.js";
 import { router as AppleRoutes } from "./routes/apple-auth.routes.js";
 import { router as ImageUploadRoutes } from "./routes/image-upload.route.js";
+import { router as ImageProxyRoutes } from "./routes/image-proxy.routes.js";
 import { router as PaymentRoutes } from "./routes/payment.routes.js";
 import { router as TourRoutes } from "./routes/tour.routes.js";
 import { router as ProfileRoutes } from "./routes/profile-routes.routes.js";
@@ -268,6 +269,7 @@ const adminApiLimiter = createRateLimiter("admin", 15 * 60 * 1000, {
 });
 app.use("/admin", adminApiLimiter);
 app.use("/upload", ImageUploadRoutes);
+app.use("/media/images", ImageProxyRoutes);
 const paymentLimiter = createRateLimiter("payment", 15 * 60 * 1000, {
   windowMs: 15 * 60 * 1000,
   max: 50,

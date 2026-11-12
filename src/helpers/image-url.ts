@@ -1,3 +1,5 @@
+import { buildImageProxyUrl, isAllowedImageHost } from "./image-proxy.js";
+
 export function optimizeImageUrl(url: string | null | undefined, width = 800): string | null {
   if (!url) return null;
   const trimmed = url.trim();
@@ -20,14 +22,20 @@ export function optimizeImageUrl(url: string | null | undefined, width = 800): s
     const path = parsed.pathname;
     const thumbMatch = path.match(/^(.*\/thumb\/[^/]+\/[^/]+\/[^/]+)\/\d+px-(.+)$/);
     if (thumbMatch) {
-      return `${parsed.origin}${thumbMatch[1]}/${target}px-${thumbMatch[2]}${parsed.search}${parsed.hash}`;
+      const optimized = `${parsed.origin}${thumbMatch[1]}/${target}px-${thumbMatch[2]}${parsed.search}${parsed.hash}`;
+      return isAllowedImageHost(new URL(optimized).hostname)
+        ? buildImageProxyUrl(optimized, width)
+        : optimized;
     }
     const fullMatch = path.match(/^\/wikipedia\/([^/]+)\/([0-9a-f])\/([0-9a-f]{2})\/(.+)$/i);
     if (fullMatch) {
       const [, project, a, ab, file] = fullMatch;
-      return `${parsed.origin}/wikipedia/${project}/thumb/${a}/${ab}/${file}/${target}px-${file}${parsed.search}${parsed.hash}`;
+      const optimized = `${parsed.origin}/wikipedia/${project}/thumb/${a}/${ab}/${file}/${target}px-${file}${parsed.search}${parsed.hash}`;
+      return isAllowedImageHost(new URL(optimized).hostname)
+        ? buildImageProxyUrl(optimized, width)
+        : optimized;
     }
-    return trimmed;
+    return isAllowedImageHost(host) ? buildImageProxyUrl(trimmed, width) : trimmed;
   }
 
   // Unsplash: request a sized, auto-formatted variant.
@@ -37,12 +45,19 @@ export function optimizeImageUrl(url: string | null | undefined, width = 800): s
     if (!params.has("q")) params.set("q", "80");
     params.set("auto", "format");
     params.set("fit", "crop");
-    return `${parsed.origin}${parsed.pathname}?${params.toString()}${parsed.hash}`;
+    const optimized = `${parsed.origin}${parsed.pathname}?${params.toString()}${parsed.hash}`;
+    return buildImageProxyUrl(optimized, width);
   }
 
   // Google Places photo redirect URLs already carry a size; bump only if present.
   if (host === "places.googleapis.com") {
-    return trimmed.replace(/maxWidthPx=\d+/i, `maxWidthPx=${Math.max(width, 800)}`);
+    const optimized = trimmed.replace(/maxWidthPx=\d+/i, `maxWidthPx=${Math.max(width, 800)}`);
+    return buildImageProxyUrl(optimized, width);
+  }
+
+  // Cloudinary and other allowed hosts: route through the proxy for caching.
+  if (isAllowedImageHost(host)) {
+    return buildImageProxyUrl(trimmed, width);
   }
 
   return trimmed;

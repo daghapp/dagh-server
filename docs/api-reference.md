@@ -130,6 +130,13 @@ device store; `403` if the account is no longer active; `404` if the user is gon
 
 `413` = file too large; `400` = no file / wrong type. Used by verification (face + documents) and anywhere else an image URL is needed.
 
+### Image proxy (CDN/cache)
+
+| Method | Endpoint | Auth | What it does |
+|--------|----------|------|--------------|
+| GET | `/media/images` | Public | Caching proxy for supported upstream sources (Wikimedia, Unsplash, Google Places, Cloudinary). Query: `url` (source URL), `w` (target width, default 800). Returns image bytes with long-lived cache headers; falls back to a placeholder SVG on upstream failure or disallowed host. |
+| GET | `/media/images/placeholder` | Public | Placeholder SVG for missing/broken images. |
+
 ---
 
 ## Profile Management

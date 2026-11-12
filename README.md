@@ -868,6 +868,8 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 | Method | Endpoint  | Auth   | Description                |
 | ------ | --------- | ------ | -------------------------- |
 | POST   | `/upload` | Bearer | Upload image to Cloudinary |
+| GET    | `/media/images` | Public | Caching image proxy for supported upstream sources (`url`, `w`); falls back to a placeholder SVG |
+| GET    | `/media/images/placeholder` | Public | Placeholder SVG for missing/broken images |
 
 ### Providers
 
