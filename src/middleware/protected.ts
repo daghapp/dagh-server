@@ -43,12 +43,11 @@ export default async function protectedRoute(req: Request, res: Response, next: 
         id: true,
         email: true,
         accountType: true,
-      fullName: true,
-      firstName: true,
-      lastName: true,
-      username: true,
-      ethnicity: true,
-
+        fullName: true,
+        firstName: true,
+        lastName: true,
+        username: true,
+        ethnicity: true,
       },
     });
 

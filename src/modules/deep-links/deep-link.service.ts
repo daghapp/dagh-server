@@ -20,7 +20,10 @@ export interface SmartLink {
 }
 
 const APP_SCHEME = (process.env.APP_DEEP_LINK_SCHEME || "diasporansync").trim();
-const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(
+  /\/$/,
+  "",
+);
 const PLAY_STORE_URL =
   process.env.PLAY_STORE_URL?.trim() ||
   "https://play.google.com/store/apps/details?id=com.simplymark.diasporansync";
@@ -29,14 +32,17 @@ const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "deep
 
 export function detectPlatform(userAgent: string): "android" | "ios" | "web" | "bot" {
   const ua = userAgent || "";
-  if (/bot|crawler|spider|facebookexternalhit|whatsapp|twitterbot|slackbot|linkedinbot|telegrambot|googlebot/i.test(ua)) {
+  if (
+    /bot|crawler|spider|facebookexternalhit|whatsapp|twitterbot|slackbot|linkedinbot|telegrambot|googlebot/i.test(
+      ua,
+    )
+  ) {
     return "bot";
   }
   if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
   if (/Android/i.test(ua)) return "android";
   return "web";
 }
-
 
 export function createDeepLinkToken(target: DeepLinkTarget, inviterId?: string): string {
   const payload = {
@@ -48,9 +54,15 @@ export function createDeepLinkToken(target: DeepLinkTarget, inviterId?: string):
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "90d" });
 }
 
-export function verifyDeepLinkToken(token: string): (DeepLinkTarget & { inviterId?: string | null }) | null {
+export function verifyDeepLinkToken(
+  token: string,
+): (DeepLinkTarget & { inviterId?: string | null }) | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { type: ShareType; id: string; inviterId?: string | null };
+    const decoded = jwt.verify(token, JWT_SECRET) as {
+      type: ShareType;
+      id: string;
+      inviterId?: string | null;
+    };
     if (!decoded?.type || !decoded?.id) return null;
     return { type: decoded.type, id: decoded.id, inviterId: decoded.inviterId };
   } catch {

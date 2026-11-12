@@ -220,7 +220,11 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
       });
       const name = user?.fullName || user?.username || "Diaspora Sync member";
       const shareUrl = `${API_BASE_URL || ""}/share/app?inviter=${encodeURIComponent(name)}`;
-      const smart = await deepLinkService.createSmartLink({ type: "app", id: userId, inviterId: userId });
+      const smart = await deepLinkService.createSmartLink({
+        type: "app",
+        id: userId,
+        inviterId: userId,
+      });
       return ok(res, {
         shareUrl,
         title: `${name} wants to connect with you on Diaspora Sync 💖`,

@@ -75,13 +75,17 @@ export async function matchContacts(
   try {
     users = await (prisma as any).user.findMany({
       where: {
-        OR: [
-          { phoneNumberHash: { in: hashes } },
-          { phoneHash: { in: hashes } },
-        ],
+        OR: [{ phoneNumberHash: { in: hashes } }, { phoneHash: { in: hashes } }],
         id: { not: userId },
       },
-      select: { id: true, fullName: true, username: true, phoneNumber: true, phoneNumberHash: true, phoneHash: true },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        phoneNumber: true,
+        phoneNumberHash: true,
+        phoneHash: true,
+      },
     });
   } catch {
     // Fallback: load all users and filter by hashed phone.
@@ -110,15 +114,16 @@ export async function matchContacts(
     matches.length === 0
       ? "No contacts found on Diaspora Sync yet."
       : matches.length === 1
-      ? `1 person in your contact list (${firstName}) is already on Diaspora Sync! Tap to connect.`
-      : `${matches.length} people in your contact list (including ${firstName}) are already on Diaspora Sync! Tap to connect.`;
-
+        ? `1 person in your contact list (${firstName}) is already on Diaspora Sync! Tap to connect.`
+        : `${matches.length} people in your contact list (including ${firstName}) are already on Diaspora Sync! Tap to connect.`;
 
   // Best-effort push notification for the newly registered user.
   if (matches.length > 0) {
     try {
       const { prisma } = await import("../../config/index.js");
-      const devices = await (prisma as any).userDevice.findMany({ where: { userId, enabled: true } });
+      const devices = await (prisma as any).userDevice.findMany({
+        where: { userId, enabled: true },
+      });
       const expoModule = await import("expo-server-sdk");
       const ExpoCtor = (expoModule as any).Expo || (expoModule as any).default?.Expo;
       const expo = new ExpoCtor();
@@ -126,7 +131,12 @@ export async function matchContacts(
       for (const device of devices || []) {
         const token = device.expoPushToken;
         if (token && ExpoCtor.isExpoPushToken(token)) {
-          messages.push({ to: token, title: "Diaspora Sync", body: banner, data: { type: "CONTACT_MATCH" } });
+          messages.push({
+            to: token,
+            title: "Diaspora Sync",
+            body: banner,
+            data: { type: "CONTACT_MATCH" },
+          });
         }
       }
       if (messages.length) {

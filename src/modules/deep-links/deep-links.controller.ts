@@ -47,7 +47,9 @@ export class DeepLinksController {
       const deepLink = deepLinkService.buildDeepLink({ type: type as any, id }, token || undefined);
       const storeUrl = token
         ? deepLinkService.buildStoreUrl(platform === "ios" ? "ios" : "android", token)
-        : (platform === "ios" ? deepLinkService.getAppStoreUrl() : deepLinkService.getPlayStoreUrl());
+        : platform === "ios"
+          ? deepLinkService.getAppStoreUrl()
+          : deepLinkService.getPlayStoreUrl();
       if (platform === "bot") {
         return res.redirect(302, `${process.env.API_URL || ""}/share/${type}/${id}`);
       }
