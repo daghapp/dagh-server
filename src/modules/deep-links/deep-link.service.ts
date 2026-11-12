@@ -14,6 +14,8 @@ export interface SmartLink {
   deepLink: string;
   deferredDeepLink: string;
   storeUrl: string;
+  playStoreUrl: string;
+  appStoreUrl: string;
   target: DeepLinkTarget;
 }
 
@@ -91,6 +93,8 @@ export async function createSmartLink(params: {
     deepLink: buildDeepLink(target, token),
     deferredDeepLink: buildDeferredDeepLink(token),
     storeUrl: buildStoreUrl("android", token),
+    playStoreUrl: PLAY_STORE_URL,
+    appStoreUrl: APP_STORE_URL,
     target,
   };
 }

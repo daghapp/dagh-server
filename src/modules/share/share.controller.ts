@@ -229,6 +229,8 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
         deepLink: smart.deepLink,
         deferredDeepLink: smart.deferredDeepLink,
         storeUrl: smart.storeUrl,
+        playStoreUrl: smart.playStoreUrl,
+        appStoreUrl: smart.appStoreUrl,
       });
     }
     if (!type || !id || !["profile", "event", "post"].includes(type)) {
@@ -245,6 +247,8 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
       deepLink: smart.deepLink,
       deferredDeepLink: smart.deferredDeepLink,
       storeUrl: smart.storeUrl,
+      playStoreUrl: smart.playStoreUrl,
+      appStoreUrl: smart.appStoreUrl,
     });
   }
 }
