@@ -14,8 +14,18 @@ export function optimizeImageUrl(url: string | null | undefined, width = 800): s
 
   // Wikimedia Commons: prefer a thumbnail variant over the full-resolution file.
   if (host === "upload.wikimedia.org" || host === "thumb.wikimedia.org") {
-    // Wikimedia only serves a fixed set of thumbnail widths; requesting an
-    // arbitrary size (e.g. 800px) can 400. Keep the original URL so images render.
+    const standardSizes = [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840];
+    const target = standardSizes.find((size) => size >= width) ?? standardSizes[standardSizes.length - 1];
+    const path = parsed.pathname;
+    const thumbMatch = path.match(/^(.*\/thumb\/[^/]+\/[^/]+\/[^/]+)\/\d+px-(.+)$/);
+    if (thumbMatch) {
+      return `${parsed.origin}${thumbMatch[1]}/${target}px-${thumbMatch[2]}${parsed.search}${parsed.hash}`;
+    }
+    const fullMatch = path.match(/^\/wikipedia\/([^/]+)\/([0-9a-f])\/([0-9a-f]{2})\/(.+)$/i);
+    if (fullMatch) {
+      const [, project, a, ab, file] = fullMatch;
+      return `${parsed.origin}/wikipedia/${project}/thumb/${a}/${ab}/${file}/${target}px-${file}${parsed.search}${parsed.hash}`;
+    }
     return trimmed;
   }
 
