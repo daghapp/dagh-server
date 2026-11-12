@@ -107,7 +107,7 @@ function renderHtml(meta: ShareMeta, userAgent: string): string {
   const title = escapeHtml(meta.title);
   const description = escapeHtml(meta.description);
   const image = meta.image ? escapeHtml(meta.image) : "";
-  const url = escapeHtml(meta.url);
+  const url = escapeHtml(PLAY_STORE_URL);
   const deepLink = `${APP_SCHEME}://share/${meta.type}/${meta.id}`;
   const storeUrl = /iPhone|iPad|iPod/i.test(userAgent) ? APP_STORE_URL : PLAY_STORE_URL;
   const bot = isBot(userAgent);
@@ -164,7 +164,7 @@ export class ShareController {
     const storeUrl = /iPhone|iPad|iPod/i.test(req.headers["user-agent"] || "")
       ? APP_STORE_URL
       : PLAY_STORE_URL;
-    const url = (API_BASE_URL || "") + "/share/app";
+    const url = PLAY_STORE_URL;
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
