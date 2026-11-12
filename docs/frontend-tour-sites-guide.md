@@ -63,7 +63,7 @@ Rendering rules:
 
 - `history` is long-form text for the detail page. Render it when present and
   fall back to `description` when it is `null`.
-- `imageUrl` is the hero image. Show a placeholder when it is `null`. Hero URLs are now served as optimized thumbnail variants (≈800px) where the source supports it, so they load faster; full-resolution sources remain available through the original host.
+- `imageUrl` is the hero image. Show a placeholder when it is `null`. Hero URLs are returned as-is (full resolution) for Wikimedia sources to ensure they render reliably; other supported sources may still be optimized.
 - `imageCredit` is attribution text (for example `"Wikimedia Commons"`). Render
   it only when present, typically as a small caption under the hero or in the
   lightbox.
