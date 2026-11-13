@@ -88,6 +88,27 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
   });
   if (existingPending) throw new Error("DUPLICATE_SITE_NAME");
 
+  // Normalize imageUrl: accept single string or array of up to 4 URLs
+  let imageUrl: string | null = null;
+  let imageCredit:
+    | string
+    | undefined = input.imageCredit as string | undefined;
+
+  if (input.imageUrl) {
+    if (typeof input.imageUrl === "string") {
+      imageUrl = input.imageUrl;
+    } else if (Array.isArray(input.imageUrl) && input.imageUrl.length > 0) {
+      // Store first image in imageUrl, rest in imageUrl2/3/4
+      imageUrl = input.imageUrl[0];
+    }
+  }
+
+  // If there are additional images beyond the first, store them
+  let additionalImages: string[] = [];
+  if (Array.isArray(input.imageUrl) && input.imageUrl.length > 1) {
+    additionalImages = input.imageUrl.slice(1).filter((url): url is string => typeof url === "string");
+  }
+
   const pendingSite = await prisma.pendingSite.create({
     data: {
       name,
@@ -97,8 +118,11 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
       description: input.description,
       history: input.history,
       category: input.category ?? "",
-      imageUrl: input.imageUrl,
-      imageCredit: input.imageCredit,
+      imageUrl,
+      imageCredit,
+      imageUrl2: additionalImages[0] ?? null,
+      imageUrl3: additionalImages[1] ?? null,
+      imageUrl4: additionalImages[2] ?? null,
       status: "pending",
       submittedBy: userId,
     },

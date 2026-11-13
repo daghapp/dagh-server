@@ -1,0 +1,2198 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../generated/prisma"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String       @id @default(uuid())
+  authProvider AuthProvider
+  // Optional user preference used for itinerary personalization
+  ethnicity    Ethnicity?
+
+  email                   String                   @unique
+  // Stable Sign in with Apple identifier (Apple's `sub`). Apple may withhold
+  // the email or return a private-relay address, so this — not email — is the
+  // account key for Apple logins.
+  appleId                 String?                  @unique
+  // Encrypted Apple refresh token, retained so account deletion can revoke it.
+  appleRefreshToken       String?
+  passwordHash            String?
+  passwordLastChanged     DateTime?
+  accountStatus           AccountStatus            @default(PENDING_VERIFICATION)
+  accountType             AccountType              @default(USER)
+  // Admin user lifecycle (§3.7): soft delete keeps the record for audit.
+  isDeleted               Boolean                  @default(false)
+  deletedAt               DateTime?
+  // Reason for the latest status transition (suspend/reject/terminate/...).
+  statusReason            String?
+  statusChangedAt         DateTime?
+  statusChangedBy         String?
+  // Password-login lockout (§3.1): attempts reset on successful login.
+  failedLoginAttempts     Int                      @default(0)
+  lockedUntil             DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @default(now())
+  lastLoginAt             DateTime?
+  lastActiveAt            DateTime?
+  fullName                String
+  // Login-profile fields (editable via PATCH /profile/account)
+  username                String?                  @unique
+  firstName               String?
+  lastName                String?
+  profileImageUrl         String?
+  dateOfBirth             DateTime?
+  gender                  String?
+  phoneNumber             String?                  @unique
+  phoneNumberHash         String?                  @unique
+  phoneHash               String?
+  deviceTokens            DeviceToken[]
+  payments                Payment[]
+  profile                 UserProfile?
+  subscription            UserSubscription?
+  // Phase 3.1 — Support tickets created by paid-tier members
+  prioritySupportRequests PrioritySupportRequest[]
+  supportTickets          SupportTicket[]
+  verification            UserVerification?
+  tourBookings            tour_bookings[]
+  sentMessages            Message[]                @relation("SentMessages")
+  receivedMessages        Message[]                @relation("ReceivedMessages")
+  userMatches             UserMatch[]              @relation("UserMatches")
+  targetMatches           UserMatch[]              @relation("TargetMatches")
+  blockedUsers            UserBlock[]              @relation("Blocker")
+  blockedBy               UserBlock[]              @relation("Blocked")
+  sentReports             UserReport[]             @relation("Reporter")
+  receivedReports         UserReport[]             @relation("ReportedUser")
+  outgoingCalls           Call[]                   @relation("OutgoingCalls")
+  incomingCalls           Call[]                   @relation("IncomingCalls")
+  devices                 UserDevice[]
+  userTourItineraries     user_tour_itineraries[]
+  visaRequests            VisaOnArrivalRequest[]
+
+  tourRequests TourRequest[]
+
+  // Community video interactions & unlocks
+  videoInteractions VideoInteraction[]
+  videoUnlocks      VideoUnlock[]
+  channelAccess     ChannelAccess[]
+
+  adminActivityLogs AdminActivityLog[]
+  adminProfile      AdminProfile?
+
+  // Admin-controlled complimentary access (comped/waived membership)
+  accessGrants        SubscriptionAccessGrant[] @relation("AccessGrantSubject")
+  accessGrantsIssued  SubscriptionAccessGrant[] @relation("AccessGrantIssuer")
+  accessGrantsRevoked SubscriptionAccessGrant[] @relation("AccessGrantRevoker")
+
+  datingProfile           DatingProfile?
+  datingApplication       DatingApplication?
+  userWarnings            UserWarning[]
+  statusHistory           UserStatusHistory[]
+  adminNotifications      AdminNotification[]         @relation("AdminNotifications")
+  ngoMemberships          NgoMembership[]
+  ngoAccessRequests       NgoAccessRequest[]
+  swipesMade              UserSwipe[]                 @relation("Swiper")
+  swipesReceived          UserSwipe[]                 @relation("SwipeTarget")
+  discoveryPreference     DiscoveryPreference?
+  notificationPreferences UserNotificationPreference?
+
+  @@map("users")
+}
+
+model UserProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  // Public profile fields
+  profileUrl  String?
+  phoneNumber String?
+
+  // Bio profile image
+  bio_profile_image_url         String?
+  bio_profile_image_uploaded_at DateTime?
+
+  // Bio document uploads
+  bio_document_urls        String[]
+  bio_document_type        BioDocumentType?
+  bio_document_number      String?          @unique
+  bio_document_uploaded_at DateTime?
+
+  // Opposite relation: one profile -> one ProfileVerification
+  profileVerification ProfileVerification?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+enum BioDocumentType {
+  PASSPORT
+  GHANA_CARD
+}
+
+model UserVerification {
+  id                String             @id @default(uuid())
+  userId            String             @unique
+  isVerified        Boolean            @default(false)
+  verificationLevel VerificationLevel?
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_verifications")
+}
+
+model otp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  purpose   String
+
+  @@index([email, purpose])
+}
+
+model DeviceToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String?
+  platform  String?
+  addedAt   DateTime? @default(now())
+  expiredAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+model UserDevice {
+  id            String    @id @default(uuid())
+  userId        String
+  deviceId      String
+  platform      Platform
+  expoPushToken String?
+  fcmToken      String?
+  apnsToken     String?
+  voipPushToken String?
+  enabled       Boolean   @default(true)
+  lastSeenAt    DateTime  @default(now())
+  failureCount  Int       @default(0)
+  disabledAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([userId, enabled])
+  @@map("user_devices")
+}
+
+model UserNotificationPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  messagesEnabled Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_preferences")
+}
+
+// Phase 3.1 — Enhanced with planId, tierCode, and memberCode for the membership tiers system
+model UserSubscription {
+  id              String                   @id @default(uuid())
+  userId          String                   @unique
+  planId          String? // FK to the selected MembershipPlan (nullable for legacy records)
+  tierCode        MembershipTierCode       @default(FREE) // Current tier level
+  memberCode      String?                  @unique // Human-readable ID like "89345-SGF"
+  autoRenew       Boolean                  @default(false)
+  startDate       DateTime
+  endDate         DateTime?
+  status          SubscriptionStatus       @default(ACTIVE)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  billingHistory  BillingHistory[]
+  supportRequests PrioritySupportRequest[]
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            MembershipPlan?          @relation(fields: [planId], references: [id])
+
+  @@map("user_subscriptions")
+}
+
+// Admin-controlled complimentary access. Lets an admin comp a specific user
+// into a tier without a payment, without touching their UserSubscription row —
+// so a grant and a real paid subscription coexist instead of overwriting each
+// other, and revoking a comp cannot be mistaken for a cancellation.
+//
+// Grants are soft-revoked (revokedAt/revokedBy) and never deleted: the row is
+// the audit record explaining why someone had access. For the same reason both
+// actor FKs null out rather than restrict, so an admin can delete their own
+// account without either losing the comps they issued or being blocked by them.
+model SubscriptionAccessGrant {
+  id               String             @id @default(uuid())
+  userId           String
+  tierCode         MembershipTierCode // Tier the grantee is comped into
+  /// When true the comp also carries paid-tier perks (matching boost, priority
+  /// support). When false the user is only spared the fee and stays functionally
+  /// equivalent to FREE, so comped users never outrank paying members.
+  includePaidPerks Boolean            @default(false)
+  /// When true this comp also waives every service fee in the app (itinerary,
+  /// tour bookings, etc.), not just the membership tier. Combined with a null
+  /// endDate it represents a "lifetime free" account.
+  waiveServiceFees Boolean            @default(false)
+  reason           String // Why this comp exists, e.g. "Board member - 2026"
+  startDate        DateTime           @default(now())
+  /// null means perpetual. Grants never auto-renew; they run to endDate or forever.
+  endDate          DateTime?
+  /// null once the admin who issued the comp deletes their own account. The
+  /// comp stays in force for the grantee — one admin closing their account must
+  /// not silently revoke someone else's access — but the row no longer says who
+  /// issued it. Matches revokedById below.
+  grantedById      String?
+  revokedAt        DateTime?
+  revokedById      String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  user            User                     @relation("AccessGrantSubject", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy       User?                    @relation("AccessGrantIssuer", fields: [grantedById], references: [id], onDelete: SetNull)
+  revokedBy       User?                    @relation("AccessGrantRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+  supportRequests PrioritySupportRequest[]
+
+  @@index([userId, revokedAt])
+  @@index([tierCode])
+  @@index([endDate])
+  @@map("subscription_access_grants")
+}
+
+model BillingHistory {
+  id               String           @id @default(uuid())
+  subscriptionId   String
+  amount           Float
+  currency         String           @default("GHS")
+  paymentReference String           @unique
+  status           PaymentStatus    @default(PENDING)
+  createdAt        DateTime         @default(now())
+  paidAt           DateTime?
+  subscription     UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("billing_history")
+}
+
+model itinerary_activities {
+  id               String           @id
+  itineraryId      String
+  activityTime     String?
+  activity         String?
+  durationMinutes  Int?
+  included         Boolean?
+  cost             Decimal?
+  locationName     String?
+  locationAddress  String?
+  tour_itineraries tour_itineraries @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+}
+
+model pricing_excludes {
+  id            String        @id
+  tour_id       String
+  item          String?
+  tour_packages tour_packages @relation(fields: [tour_id], references: [id], onDelete: Cascade)
+}
+
+model pricing_includes {
+  id            String        @id
+  tour_id       String
+  item          String?
+  tour_packages tour_packages @relation(fields: [tour_id], references: [id], onDelete: Cascade)
+}
+
+model tour_itineraries {
+  id                   String                 @id @default(uuid())
+  tourId               String
+  dayNumber            Int?
+  title                String?                @db.VarChar(255)
+  description          String?
+  breakfast            Boolean?
+  lunch                Boolean?
+  dinner               Boolean?
+  accommodationName    String?
+  accommodationType    String?
+  accommodationRating  Decimal?
+  itinerary_activities itinerary_activities[]
+  tour_packages        tour_packages          @relation(fields: [tourId], references: [id], onDelete: Cascade)
+}
+
+model tour_locations {
+  id            String        @id
+  tourId        String
+  name          String?
+  city          String?
+  region        String?
+  description   String?
+  visitDuration Int?
+  photos        String[]
+  latitude      Float?
+  longitude     Float?
+  tour_packages tour_packages @relation(fields: [tourId], references: [id], onDelete: Cascade)
+}
+
+model tour_media {
+  id            String        @id
+  tour_id       String
+  media_type    String?       @db.VarChar(20)
+  url           String?
+  tour_packages tour_packages @relation(fields: [tour_id], references: [id], onDelete: Cascade)
+}
+
+model tour_packages {
+  id                 String             @id @default(uuid())
+  title              String?
+  slug               String?            @unique
+  description        String?
+  shortDescription   String?
+  category           String?
+  subcategory        String?
+  durationDays       Int?
+  durationNights     Int?
+  basePrice          Decimal?
+  currency           String?
+  status             String?
+  // Destination-catalogue fields (§3.5): primary region + human location label.
+  region             String?
+  location           String?
+  lastModifiedBy     String?
+  featured           Boolean            @default(false)
+  trending           Boolean            @default(false)
+  cancellationPolicy String?
+  bookingDeadline    Int?
+  minimumBooking     Int?
+  accessibility      String?
+  coverImage         String?
+  heritageDnaTesting Boolean            @default(false)
+  overallRating      Decimal?
+  ratingCount        Int                @default(0)
+  viewCount          Int                @default(0)
+  bookingCount       Int                @default(0)
+  wishlistCount      Int                @default(0)
+  shareCount         Int                @default(0)
+  conversionRate     Decimal?
+  createdBy          String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime?
+  publishedAt        DateTime?          @default(now())
+  // Multi-tag categories for album structure (§5): e.g. ["Adventure", "Historical", "Wildlife"]
+  categories         String[]           @default([])
+  bookings           tour_bookings[]
+  pricing_excludes   pricing_excludes[]
+  pricing_includes   pricing_includes[]
+  tour_itineraries   tour_itineraries[]
+  tour_locations     tour_locations[]
+  tour_media         tour_media[]
+}
+
+model tour_bookings {
+  id                  String                  @id @default(uuid())
+  userId              String
+  tourId              String?
+  bookingReference    String                  @unique
+  numberOfPeople      Int
+  bookingDate         DateTime                @default(now())
+  tourStartDate       DateTime
+  tourEndDate         DateTime?
+  totalPrice          Decimal
+  currency            String                  @default("GHS")
+  status              BookingStatus           @default(PENDING)
+  paymentId           String?                 @unique
+  paymentStatus       PaymentStatus           @default(PENDING)
+  // True when the fee was waived (payments disabled or price 0). Waived
+  // bookings keep paymentId NULL so the unique column never collides.
+  feeWaived           Boolean                 @default(false)
+  specialRequests     String?
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  emergencyContact    String?
+  emergencyPhone      String?
+  cancellationReason  String?
+  cancelledAt         DateTime?
+  cancelledBy         String?
+  refundAmount        Decimal?
+  refundedAt          DateTime?
+  confirmedAt         DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  tour                tour_packages?          @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userTourItineraries user_tour_itineraries[]
+  systemGenerated     Boolean                 @default(false)
+
+  @@index([userId])
+  @@index([tourId])
+  @@index([status])
+  @@index([bookingDate])
+  @@map("tour_bookings")
+}
+
+model Message {
+  id             String      @id @default(uuid())
+  conversationId String?
+  senderId       String
+  receiverId     String
+  type           MessageType @default(TEXT)
+  content        String?
+  mediaUrl       String?
+  mediaDuration  Int?
+  isRead         Boolean     @default(false)
+  readAt         DateTime?
+  createdAt      DateTime    @default(now())
+
+  conversation   Conversation?         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User                  @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver       User                  @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  pushDeliveries MessagePushDelivery[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("messages")
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  participants  String[]
+  lastMessage   String?
+  lastMessageAt DateTime?
+  messages      Message[]
+  calls         Call[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  @@map("conversations")
+}
+
+model UserMatch {
+  id        String      @id @default(uuid())
+  userId    String
+  matchedId String
+  status    MatchStatus @default(MATCHED)
+  createdAt DateTime    @default(now())
+
+  user    User @relation("UserMatches", fields: [userId], references: [id], onDelete: Cascade)
+  matched User @relation("TargetMatches", fields: [matchedId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchedId])
+  @@map("user_matches")
+}
+
+// ─────────────────────────────────────────
+// DATING MODULE — profile, swipes, discovery
+// ─────────────────────────────────────────
+model DatingProfile {
+  id         String      @id @default(uuid())
+  userId     String      @unique
+  headline   String?
+  about      String?     @db.Text
+  photos     String[]
+  heightCm   Int?
+  interests  String[]
+  lookingFor LookingFor?
+
+  // --- Profile settings: Basic Info ---
+  location String?
+
+  // --- Profile settings: Education & Career ---
+  degree       String?
+  university   String?
+  profession   String?
+  industry     String?
+  workLocation String?
+
+  // --- Profile settings: Cultural Background ---
+  languages String[]
+  religion  String?
+  hometown  String?
+
+  // ── Tour-to-dating integration ─────────────────────────────────────────────
+  // Where the user plans to travel / be available for casual dating, plus the
+  // window during which their dating profile should surface for schedule overlap.
+  travelLocationLat Float?
+  travelLocationLng Float?
+  availableFrom     DateTime?
+  availableTo       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discoveryPreference DiscoveryPreference?
+  tourSelections      TourRequestDatingSelection[]
+
+  @@map("dating_profiles")
+}
+
+// ─────────────────────────────────────────
+// JUNCTION — dating profiles the user selects to merge into a tour itinerary
+// as social / leisure blocks after reviewing recommendations.
+// ─────────────────────────────────────────
+model TourRequestDatingSelection {
+  id              String   @id @default(uuid())
+  tourRequestId   String
+  datingProfileId String
+  createdAt       DateTime @default(now())
+
+  tourRequest   TourRequest   @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
+  datingProfile DatingProfile @relation(fields: [datingProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([tourRequestId, datingProfileId])
+  @@index([tourRequestId])
+  @@map("tour_request_dating_selections")
+}
+
+enum LookingFor {
+  LONG_TERM_PARTNER
+  SHORT_TERM
+  FRIENDSHIP
+  NOT_SURE
+}
+
+enum SwipeDirection {
+  LIKE
+  SUPER_LIKE
+  PASS
+}
+
+model UserSwipe {
+  id        String         @id @default(uuid())
+  swiperId  String
+  targetId  String
+  direction SwipeDirection
+  createdAt DateTime       @default(now())
+
+  swiper User @relation("Swiper", fields: [swiperId], references: [id], onDelete: Cascade)
+  target User @relation("SwipeTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([swiperId, targetId])
+  @@index([targetId])
+  @@map("user_swipes")
+}
+
+model DiscoveryPreference {
+  id               String      @id @default(uuid())
+  userId           String      @unique
+  lookingFor       LookingFor?
+  genderPreference Gender[]
+  minAge           Int         @default(18)
+  maxAge           Int         @default(60)
+  maxDistanceKm    Int         @default(50)
+  globalDiscovery  Boolean     @default(true)
+  locationLat      Float?
+  locationLng      Float?
+  locationName     String?
+  showProfile      Boolean     @default(true)
+  showOnlineStatus Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  datingProfile   DatingProfile @relation(fields: [datingProfileId], references: [id], onDelete: Cascade)
+  datingProfileId String        @unique
+
+  @@map("discovery_preferences")
+}
+
+model UserBlock {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
+}
+
+model UserReport {
+  id             String       @id @default(uuid())
+  reporterId     String
+  targetId       String
+  reason         String
+  details        String?
+  status         ReportStatus @default(PENDING)
+  resolutionNote String?
+  resolvedAt     DateTime?
+  resolvedById   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  reporter User @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  target   User @relation("ReportedUser", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([targetId])
+  @@map("user_reports")
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+model Call {
+  id             String     @id @default(uuid())
+  roomId         String     @unique
+  callerId       String
+  receiverId     String
+  conversationId String?
+  callType       CallType
+  status         CallStatus @default(INITIATING)
+  createdAt      DateTime   @default(now())
+  ringingAt      DateTime?
+  answeredAt     DateTime?
+  endedAt        DateTime?
+  expiresAt      DateTime
+  endedBy        String?
+  failureReason  String?
+  version        Int        @default(1)
+  durationSec    Int?
+
+  caller         User               @relation("OutgoingCalls", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver       User               @relation("IncomingCalls", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation   Conversation?      @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  auditLogs      CallAuditLog[]
+  pushDeliveries CallPushDelivery[]
+
+  @@index([receiverId, status])
+  @@index([callerId, status])
+  @@index([conversationId, createdAt])
+  @@index([status, expiresAt])
+  @@map("calls")
+}
+
+enum PushProvider {
+  FCM
+  EXPO
+  VOIP
+}
+
+enum PushDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model CallPushDelivery {
+  id                String             @id @default(uuid())
+  callId            String
+  targetUserId      String
+  deviceId          String
+  provider          PushProvider
+  payload           Json
+  token             String
+  status            PushDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  errorCode         String?
+  attemptCount      Int                @default(0)
+  acceptedAt        DateTime?
+  receiptsFetchedAt DateTime?
+  lastAttemptAt     DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, deviceId, provider])
+  @@index([status, lastAttemptAt])
+  @@index([callId])
+  @@index([deviceId])
+  @@map("call_push_deliveries")
+}
+
+model MessagePushDelivery {
+  id                String             @id @default(uuid())
+  messageId         String
+  targetUserId      String
+  deviceId          String
+  provider          PushProvider
+  payload           Json
+  token             String
+  status            PushDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  errorCode         String?
+  attemptCount      Int                @default(0)
+  acceptedAt        DateTime?
+  receiptsFetchedAt DateTime?
+  lastAttemptAt     DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, deviceId])
+  @@index([status, lastAttemptAt])
+  @@index([messageId])
+  @@index([deviceId])
+  @@map("message_push_deliveries")
+}
+
+model CallAuditLog {
+  id         String     @id @default(uuid())
+  callId     String
+  actorId    String
+  priorState CallStatus
+  newState   CallStatus
+  requestId  String?
+  createdAt  DateTime   @default(now())
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+  @@map("call_audit_logs")
+}
+
+enum MessageType {
+  TEXT
+  VOICE_NOTE
+  IMAGE
+  VIDEO
+  CALL_LOG
+}
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+enum CallStatus {
+  INITIATING
+  RINGING
+  ANSWERED
+  DECLINED
+  CANCELLED
+  MISSED
+  ENDED
+  FAILED
+}
+
+enum Platform {
+  IOS
+  ANDROID
+}
+
+enum MatchStatus {
+  PENDING
+  MATCHED
+  UNMATCHED
+}
+
+model user_tour_itineraries {
+  id                  String                             @id @default(uuid())
+  userId              String
+  bookingId           String
+  dayNumber           Int?
+  title               String?                            @db.VarChar(255)
+  description         String?
+  breakfast           Boolean?
+  lunch               Boolean?
+  dinner              Boolean?
+  accommodationName   String?
+  accommodationType   String?
+  accommodationRating Decimal?
+  activities          user_tour_itineraries_activities[]
+  user                User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking             tour_bookings                      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("user_tour_itineraries")
+}
+
+model user_tour_itineraries_activities {
+  id              String                @id @default(uuid())
+  userItineraryId String
+  activityTime    String?
+  activity        String?
+  durationMinutes Int?
+  included        Boolean?
+  cost            Decimal?
+  locationName    String?
+  locationAddress String?
+  userItinerary   user_tour_itineraries @relation(fields: [userItineraryId], references: [id], onDelete: Cascade)
+
+  @@map("user_tour_itineraries_activities")
+}
+
+model VisaOnArrivalRequest {
+  id          String             @id @default(uuid())
+  userId      String
+  status      VisaRequestStatus  @default(PENDING) // pending, approved, rejected
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  approval    VisaApproval?
+  paymentId   String?            @unique // from the polymorphic payment table.
+  visaData    VisaOnArrivalData?
+  packageType VisaPackageType?
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("visa_on_arrival_requests")
+}
+
+model VisaOnArrivalData {
+  id                         String               @id @default(uuid())
+  requestId                  String               @unique
+  passport_image_url         String
+  bio_page_image_url         String
+  flight_itinerary_image_url String
+  passport_number            String
+  purpose_of_trip            String
+  date_of_departure          DateTime
+  date_of_arrival            DateTime
+  request                    VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("visa_on_arrival_data")
+}
+
+model VisaApproval {
+  id         String               @id @default(uuid())
+  requestId  String               @unique
+  approvedBy String?
+  approvedAt DateTime?
+  status     VisaApprovalStatus   @default(PENDING) // pending, approved, rejected
+  notes      String?
+  request    VisaOnArrivalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("visa_on_arrival_approvals")
+}
+
+model Payment {
+  id        String @id @default(uuid())
+  reference String @unique
+  userId    String
+
+  description String?
+
+  targetType PaymentTargetType // the module access this
+  targetId   String // the module's id
+
+  amount   Float
+  currency String @default("GHS")
+
+  status   PaymentStatus    @default(PENDING)
+  method   PaymentMethod?
+  provider PaymentProvider?
+
+  // Partial/full refunds (§3.8). refundedAmount is cumulative; status flips to
+  // PARTIALLY_REFUNDED then REFUNDED once refundedAmount >= amount.
+  refundedAmount Float     @default(0)
+  refundReason   String?
+  refundedAt     DateTime?
+
+  providerReference String?
+  transactionId     String?
+
+  paidAt DateTime?
+
+  ledgerEntries LedgerTransaction[]
+
+  metadata Json?
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactionFlags TransactionFlag[]
+  paymentRisk      PaymentRisk?
+
+  @@index([status])
+  @@index([userId])
+  @@map("payments")
+}
+
+model HubtelDirectReceiveLog {
+  id                    String  @id @default(uuid())
+  message               String?
+  responseCode          String?
+  amount                Float?
+  charges               Float?
+  amountAfterCharges    Float?
+  amountCharged         Float?
+  description           String?
+  clientReference       String? // your merchant reference
+  transactionId         String? // Hubtel transaction ID
+  externalTransactionId String? // telco reference
+  orderId               String?
+  deliveryFee           Float?
+  paymentDetails        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hubtel_direct_receive_logs")
+}
+
+model LedgerAccount {
+  id           String              @id @default(uuid())
+  name         String              @unique // e.g. "Account_DAGh_Revenue", "Account_GIS_Statutory_Reserve"
+  currency     String // GHS or USD
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  transactions LedgerTransaction[]
+}
+
+model LedgerTransaction {
+  id          String        @id @default(uuid())
+  accountId   String
+  account     LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  paymentId   String
+  payment     Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amount      Float
+  currency    String
+  type        String // CREDIT or DEBIT
+  description String?
+  createdAt   DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────
+// ADMIN ACTIVITY LOG — audit trail for admin console actions
+// (approve/reject/retry/status changes). Unlike the provider-scoped
+// `AuditLog`, this is keyed to any domain entity via entityType + entityId.
+// ─────────────────────────────────────────
+model AdminActivityLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  entityType String // e.g. "VISA_REQUEST", "PAYMENT", "TOUR", "USER", "REPORT"
+  entityId   String?
+  action     String // e.g. "APPROVED", "REJECTED", "NOTE_ADDED", "STATUS_CHANGED"
+  note       String?
+  /// Structured, non-secret before/after context for the change (e.g.
+  /// `{ "environment": { "from": "TEST", "to": "LIVE" } }`) plus the acting
+  /// request's correlation id. Never store credentials here.
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("admin_activity_logs")
+}
+
+// ─────────────────────────────────────────
+// ADMIN PROFILE — department + role for admin console accounts.
+// One per admin `User`; created on admin registration (or seed).
+// ─────────────────────────────────────────
+model AdminProfile {
+  id                String          @id @default(uuid())
+  userId            String          @unique
+  department        AdminDepartment
+  role              AdminRole
+  mfaEnabled        Boolean         @default(false)
+  mfaMethod         String? // e.g. "TOTP", "SMS"
+  mfaSecret         String? // encrypted
+  lastMfaAt         DateTime?
+  backupCodes       String[] // hashed backup codes
+  failedMfaAttempts Int             @default(0)
+  lockedUntil       DateTime?
+  createdBy         String? // userId of the account that registered this admin (null for self-registration/seed)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
+}
+
+enum AdminDepartment {
+  EXECUTIVE_MANAGEMENT
+  OPERATIONS_AND_MEMBERSHIP
+  FINANCE_AND_COMPLIANCE
+  TECHNICAL_SUPPORT
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATIONS
+  FINANCE
+  SUPPORT
+}
+
+// ─────────────────────────────────────────
+// STATIC LOOKUP TABLE — seeded with real Ghana locations
+// ─────────────────────────────────────────
+model TourSite {
+  id          String       @id @default(uuid())
+  name        String       @unique
+   region      String
+   latitude    Float
+   longitude   Float
+   description String
+   // Long-form historical background for the destination detail page.
+   history     String?
+   imageUrl    String?
+   // Attribution shown alongside the hero/site photo.
+   imageCredit String?
+   category    SiteCategory
+   // Multi-tag album keys (§5): supplementary tags beyond the primary `category`,
+   // e.g. ["Adventure", "Historical"]. Album endpoints match either source.
+   categories         String[]           @default([])
+   // Accessibility tier used by the mobility engine (§2). Default mirrors the
+   // original column default so pre-existing rows stay valid.
+   transit_profile TransitProfile @default(RURAL) // Urban Center | Peri_Urban | Rural
+   createdAt   DateTime     @default(now())
+ 
+   requestSites      TourRequestSite[]
+   itineraryDaySites ItineraryDaySite[]
+   photos            SitePhoto[]
+ 
+   @@map("tour_sites")
+}
+
+enum TransitProfile {
+  URBAN_CENTER
+  PERI_URBAN
+  RURAL
+}
+
+// ─────────────────────────────────────────
+// USER-SUBMITTED TOUR SITES — pending approval workflow
+// Users submit new tour site forms written to this staging collection.
+// Admins review and either approve (migrate to main tour_sites) or reject.
+// ─────────────────────────────────────────
+model PendingSite {
+  id                String       @id @default(uuid())
+  name              String
+  region            String
+  latitude          Float
+  longitude         Float
+  description       String?
+  // Long-form historical background carried through to the production site.
+  history           String?
+  category          String // free-text category/tag
+  imageUrl          String?
+  // Attribution for the submitted photo, carried through on approval.
+  imageCredit       String?
+  status            String     @default("pending") // pending, approved, rejected
+  submittedBy       String // userId
+  rejectReason      String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@map("pending_sites")
+}
+
+// ─────────────────────────────────────────
+// COMMUNITY PHOTO UPLOADS (§4) — moderated gallery enrichment for tour sites.
+// Uploads land here as PENDING; only APPROVED rows appear in the public gallery.
+// ─────────────────────────────────────────
+model SitePhoto {
+  id           String      @id @default(uuid())
+  tourSiteId   String
+  uploaderId   String? // userId (null for legacy/admin uploads)
+  caption      String? // user's experience/story (text-only posts allowed)
+  url          String? // null for text-only experience posts
+  publicId     String? // Cloudinary public id (used for deletion/moderation)
+  thumbUrl     String? // Optimized WebP thumbnail for fast mobile rendering
+  width        Int?
+  height       Int?
+  sizeBytes    Int?
+  status       PhotoStatus @default(PENDING)
+  rejectReason String?
+  moderatedBy  String? // admin userId
+  moderatedAt  DateTime?
+  createdAt    DateTime    @default(now())
+
+  tourSite TourSite @relation(fields: [tourSiteId], references: [id], onDelete: Cascade)
+
+  @@index([tourSiteId, status])
+  @@index([status, createdAt])
+  @@map("site_photos")
+}
+
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────
+// PUBLIC TRANSPORT CATALOG (§2) — intercity buses (STC/VIP), trotro corridors
+// and air ports used by the mobility engine when a tour site sits outside
+// ride-hailing coverage. Coordinates describe the boarding point.
+// ─────────────────────────────────────────
+model PublicTransportService {
+  id               String              @id @default(uuid())
+  mode             PublicTransportMode
+  operator         String // "STC", "VIP", "Metro Mass", "CTC", "Neoplan", "Ghana Airways"…
+  originCity       String
+  originStation    String? // primary station of origin, e.g. "Circle (Accra)"
+  originLat        Float?
+  originLng        Float?
+  destinationCity  String?
+  destinationRegion String?
+  destinationLat   Float?
+  destinationLng   Float?
+  notes            String? // boarding route, drop-off junctions, frequency hints
+  active           Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+
+  @@unique([mode, operator, originCity, destinationCity])
+  @@index([mode, destinationRegion])
+  @@map("public_transport_services")
+}
+
+enum PublicTransportMode {
+  INTERCITY_BUS // STC, VIP, Metro Mass…
+  TROTRO // local minibus corridors
+  DOMESTIC_AIR // domestic airports/airstrips
+}
+
+// ─────────────────────────────────────────
+// TOUR REQUEST — submitted by user from frontend
+// ─────────────────────────────────────────
+enum Ethnicity {
+  African
+  Asian
+  Black_African_American
+  Caribbean
+  Caucassian_White
+  Hispanic_Latino
+  Middle_Eastern
+  Mixed
+  Native_American_Indigenous
+  Pacific_Islander
+  Other
+}
+
+model TourRequest {
+  id                 String   @id @default(uuid())
+  userId             String
+  tourType           TourType
+  durationDays       Int // touring days only (excl. prep + departure)
+  relocationInterest Boolean  @default(false) // saved, not acted on yet
+
+  // Dynamic loop-routing hub chosen by the user (e.g. "Central" for Cape Coast).
+  // NULL means the engine falls back to the default hub (Central Region).
+  startRegion         String?
+  // Explicit opt-in to more than two Greater Accra nights. The engine otherwise
+  // confines Accra to the arrival/departure gateways to cut urban lodging cost.
+  allowAccraOvernight Boolean @default(false)
+
+  status RequestStatus @default(PENDING)
+
+  apartmentType        ApartmentType?
+  transportType        TransportType?
+  companionInterest    Boolean        @default(false)
+  // Tour-to-dating integration: user asked for casual-dating recommendations
+  // during this trip. Gated behind full KYC verification.
+  casualDatingInterest Boolean        @default(false)
+  ethnicity            Ethnicity?
+
+  paymentId     String?       @unique
+  paymentStatus PaymentStatus @default(INITIALIZED)
+  // True when the itinerary fee was waived (payments disabled or price 0).
+  // Waived itineraries keep paymentId NULL so the unique column never collides.
+  feeWaived     Boolean       @default(false)
+
+  createdAt DateTime @default(now())
+
+  selectedSites    TourRequestSite[]
+  itinerary        Itinerary?
+  datingSelections TourRequestDatingSelection[]
+  user             User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([paymentStatus])
+  @@map("tour_requests")
+}
+
+// ─────────────────────────────────────────
+// JUNCTION — which sites the user selected
+// ─────────────────────────────────────────
+model TourRequestSite {
+  id            String @id @default(uuid())
+  tourRequestId String
+  tourSiteId    String
+
+  tourRequest TourRequest @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
+  tourSite    TourSite    @relation(fields: [tourSiteId], references: [id])
+
+  @@unique([tourRequestId, tourSiteId])
+  @@map("tour_request_sites")
+}
+
+// ─────────────────────────────────────────
+// ITINERARY — generated after validation
+// ─────────────────────────────────────────
+model Itinerary {
+  id               String   @id @default(uuid())
+  tourRequestId    String   @unique
+  isFeasible       Boolean
+  feasibilityError String? // populated if validation fails
+  totalDays        Int // durationDays + 2 (prep + departure)
+  // Ordered region cascade the loop actually traverses, e.g.
+  // ["Central", "Ashanti", "Volta", "Greater Accra"]. Regions never repeat.
+  routeRegions     String[] @default([])
+  // Nights attributed to Greater Accra, surfaced for the cost limiter.
+  accraNights      Int      @default(0)
+  // Non-fatal advisories (e.g. Accra night-cap breach) rendered with the plan.
+  warnings         String[] @default([])
+  createdAt        DateTime @default(now())
+
+  tourRequest TourRequest    @relation(fields: [tourRequestId], references: [id], onDelete: Cascade)
+  days        ItineraryDay[]
+
+  @@map("itineraries")
+}
+
+// ─────────────────────────────────────────
+// ITINERARY DAY — one row per day of the trip
+// ─────────────────────────────────────────
+model ItineraryDay {
+  id                 String  @id @default(uuid())
+  itineraryId        String
+  dayNumber          Int // 1-based
+  dayType            DayType
+  relocationRequired Boolean @default(false) // saved, not acted on yet
+  suggestedHotel     String? // saved, not acted on yet
+  // Descriptive day label, e.g. "Canopy Walk & Coastal Heritage (Central Region)".
+  title              String?
+  // Primary region the day is anchored to — drives day naming + local sourcing.
+  region             String?
+  // Traveller's confirmed car rental for this day. NULL means the day still
+  // serves the recommended localTransport. Restricted to verified car-rental
+  // providers at the service layer.
+  transportProviderId String?
+
+  itinerary       Itinerary         @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  transportProvider Provider?       @relation(fields: [transportProviderId], references: [provider_id], onDelete: SetNull)
+  sites           ItineraryDaySite[]
+
+  @@unique([itineraryId, dayNumber])
+  @@map("itinerary_days")
+}
+
+// ─────────────────────────────────────────
+// ITINERARY DAY SITES — sites assigned to each touring day
+// ─────────────────────────────────────────
+model ItineraryDaySite {
+  id             String @id @default(uuid())
+  itineraryDayId String
+  tourSiteId     String
+  visitOrder     Int // 1, 2, or 3 — order within the day
+
+  itineraryDay ItineraryDay @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
+  tourSite     TourSite     @relation(fields: [tourSiteId], references: [id])
+
+  @@unique([itineraryDayId, visitOrder])
+  @@unique([itineraryDayId, tourSiteId])
+  @@map("itinerary_day_sites")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+enum TourType {
+  GROUP
+  SINGLE
+}
+
+enum RequestStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum DayType {
+  PREPARATION
+  TOURING
+  DEPARTURE
+}
+
+enum SiteCategory {
+  NATURE
+  CULTURAL
+  HISTORICAL
+  BEACH
+  WILDLIFE
+  RELIGIOUS
+  SCENIC
+  ADVENTURE
+  URBAN
+  HERITAGE
+}
+
+// Phase 3.1 — Added MEMBERSHIP_SUBSCRIPTION for membership payment routing
+enum PaymentTargetType {
+  VISA_ON_ARRIVAL
+  TOUR_BOOKING
+  TOUR_REQUEST
+  MEMBERSHIP_SUBSCRIPTION
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  PENDING
+  PENDING_VERIFICATION
+  DEACTIVATED
+}
+
+enum AccountType {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum AuthProvider {
+  GOOGLE
+  ICLOUD
+  FACEBOOK
+  EMAIL
+  PASSWORD
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+enum VerificationLevel {
+  // 1) Phone number verification
+  PHONE_NUMBER_VERIFICATION
+
+  // 2) IP address check
+  IP_ADDRESS_CHECK
+
+  // 3) Bio/profile image check
+  BIO_PROFILE_IMAGE_CHECK
+
+  // 4) Document check
+  DOCUMENT_CHECK
+}
+
+model ProfileVerification {
+  id            String      @id @default(uuid())
+  userProfileId String      @unique
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  isVerified    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  lastUpdatedAt DateTime @updatedAt
+
+  phone_number_verified    Boolean @default(false)
+  ip_address_verification  Boolean @default(false)
+  bio_profile_verification Boolean @default(false)
+  document_verification    Boolean @default(false)
+
+  // Which verification step should be shown/considered "current" for the user.
+  // Example values: PHONE_NUMBER_VERIFICATION, PROFILE_IMAGE_VERIFICATION, DOCUMENT_VERIFICATION
+  // (kept as String to avoid schema complexity for now)
+  validationStep String? @default("PHONE_NUMBER_VERIFICATION")
+
+  verification_message String?
+
+  // Bio Data approval
+  bioDataStatus          VerificationStatus @default(PENDING)
+  bioDataApprovedBy      String?
+  bioDataApprovedAt      DateTime?
+  bioDataApprovalReason  String?
+  bioDataRejectedBy      String?
+  bioDataRejectedAt      DateTime?
+  bioDataRejectionReason String?
+
+  // Face Verification approval
+  faceStatus          VerificationStatus @default(PENDING)
+  faceApprovedBy      String?
+  faceApprovedAt      DateTime?
+  faceApprovalReason  String?
+  faceRejectedBy      String?
+  faceRejectedAt      DateTime?
+  faceRejectionReason String?
+
+  // Documents (Passport/Ghana Card) approval
+  documentStatus          VerificationStatus @default(PENDING)
+  documentApprovedBy      String?
+  documentApprovedAt      DateTime?
+  documentApprovalReason  String?
+  documentRejectedBy      String?
+  documentRejectedAt      DateTime?
+  documentRejectionReason String?
+
+  @@map("profile_verification")
+}
+
+enum PaymentStatus {
+  INITIALIZED
+  PENDING
+  SUCCESS
+  FAILED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  PAYMENT_PENDING
+  PAYMENT_FAILED
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  REFUNDED
+  NO_SHOW
+}
+
+enum VisaRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAYMENT_FAILED
+  READY_FOR_GIS_SUBMISSION
+  EXPEDITED_AIRPORT_PAYMENT_PENDING
+}
+
+enum VisaApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VisaPackageType {
+  STANDARD
+  EXPEDITED
+}
+
+enum PaymentMethod {
+  MTN_MOMO
+  TELECEL_MOMO
+  AT_MOMO
+  CARD
+  BANK_TRANSFER
+  CASH
+}
+
+enum PaymentProvider {
+  HUBTEL
+  PAYSTACK
+  STRIPE
+  FLUTTERWAVE
+  APPLE_PAY
+}
+
+enum ApartmentType {
+  HOTEL
+  GUESTHOUSE
+  AIRBNB
+  APARTMENTS
+  MOTEL
+}
+
+enum TransportType {
+  TROTRO
+  UBER
+  RENTED_VEHICLE
+  NONE
+}
+
+// Phase 3.1 — All available membership tier codes from Free to Elite Ambassador
+enum MembershipTierCode {
+  FREE
+  BASELINE
+  SENIOR_PIONEER
+  SANKOFA_SETTLED
+  BASIC
+  SILVER
+  GOLD_INVESTOR
+  ELITE_AMBASSADOR
+  FAMILY_PLAN
+}
+
+// Phase 3.1 — Billing intervals for membership plans
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+  BIENNIAL
+  CUSTOM
+}
+
+// Phase 3.1 — Statuses for priority support tickets from paid-tier members
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Provider {
+  provider_id         String   @id @default(uuid())
+  verification_status Boolean  @default(false)
+  display_name        String
+  media_assets        String[] // Array of URLs
+  location_lat        Float
+  location_lng        Float
+  location_address    String
+  avg_rating          Float    @default(0)
+  review_count        Int      @default(0)
+  response_time_secs  Int      @default(3600)
+  bio_description     String   @db.Text
+
+  // Polymorphic relationship (one of these will be populated)
+  tour_guide TourGuide?
+  car_rental CarRental?
+  hotel      Hotel?
+
+  audit_logs       AuditLog[]
+  service_requests ServiceRequest[]
+  itinerary_days   ItineraryDay[]
+}
+
+model TourGuide {
+  provider_id         String   @id
+  language_capability String[] // ["English", "Twi", "French"]
+  expertise_tags      String[] // ["Historical", "Nature"]
+  charge_per_day      Float
+  certification_docs  String[] // URLs to PDFs
+  provider            Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+model CarRental {
+  provider_id      String   @id
+  vehicle_make     String
+  vehicle_model    String
+  vehicle_year     Int
+  transmission     String
+  fuel_type        String
+  safety_features  String[]
+  rental_terms_url String
+  daily_rate       Float
+  driver_required  Boolean
+
+  transport_type TransportType?
+
+  provider Provider @relation(fields: [provider_id], references: [provider_id])
+}
+
+model Hotel {
+  provider_id String @id
+
+  apartment_type ApartmentType?
+
+  base_price_per_night Float
+  provider             Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+// ============================================
+// SERVICE REQUEST MODEL (For PII sanitization)
+// ============================================
+
+model ServiceRequest {
+  request_token  String    @id @default(uuid())
+  provider_id    String
+  user_id        String // This is the CUSTOMER's ID
+  status         String    @default("pending") // pending, confirmed, cancelled, completed
+  requested_date DateTime
+  confirmed_at   DateTime?
+  created_at     DateTime  @default(now())
+
+  provider Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+// ============================================
+// AUDIT LOG MODEL (For the diary/audit trail)
+// ============================================
+
+model AuditLog {
+  log_id      String   @id @default(uuid())
+  user_id     String // Who did the action? (customer or provider)
+  provider_id String // Which provider was involved?
+  action      String // "viewed_profile", "requested_service", "confirmed", etc.
+  metadata    Json // Extra details stored as JSON
+  ip_address  String // Where did the request come from?
+  timestamp   DateTime @default(now())
+
+  provider Provider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+}
+
+// Phase 3.1 — Defines each membership tier: pricing, billing interval, features, and popularity flag
+// Seeded via src/seed.ts with 9 plans (Free through Elite Ambassador)
+model MembershipPlan {
+  id            String             @id @default(uuid())
+  code          MembershipTierCode @unique // Maps to MembershipTierCode enum
+  name          String // Display name shown on the plans UI
+  description   String?
+  price         Float // Price in the specified currency
+  currency      String             @default("GHS")
+  interval      BillingInterval // How often the plan is billed
+  features      String[] // Array of feature descriptions rendered as a bullet list
+  isMostPopular Boolean            @default(false) // Highlighted as "Most Popular" on the frontend
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  subscriptions UserSubscription[]
+
+  @@map("membership_plans")
+}
+
+// Phase 3.1 — Priority support tickets raised by active paid-tier members
+// Only users with a non-FREE, active subscription may create tickets
+model PrioritySupportRequest {
+  id             String                   @id @default(uuid())
+  /// Null when the request was raised on the strength of an admin access grant
+  /// rather than a paid subscription.
+  subscriptionId String?
+  /// FK to the admin access grant that authorised the request, when the request
+  /// came from a comp. Exactly one of subscriptionId/accessGrantId is set.
+  accessGrantId  String?
+  userId         String
+  subject        String
+  message        String
+  status         SupportTicketStatus      @default(OPEN)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  subscription   UserSubscription?        @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  accessGrant    SubscriptionAccessGrant? @relation(fields: [accessGrantId], references: [id], onDelete: SetNull)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("priority_support_requests")
+}
+
+// ─────────────────────────────────────────
+// STATIC LOOKUP TABLE — Americas & Caribbean jurisdiction allow-list
+// Seeded once from static ISO-3166-1 alpha-2 codes via src/seed.ts. Read-only.
+// ─────────────────────────────────────────
+model AllowedCountry {
+  id        String   @id @default(uuid())
+  code      String   @unique // ISO-3166-1 alpha-2, e.g. "US"
+  name      String
+  createdAt DateTime @default(now())
+
+  @@map("allowed_countries")
+}
+
+model NotificationOutbox {
+  id              String   @id @default(uuid())
+  eventType       String
+  aggregateId     String
+  recipientUserId String
+  payload         Json
+  status          String   @default("PENDING") // PENDING, SENDING, COMPLETED, FAILED, RETRY_PENDING
+  attempts        Int      @default(0)
+  availableAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([eventType, aggregateId, recipientUserId])
+  @@index([status, availableAt])
+  @@map("notification_outbox")
+}
+
+model DataPolicy {
+  id          String    @id @default(uuid())
+  key         String    @unique // e.g. "data-policy" — single active policy row
+  title       String
+  content     String    @db.Text // long-form policy content
+  version     Int       @default(1)
+  publishedAt DateTime? // when the policy was last published/live
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("data_policies")
+}
+
+model FaqItem {
+  id        String   @id @default(uuid())
+  question  String
+  answer    String   @db.Text
+  category  String? // optional grouping, e.g. "Account", "Payments", "Travel"
+  sortOrder Int      @default(0) // for ordering within a category
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, sortOrder])
+  @@map("faq_items")
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// ── Payment Gateway Settings ───────────────────────────────────────────────────
+// One row per payment provider. The provider is part of the primary lookup
+// (rather than hardcoding a single "gateway settings" row) so that adding a
+// second provider later is a data change, not a migration of the shape.
+//
+// Credentials are stored only as AES-256-GCM ciphertext (see
+// src/helpers/encryption.ts) and are never selected into any API response — the
+// controller exposes `hasClientId` / `hasClientSecret` presence flags instead.
+//
+// `connectedEnvironment` records *which* environment the last successful
+// verification covered. `connectionStatus` alone is not sufficient: an admin can
+// flip TEST -> LIVE, leaving a stale `CONNECTED` that refers to the old
+// environment. Processing may only be enabled when this field equals
+// `environment`.
+model PaymentGatewayConfig {
+  id                       String                         @id @default(uuid())
+  provider                 PaymentGatewayProvider         @unique
+  clientIdEncrypted        String?                        @db.Text
+  clientSecretEncrypted    String?                        @db.Text
+  environment              PaymentGatewayEnvironment      @default(TEST)
+  connectionStatus         PaymentGatewayConnectionStatus @default(NOT_CONNECTED)
+  connectedEnvironment     PaymentGatewayEnvironment?
+  lastTestedAt             DateTime?
+  lastConnectedAt          DateTime?
+  /// Coarse, non-secret failure classification for support triage
+  /// (e.g. "invalid_credentials", "timeout"). Never a provider error body.
+  lastErrorCategory        String?
+  /// Master switch. Enforced on checkout (503 when false). Only ever settable to
+  /// true when the current environment's connection is verified.
+  paymentProcessingEnabled Boolean                        @default(false)
+  /// Why processing was last turned off, surfaced by the legacy
+  /// GET /admin/payments/status alias for backward compatibility.
+  processingDisabledReason String?
+  updatedBy                String?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+
+  @@map("payment_gateway_configs")
+}
+
+enum PaymentGatewayProvider {
+  HUBTEL
+}
+
+enum PaymentGatewayEnvironment {
+  TEST
+  LIVE
+}
+
+enum PaymentGatewayConnectionStatus {
+  NOT_CONNECTED
+  CONNECTED
+  ERROR
+}
+
+// ── Community Video Feed ──────────────────────────────────────────────────────
+// CommunityVideo: admin-managed cards linking to YouTube content.
+// Displayed in the app feed; full playback is gated behind a subscribe prompt.
+//
+// Gating contract: teaserUrl is a *clipped preview* only (a YouTube embed URL
+// carrying start/end bounds). The full-length video URL is never stored — it is
+// derived from youtubeVideoId at response time and only emitted for users who
+// already hold a VideoUnlock, so a locked card cannot leak the full link.
+model CommunityVideo {
+  id                     String    @id @default(uuid())
+  title                  String
+  description            String
+  teaserUrl              String // CLIPPED preview embed URL (or animated thumbnail)
+  previewStartSeconds    Int       @default(0)
+  previewDurationSeconds Int       @default(30)
+  thumbnailUrl           String
+  youtubeVideoId         String    @unique // used to build deep links on mobile
+  isPublished            Boolean   @default(true)
+  publishedAt            DateTime  @default(now())
+  // YouTube's own public counters, refreshed by the channel sync. Denormalised
+  // because there is nowhere else to read them from: VideoInteraction only sees
+  // in-app activity (previews played, full videos opened, unlocks) and cannot
+  // report what happened on the channel itself. The feed ranks on these
+  // (sort=most_watched / most_liked), so they are stored rather than recomputed.
+  viewCount              Int       @default(0)
+  likeCount              Int       @default(0)
+  // When the two counters above were last refreshed. Null on rows predating the
+  // columns and on cards published by hand, so the app can tell "nobody has
+  // watched this" apart from "we have never checked".
+  statsSyncedAt          DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  interactions VideoInteraction[]
+  unlocks      VideoUnlock[]
+
+  // Feed indexes: every feed read filters on isPublished and then orders by one
+  // of these three, so each ordering gets its own composite index.
+  @@index([isPublished, publishedAt])
+  @@index([isPublished, viewCount])
+  @@index([isPublished, likeCount])
+  @@map("community_videos")
+}
+
+// VideoInteraction: append-only analytics event log.
+// One row per user action; used to measure funnel conversion.
+// durationMs is client-reported time (ms) the user spent on the event source
+// (e.g. seconds into the 30s teaser before leaving) — null when not reported.
+model VideoInteraction {
+  id         String               @id @default(uuid())
+  userId     String
+  videoId    String
+  action     VideoInteractionType
+  durationMs Int?
+  createdAt  DateTime             @default(now())
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video CommunityVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([userId, videoId])
+  @@index([videoId, action])
+  @@map("video_interactions")
+}
+
+// VideoUnlock: persists per-user unlock state across sessions.
+// Unique constraint ensures idempotency — calling unlock multiple times is safe.
+model VideoUnlock {
+  id         String   @id @default(uuid())
+  userId     String
+  videoId    String
+  unlockedAt DateTime @default(now())
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video CommunityVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@map("video_unlocks")
+}
+
+/// ChannelAccess: the one channel-wide authorization decision for a user.
+///
+/// A YouTube subscription is granted per CHANNEL, not per video, so this is the
+/// row that actually unlocks the feed. VideoUnlock (above) is retained because it
+/// answers a per-video question — how many people opened *this* card, and what the
+/// per-video conversion funnel looks like — which a channel grant cannot. It is
+/// deliberately NOT an independent grant: revoking here deletes those rows, so a
+/// stale card read has nothing left to reopen.
+///
+/// It was called a grant, and behaved like a boolean: written once on a positive
+/// verdict, never re-checked, never expiring, and carrying no version. That is
+/// enough to unlock a feed and not enough to survive an unsubscribe, because
+/// YouTube publishes no unsubscribe event — the only way to learn about one is to
+/// ask, on a schedule. So access here is a LEASE:
+///
+///   status + accessExpiresAt   a confirmed positive is honoured until its lease
+///                              lapses, and lapsing is a hard stop that no
+///                              failure can extend. Revocation latency is
+///                              therefore bounded by the lease rather than by
+///                              whether a poll happened to fire.
+///   CHECK_FAILED               "we could not find out", kept distinct from
+///                              NOT_SUBSCRIBED ("we checked; the answer was no").
+///                              A Google outage must not lock out every subscriber.
+///   accessVersion              monotonic, so two contradicting answers can be
+///                              ordered. A slow response that lands after a
+///                              revocation must not resurrect it on a client.
+///
+/// The Google identity behind the link is stored too. The subscription check can
+/// only be made with the token of the Google account the user authorizes, so a
+/// durable subject (not an email, which can be renamed) is what makes the same
+/// email rule auditable and the credential renewable instead of one-shot.
+enum ChannelAccessStatus {
+  /// A confirmed positive. Access only while accessExpiresAt is in the future.
+  SUBSCRIBED
+  /// A completed check whose answer was no. No lease, and a revocation recorded.
+  NOT_SUBSCRIBED
+  /// No usable Google link yet, or none has been checked.
+  NOT_CONNECTED
+  /// A link exists but cannot answer the subscription question — revoked,
+  /// missing the YouTube scope, or an unreadable credential.
+  REAUTH_REQUIRED
+  /// The check could not be completed. NOT evidence of an unsubscribe.
+  CHECK_FAILED
+}
+
+model ChannelAccess {
+  id                         String              @id @default(uuid())
+  userId                     String
+  channelId                  String
+  unlockedAt                 DateTime            @default(now())
+  /// What the last completed check concluded. Defaults to NOT_CONNECTED, which is
+  /// what a row created without a verdict is: no check has been made, so no access
+  /// is implied by existing here.
+  status                     ChannelAccessStatus @default(NOT_CONNECTED)
+  /// Last check that SUCCEEDED, positive or negative. Null means no check has
+  /// ever completed on this row. Distinct from unlockedAt, which is the original
+  /// conversion timestamp and is never rewritten by a later check.
+  verifiedAt                 DateTime?
+  /// Expiry of the current positive lease. The read that serves full-video
+  /// fields requires one of these; its absence is what stops a grant nobody has
+  /// re-checked from being honoured forever.
+  accessExpiresAt            DateTime?
+  /// Bumped on every committed verdict, including ones a client cannot observe a
+  /// difference from. Ordering only — the count itself carries no meaning.
+  accessVersion              Int                 @default(1)
+  /// Stable Google subject identifier (`sub` from a verified id_token). The
+  /// durable identity: an email address can be renamed, and the app's own email
+  /// says nothing about which Google account holds the subscription.
+  googleSubject              String?
+  /// Verified Google email, kept for display and audit of the same-email rule.
+  googleEmail                String?
+  /// The YouTube identity the subscription check was actually made for, where
+  /// Google reported one. Diagnostic: the check itself is answered by the
+  /// access token's own account.
+  authorizedYoutubeChannelId String?
+  /// Space-separated scopes Google actually granted. Read on every check to
+  /// catch a credential that cannot answer subscriptions.list before spending a
+  /// token refresh and a quota unit discovering it cannot.
+  grantedScopes              String?
+  /// Google's long-lived credential, captured with access_type=offline and
+  /// stored SEALED. This is the basis of the whole guarantee: it is what lets a
+  /// subscription be re-checked long after the ~1h access token expired. A row
+  /// without one cannot be re-checked at all, so it is REAUTH_REQUIRED rather
+  /// than trusted — an unverifiable grant is a grant nobody can revoke.
+  refreshToken               String?
+  /// Set when access was closed. Non-null means the row is inert: every read
+  /// path filters it out. Kept rather than deleted because it is the audit record
+  /// of a subscription that was once held.
+  revokedAt                  DateTime?
+  revokedReason              String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId, revokedAt])
+  // Drives the active-user sweep: rows whose lease has lapsed are exactly the
+  // ones whose access is no longer backed by a current verdict.
+  @@index([status, accessExpiresAt])
+  @@map("channel_access")
+}
+
+enum VideoInteractionType {
+  SUBSCRIBE_INTENT // user tapped "Subscribe to Unlock" (logged by the client, before the OAuth round-trip)
+  PREVIEW_CLIP // user played the clipped preview on a locked card
+  WATCH_FULL_VIDEO // user opened the full video (unlocked users only)
+  UNLOCK // server confirmed a YouTube subscription and granted the unlock
+}
+
+model UserWarning {
+  id       String   @id @default(uuid())
+  userId   String
+  reason   String
+  issuedBy String
+  issuedAt DateTime @default(now())
+  note     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_warnings")
+}
+
+// ─────────────────────────────────────────
+// USER STATUS HISTORY — every account-status transition (§3.7 detail page).
+// ─────────────────────────────────────────
+model UserStatusHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  from      String?
+  to        String
+  reason    String?
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_status_history")
+}
+
+model DatingApplication {
+  id         String    @id @default(uuid())
+  userId     String    @unique
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED, FLAGGED, NEEDS_INFO
+  reviewerId String?
+  reason     String?
+  notes      String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("dating_applications")
+}
+
+model AdminNotification {
+  id        String    @id @default(uuid())
+  adminId   String
+  category  String
+  message   String
+  read      Boolean   @default(false)
+  actionUrl String?
+  meta      Json?
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  admin User @relation("AdminNotifications", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, read])
+  @@map("admin_notifications")
+}
+
+model TransactionFlag {
+  id        String   @id @default(uuid())
+  paymentId String
+  flaggedBy String
+  reason    String
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("transaction_flags")
+}
+
+model PaymentRisk {
+  id        String   @id @default(uuid())
+  paymentId String   @unique
+  riskLevel String   @default("LOW") // LOW, MEDIUM, HIGH
+  score     Int      @default(0)
+  reasons   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("payment_risks")
+}
+
+model Ngo {
+  id          String             @id @default(uuid())
+  name        String
+  code        String             @unique
+  status      String             @default("ACTIVE")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  memberships NgoMembership[]
+  requests    NgoAccessRequest[]
+
+  @@map("ngos")
+}
+
+model NgoMembership {
+  id             String   @id @default(uuid())
+  ngoId          String
+  userId         String
+  membershipId   String   @unique
+  status         String   @default("ACTIVE")
+  subscriptionId String?
+  verification   String?
+  eligibility    String?
+  datingAccess   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  ngo  Ngo  @relation(fields: [ngoId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ngoId, userId])
+  @@map("ngo_memberships")
+}
+
+model NgoAccessRequest {
+  id        String    @id @default(uuid())
+  ngoId     String
+  userId    String
+  status    String    @default("PENDING")
+  reason    String?
+  actionBy  String?
+  actionAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  ngo  Ngo  @relation(fields: [ngoId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ngoId, userId])
+  @@map("ngo_access_requests")
+}
+
+model PlatformSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json?
+  encrypted Boolean  @default(false)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("platform_settings")
+}
+
+model MaintenanceWindow {
+  id        String    @id @default(uuid())
+  modules   Json // array of module names
+  message   String
+  active    Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  endedBy   String?
+
+  @@map("maintenance_windows")
+}
+
+model AdminMfaToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  method    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@map("admin_mfa_tokens")
+}
+
+model SupportTicket {
+  id          String             @id @default(uuid())
+  userId      String
+  subject     String
+  message     String
+  status      SupportTicketStatus @default(OPEN)
+  adminReply  String?
+  repliedAt   DateTime?
+  repliedBy   String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("support_tickets")
+}

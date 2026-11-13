@@ -4,13 +4,20 @@
  * Most entries resolve to a specific Wikimedia Commons page image; sites without
  * a dedicated photograph fall back to a representative image for their category.
  * `credit` is kept alongside the URL so the frontend can render attribution.
+ *
+ * Each site can have up to 4 images. Sites with fewer than 4 images will
+ * display whichever are available; the frontend should gracefully handle
+ * missing images.
  */
 export interface SiteImageDetail {
   url: string;
   credit: string;
 }
 
-export const siteImages: Record<string, SiteImageDetail> = {
+/** Up to 4 images per tour site. */
+export type SiteImageGallery = SiteImageDetail[];
+
+export const siteImages: Record<string, SiteImageGallery> = {
   "Aburi Botanical Gardens": {
     url: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Aburi_garden_2.jpg/1920px-Aburi_garden_2.jpg",
     credit: "Wikimedia Commons",
