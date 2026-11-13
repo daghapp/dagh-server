@@ -1,0 +1,1 @@
+ALTER TYPE "PaymentProvider" ADD VALUE 'APPLE_PAY';

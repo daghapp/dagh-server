@@ -22,7 +22,11 @@ import {
   PaymentStatus,
   PaymentTargetType,
 } from "../../generated/prisma/client.js";
-import { InitializePaymentSchema, InitializePaymentSchema_MOMO } from "../validator/index.js";
+import {
+  InitializePaymentSchema,
+  InitializePaymentSchema_MOMO,
+  InitializePaymentSchema_Apple,
+} from "../validator/payment-validator.js";
 import axios, { AxiosResponse } from "axios";
 import { HubtelDirectReceiveResponseSchema } from "../validator/index.js";
 
@@ -152,6 +156,117 @@ export async function initializePayment(input: InitPaymentInput): Promise<InitPa
         reference,
         status: PaymentStatus.INITIALIZED,
         provider: PaymentProvider.HUBTEL,
+      },
+    });
+
+    return payment;
+  });
+
+  return {
+    success: true,
+    message: "Payment initialized successfully",
+    paymentId: result.id,
+    paymentStatus: result.status,
+    data,
+  };
+}
+
+export type InitPaymentAppleInput = InitializePaymentSchema_Apple & {
+  targetType: PaymentTargetType;
+  targetId: string;
+  userId: string;
+  currency: string;
+};
+
+export async function initializePaymentApple(input: InitPaymentAppleInput): Promise<InitPaymentResult> {
+  if (!(await isPaymentsEnabled())) {
+    return {
+      success: false,
+      message: PAYMENTS_DISABLED_MESSAGE,
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+  if (await hasServiceFeeWaiver(input.userId)) {
+    return {
+      success: false,
+      message: "This account is exempt from service fees; no payment is required.",
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+
+  const reference = generateClientReference_targetType(input.targetType);
+
+  const {
+    targetType: _targetType,
+    targetId: _targetId,
+    userId: _userId,
+    currency: _currency,
+    ...hubtelPayload
+  } = input;
+
+  let hubtelResponse;
+  try {
+    const hubtelClient = await getHubtelClient();
+    hubtelResponse = await hubtelClient.post("/items/initiate", {
+      ...hubtelPayload,
+      merchantAccountNumber: process.env.HUBTEL_MERCHANT_NUMBER,
+      clientReference: reference,
+    });
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const detail = error.response?.data?.errors
+        ? Object.values(error.response.data.errors).flat().join("; ")
+        : error.response?.data?.title || error.message;
+      return {
+        success: false,
+        message: `Hubtel error: ${detail}`,
+        paymentId: "",
+        paymentStatus: "",
+      };
+    }
+    throw error;
+  }
+
+  const data = hubtelResponse.data;
+
+  if (data.responseCode !== "0000") {
+    return {
+      success: false,
+      message: "Hubtel error: " + data.responseCode,
+      paymentId: "",
+      paymentStatus: "",
+    };
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.hubtelDirectReceiveLog.create({
+      data: {
+        message: data.data.message,
+        responseCode: data.responseCode,
+        amount: input.totalAmount,
+        charges: 0,
+        amountAfterCharges: 0,
+        amountCharged: input.totalAmount,
+        description: data.data.message,
+        clientReference: data.data.clientReference,
+        transactionId: data.data.checkoutId,
+        deliveryFee: 0,
+      },
+    });
+
+    const payment = await tx.payment.create({
+      data: {
+        userId: input.userId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        amount: input.totalAmount,
+        currency: input.currency,
+        description: input.description,
+        reference,
+        status: PaymentStatus.INITIALIZED,
+        provider: PaymentProvider.APPLE_PAY,
       },
     });
 

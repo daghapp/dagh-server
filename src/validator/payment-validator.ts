@@ -87,6 +87,18 @@ export const initializePaymentSchema = z.object({
   cancellationUrl: z.string().url({ message: "Cancellation URL must be a valid URL" }),
 });
 
+export const initializePaymentSchema_apple = z.object({
+  totalAmount: z.number().positive({ message: "Total amount must be a positive number" }),
+  description: z.string().min(1, { message: "Description is required" }),
+  returnUrl: z.string().url({ message: "Return URL must be a valid URL" }),
+  callbackUrl: z.string().url({ message: "Callback URL must be a valid URL" }),
+  cancellationUrl: z.string().url({ message: "Cancellation URL must be a valid URL" }),
+  provider: z.literal("APPLE_PAY"),
+  targetType: z.enum(["TOUR_BOOKING", "MEMBERSHIP_SUBSCRIPTION"]).optional(),
+  currency: z.string().default("GHS"),
+});
+export type InitializePaymentSchema_Apple = z.infer<typeof initializePaymentSchema_apple>;
+
 export type InitializePaymentSchema_MOMO = z.infer<typeof initializePaymentSchema_momo>;
 export type InitializePaymentSchema_CARD = z.infer<typeof initializePaymentSchema_card>;
 export type InitializePaymentSchema = z.infer<typeof initializePaymentSchema>;

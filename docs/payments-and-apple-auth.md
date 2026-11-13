@@ -9,7 +9,7 @@ dagh-server. Deeper references: `payment-gateway-settings.md`,
 
 ### Architecture
 
-- Provider: **Hubtel** (Mobile Money + card). Credentials are stored encrypted
+- Provider: **Hubtel** (Mobile Money + card + Apple Pay). Credentials are stored encrypted
   in `PaymentGatewayConfig` (AES-256-GCM, AAD-bound per field) and resolved at
   runtime with a 10s cache, falling back to env vars (`HUBTEL_CLIENT_ID`,
   `HUBTEL_CLIENT_SECRET`).
@@ -19,6 +19,9 @@ dagh-server. Deeper references: `payment-gateway-settings.md`,
   `503`. Verification/status/callback endpoints are never gated.
 - Hubtel calls back to `callbackUrl` (server) and redirects the browser to
   `returnUrl`/`cancellationUrl` (client).
+- Apple Pay payments are initialized via `POST /payment/apple-pay` and labeled
+  with `provider: "APPLE_PAY"` in the database. The payment flow is identical to
+  Hubtel checkout, with the provider source tracked for analytics/reporting.
 
 ### Flow
 
@@ -40,6 +43,7 @@ dagh-server. Deeper references: `payment-gateway-settings.md`,
 | POST | `/payment/initialize` | Bearer | Start a checkout (Hubtel). |
 | POST | `/payment/initialize-momo` | Bearer | Mobile Money specific init. |
 | POST | `/payment/subscription` | Bearer | Paid membership upgrade. |
+| POST | `/payment/apple-pay` | Bearer | Apple Pay init (labeled as APPLE_PAY provider). |
 | GET | `/payment/status/:reference` | Bearer | Check payment status. |
 | POST | `/payment/callback` | Public | Hubtel server-to-server callback. |
 | GET | `/payment/status` | Public | Global payment-enabled flag. |
@@ -51,6 +55,8 @@ dagh-server. Deeper references: `payment-gateway-settings.md`,
 - `HUBTEL_CLIENT_ID`, `HUBTEL_CLIENT_SECRET` — fallback credentials.
 - `PAYMENT_GATEWAY_ENCRYPTION_KEY` — AES key for stored secrets.
 - `PAYMENTS_ENABLED` — legacy fallback when no DB row exists.
+- Apple Pay uses the same Hubtel credentials above; no additional env vars are
+  required.
 
 ## Apple Sign In
 

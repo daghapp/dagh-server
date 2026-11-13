@@ -1,6 +1,6 @@
 import express from "express";
 import { PaymentController } from "../modules/payment-management/payment.controller.js";
-import { initializePaymentSchema } from "../validator/index.js";
+import { initializePaymentSchema, initializePaymentSchema_apple } from "../validator/payment-validator.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import { viewsPath } from "../helpers/view-path.js";
@@ -66,9 +66,9 @@ const paymentController = new PaymentController();
  *                 success:
  *                   type: boolean
  *                   example: true
- *                 message:
- *                   type: string
- *                   example: Payment initialized successfully
+ *                   message:
+ *                     type: string
+ *                     example: Payment initialized successfully
  *                 data:
  *                   type: object
  *                   properties:
@@ -85,9 +85,9 @@ const paymentController = new PaymentController();
  *                 success:
  *                   type: boolean
  *                   example: false
- *                 message:
- *                   type: string
- *                   example: Invalid response from Hubtel
+ *                   message:
+ *                     type: string
+ *                     example: Invalid response from Hubtel
  *       401:
  *         description: Unauthorized - User not authenticated
  *       500:
@@ -100,17 +100,103 @@ const paymentController = new PaymentController();
  *                 success:
  *                   type: boolean
  *                   example: false
- *                 message:
- *                   type: string
- *                   example: Payment initialization failed
+ *                   message:
+ *                     type: string
+ *                     example: Payment initialization failed
  *                 error:
  *                   type: string
- */
+ *                   example: Payment initialization failed
+ *     */
 router.post(
   "/initialize",
   protectedRoute,
   validate(initializePaymentSchema),
   paymentController.initializePayment.bind(paymentController),
+);
+
+/**
+ * @swagger
+ * /payment/apple-pay:
+ *   post:
+ *     summary: Initialize Apple Pay payment
+ *     description: Initializes an Apple Pay payment transaction
+ *     tags: [Payment]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - totalAmount
+ *               - description
+ *               - returnUrl
+ *               - callbackUrl
+ *               - cancellationUrl
+ *             properties:
+ *               totalAmount:
+ *                 type: number
+ *                 minimum: 0.01
+ *                 description: Total amount to be paid (must be positive)
+ *                 example: 150.00
+ *               description:
+ *                 type: string
+ *                 minLength: 1
+ *                 description: Description of the payment
+ *                 example: Payment for visa application
+ *               returnUrl:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL to redirect after successful payment
+ *                 example: https://example.com/payment/success
+ *               callbackUrl:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL to receive payment callback notification
+ *                 example: https://example.com/api/payment/callback
+ *               cancellationUrl:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL to redirect if payment is cancelled
+ *                 example: https://example.com/payment/cancelled
+ *     responses:
+ *       200:
+ *         description: Apple Pay payment initialized successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   message:
+ *                     type: string
+ *                     example: Payment initialized successfully
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       503:
+ *         description: Payments disabled or Apple Pay initialization failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                   message:
+ *                     type: string
+ *                     example: Payments are temporarily disabled. Please try again later.
+ *                     Apple Pay initialization failed
+ *     */
+router.post(
+  "/apple-pay",
+  protectedRoute,
+  validate(initializePaymentSchema_apple),
+  paymentController.initializePayment_Apple.bind(paymentController),
 );
 
 /**

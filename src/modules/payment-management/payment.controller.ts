@@ -6,7 +6,11 @@ import {
   PAYMENTS_DISABLED_MESSAGE,
 } from "../../config/index.js";
 import { getHubtelClient, getHubtelStatusClient } from "../../config/hubtel.js";
-import { initializePaymentSchema, initializePaymentSchema_momo } from "../../validator/index.js";
+import {
+  initializePaymentSchema,
+  initializePaymentSchema_momo,
+  initializePaymentSchema_apple,
+} from "../../validator/index.js";
 import type { SubscriptionPaymentSchema } from "../../validator/index.js";
 import { generateClientReference } from "../../helpers/client-ref.js";
 import * as paymentService from "../../services/payment.service.js";
@@ -168,6 +172,42 @@ export class PaymentController {
     } catch (error) {
       console.error("Subscription payment error:", error);
       return fail(res, 500, "Subscription payment failed");
+    }
+  }
+
+  async initializePayment_Apple(req: Request, res: Response) {
+    try {
+      const user = req.user as { id: string; email: string } | undefined;
+      if (!user) {
+        return fail(res, 401, "Unauthorized");
+      }
+      if (await hasServiceFeeWaiver(user.id)) {
+        return fail(res, 409, "Your account is exempt from service fees. No payment is required.");
+      }
+      const body = req.body;
+      const payload = initializePaymentSchema_apple.parse(body);
+
+      const result = await paymentService.initializePaymentApple({
+        totalAmount: payload.totalAmount,
+        description: payload.description,
+        returnUrl: payload.returnUrl,
+        callbackUrl: payload.callbackUrl,
+        cancellationUrl: payload.cancellationUrl,
+        provider: "APPLE_PAY",
+        targetType: payload.targetType ?? PaymentTargetType.TOUR_BOOKING,
+        targetId: body.targetId ?? "",
+        userId: user.id,
+        currency: payload.currency ?? "GHS",
+      });
+
+      if (!result.success) {
+        return fail(res, 503, result.message);
+      }
+
+      return ok(res, null as never, result.message);
+    } catch (error) {
+      console.error("Apple Pay initialization error:", error);
+      return fail(res, 500, "Apple Pay initialization failed");
     }
   }
 

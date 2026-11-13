@@ -1508,6 +1508,7 @@ enum PaymentProvider {
   PAYSTACK
   STRIPE
   FLUTTERWAVE
+  APPLE_PAY
 }
 
 enum ApartmentType {
