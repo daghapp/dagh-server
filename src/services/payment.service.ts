@@ -178,7 +178,9 @@ export type InitPaymentAppleInput = InitializePaymentSchema_Apple & {
   currency: string;
 };
 
-export async function initializePaymentApple(input: InitPaymentAppleInput): Promise<InitPaymentResult> {
+export async function initializePaymentApple(
+  input: InitPaymentAppleInput,
+): Promise<InitPaymentResult> {
   if (!(await isPaymentsEnabled())) {
     return {
       success: false,

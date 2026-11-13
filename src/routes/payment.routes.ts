@@ -1,6 +1,9 @@
 import express from "express";
 import { PaymentController } from "../modules/payment-management/payment.controller.js";
-import { initializePaymentSchema, initializePaymentSchema_apple } from "../validator/payment-validator.js";
+import {
+  initializePaymentSchema,
+  initializePaymentSchema_apple,
+} from "../validator/payment-validator.js";
 import { validate } from "../middleware/validation.js";
 import protectedRoute from "../middleware/protected.js";
 import { viewsPath } from "../helpers/view-path.js";
