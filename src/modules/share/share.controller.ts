@@ -107,7 +107,6 @@ function renderHtml(meta: ShareMeta, userAgent: string): string {
   const title = escapeHtml(meta.title);
   const description = escapeHtml(meta.description);
   const image = meta.image ? escapeHtml(meta.image) : "";
-  const url = escapeHtml(PLAY_STORE_URL);
   const deepLink = `${APP_SCHEME}://share/${meta.type}/${meta.id}`;
   const storeUrl = /iPhone|iPad|iPod/i.test(userAgent) ? APP_STORE_URL : PLAY_STORE_URL;
   const bot = isBot(userAgent);
@@ -122,7 +121,7 @@ function renderHtml(meta: ShareMeta, userAgent: string): string {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 ${image ? `<meta property="og:image" content="${image}">` : ""}
-<meta property="og:url" content="${url}">
+${meta.url ? `<meta property="og:url" content="${escapeHtml(meta.url)}">` : ""}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
