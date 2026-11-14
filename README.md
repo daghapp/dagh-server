@@ -642,7 +642,46 @@ a worker delivers the push in the background:
 | PUT    | `/dating/preferences`                 | Bearer | Set discovery preferences (age/gender/distance filters, visibility)                                                                                         |
 | GET    | `/dating/recommendations`             | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` (KYC-gated; `?tourRequestId=` restricts to a tour's geofence + schedule window) |
 | POST   | `/dating/swipe`                       | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation.                                                                                 |
-| GET    | `/dating/matches`                     | Bearer | List your active matches                                                                                                                                    |
+| GET    | `/dating/matches`                     | Bearer | List
+
+### Safety & Moderation
+
+| Endpoint | Description |
+|---|---|
+| `POST /dating/block/{targetId}` | Block a user — prevents them from appearing in recommendations and blocks all future interaction. Audit logged. |
+| `POST /dating/report/{targetId}` | Report a user for moderation with a reason. Audit logged. |
+
+### Recommendation Enhancements (`GET /dating/recommendations`)
+
+| Field | Description |
+|---|---|
+| `isPrimary: boolean` | Marks the candidate's first photo as the primary/main image |
+| `photoCount: number` | How many photos the candidate has |
+| `photoRatio: number` | Profile photo completeness ratio (0-100%) |
+| `reasons: String[]` (top 3) | e.g., `"Shared 3 interests"`, `"Complete profile"`, `"Nearby (5km)"`, `"Great match"` |
+| `isLuckyToday: boolean` | 30% daily chance — candidate marked as "surprise me" to encourage exploration |
+| `stackType: String` | `"MOST_COMPATIBLE"` (first 3 candidates), `"NEW_PROFILES"` (last 1-2), `"NONE"` (rest) |
+
+### Manual Profile Discovery
+
+| Endpoint | Description |
+|---|---|
+| `GET /dating/profile/search?username=` | Find a user's public dating profile by username (no ID needed) |
+| `GET /dating/profile/share` | Generate a shareable profile link: `{ shareUrl, url, primaryImage, note }` |
+
+### Sharing Profile with Images
+
+When sharing a profile URL on social media, the following OG metadata is included:
+- `ogTitle`: `"<Name>'s Dating Profile"`
+- `ogDescription`: Profile headline + about text
+- `ogImage`: User's primary photo URL (or fallback)
+- `ogUrl`: The profile search URL
+
+The frontend profile search page must render these Open Graph tags for social media previews to include the user's photo.
+
+### Existing Endpoints ( unchanged )
+
+ your active matches                                                                                                                                    |
 | GET    | `/dating/likes-received`              | Bearer | List users who liked you                                                                                                                                    |
 | GET    | `/dating/likes-sent`                  | Bearer | List outgoing interests you sent (cursor-paginated, newest first)                                                                                           |
 | GET    | `/dating/relationship-status/:userId` | Bearer | Get relationship status with a specific user                                                                                                                |

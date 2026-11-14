@@ -622,6 +622,22 @@ model UserBlock {
   @@map("user_blocks")
 }
 
+model DatingActivityLog {
+  id             String   @id @default(uuid())
+  actorId        String
+  entityType     String   // e.g. "BLOCK", "REPORT", "SWIPE"
+  entityId       String
+  action         String   // e.e. "BLOCK", "REPORT", "SWIPE_RECORDED"
+  note           String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("dating_activity_logs")
+}
+
 model UserReport {
   id             String       @id @default(uuid())
   reporterId     String
