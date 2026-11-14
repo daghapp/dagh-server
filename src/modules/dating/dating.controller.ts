@@ -49,9 +49,11 @@ const datingProfileInclude = {
     select: {
       id: true,
       fullName: true,
+      username: true,
       dateOfBirth: true,
       gender: true,
       ethnicity: true,
+      profileImageUrl: true,
       profile: { select: { bio_profile_image_url: true, profileUrl: true } },
     },
   },
@@ -320,5 +322,114 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
   } catch (error) {
     console.error("Update discovery preference error:", error);
     return fail(res, 500, "Failed to update discovery preferences");
+  }
+};
+
+/**
+ * Find a public dating profile by the target user's unique username.
+ */
+export const getDatingProfileByUsername = async (req: Request, res: Response) => {
+  try {
+    const viewerId = req.user!.id;
+    const raw = req.query.username;
+    const username =
+      typeof raw === "string"
+        ? raw.trim()
+        : Array.isArray(raw) && raw.length > 0
+          ? String(raw[0]).trim()
+          : "";
+
+    if (!username) {
+      return fail(res, 400, "Username is required");
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { username: { equals: username, mode: "insensitive" } },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        profileImageUrl: true,
+        profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+      },
+    });
+
+    if (!user) {
+      return fail(res, 404, "User not found");
+    }
+
+    const block = await prisma.userBlock.findFirst({
+      where: {
+        OR: [
+          { blockerId: viewerId, blockedId: user.id },
+          { blockerId: user.id, blockedId: viewerId },
+        ],
+      },
+    });
+
+    if (block) {
+      return fail(res, 403, "Cannot view this profile.");
+    }
+
+    const profile = await prisma.datingProfile.findUnique({
+      where: { userId: user.id },
+      include: datingProfileInclude,
+    });
+
+    if (!profile) {
+      return fail(res, 404, "Profile not found or not created yet.");
+    }
+
+    const base = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+    const ogUrl = `${base}/dating/profile/search?username=${encodeURIComponent(user.username || username)}`;
+    const ogImage =
+      profile.photos?.[0] || user.profile?.bio_profile_image_url || user.profileImageUrl || null;
+    const ogDescription = [profile.headline, profile.about].filter(Boolean).join(" ").trim();
+
+    return ok(res, {
+      ...profile,
+      ogTitle: `${user.fullName}'s Dating Profile`,
+      ogDescription,
+      ogImage,
+      ogUrl,
+    });
+  } catch (error) {
+    console.error("Get dating profile by username error:", error);
+    return fail(res, 500, "Failed to fetch dating profile");
+  }
+};
+
+/**
+ * Generate a shareable profile link for the authenticated user.
+ */
+export const getDatingProfileShare = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const profile = await prisma.datingProfile.findUnique({
+      where: { userId },
+      include: datingProfileInclude,
+    });
+
+    if (!profile) {
+      return fail(res, 404, "Dating profile not found. Initialize it first.");
+    }
+
+    const user = profile.user;
+    const primaryImage =
+      profile.photos?.[0] || user.profile?.bio_profile_image_url || user.profileImageUrl || null;
+
+    const base = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+    const shareUrl = `${base}/dating/profile/share`;
+
+    return ok(res, {
+      shareUrl,
+      url: shareUrl,
+      primaryImage,
+      note: "Shareable profile link generated",
+    });
+  } catch (error) {
+    console.error("Get dating profile share error:", error);
+    return fail(res, 500, "Failed to generate share link");
   }
 };

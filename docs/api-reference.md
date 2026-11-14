@@ -1271,6 +1271,8 @@ exists so the backfill does not need shell access to the database. Idempotent.
 | PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals) + account fields. |
 | GET | `/dating/profile/status` | Bearer | Profile existence + completion status (bypass onboarding for returning users). |
 | GET | `/dating/profile/:userId` | Bearer | View another user's public profile (blocked users excluded → 403). |
+| GET | `/dating/profile/search?username=` | Bearer | Find a user's public dating profile by username (returns OG metadata). |
+| GET | `/dating/profile/share` | Bearer | Generate a shareable profile link with primary image. |
 | GET | `/dating/preferences` | Bearer | Get own discovery preferences. |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences. |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |

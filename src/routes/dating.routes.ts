@@ -13,6 +13,8 @@ import {
   updateDatingProfile,
   deactivateDatingProfile,
   getDatingProfileById,
+  getDatingProfileByUsername,
+  getDatingProfileShare,
   getDatingProfileStatus,
   getDiscoveryPreference,
   updateDiscoveryPreference,
@@ -304,6 +306,8 @@ router.get("/profile/status", getDatingProfileStatus);
  *       500:
  *         description: Internal server error
  */
+router.get("/profile/search", getDatingProfileByUsername);
+router.get("/profile/share", getDatingProfileShare);
 router.get("/profile/:userId", getDatingProfileById);
 
 /**
