@@ -101,7 +101,10 @@ calls Apple's revoke endpoint (best-effort; never blocks deletion). Requires
 - iOS digital memberships must use Apple In-App Purchase unless the deployment
   holds Apple's external-purchase entitlement (`client-platform.ts`).
 - Paid digital membership purchase on iOS without the entitlement is blocked
-  (`403` with `APPLE_IAP_REQUIRED`).
+  (`403` with `DIGITAL_PURCHASE_REQUIRES_IAP`) on `/membership/subscribe`,
+  `/payment/initialize` (targetType `MEMBERSHIP_SUBSCRIPTION`),
+  `/payment/apple-pay` (targetType `MEMBERSHIP_SUBSCRIPTION`), and
+  `/payment/subscription`.
 
 ### Key endpoints
 

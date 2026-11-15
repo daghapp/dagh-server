@@ -19,6 +19,7 @@ import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 import {
   getClientPlatform,
   shouldBlockIosDigitalPurchase,
+  isIosExternalDigitalPurchaseAllowed,
   IOS_IAP_REQUIRED_CODE,
   IOS_IAP_REQUIRED_MESSAGE,
 } from "../../helpers/client-platform.js";
@@ -129,6 +130,18 @@ export class PaymentController {
         return fail(res, 409, "Your account is exempt from service fees. No payment is required.");
       }
 
+      // /payment/subscription creates a Hubtel invoice for a paid membership, so
+      // it is a digital purchase on iOS and must follow the same IAP gate.
+      if (
+        getClientPlatform(req) === "ios" &&
+        !isIosExternalDigitalPurchaseAllowed()
+      ) {
+        return fail(res, 403, {
+          code: IOS_IAP_REQUIRED_CODE,
+          message: IOS_IAP_REQUIRED_MESSAGE,
+        });
+      }
+
       const payload = req.body as SubscriptionPaymentSchema;
       const reference = generateClientReference();
 
@@ -186,6 +199,23 @@ export class PaymentController {
       }
       const body = req.body;
       const payload = initializePaymentSchema_apple.parse(body);
+
+      // /payment/apple-pay can carry a MEMBERSHIP_SUBSCRIPTION targetType, so it
+      // is a second door to the same digital subscription. Gate it identically
+      // to /payment/initialize and /membership/subscribe.
+      if (
+        payload.targetType === PaymentTargetType.MEMBERSHIP_SUBSCRIPTION &&
+        shouldBlockIosDigitalPurchase({
+          platform: getClientPlatform(req),
+          price: payload.totalAmount,
+          tierCode: "PAID",
+        })
+      ) {
+        return fail(res, 403, {
+          code: IOS_IAP_REQUIRED_CODE,
+          message: IOS_IAP_REQUIRED_MESSAGE,
+        });
+      }
 
       const result = await paymentService.initializePaymentApple({
         totalAmount: payload.totalAmount,

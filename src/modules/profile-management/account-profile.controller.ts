@@ -165,8 +165,11 @@ export async function deleteAccount(req: Request, res: Response) {
     }
 
     // Revoke the Sign in with Apple grant before the token row disappears.
-    // Best-effort: an Apple outage must not block account deletion.
-    if (user.authProvider === "ICLOUD" && user.appleRefreshToken) {
+    // Best-effort: an Apple outage must not block account deletion. Revocation
+    // applies to any account that holds an Apple refresh token, including one
+    // that was originally created through Google/Facebook and later linked to
+    // Apple, not only native Apple (ICLOUD) accounts.
+    if (user.appleRefreshToken) {
       await revokeAppleRefreshToken({ id: user.id, appleRefreshToken: user.appleRefreshToken });
     }
 

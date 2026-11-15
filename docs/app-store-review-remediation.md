@@ -46,8 +46,10 @@ The client declares its platform with either:
 A User-Agent fallback catches iOS clients that set neither. Free plans and
 fee-waived/admin-comped accounts are unaffected, as are Android and web. The
 same gate is applied to `POST /payment/initialize` when its raw `targetType` is
-`MEMBERSHIP_SUBSCRIPTION`, so the generic payment endpoint cannot be used to
-bypass the membership route.
+`MEMBERSHIP_SUBSCRIPTION`, and to `POST /payment/apple-pay` (when its
+`targetType` is `MEMBERSHIP_SUBSCRIPTION`) and `POST /payment/subscription`
+(which exists only to create a paid membership invoice), so none of the payment
+endpoints can be used to bypass the membership route.
 
 Relevant code:
 
@@ -163,8 +165,11 @@ tokens when the account is deleted. The backend now:
 - calls `https://appleid.apple.com/auth/revoke` during self-service deletion
   (`src/services/apple-token.service.ts`).
 
-Revocation is best-effort: if Apple is unavailable or encryption is not
-configured, deletion still completes and the failure is logged. Set
+Revocation is triggered for any account that holds an Apple refresh token,
+including accounts originally created through Google/Facebook and later linked
+to Apple (previously only native `ICLOUD` accounts were revoked). Revocation is
+best-effort: if Apple is unavailable or encryption is not configured, deletion
+still completes and the failure is logged. Set
 `PAYMENT_GATEWAY_ENCRYPTION_KEY` in every environment where revocation should be
 available.
 
