@@ -29,10 +29,8 @@ export const tourSiteCatalogue: Prisma.TourSiteCreateInput[] = [
   return {
     ...site,
     history: siteHistories[site.name] ?? site.history ?? null,
-    imageUrl:
-      selectedImages.length > 0 ? selectedImages[0].url : site.imageUrl ?? null,
-    imageCredit:
-      selectedImages.length > 0 ? selectedImages[0].credit : null,
+    imageUrl: selectedImages.length > 0 ? selectedImages[0].url : (site.imageUrl ?? null),
+    imageCredit: selectedImages.length > 0 ? selectedImages[0].credit : null,
     transit_profile: deriveTransitProfile(site.region),
   };
 });

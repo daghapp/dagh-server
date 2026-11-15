@@ -90,9 +90,7 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
 
   // Normalize imageUrl: accept single string or array of up to 4 URLs
   let imageUrl: string | null = null;
-  const imageCredit:
-    | string
-    | undefined = input.imageCredit as string | undefined;
+  const imageCredit: string | undefined = input.imageCredit as string | undefined;
 
   if (input.imageUrl) {
     if (typeof input.imageUrl === "string") {
@@ -106,7 +104,9 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
   // If there are additional images beyond the first, store them
   let additionalImages: string[] = [];
   if (Array.isArray(input.imageUrl) && input.imageUrl.length > 1) {
-    additionalImages = input.imageUrl.slice(1).filter((url): url is string => typeof url === "string");
+    additionalImages = input.imageUrl
+      .slice(1)
+      .filter((url): url is string => typeof url === "string");
   }
 
   const pendingSite = await prisma.pendingSite.create({

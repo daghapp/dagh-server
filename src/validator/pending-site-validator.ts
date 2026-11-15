@@ -53,15 +53,14 @@ export const submitPendingSiteSchema = z.object({
     .max(50, { message: "Category tag cannot exceed 50 characters" })
     .optional(),
 
-  imageUrl:
-    z
-      .union([
-        z.string().url({ message: "imageUrl must be a valid URL" }),
-        z
-          .array(z.string().url({ message: "Each imageUrl must be a valid URL" }))
-          .max(4, { message: "Maximum 4 images allowed" }),
-      ])
-      .optional(),
+  imageUrl: z
+    .union([
+      z.string().url({ message: "imageUrl must be a valid URL" }),
+      z
+        .array(z.string().url({ message: "Each imageUrl must be a valid URL" }))
+        .max(4, { message: "Maximum 4 images allowed" }),
+    ])
+    .optional(),
 
   // Attribution for the submitted photo, e.g. "Wikimedia Commons".
   imageCredit: z

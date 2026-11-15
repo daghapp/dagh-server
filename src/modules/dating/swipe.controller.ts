@@ -338,58 +338,61 @@ export const getRecommendations = async (req: Request, res: Response) => {
         }
 
         const photoCount = c.photos?.length || 0;
-    const isPrimary = photoCount > 0 && c.profileImage === c.photos[0];
+        const isPrimary = photoCount > 0 && c.profileImage === c.photos[0];
 
-    // Build "Why this profile?" reasons from available candidate data
-    const reasons: string[] = [];
+        // Build "Why this profile?" reasons from available candidate data
+        const reasons: string[] = [];
 
-    // Interest indicator
-    if (c.interests?.length > 0) {
-      if (c.interests.length <= 3) {
-        reasons.push(`Has ${c.interests.length} interest${c.interests.length === 1 ? "" : "s"}`);
-      } else {
-        reasons.push("Has multiple interests");
-      }
-    }
+        // Interest indicator
+        if (c.interests?.length > 0) {
+          if (c.interests.length <= 3) {
+            reasons.push(
+              `Has ${c.interests.length} interest${c.interests.length === 1 ? "" : "s"}`,
+            );
+          } else {
+            reasons.push("Has multiple interests");
+          }
+        }
 
-    // Age indicator
-    if (c.age !== null) {
-      reasons.push(`${c.age}+`);
-    }
+        // Age indicator
+        if (c.age !== null) {
+          reasons.push(`${c.age}+`);
+        }
 
-    // Profile completeness
-    const completeness = (c.photos?.length > 0 ? 10 : 0) + (c.about ? 5 : 0) + (c.headline ? 5 : 0);
-    if (completeness >= 15) {
-      reasons.push("Complete profile");
-    } else if (completeness >= 5) {
-      reasons.push("Almost complete");
-    }
+        // Profile completeness
+        const completeness =
+          (c.photos?.length > 0 ? 10 : 0) + (c.about ? 5 : 0) + (c.headline ? 5 : 0);
+        if (completeness >= 15) {
+          reasons.push("Complete profile");
+        } else if (completeness >= 5) {
+          reasons.push("Almost complete");
+        }
 
-    // Distance indicator
-    if (c.distanceKm !== null && c.distanceKm <= 50) {
-      reasons.push(`Nearby (${c.distanceKm}km)`);
-    }
+        // Distance indicator
+        if (c.distanceKm !== null && c.distanceKm <= 50) {
+          reasons.push(`Nearby (${c.distanceKm}km)`);
+        }
 
-    // Default reason if none found
-    if (reasons.length === 0) {
-      reasons.push("Great match");
-    }
+        // Default reason if none found
+        if (reasons.length === 0) {
+          reasons.push("Great match");
+        }
 
-    // 30% chance to mark a candidate as "surprise me" today
-    // (daily tracking to be implemented with cooldown store in future)
-    const isLuckyToday = Math.random() < 0.3;
+        // 30% chance to mark a candidate as "surprise me" today
+        // (daily tracking to be implemented with cooldown store in future)
+        const isLuckyToday = Math.random() < 0.3;
 
-    return {
-      ...c,
-      relationshipStatus,
-      canSendInterest,
-      isPrimary,
-      photoCount,
-      photoRatio: photoCount > 0 ? Math.round((photoCount / 9) * 100) : 0,
-      reasons: reasons.slice(0, 3), // Top 3 reasons
-      isLuckyToday,
-      stackType: stackTypeMap[c.userId] || "NONE",
-    };
+        return {
+          ...c,
+          relationshipStatus,
+          canSendInterest,
+          isPrimary,
+          photoCount,
+          photoRatio: photoCount > 0 ? Math.round((photoCount / 9) * 100) : 0,
+          reasons: reasons.slice(0, 3), // Top 3 reasons
+          isLuckyToday,
+          stackType: stackTypeMap[c.userId] || "NONE",
+        };
       });
 
     return ok(res, enriched);

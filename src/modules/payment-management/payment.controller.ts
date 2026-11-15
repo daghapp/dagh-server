@@ -132,10 +132,7 @@ export class PaymentController {
 
       // /payment/subscription creates a Hubtel invoice for a paid membership, so
       // it is a digital purchase on iOS and must follow the same IAP gate.
-      if (
-        getClientPlatform(req) === "ios" &&
-        !isIosExternalDigitalPurchaseAllowed()
-      ) {
+      if (getClientPlatform(req) === "ios" && !isIosExternalDigitalPurchaseAllowed()) {
         return fail(res, 403, {
           code: IOS_IAP_REQUIRED_CODE,
           message: IOS_IAP_REQUIRED_MESSAGE,
