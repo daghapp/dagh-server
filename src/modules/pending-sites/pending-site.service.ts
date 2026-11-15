@@ -90,7 +90,7 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
 
   // Normalize imageUrl: accept single string or array of up to 4 URLs
   let imageUrl: string | null = null;
-  let imageCredit:
+  const imageCredit:
     | string
     | undefined = input.imageCredit as string | undefined;
 
