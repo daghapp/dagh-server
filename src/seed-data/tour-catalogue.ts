@@ -3,7 +3,7 @@ import { deriveTransitProfile } from "../helpers/transit-profile.js";
 import { baseTourSites } from "./base-tour-sites.js";
 import { extraTourSites } from "./ghana-tour-sites.js";
 import { siteHistories } from "./ghana-tour-site-histories.js";
-import { siteImages, type SiteImageGallery } from "./ghana-tour-site-images.js";
+import { siteImages, type SiteImageDetail } from "./ghana-tour-site-images.js";
 
 /**
  * The complete Ghana tour-site catalogue used by both the demo seed and the
@@ -18,15 +18,14 @@ export const tourSiteCatalogue: Prisma.TourSiteCreateInput[] = [
   ...baseTourSites,
   ...extraTourSites,
 ].map((site) => {
-  let rawImage = siteImages[site.name];
-  if (rawImage && typeof rawImage === 'object' && !Array.isArray(rawImage)) {
-    rawImage = [rawImage];
-  }
-  const imageGallery: SiteImageGallery = rawImage ?? [];
+  const rawImage = siteImages[site.name];
+  const imageGallery: SiteImageDetail[] = Array.isArray(rawImage)
+    ? rawImage
+    : rawImage
+      ? [rawImage]
+      : [];
   const maxImages = 4;
-  const selectedImages = Array.isArray(imageGallery)
-    ? imageGallery.slice(0, maxImages)
-    : [];
+  const selectedImages = imageGallery.slice(0, maxImages);
   return {
     ...site,
     history: siteHistories[site.name] ?? site.history ?? null,

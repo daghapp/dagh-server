@@ -15,7 +15,7 @@ export interface SiteImageDetail {
 }
 
 /** Up to 4 images per tour site. */
-export type SiteImageGallery = SiteImageDetail[];
+export type SiteImageGallery = SiteImageDetail | SiteImageDetail[];
 
 export const siteImages: Record<string, SiteImageGallery> = {
   "Aburi Botanical Gardens": {
