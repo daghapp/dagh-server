@@ -326,51 +326,37 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
 };
 
 /**
- * Find a public dating profile by the target user's unique username.
+ * Find a public dating profile by the target user's name.
  */
-export const getDatingProfileByUsername = async (req: Request, res: Response) => {
+export const getDatingProfileByName = async (req: Request, res: Response) => {
   try {
     const viewerId = req.user!.id;
-    const raw = req.query.username;
-    const username =
+    const raw =
+      req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
+    const name =
       typeof raw === "string"
         ? raw.trim()
         : Array.isArray(raw) && raw.length > 0
           ? String(raw[0]).trim()
           : "";
 
-    if (!username) {
-      return fail(res, 400, "Username is required");
+    if (!name) {
+      return fail(res, 400, "Name is required");
     }
 
-    const normalizedUsername = username.trim().toLowerCase();
-
-    let user: any = null;
-    if (typeof prisma.user.findUnique === "function") {
-      user = await prisma.user.findUnique({
-        where: { username: normalizedUsername },
-        select: {
-          id: true,
-          fullName: true,
-          username: true,
-          profileImageUrl: true,
-          profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-        },
-      });
-    }
-
-    if (!user && typeof prisma.user.findFirst === "function") {
-      user = await prisma.user.findFirst({
-        where: { username: { equals: username, mode: "insensitive" } },
-        select: {
-          id: true,
-          fullName: true,
-          username: true,
-          profileImageUrl: true,
-          profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-        },
-      });
-    }
+    const user: any =
+      typeof prisma.user.findFirst === "function"
+        ? await prisma.user.findFirst({
+            where: { fullName: { contains: name } },
+            select: {
+              id: true,
+              fullName: true,
+              username: true,
+              profileImageUrl: true,
+              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+            },
+          })
+        : null;
 
     if (!user) {
       return fail(res, 404, "User not found");
@@ -399,7 +385,7 @@ export const getDatingProfileByUsername = async (req: Request, res: Response) =>
     }
 
     const base = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
-    const ogUrl = `${base}/dating/profile/search?username=${encodeURIComponent(user.username || username)}`;
+    const ogUrl = `${base}/dating/profile/search?username=${encodeURIComponent(user.username || name)}`;
     const ogImage =
       profile.photos?.[0] || user.profile?.bio_profile_image_url || user.profileImageUrl || null;
     const ogDescription = [profile.headline, profile.about].filter(Boolean).join(" ").trim();
@@ -449,5 +435,47 @@ export const getDatingProfileShare = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Get dating profile share error:", error);
     return fail(res, 500, "Failed to generate share link");
+  }
+};
+
+export const getDatingProfileByUsername = getDatingProfileByName;
+
+/**
+ * Return lightweight name-match suggestions for typeahead/discovery.
+ */
+export const getDatingProfileSuggestions = async (req: Request, res: Response) => {
+  try {
+    const raw =
+      req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
+    const name =
+      typeof raw === "string"
+        ? raw.trim()
+        : Array.isArray(raw) && raw.length > 0
+          ? String(raw[0]).trim()
+          : "";
+
+    if (!name) {
+      return fail(res, 400, "Name is required");
+    }
+
+    const users =
+      typeof prisma.user.findMany === "function"
+        ? await prisma.user.findMany({
+            where: { fullName: { contains: name } },
+            select: {
+              id: true,
+              fullName: true,
+              username: true,
+              profileImageUrl: true,
+            },
+            take: 10,
+            orderBy: { fullName: "asc" },
+          })
+        : [];
+
+    return ok(res, users);
+  } catch (error) {
+    console.error("Get dating profile suggestions error:", error);
+    return fail(res, 500, "Failed to fetch suggestions");
   }
 };

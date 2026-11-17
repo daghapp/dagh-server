@@ -146,9 +146,9 @@ All enhancements are applied to the existing `GET /dating/recommendations` endpo
 
 ## 3. Manual Profile Discovery
 
-### 3.1 Search by Username
+### 3.1 Search by Name
 
-**Endpoint:** `GET /dating/profile/search?username={username}`
+**Endpoint:** `GET /dating/profile/search?name={name}`
 
 **Description:** Find a user's public dating profile by their `@unique` username. No need to know the numeric user ID.
 

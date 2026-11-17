@@ -14,6 +14,7 @@ import {
   deactivateDatingProfile,
   getDatingProfileById,
   getDatingProfileByUsername,
+  getDatingProfileSuggestions,
   getDatingProfileShare,
   getDatingProfileStatus,
   getDiscoveryPreference,
@@ -307,6 +308,7 @@ router.get("/profile/status", getDatingProfileStatus);
  *         description: Internal server error
  */
 router.get("/profile/search", getDatingProfileByUsername);
+router.get("/profile/suggestions", getDatingProfileSuggestions);
 router.get("/profile/share", getDatingProfileShare);
 router.get("/profile/:userId", getDatingProfileById);
 
