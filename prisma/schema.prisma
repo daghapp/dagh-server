@@ -178,6 +178,10 @@ model UserDevice {
   fcmToken      String?
   apnsToken     String?
   voipPushToken String?
+  // End-to-end encryption: device public key (X25519) for key agreement.
+  publicKey     String?
+  keyVersion    Int       @default(0)
+  keyUpdatedAt  DateTime?
   enabled       Boolean   @default(true)
   lastSeenAt    DateTime  @default(now())
   failureCount  Int       @default(0)
@@ -442,17 +446,23 @@ model tour_bookings {
 }
 
 model Message {
-  id             String      @id @default(uuid())
-  conversationId String?
-  senderId       String
-  receiverId     String
-  type           MessageType @default(TEXT)
-  content        String?
-  mediaUrl       String?
-  mediaDuration  Int?
-  isRead         Boolean     @default(false)
-  readAt         DateTime?
-  createdAt      DateTime    @default(now())
+  id                String      @id @default(uuid())
+  conversationId    String?
+  senderId          String
+  receiverId        String
+  type              MessageType @default(TEXT)
+  // Legacy plaintext content (null for end-to-end encrypted messages).
+  content           String?
+  // End-to-end encrypted payload (client-encrypted; server never holds keys).
+  ciphertext        String?
+  nonce             String?
+  aad               String?
+  encryptionVersion Int?
+  mediaUrl          String?
+  mediaDuration     Int?
+  isRead            Boolean     @default(false)
+  readAt            DateTime?
+  createdAt         DateTime    @default(now())
 
   conversation   Conversation?         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User                  @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)

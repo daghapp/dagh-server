@@ -11,12 +11,20 @@ import { deviceTokenPatch } from "./deviceTokenPatch.js";
 export const registerDevice = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { deviceId, platform } = req.body;
+    const { deviceId, platform, publicKey, keyVersion } = req.body;
 
     // Token independence: an omitted token field is preserved on update; an
     // explicit null (or empty string) clears it. `enabled` and `lastSeenAt`
     // are always refreshed.
     const { update, create } = deviceTokenPatch(req.body);
+
+    // End-to-end encryption key registration (optional, additive).
+    const keyPatch: Record<string, unknown> = {};
+    if (publicKey !== undefined) {
+      keyPatch.publicKey = publicKey === null ? null : String(publicKey).trim() || null;
+      keyPatch.keyUpdatedAt = new Date();
+      if (keyVersion !== undefined) keyPatch.keyVersion = Number(keyVersion);
+    }
 
     // An installation UUID is unique to the handset. If another account still
     // owns this deviceId (logout skipped DELETE, or the user switched accounts),
@@ -31,6 +39,7 @@ export const registerDevice = async (req: Request, res: Response) => {
       },
       update: {
         ...update,
+        ...keyPatch,
         platform,
         enabled: true,
         lastSeenAt: new Date(),
@@ -40,6 +49,7 @@ export const registerDevice = async (req: Request, res: Response) => {
         deviceId,
         platform,
         ...create,
+        ...keyPatch,
       },
     });
 
@@ -168,5 +178,31 @@ export const updateNotificationPreferences = async (req: Request, res: Response)
   } catch (error) {
     console.error("[Devices] updateNotificationPreferences error:", error);
     return fail(res, 500, "Failed to update notification preferences");
+  }
+};
+
+/**
+ * List a user's device public keys for end-to-end key agreement.
+ */
+export const getUserEncryptionKeys = async (req: Request, res: Response) => {
+  try {
+    const userId = String(req.params.userId);
+    const devices = await prisma.userDevice.findMany({
+      where: { userId, publicKey: { not: null } },
+      select: {
+        id: true,
+        deviceId: true,
+        platform: true,
+        publicKey: true,
+        keyVersion: true,
+        keyUpdatedAt: true,
+        enabled: true,
+      },
+      orderBy: { lastSeenAt: "desc" },
+    });
+    return ok(res, { userId, keys: devices });
+  } catch (error) {
+    console.error("[Devices] getUserEncryptionKeys error:", error);
+    return fail(res, 500, "Failed to fetch encryption keys");
   }
 };

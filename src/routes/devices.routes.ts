@@ -8,6 +8,7 @@ import {
   sendTestPush,
   getNotificationPreferences,
   updateNotificationPreferences,
+  getUserEncryptionKeys,
 } from "../modules/devices/devices.controller.js";
 
 const router = express.Router();
@@ -143,5 +144,28 @@ router.get("/notifications/preferences", getNotificationPreferences);
  *         description: Internal server error
  */
 router.patch("/notifications/preferences", updateNotificationPreferences);
+
+/**
+ * @swagger
+ * /devices/users/{userId}/encryption-keys:
+ *   get:
+ *     summary: Get a user's device public keys for end-to-end encryption
+ *     tags: [Devices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Device public keys
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/users/:userId/encryption-keys", getUserEncryptionKeys);
 
 export { router };

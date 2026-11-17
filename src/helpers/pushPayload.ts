@@ -242,7 +242,12 @@ function sanitizeTextPreview(text: string): string {
 /**
  * Build the visible notification body based on message type.
  */
-export function messagePreviewBody(messageType: string, content?: string | null): string {
+export function messagePreviewBody(
+  messageType: string,
+  content?: string | null,
+  encrypted: boolean = false,
+): string {
+  if (encrypted) return "Encrypted message";
   switch (messageType) {
     case "VOICE_NOTE":
       return "Sent a voice message";
@@ -268,10 +273,13 @@ export function buildNewMessagePayload(
     id: string;
     type: string;
     content?: string | null;
+    encryptionVersion?: number | null;
+    ciphertext?: string | null;
   },
   sender: SenderProfile,
   conversationId: string,
 ): PushPayload {
+  const encrypted = message.encryptionVersion != null || !!message.ciphertext;
   return sanitizePushData({
     type: "NEW_MESSAGE",
     messageId: message.id,
@@ -281,8 +289,8 @@ export function buildNewMessagePayload(
     senderAvatarUrl: getPublicProfileImage(sender),
     senderImageUrl: getPublicProfileImage(sender),
     messageType: message.type,
-    previewBody: messagePreviewBody(message.type, message.content),
-    preview: messagePreviewBody(message.type, message.content),
+    previewBody: messagePreviewBody(message.type, message.content, encrypted),
+    preview: messagePreviewBody(message.type, message.content, encrypted),
     route: "/(connect)/chat/[id]",
     schemaVersion: "1",
   });

@@ -7,8 +7,31 @@ export const sendMessageSchema = z
     type: z.enum(["TEXT", "VOICE_NOTE", "IMAGE", "VIDEO", "CALL_LOG"]).optional().default("TEXT"),
     mediaUrl: z.string().url("Invalid media URL").optional(),
     mediaDuration: z.number().int().nonnegative().optional(),
+    // End-to-end encryption fields (client-encrypted payload).
+    ciphertext: z.string().min(1).optional(),
+    nonce: z.string().min(1).optional(),
+    aad: z.string().optional(),
+    encryptionVersion: z.number().int().positive().optional(),
   })
   .superRefine((data, ctx) => {
+    const encrypted = data.encryptionVersion !== undefined;
+    if (encrypted) {
+      if (!data.ciphertext) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "ciphertext is required for encrypted messages",
+          path: ["ciphertext"],
+        });
+      }
+      if (!data.nonce) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "nonce is required for encrypted messages",
+          path: ["nonce"],
+        });
+      }
+      return;
+    }
     if (data.type === "TEXT" && !data.content) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

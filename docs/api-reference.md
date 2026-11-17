@@ -1374,7 +1374,8 @@ can show the name and compute age from `dateOfBirth`.
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/devices/register` | Bearer | Register or update a device for push notifications. |
+| POST | `/devices/register` | Bearer | Register or update a device for push notifications (optional E2E `publicKey`/`keyVersion`). |
+| GET | `/devices/users/:userId/encryption-keys` | Bearer | List a user's device public keys for E2E key agreement. |
 | DELETE | `/devices/:deviceId` | Bearer | Unregister a device (own device only). |
 | GET | `/devices/notifications/preferences` | Bearer | Get the user's notification preferences. |
 | PATCH | `/devices/notifications/preferences` | Bearer | Update the user's notification preferences. |
@@ -1426,7 +1427,7 @@ notifications (`NEW_MESSAGE`). `200` → `{ success, data: { messagesEnabled } }
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/messages` | Bearer | Send a text or media message. |
+| POST | `/messages` | Bearer | Send a text or media message (optional E2E fields `ciphertext`, `nonce`, `aad`, `encryptionVersion`). |
 | POST | `/messages/voice-note` | Bearer | Upload + send a voice note (multipart `audio`, 15 MB max). |
 | GET | `/messages/matches` | Bearer | Active matches ("New Matches" carousel). |
 | GET | `/messages/conversations` | Bearer | Conversations with unread counts, partner profiles, online status. |
@@ -1443,7 +1444,8 @@ notifications (`NEW_MESSAGE`). `200` → `{ success, data: { messagesEnabled } }
 ```
 
 - `type` ∈ `TEXT | VOICE_NOTE | IMAGE | VIDEO`.
-- `content` required for `TEXT` (max 2000); `mediaUrl` required for `IMAGE`/`VIDEO`.
+- `content` required for plaintext `TEXT` (max 2000); `mediaUrl` required for `IMAGE`/`VIDEO`.
+- Optional E2E fields: `ciphertext`, `nonce`, `aad`, `encryptionVersion`. If `encryptionVersion` is set, `ciphertext` and `nonce` are required and `content` is omitted; the server stores ciphertext only.
 - `403` if the two users are blocked from each other.
 
 **Responses:** the message is saved, the conversation's last-message fields are

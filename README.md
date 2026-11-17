@@ -581,7 +581,7 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 
 | Method | Endpoint                                  | Auth   | Description                                                                                      |
 | ------ | ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| POST   | `/messages`                               | Bearer | Send a text or media message (`receiverId`, `content`, `type`, `mediaUrl`, `mediaDuration`)      |
+| POST   | `/messages`                               | Bearer | Send a text or media message (`receiverId`, `content`, `type`, `mediaUrl`, `mediaDuration`); optional E2E fields `ciphertext`, `nonce`, `aad`, `encryptionVersion` |
 | POST   | `/messages/voice-note`                    | Bearer | Upload and send a voice note (multipart: `audio` file, `receiverId`, `mediaDuration`). Max 15MB. |
 | GET    | `/messages/matches`                       | Bearer | Get active user matches ("New Matches" carousel)                                                 |
 | GET    | `/messages/conversations`                 | Bearer | List conversations with unread counts, partner profiles, and `lastActiveAt`                      |
@@ -600,7 +600,8 @@ generated itinerary as `socialBlocks` on each touring day, plus a flat `datingSe
 
 | Method | Endpoint                             | Auth   | Description                                                                                                                                               |
 | ------ | ------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/devices/register`                  | Bearer | Register or update a device for push notifications (upsert on `userId` + `deviceId`; stores Expo/FCM/APNs/VoIP tokens, updates `lastSeenAt` every launch) |
+| POST   | `/devices/register`                  | Bearer | Register or update a device for push notifications (upsert on `userId` + `deviceId`; stores Expo/FCM/APNs/VoIP tokens, optional E2E `publicKey`/`keyVersion`, updates `lastSeenAt` every launch) |
+| GET    | `/devices/users/:userId/encryption-keys` | Bearer | List a user's device public keys for E2E key agreement |
 | DELETE | `/devices/:deviceId`                 | Bearer | Unregister a device (also disabled server-side on logout)                                                                                                 |
 | GET    | `/devices/notifications/preferences` | Bearer | Get notification preferences (e.g. `messagesEnabled`)                                                                                                     |
 | PATCH  | `/devices/notifications/preferences` | Bearer | Update notification preferences (`{ "messagesEnabled": boolean }`)                                                                                        |

@@ -9,4 +9,7 @@ export const registerDeviceSchema = z.object({
   fcmToken: z.string().nullable().optional(),
   apnsToken: z.string().nullable().optional(),
   voipPushToken: z.string().nullable().optional(),
+  // End-to-end encryption public key (X25519, base64). Omitted preserves stored key.
+  publicKey: z.string().min(1).optional(),
+  keyVersion: z.number().int().nonnegative().optional(),
 });

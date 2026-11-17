@@ -25,14 +25,25 @@ export const getIoInstance = (): Server | undefined => {
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const senderId = req.user!.id;
-    const { receiverId, content, type = "TEXT", mediaUrl, mediaDuration } = req.body;
-
+    const {
+      receiverId,
+      content,
+      type = "TEXT",
+      mediaUrl,
+      mediaDuration,
+      ciphertext,
+      nonce,
+      aad,
+      encryptionVersion,
+    } = req.body;
     if (await isUserBlocked(senderId, receiverId)) {
       return fail(res, 403, "Cannot send message. Communication is blocked between users.");
     }
 
-    const previewContent =
-      type === "VOICE_NOTE"
+    const encrypted = encryptionVersion !== undefined && encryptionVersion !== null;
+    const previewContent = encrypted
+      ? "🔒 Encrypted message"
+      : type === "VOICE_NOTE"
         ? "🎵 Voice message"
         : type === "IMAGE"
           ? "📷 Photo"
@@ -67,10 +78,14 @@ export const sendMessage = async (req: Request, res: Response) => {
           conversationId: conversation.id,
           senderId,
           receiverId,
-          content: content || null,
-          type: type as MessageType,
-          mediaUrl: mediaUrl || null,
-          mediaDuration: mediaDuration ? Number(mediaDuration) : null,
+           content: encrypted ? null : content || null,
+           ciphertext: ciphertext || null,
+           nonce: nonce || null,
+           aad: aad || null,
+           encryptionVersion: encrypted ? Number(encryptionVersion) : null,
+           type: type as MessageType,
+           mediaUrl: mediaUrl || null,
+           mediaDuration: mediaDuration ? Number(mediaDuration) : null,
         },
         include: {
           sender: {

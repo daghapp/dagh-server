@@ -251,6 +251,7 @@ export async function enqueueMessagePushDeliveries(
   conversationId: string,
   messageType: string,
   content?: string | null,
+  encryptionVersion?: number | null,
 ): Promise<void> {
   const preference = await prisma.userNotificationPreference.findUnique({
     where: { userId: recipientUserId },
@@ -276,7 +277,7 @@ export async function enqueueMessagePushDeliveries(
 
   for (const device of devices) {
     const payload = buildNewMessagePayload(
-      { id: messageId, type: messageType, content },
+      { id: messageId, type: messageType, content, encryptionVersion },
       sender,
       conversationId,
     );
@@ -365,6 +366,7 @@ export async function dispatchNotificationOutbox(): Promise<void> {
             payload.conversationId,
             message.type,
             message.content,
+            message.encryptionVersion,
           );
           await dispatchMessageDeliveries(message.id);
         }
