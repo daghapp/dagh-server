@@ -343,16 +343,34 @@ export const getDatingProfileByUsername = async (req: Request, res: Response) =>
       return fail(res, 400, "Username is required");
     }
 
-    const user = await prisma.user.findFirst({
-      where: { username: { equals: username, mode: "insensitive" } },
-      select: {
-        id: true,
-        fullName: true,
-        username: true,
-        profileImageUrl: true,
-        profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-      },
-    });
+    const normalizedUsername = username.trim().toLowerCase();
+
+    let user: any = null;
+    if (typeof prisma.user.findUnique === "function") {
+      user = await prisma.user.findUnique({
+        where: { username: normalizedUsername },
+        select: {
+          id: true,
+          fullName: true,
+          username: true,
+          profileImageUrl: true,
+          profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+        },
+      });
+    }
+
+    if (!user && typeof prisma.user.findFirst === "function") {
+      user = await prisma.user.findFirst({
+        where: { username: { equals: username, mode: "insensitive" } },
+        select: {
+          id: true,
+          fullName: true,
+          username: true,
+          profileImageUrl: true,
+          profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+        },
+      });
+    }
 
     if (!user) {
       return fail(res, 404, "User not found");

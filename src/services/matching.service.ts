@@ -321,14 +321,10 @@ export async function getDiscoveryCandidates(
             { dateOfBirth: null },
             {
               dateOfBirth: {
-                lte: new Date(new Date().setFullYear(new Date().getFullYear() - filters.minAge)),
-              },
-            },
-            {
-              dateOfBirth: {
                 gte: new Date(
                   new Date().setFullYear(new Date().getFullYear() - filters.maxAge - 1),
                 ),
+                lte: new Date(new Date().setFullYear(new Date().getFullYear() - filters.minAge)),
               },
             },
           ],
@@ -342,7 +338,14 @@ export async function getDiscoveryCandidates(
     ...ageFilter,
     AND: [
       { datingProfile: { isNot: null } },
-      { datingProfile: { discoveryPreference: { is: { showProfile: true } } } },
+      {
+        datingProfile: {
+          OR: [
+            { discoveryPreference: null },
+            { discoveryPreference: { is: { showProfile: true } } },
+          ],
+        },
+      },
     ],
   };
 

@@ -3,7 +3,8 @@
 Consolidated overview of how payments (Hubtel) and Apple Sign In work in
 dagh-server. Deeper references: `payment-gateway-settings.md`,
 `payment-control-system.md`, `payment-gateway-frontend-guide.md`,
-`oauth-deployment-config.md`, `docs/admin-gateway-registration.md`.
+`oauth-deployment-config.md`, `docs/admin-gateway-registration.md`,
+`ios-auth.md`.
 
 ## Payments (Hubtel)
 
