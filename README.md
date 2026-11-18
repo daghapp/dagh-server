@@ -667,7 +667,7 @@ a worker delivers the push in the background:
 
 | Endpoint | Description |
 |---|---|
-| `GET /dating/profile/search?username=` | Find a user's public dating profile by username (no ID needed) |
+| `GET /dating/profile/search?name=` | Find a user's public dating profile by name (no ID needed) |
 | `GET /dating/profile/share` | Generate a shareable profile link: `{ shareUrl, url, primaryImage, note }` |
 
 ### Sharing Profile with Images

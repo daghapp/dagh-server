@@ -275,7 +275,7 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 | DELETE | `/dating/profile/deactivate` | Yes  | Deactivate (soft-delete) dating profile          |
 | GET    | `/dating/profile/status`     | Yes  | Check profile existence + completeness           |
 | GET    | `/dating/profile/:userId`    | Yes  | View another user's dating profile (block-aware) |
-| GET    | `/dating/profile/search`     | Yes  | Find a dating profile by username (OG metadata)  |
+| GET    | `/dating/profile/search`     | Yes  | Find a dating profile by name (OG metadata)  |
 | GET    | `/dating/profile/share`      | Yes  | Generate a shareable profile link                |
 | GET    | `/dating/preferences`        | Yes  | Get discovery preferences                        |
 | PUT    | `/dating/preferences`        | Yes  | Create/update discovery preferences              |

@@ -12,6 +12,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx src/seed.ts",
+    "search:reindex": "tsx scripts/reindex-dating-search.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",

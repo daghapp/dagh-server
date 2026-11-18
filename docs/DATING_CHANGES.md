@@ -150,11 +150,14 @@ All enhancements are applied to the existing `GET /dating/recommendations` endpo
 
 **Endpoint:** `GET /dating/profile/search?name={name}`
 
-**Description:** Find a user's public dating profile by their `@unique` username. No need to know the numeric user ID.
+**Description:** Find a user's public dating profile by name. Search is
+case-insensitive and matches `fullName` or `username`. When OpenSearch is
+configured it is fuzzy/typo-tolerant and relevance-ranked; otherwise the
+endpoint falls back to Postgres `contains`.
 
 **Request:**
 ```
-GET /dating/profile/search?username=john_doe
+GET /dating/profile/search?name=john
 Authorization: Bearer <token>
 ```
 
@@ -177,17 +180,42 @@ Authorization: Bearer <token>
 }
 ```
 
-**Response (400):** Username is required or empty
+**Response (400):** Name is required or empty
 **Response (404):** User not found or profile not created
 **Response (403):** Cannot view this profile (blocked)
 
 **Implementation:**
-- Queries `prisma.user.findUnique({ where: { username } })`
+- Searches OpenSearch (`fullName`, `username`, `headline`, `about`) with fuzziness
+- Falls back to `fullName`/`username` `contains` in Postgres when search is off
 - Includes block check (bidirectional)
 - Returns full dating profile with user info
 - Includes OG metadata for social sharing
 
-**Controller:** `src/modules/dating/dating.controller.ts` → `getDatingProfileByUsername`
+**Controller:** `src/modules/dating/dating.controller.ts` → `getDatingProfileByName`
+
+---
+
+### 3.1a Name Suggestions
+
+**Endpoint:** `GET /dating/profile/suggestions?name={name}`
+
+**Description:** Lightweight typeahead suggestions. Returns up to 10 matching
+users (`id`, `fullName`, `username`, `profileImageUrl`). Uses the same
+OpenSearch query with a Postgres fallback.
+
+**Controller:** `src/modules/dating/dating.controller.ts` → `getDatingProfileSuggestions`
+
+### OpenSearch configuration
+
+Set `OPENSEARCH_NODE` (and optionally `OPENSEARCH_USERNAME`,
+`OPENSEARCH_PASSWORD`, `OPENSEARCH_INDEX`, `OPENSEARCH_TIMEOUT_MS`). Without
+`OPENSEARCH_NODE`, search uses the Postgres fallback. After enabling it, run:
+
+```bash
+npm run search:reindex
+```
+
+Profile create/update/deactivate keeps the index in sync automatically.
 
 ---
 

@@ -2,6 +2,11 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { resolveDatingProfileStatus } from "../../helpers/dating-profile-status.js";
+import {
+  indexDatingProfile,
+  removeDatingProfileFromIndex,
+  searchDatingProfiles,
+} from "../../services/dating-search.service.js";
 import type { Ethnicity } from "../../../generated/prisma/enums.js";
 
 type AccountProfileData = {
@@ -115,6 +120,8 @@ export const initDatingProfile = async (req: Request, res: Response) => {
       await prisma.user.update({ where: { id: userId }, data: accountData });
     }
 
+    void indexDatingProfile(userId);
+
     return created(res, profile, "Dating profile created successfully.");
   } catch (error) {
     console.error("Init dating profile error:", error);
@@ -146,6 +153,8 @@ export const updateDatingProfile = async (req: Request, res: Response) => {
     if (Object.keys(accountData).length > 0) {
       await prisma.user.update({ where: { id: userId }, data: accountData });
     }
+
+    void indexDatingProfile(userId);
 
     return ok(res, profile, "Dating profile updated successfully.");
   } catch (error) {
@@ -239,6 +248,8 @@ export const deactivateDatingProfile = async (req: Request, res: Response) => {
 
     // Deleting the dating profile cascades to discovery preferences.
     await prisma.datingProfile.delete({ where: { userId } });
+
+    void removeDatingProfileFromIndex(userId);
 
     return ok(res, null, "Dating profile deactivated successfully.");
   } catch (error) {
@@ -394,8 +405,7 @@ export const updateDatingLocation = async (req: Request, res: Response) => {
 export const getDatingProfileByName = async (req: Request, res: Response) => {
   try {
     const viewerId = req.user!.id;
-    const raw =
-      req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
+    const raw = req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
     const name =
       typeof raw === "string"
         ? raw.trim()
@@ -407,19 +417,35 @@ export const getDatingProfileByName = async (req: Request, res: Response) => {
       return fail(res, 400, "Name is required");
     }
 
-    const user: any =
-      typeof prisma.user.findFirst === "function"
-        ? await prisma.user.findFirst({
-            where: { fullName: { contains: name } },
-            select: {
-              id: true,
-              fullName: true,
-              username: true,
-              profileImageUrl: true,
-              profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-            },
-          })
-        : null;
+    const select = {
+      id: true,
+      fullName: true,
+      username: true,
+      profileImageUrl: true,
+      profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+    } as const;
+
+    const hits = await searchDatingProfiles(name, { size: 1 });
+    let user: any = null;
+
+    if (hits && hits.length > 0 && typeof prisma.user.findUnique === "function") {
+      user = await prisma.user.findUnique({
+        where: { id: hits[0].userId },
+        select,
+      });
+    }
+
+    if (!user && typeof prisma.user.findFirst === "function") {
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { fullName: { contains: name, mode: "insensitive" } },
+            { username: { contains: name, mode: "insensitive" } },
+          ],
+        },
+        select,
+      });
+    }
 
     if (!user) {
       return fail(res, 404, "User not found");
@@ -508,8 +534,7 @@ export const getDatingProfileByUsername = getDatingProfileByName;
  */
 export const getDatingProfileSuggestions = async (req: Request, res: Response) => {
   try {
-    const raw =
-      req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
+    const raw = req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
     const name =
       typeof raw === "string"
         ? raw.trim()
@@ -521,10 +546,29 @@ export const getDatingProfileSuggestions = async (req: Request, res: Response) =
       return fail(res, 400, "Name is required");
     }
 
+    const hits = await searchDatingProfiles(name, { size: 10 });
+    if (hits && hits.length > 0) {
+      return ok(
+        res,
+        hits.map((hit) => ({
+          id: hit.userId,
+          fullName: hit.fullName,
+          username: hit.username,
+          profileImageUrl: hit.profileImageUrl,
+        })),
+      );
+    }
+
+    // OpenSearch unavailable (or index empty): preserve the DB behaviour.
     const users =
       typeof prisma.user.findMany === "function"
         ? await prisma.user.findMany({
-            where: { fullName: { contains: name } },
+            where: {
+              OR: [
+                { fullName: { contains: name, mode: "insensitive" } },
+                { username: { contains: name, mode: "insensitive" } },
+              ],
+            },
             select: {
               id: true,
               fullName: true,

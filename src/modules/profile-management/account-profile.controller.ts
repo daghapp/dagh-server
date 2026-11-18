@@ -3,6 +3,7 @@ import * as bcrypt from "bcrypt";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import { revokeAppleRefreshToken } from "../../services/apple-token.service.js";
+import { indexDatingProfile } from "../../services/dating-search.service.js";
 
 const ACCOUNT_PROFILE_SELECT = {
   id: true,
@@ -113,6 +114,8 @@ export async function updateAccountProfile(req: Request, res: Response) {
       },
       select: ACCOUNT_PROFILE_SELECT,
     });
+
+    void indexDatingProfile(userId);
 
     return ok(res, updated, "Profile updated successfully.");
   } catch (error) {

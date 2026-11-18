@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import type { Ethnicity } from "../../../generated/prisma/enums.js";
+import { indexDatingProfile } from "../../services/dating-search.service.js";
 
 /**
  * Update the authenticated user's own account profile fields:
@@ -37,6 +38,8 @@ export async function updateOwnProfile(req: Request, res: Response) {
         ethnicity: true,
       },
     });
+
+    void indexDatingProfile(userId);
 
     return ok(res, updated, "Profile updated successfully.");
   } catch (error) {

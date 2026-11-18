@@ -67,6 +67,16 @@ services:
       # iOS while web/Android continue to use Hubtel checkout.
   - key: IOS_EXTERNAL_DIGITAL_PURCHASES
     value: "false"
+  # Optional OpenSearch cluster for dating name search. Leave unset to use
+  # the Postgres fallback; set NODE/USERNAME/PASSWORD to enable fuzzy search.
+  - key: OPENSEARCH_NODE
+    sync: false
+  - key: OPENSEARCH_USERNAME
+    sync: false
+  - key: OPENSEARCH_PASSWORD
+    sync: false
+  - key: OPENSEARCH_INDEX
+    value: dagh-dating-profiles
   # Android fallback used by shareable preview links when the app isn't installed.
   - key: PLAY_STORE_URL
     value: "https://play.google.com/store/search?q=Diasporan+sync&c=apps&pli=1"
