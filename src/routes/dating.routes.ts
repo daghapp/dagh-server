@@ -3,6 +3,8 @@ import rateLimit from "express-rate-limit";
 import protectedRoute from "../middleware/protected.js";
 import { validate } from "../middleware/validation.js";
 import {
+  datingContactSyncSchema,
+  datingLocationSchema,
   datingProfileSchema,
   discoveryPreferenceSchema,
   swipeSchema,
@@ -19,7 +21,14 @@ import {
   getDatingProfileStatus,
   getDiscoveryPreference,
   updateDiscoveryPreference,
+  updateDatingLocation,
 } from "../modules/dating/dating.controller.js";
+import {
+  deleteContactsForDating,
+  getContactsForDating,
+  getContactsForDatingStatus,
+  syncContactsForDating,
+} from "../modules/dating/dating-contacts.controller.js";
 import {
   recordSwipe,
   getRecommendations,
@@ -391,6 +400,171 @@ router.put("/preferences", validate(discoveryPreferenceSchema), updateDiscoveryP
 
 /**
  * @swagger
+ * /dating/location:
+ *   put:
+ *     summary: Refresh the caller's dating location
+ *     description: Used as a location heartbeat for proximity alerts. Only locations refreshed within the last 12 hours are considered.
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               locationLat:
+ *                 type: number
+ *               locationLng:
+ *                 type: number
+ *               locationName:
+ *                 type: string
+ *                 nullable: true
+ *     responses:
+ *       200:
+ *         description: Location updated
+ *       400:
+ *         description: Invalid coordinates
+ *       404:
+ *         description: Dating profile not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put("/location", validate(datingLocationSchema), updateDatingLocation);
+
+/**
+ * @swagger
+ * /dating/contacts/sync:
+ *   post:
+ *     summary: Sync device contacts for dating discovery
+ *     description: |
+ *       Requires OS contact permission and explicit `consent: true` on the first
+ *       sync. Contacts are hashed in memory; only SHA-256 phone hashes are compared.
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               contacts:
+ *                 type: array
+ *                 maxItems: 5000
+ *                 items:
+ *                   oneOf:
+ *                     - type: string
+ *                       example: "+233201234567"
+ *                     - type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                         phone:
+ *                           type: string
+ *               consent:
+ *                 type: boolean
+ *                 description: Must be true on the first sync (OS contact permission granted)
+ *     responses:
+ *       200:
+ *         description: Contacts synced
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: "#/components/schemas/DatingContactSyncResult"
+ *       400:
+ *         description: No contacts supplied
+ *       403:
+ *         description: Contact permission not granted
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/contacts/sync", validate(datingContactSyncSchema), syncContactsForDating);
+
+/**
+ * @swagger
+ * /dating/contacts/matches:
+ *   get:
+ *     summary: List contacts who are on the dating platform
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Contact matches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     matchedCount:
+ *                       type: integer
+ *                     banner:
+ *                       type: string
+ *                     matches:
+ *                       type: array
+ *                       items:
+ *                         $ref: "#/components/schemas/DatingContactMatch"
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/contacts/matches", getContactsForDating);
+
+/**
+ * @swagger
+ * /dating/contacts/status:
+ *   get:
+ *     summary: Get contact-sync permission and match status
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Contact sync status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: "#/components/schemas/DatingContactStatus"
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/contacts/status", getContactsForDatingStatus);
+
+/**
+ * @swagger
+ * /dating/contacts:
+ *   delete:
+ *     summary: Revoke contact permission and delete derived matches
+ *     tags: [Dating]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Contact access revoked
+ *       500:
+ *         description: Internal server error
+ */
+router.delete("/contacts", deleteContactsForDating);
+
+/**
+ * @swagger
  * /dating/swipe:
  *   post:
  *     summary: Record a swipe (LIKE, SUPER_LIKE, or PASS). A mutual LIKE creates a match and a conversation.
@@ -459,6 +633,11 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *           type: string
  *           format: uuid
  *         description: Tour request id to derive the trip geofence and date window
+ *       - in: query
+ *         name: contactsOnly
+ *         schema:
+ *           type: boolean
+ *         description: When true, only candidates from the caller's synced contacts are returned
  *     responses:
  *       200:
  *         description: Ranked list of candidates with relationship state
@@ -485,6 +664,17 @@ router.post("/swipe", swipeLimiter, validate(swipeSchema), recordSwipe);
  *                         enum: [NONE, INTEREST_SENT, INTEREST_RECEIVED, MATCHED, PASSED, BLOCKED]
  *                       canSendInterest:
  *                         type: boolean
+ *                       isContactMatch:
+ *                         type: boolean
+ *                         description: True when the candidate is in the caller's synced contacts
+ *                       familiar:
+ *                         type: boolean
+ *                         description: Alias of isContactMatch for frontend display
+ *                       reasons:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         description: Labels explaining the recommendation (for example, In your contacts)
  *                       scheduleOverlapDays:
  *                         type: integer
  *                       withinGeofence:

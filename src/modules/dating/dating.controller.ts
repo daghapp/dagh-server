@@ -286,6 +286,10 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
       return fail(res, 404, "Dating profile not found. Initialize it first.");
     }
 
+    const hasCoords =
+      typeof body.locationLat === "number" && typeof body.locationLng === "number";
+    const clearedCoords = body.locationLat === null || body.locationLng === null;
+
     const preference = await prisma.discoveryPreference.upsert({
       where: { userId },
       create: {
@@ -300,6 +304,7 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
         locationLat: body.locationLat ?? null,
         locationLng: body.locationLng ?? null,
         locationName: body.locationName ?? null,
+        locationUpdatedAt: hasCoords ? new Date() : null,
         showProfile: body.showProfile ?? true,
         showOnlineStatus: body.showOnlineStatus ?? true,
       },
@@ -313,6 +318,7 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
         locationLat: body.locationLat !== undefined ? body.locationLat : undefined,
         locationLng: body.locationLng !== undefined ? body.locationLng : undefined,
         locationName: body.locationName !== undefined ? body.locationName : undefined,
+        locationUpdatedAt: hasCoords ? new Date() : clearedCoords ? null : undefined,
         showProfile: body.showProfile ?? undefined,
         showOnlineStatus: body.showOnlineStatus ?? undefined,
       },
@@ -322,6 +328,63 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
   } catch (error) {
     console.error("Update discovery preference error:", error);
     return fail(res, 500, "Failed to update discovery preferences");
+  }
+};
+
+/**
+ * Refresh the caller's dating location without touching other preferences.
+ * Proximity alerts only consider locations refreshed within the last 12 hours.
+ */
+export const updateDatingLocation = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const body = req.body as {
+      locationLat?: number;
+      locationLng?: number;
+      latitude?: number;
+      longitude?: number;
+      locationName?: string | null;
+    };
+
+    const locationLat = body.locationLat ?? body.latitude;
+    const locationLng = body.locationLng ?? body.longitude;
+
+    if (typeof locationLat !== "number" || typeof locationLng !== "number") {
+      return fail(res, 400, "A valid latitude and longitude are required");
+    }
+
+    const profile = await prisma.datingProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!profile) {
+      return fail(res, 404, "Dating profile not found. Initialize it first.");
+    }
+
+    const now = new Date();
+    const preference = await prisma.discoveryPreference.upsert({
+      where: { userId },
+      create: {
+        userId,
+        datingProfileId: profile.id,
+        locationLat,
+        locationLng,
+        locationName: body.locationName ?? null,
+        locationUpdatedAt: now,
+      },
+      update: {
+        locationLat,
+        locationLng,
+        ...(body.locationName !== undefined ? { locationName: body.locationName } : {}),
+        locationUpdatedAt: now,
+      },
+    });
+
+    return ok(res, preference, "Dating location updated");
+  } catch (error) {
+    console.error("Update dating location error:", error);
+    return fail(res, 500, "Failed to update dating location");
   }
 };
 

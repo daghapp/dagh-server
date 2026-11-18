@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  datingContactSyncSchema,
+  datingLocationSchema,
   datingProfileSchema,
   discoveryPreferenceSchema,
   swipeSchema,
@@ -136,6 +138,48 @@ describe("swipeSchema", () => {
 
   it("rejects a non-UUID target", () => {
     const result = swipeSchema.safeParse({ targetId: "abc", direction: "PASS" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("datingContactSyncSchema", () => {
+  it("accepts raw phone numbers with consent", () => {
+    const result = datingContactSyncSchema.safeParse({
+      contacts: ["+233201234567", { name: "Ama", phone: "0244000000" }],
+      consent: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts pre-hashed contacts without consent", () => {
+    const result = datingContactSyncSchema.safeParse({ hashes: ["a".repeat(64)] });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an empty contact list", () => {
+    const result = datingContactSyncSchema.safeParse({ contacts: [] });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("datingLocationSchema", () => {
+  it("accepts locationLat/locationLng", () => {
+    const result = datingLocationSchema.safeParse({ locationLat: 5.6, locationLng: -0.18 });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts latitude/longitude aliases", () => {
+    const result = datingLocationSchema.safeParse({ latitude: 5.6, longitude: -0.18 });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects missing coordinates", () => {
+    const result = datingLocationSchema.safeParse({ locationName: "Accra" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects out-of-range coordinates", () => {
+    const result = datingLocationSchema.safeParse({ locationLat: 100, locationLng: -0.18 });
     expect(result.success).toBe(false);
   });
 });

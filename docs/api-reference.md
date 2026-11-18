@@ -1271,12 +1271,17 @@ exists so the backfill does not need shell access to the database. Idempotent.
 | PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals) + account fields. |
 | GET | `/dating/profile/status` | Bearer | Profile existence + completion status (bypass onboarding for returning users). |
 | GET | `/dating/profile/:userId` | Bearer | View another user's public profile (blocked users excluded → 403). |
-| GET | `/dating/profile/search?username=` | Bearer | Find a user's public dating profile by username (returns OG metadata). |
+| GET | `/dating/profile/search?name=` | Bearer | Find a user's public dating profile by name (returns OG metadata). |
 | GET | `/dating/profile/share` | Bearer | Generate a shareable profile link with primary image. |
 | GET | `/dating/preferences` | Bearer | Get own discovery preferences. |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences. |
+| PUT | `/dating/location` | Bearer | Refresh dating coordinates for proximity alerts. |
+| GET | `/dating/contacts/status` | Bearer | Contact-sync consent + last sync/match counts. |
+| POST | `/dating/contacts/sync` | Bearer | Sync phone contacts (`consent: true` on first call); returns public matches. |
+| GET | `/dating/contacts/matches` | Bearer | List contacts who have dating profiles. |
+| DELETE | `/dating/contacts` | Bearer | Revoke contact consent and delete derived matches. |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |
-| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window. |
+| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window; `?contactsOnly=true` limits results to synced contacts. |
 | GET | `/dating/matches` | Bearer | List active matches. |
 | GET | `/dating/likes-received` | Bearer | List users who liked you. |
 | DELETE | `/dating/matches/:matchId` | Bearer | Unmatch (soft-remove). |
@@ -1345,6 +1350,69 @@ accepted and saved on the user's account — so a single `PATCH /dating/profile`
 (and `POST /dating/profile/init`) captures every value from the profile forms.
 
 `404` if the dating profile hasn't been initialized (`POST /dating/profile/init` first).
+
+### PUT /dating/location
+
+Refreshes only the stored dating coordinates. Proximity alerts use locations
+refreshed within the last 12 hours.
+
+```json
+{ "locationLat": 5.6037, "locationLng": -0.187, "locationName": "Accra" }
+```
+
+`latitude` / `longitude` are accepted aliases. Response is the updated
+`DiscoveryPreference` (including `locationUpdatedAt`). `404` when the dating
+profile does not exist.
+
+### POST /dating/contacts/sync
+
+Opt-in contact matching for dating discovery. The client must obtain OS contact
+permission and send `consent: true` on the first sync. Raw values are hashed in
+memory; only SHA-256 hashes and public matches are stored.
+
+```json
+{
+  "consent": true,
+  "contacts": ["+233201234567", { "name": "Ama", "phone": "0244000000" }]
+}
+```
+
+Aliases accepted: `phoneNumbers`, `phones`, `hashes`. Returns
+`matchedCount`, `totalContacts`, `matches[]` (`userId`, `fullName`, `headline`,
+`photos`, `profileImageUrl`), and a display-ready `banner`. `403` when consent
+has never been granted and `consent` is not `true`.
+
+### GET /dating/contacts/matches
+
+Returns persisted contact matches (`matchedCount`, `banner`, `matches[]`).
+Only active users with dating profiles are included; blocks and hidden profiles
+are excluded.
+
+### GET /dating/contacts/status
+
+Returns `{ granted, grantedAt, lastSyncedAt, contactCount, matchedCount }`.
+
+### DELETE /dating/contacts
+
+Deletes the consent record and all contact-derived matches. Returns
+`{ granted: false }`.
+
+### Contact fields in recommendations
+
+Each candidate may include `isContactMatch` and the `familiar` alias (both
+booleans). Familiar candidates receive a ranking bonus and an
+`"In your contacts"` entry in `reasons`. Pass `?contactsOnly=true` to return only
+familiar candidates. Full frontend guide:
+[`docs/dating-contacts-and-proximity.md`](./dating-contacts-and-proximity.md).
+
+### DATING_NEARBY push
+
+Eligible dating users receive a non-identifying push at most once per 24 hours
+when another user is within `min(10 km, maxDistanceKm)`. Payload:
+
+```json
+{ "type": "DATING_NEARBY", "distanceKm": "4", "route": "/dating/discovery" }
+```
 
 ### GET /dating/profile/status
 

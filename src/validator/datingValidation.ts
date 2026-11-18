@@ -94,3 +94,49 @@ export const swipeSchema = z.object({
 });
 
 export type SwipeInput = z.infer<typeof swipeSchema>;
+
+const contactEntrySchema = z.union([
+  z.string().min(1, "Contact value must not be empty"),
+  z.object({
+    name: z.string().max(120).optional(),
+    phone: z.string().min(1).optional(),
+    phoneNumber: z.string().min(1).optional(),
+    hash: z.string().min(1).optional(),
+    phoneHash: z.string().min(1).optional(),
+  }),
+]);
+
+export const datingContactSyncSchema = z
+  .object({
+    contacts: z.array(contactEntrySchema).max(5000).optional(),
+    phoneNumbers: z.array(contactEntrySchema).max(5000).optional(),
+    phones: z.array(contactEntrySchema).max(5000).optional(),
+    hashes: z.array(contactEntrySchema).max(5000).optional(),
+    consent: z.boolean().optional(),
+  })
+  .refine(
+    (body) =>
+      [body.contacts, body.phoneNumbers, body.phones, body.hashes].some(
+        (list) => Array.isArray(list) && list.length > 0,
+      ),
+    { message: "At least one contact is required" },
+  );
+
+export type DatingContactSyncInput = z.infer<typeof datingContactSyncSchema>;
+
+export const datingLocationSchema = z
+  .object({
+    locationLat: z.number().min(-90).max(90).optional(),
+    locationLng: z.number().min(-180).max(180).optional(),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+    locationName: z.string().max(120).nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      (typeof body.locationLat === "number" && typeof body.locationLng === "number") ||
+      (typeof body.latitude === "number" && typeof body.longitude === "number"),
+    { message: "A valid latitude and longitude are required" },
+  );
+
+export type DatingLocationInput = z.infer<typeof datingLocationSchema>;

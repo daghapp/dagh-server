@@ -1,7 +1,13 @@
 import swaggerJSDoc from "swagger-jsdoc";
 import { Application } from "express";
 import swaggerUi from "swagger-ui-express";
-import { SANITIZED_CONFIG_SCHEMA, CHANNEL_ACCESS_SCHEMA } from "./swagger-schemas.js";
+import {
+  SANITIZED_CONFIG_SCHEMA,
+  CHANNEL_ACCESS_SCHEMA,
+  DATING_CONTACT_MATCH_SCHEMA,
+  DATING_CONTACT_SYNC_RESULT_SCHEMA,
+  DATING_CONTACT_STATUS_SCHEMA,
+} from "./swagger-schemas.js";
 
 const BackendURL = process.env.API_URL;
 
@@ -37,6 +43,9 @@ const swaggerOptions: swaggerJSDoc.Options = {
       schemas: {
         SanitizedGatewayConfig: SANITIZED_CONFIG_SCHEMA,
         ChannelAccess: CHANNEL_ACCESS_SCHEMA,
+        DatingContactMatch: DATING_CONTACT_MATCH_SCHEMA,
+        DatingContactSyncResult: DATING_CONTACT_SYNC_RESULT_SCHEMA,
+        DatingContactStatus: DATING_CONTACT_STATUS_SCHEMA,
       },
     },
   },

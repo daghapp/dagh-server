@@ -7,6 +7,7 @@ import {
   getFreeModeTierCode,
   resolveEffectiveAccess,
 } from "../helpers/membership.js";
+import { getDatingContactUserIds } from "./dating-contacts.service.js";
 
 // ─────────────────────────────────────────
 // Matching engine — candidate discovery, filtering & scoring
@@ -39,6 +40,8 @@ export interface MatchCandidate {
   score: number;
   tierBoost: number;
   profileImage?: string | null;
+  // True when the candidate is in the viewer's synced phone contacts.
+  isContactMatch?: boolean;
   // Tour → dating travel fields (populated only when a travel context is supplied)
   scheduleOverlapDays?: number;
   withinGeofence?: boolean;
@@ -240,6 +243,12 @@ export function scoreCandidate(
     }
   }
 
+  // Familiarity boost — people already in the viewer's contact book are more
+  // likely to be relevant than a stranger with the same interests.
+  if (candidate.isContactMatch) {
+    score += 15;
+  }
+
   // Membership boost
   score *= candidate.tierBoost;
 
@@ -290,12 +299,17 @@ async function loadMyFilters(userId: string): Promise<{
  */
 export async function getDiscoveryCandidates(
   userId: string,
-  options: { limit?: number; offset?: number; travel?: TravelContext | null } = {},
+  options: {
+    limit?: number;
+    offset?: number;
+    travel?: TravelContext | null;
+    contactsOnly?: boolean;
+  } = {},
 ): Promise<{ candidates: MatchCandidate[]; total: number }> {
-  const { limit = 20, offset = 0, travel = null } = options;
+  const { limit = 20, offset = 0, travel = null, contactsOnly = false } = options;
   const { filters, myInterests } = await loadMyFilters(userId);
 
-  const [swipes, blocks] = await Promise.all([
+  const [swipes, blocks, contactUserIds] = await Promise.all([
     prisma.userSwipe.findMany({
       where: { swiperId: userId, direction: "PASS" },
       select: { targetId: true },
@@ -306,6 +320,7 @@ export async function getDiscoveryCandidates(
       },
       select: { blockerId: true, blockedId: true },
     }),
+    getDatingContactUserIds(userId),
   ]);
 
   const excludedIds = new Set<string>([
@@ -332,7 +347,10 @@ export async function getDiscoveryCandidates(
       : {};
 
   const where = {
-    id: { notIn: [...excludedIds] },
+    id: {
+      notIn: [...excludedIds],
+      ...(contactsOnly ? { in: [...contactUserIds] } : {}),
+    },
     accountStatus: "ACTIVE" as const,
     ...(filters.genderPreference.length > 0 ? { gender: { in: filters.genderPreference } } : {}),
     ...ageFilter,
@@ -452,6 +470,7 @@ export async function getDiscoveryCandidates(
         ).perksTierCode,
       ),
       profileImage: u.profile?.bio_profile_image_url ?? null,
+      isContactMatch: contactUserIds.has(u.id),
       scheduleOverlapDays,
       withinGeofence,
       availableFrom: profile.availableFrom,

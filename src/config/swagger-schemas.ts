@@ -64,6 +64,44 @@ export const SANITIZED_CONFIG_SCHEMA = {
  * what a client should branch on, while the status says why. `CHECK_FAILED`
  * exists precisely so "we could not ask" is never rendered as "you cancelled".
  */
+export const DATING_CONTACT_MATCH_SCHEMA = {
+  type: "object",
+  properties: {
+    userId: { type: "string", format: "uuid" },
+    fullName: { type: "string" },
+    headline: { type: "string", nullable: true },
+    photos: { type: "array", items: { type: "string", format: "uri" } },
+    profileImageUrl: { type: "string", nullable: true },
+  },
+};
+
+export const DATING_CONTACT_SYNC_RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    matchedCount: { type: "integer", example: 2 },
+    totalContacts: { type: "integer", example: 143 },
+    matches: {
+      type: "array",
+      items: { $ref: "#/components/schemas/DatingContactMatch" },
+    },
+    banner: {
+      type: "string",
+      example: "2 people in your contact list (including Ama) are on Diaspora Sync.",
+    },
+  },
+};
+
+export const DATING_CONTACT_STATUS_SCHEMA = {
+  type: "object",
+  properties: {
+    granted: { type: "boolean" },
+    grantedAt: { type: "string", format: "date-time", nullable: true },
+    lastSyncedAt: { type: "string", format: "date-time", nullable: true },
+    contactCount: { type: "integer" },
+    matchedCount: { type: "integer" },
+  },
+};
+
 export const CHANNEL_ACCESS_SCHEMA = {
   type: "object",
   properties: {

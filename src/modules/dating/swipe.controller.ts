@@ -249,7 +249,15 @@ export const getRecommendations = async (req: Request, res: Response) => {
       }
     }
 
-    const result = await getDiscoveryCandidates(userId, { limit, offset, travel });
+    const contactsOnly =
+      req.query.contactsOnly === "true" || req.query.contactsOnly === "1";
+
+    const result = await getDiscoveryCandidates(userId, {
+      limit,
+      offset,
+      travel,
+      contactsOnly,
+    });
 
     // Assign curated stacks to candidates
     const stackTypeMap: Record<string, "MOST_COMPATIBLE" | "NEW_PROFILES" | "NONE"> = {};
@@ -343,6 +351,11 @@ export const getRecommendations = async (req: Request, res: Response) => {
         // Build "Why this profile?" reasons from available candidate data
         const reasons: string[] = [];
 
+        // Familiarity indicator (matched from the viewer's synced contacts)
+        if (c.isContactMatch) {
+          reasons.push("In your contacts");
+        }
+
         // Interest indicator
         if (c.interests?.length > 0) {
           if (c.interests.length <= 3) {
@@ -389,6 +402,7 @@ export const getRecommendations = async (req: Request, res: Response) => {
           isPrimary,
           photoCount,
           photoRatio: photoCount > 0 ? Math.round((photoCount / 9) * 100) : 0,
+          familiar: c.isContactMatch === true,
           reasons: reasons.slice(0, 3), // Top 3 reasons
           isLuckyToday,
           stackType: stackTypeMap[c.userId] || "NONE",

@@ -99,6 +99,11 @@ model User {
   swipesReceived          UserSwipe[]                 @relation("SwipeTarget")
   discoveryPreference     DiscoveryPreference?
   notificationPreferences UserNotificationPreference?
+  contactSyncConsent      ContactSyncConsent?
+  contactMatches          ContactMatch[]                @relation("ContactMatchOwner")
+  matchedByContacts       ContactMatch[]                @relation("ContactMatchMatched")
+  proximityAlerts         DatingProximityNotification[] @relation("ProximityAlertRecipient")
+  proximityAlertsAbout    DatingProximityNotification[] @relation("ProximityAlertNearby")
 
   @@map("users")
 }
@@ -606,6 +611,9 @@ model DiscoveryPreference {
   locationLat      Float?
   locationLng      Float?
   locationName     String?
+  // When the location above was last refreshed. Proximity alerts only consider
+  // recently-refreshed locations so users are not notified about stale places.
+  locationUpdatedAt DateTime?
   showProfile      Boolean     @default(true)
   showOnlineStatus Boolean     @default(true)
 
@@ -630,6 +638,61 @@ model UserBlock {
 
   @@unique([blockerId, blockedId])
   @@map("user_blocks")
+}
+
+// ─────────────────────────────────────────
+// CONTACT DISCOVERY — privacy-preserving contact matching scoped to dating.
+// Only SHA-256 phone hashes are stored; raw contact data never reaches the DB.
+// ─────────────────────────────────────────
+model ContactSyncConsent {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  granted      Boolean   @default(true)
+  grantedAt    DateTime?
+  revokedAt    DateTime?
+  lastSyncedAt DateTime?
+  contactCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("contact_sync_consents")
+}
+
+model ContactMatch {
+  id            String   @id @default(uuid())
+  userId        String
+  matchedUserId String
+  phoneHash     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user        User @relation("ContactMatchOwner", fields: [userId], references: [id], onDelete: Cascade)
+  matchedUser User @relation("ContactMatchMatched", fields: [matchedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchedUserId])
+  @@index([matchedUserId])
+  @@map("contact_matches")
+}
+
+// ─────────────────────────────────────────
+// DATING PROXIMITY — deduplication/cooldown for "someone nearby" alerts.
+// One row per (recipient, nearby user) pair, refreshed when a new alert is sent.
+// ─────────────────────────────────────────
+model DatingProximityNotification {
+  id           String   @id @default(uuid())
+  userId       String
+  nearbyUserId String
+  distanceKm   Float
+  notifiedAt   DateTime @default(now())
+
+  user       User @relation("ProximityAlertRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  nearbyUser User @relation("ProximityAlertNearby", fields: [nearbyUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, nearbyUserId])
+  @@index([userId, notifiedAt])
+  @@map("dating_proximity_notifications")
 }
 
 model DatingActivityLog {

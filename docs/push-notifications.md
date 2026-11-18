@@ -47,6 +47,7 @@ FCM is optional. If Firebase env vars are missing, the server logs a warning and
 | **Incoming Call**      | Call initiated to receiver                                        | `INCOMING_CALL`      |
 | **Call State Changed** | Terminal call events (DECLINED, CANCELLED, MISSED, ENDED, FAILED) | `CALL_STATE_CHANGED` |
 | **New Message**        | New chat message or voice note                                    | `NEW_MESSAGE`        |
+| **Dating Nearby**      | Another eligible dating user is physically close                  | `DATING_NEARBY`      |
 
 Display behavior per type:
 
@@ -57,6 +58,18 @@ Display behavior per type:
 On iOS devices with a registered `voipPushToken`, call payloads are delivered as **PushKit VoIP pushes** directly to APNs so the OS can launch the app even when terminated and present a lock-screen incoming-call UI.
 
 Message notifications are **never** sent over the VoIP channel.
+
+Dating proximity pushes (`DATING_NEARBY`) are visible Expo notifications sent
+directly by `src/jobs/dating-proximity.ts` every 30 minutes. They are
+non-identifying and include only:
+
+```json
+{ "type": "DATING_NEARBY", "distanceKm": "4", "route": "/dating/discovery" }
+```
+
+The worker only considers locations refreshed within 12 hours and sends at most
+one alert per user per 24 hours. See
+[`docs/dating-contacts-and-proximity.md`](./dating-contacts-and-proximity.md).
 
 ---
 
@@ -71,6 +84,7 @@ Message notifications are **never** sent over the VoIP channel.
 | Call expiry cron (ring timeout) | `CALL_STATE_CHANGED(MISSED)` → both participants    |
 | `POST /messages` (text/media)   | `NEW_MESSAGE` → recipient                           |
 | `POST /messages/voice-note`     | `NEW_MESSAGE` → recipient                           |
+| Dating proximity worker (30 min) | `DATING_NEARBY` → each nearby dating user (max 1/24h) |
 
 ---
 

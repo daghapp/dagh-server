@@ -110,6 +110,16 @@ describe("scoreCandidate", () => {
     const edge = scoreCandidate(makeCandidate({ age: 18 }), baseFilters, []);
     expect(center).toBeGreaterThan(edge);
   });
+
+  it("boosts candidates found in the viewer's contacts", () => {
+    const contact = scoreCandidate(
+      makeCandidate({ isContactMatch: true }),
+      baseFilters,
+      [],
+    );
+    const stranger = scoreCandidate(makeCandidate({ isContactMatch: false }), baseFilters, []);
+    expect(contact).toBeGreaterThan(stranger);
+  });
 });
 
 describe("oppositeGenderPreference", () => {
