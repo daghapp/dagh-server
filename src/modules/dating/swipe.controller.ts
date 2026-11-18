@@ -249,8 +249,7 @@ export const getRecommendations = async (req: Request, res: Response) => {
       }
     }
 
-    const contactsOnly =
-      req.query.contactsOnly === "true" || req.query.contactsOnly === "1";
+    const contactsOnly = req.query.contactsOnly === "true" || req.query.contactsOnly === "1";
 
     const result = await getDiscoveryCandidates(userId, {
       limit,
