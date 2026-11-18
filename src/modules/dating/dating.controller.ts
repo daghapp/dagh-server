@@ -286,8 +286,7 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
       return fail(res, 404, "Dating profile not found. Initialize it first.");
     }
 
-    const hasCoords =
-      typeof body.locationLat === "number" && typeof body.locationLng === "number";
+    const hasCoords = typeof body.locationLat === "number" && typeof body.locationLng === "number";
     const clearedCoords = body.locationLat === null || body.locationLng === null;
 
     const preference = await prisma.discoveryPreference.upsert({
@@ -394,8 +393,7 @@ export const updateDatingLocation = async (req: Request, res: Response) => {
 export const getDatingProfileByName = async (req: Request, res: Response) => {
   try {
     const viewerId = req.user!.id;
-    const raw =
-      req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
+    const raw = req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
     const name =
       typeof raw === "string"
         ? raw.trim()
@@ -508,8 +506,7 @@ export const getDatingProfileByUsername = getDatingProfileByName;
  */
 export const getDatingProfileSuggestions = async (req: Request, res: Response) => {
   try {
-    const raw =
-      req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
+    const raw = req.query.name ?? req.query.username ?? req.query.q ?? req.query.search;
     const name =
       typeof raw === "string"
         ? raw.trim()
