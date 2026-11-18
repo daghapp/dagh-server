@@ -1,8 +1,5 @@
 import { prisma } from "../config/index.js";
-import {
-  hashContactsList,
-  type ContactInput,
-} from "../modules/contacts/contacts.service.js";
+import { hashContactsList, type ContactInput } from "../modules/contacts/contacts.service.js";
 
 export interface DatingContactMatch {
   userId: string;
@@ -39,8 +36,7 @@ function toPublicMatch(user: {
     fullName: user.fullName,
     headline: user.datingProfile?.headline ?? null,
     photos: user.datingProfile?.photos ?? [],
-    profileImageUrl:
-      user.profile?.bio_profile_image_url ?? user.profile?.profileUrl ?? null,
+    profileImageUrl: user.profile?.bio_profile_image_url ?? user.profile?.profileUrl ?? null,
   };
 }
 
@@ -121,9 +117,7 @@ export async function syncDatingContacts(
     await tx.contactMatch.deleteMany({
       where: {
         userId,
-        ...(matches.length > 0
-          ? { matchedUserId: { notIn: matches.map((m) => m.id) } }
-          : {}),
+        ...(matches.length > 0 ? { matchedUserId: { notIn: matches.map((m) => m.id) } } : {}),
       },
     });
 

@@ -24,7 +24,8 @@ const MAX_ATTEMPTS = 4;
 const EXPO_RECEIPT_DELAY_MS = 60_000;
 const STUCK_SENDING_MS = 15 * 60_000;
 
-type DeliveryStatus = "PENDING" | "SENDING" | "SENT" | "DELIVERED" | "FAILED" | "SKIPPED" | "RETRY_PENDING";
+type DeliveryStatus =
+  "PENDING" | "SENDING" | "SENT" | "DELIVERED" | "FAILED" | "SKIPPED" | "RETRY_PENDING";
 
 interface AnnouncementRow {
   id: string;
@@ -76,10 +77,7 @@ function tokenForProvider(device: DeviceRow, provider: string): string | null {
   return null;
 }
 
-async function invalidateDeviceToken(
-  deviceId: string,
-  provider: PushProvider,
-): Promise<void> {
+async function invalidateDeviceToken(deviceId: string, provider: PushProvider): Promise<void> {
   const tokenField =
     provider === "FCM"
       ? { fcmToken: null }
@@ -161,9 +159,7 @@ function audienceWhere(audience: string): Prisma.UserDeviceWhereInput {
     user: {
       isDeleted: false,
       accountStatus,
-      ...(audience === "VERIFIED"
-        ? { verification: { is: { isVerified: true } } }
-        : {}),
+      ...(audience === "VERIFIED" ? { verification: { is: { isVerified: true } } } : {}),
     },
   };
 }
@@ -463,7 +459,6 @@ async function sendExpoRows(
       await recordFailure(item.row, errorCode, isTransientProviderError(ticket));
     }
   }
-
 }
 
 async function sendFcmRows(
@@ -629,9 +624,7 @@ export async function fetchAnnouncementExpoReceipts(): Promise<void> {
     { status: string; message?: string; details?: { error?: string } }
   >();
 
-  const ids = rows
-    .map((row) => row.providerMessageId)
-    .filter((id): id is string => Boolean(id));
+  const ids = rows.map((row) => row.providerMessageId).filter((id): id is string => Boolean(id));
 
   for (const chunk of expo.chunkPushNotificationReceiptIds(ids)) {
     try {

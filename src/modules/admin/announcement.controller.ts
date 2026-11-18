@@ -96,11 +96,7 @@ export class AdminAnnouncementController {
         console.error("[announcements] immediate dispatch failed:", error);
       });
 
-      return created(
-        res,
-        { announcement: queued, audience },
-        "Broadcast queued for delivery",
-      );
+      return created(res, { announcement: queued, audience }, "Broadcast queued for delivery");
     } catch (error) {
       console.error("[announcements] create failed:", error);
       return fail(res, 500, "Failed to create broadcast");

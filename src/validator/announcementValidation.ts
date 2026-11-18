@@ -12,8 +12,16 @@ export const ANNOUNCEMENT_AUDIENCES = ["ACTIVE", "VERIFIED", "ALL"] as const;
 
 export const createAnnouncementSchema = z
   .object({
-    title: z.string().trim().min(1, "title is required").max(120, "title must be 120 characters or fewer"),
-    body: z.string().trim().min(1, "body is required").max(500, "body must be 500 characters or fewer"),
+    title: z
+      .string()
+      .trim()
+      .min(1, "title is required")
+      .max(120, "title must be 120 characters or fewer"),
+    body: z
+      .string()
+      .trim()
+      .min(1, "body is required")
+      .max(500, "body must be 500 characters or fewer"),
     category: z.enum(ANNOUNCEMENT_CATEGORIES),
     audience: z.enum(ANNOUNCEMENT_AUDIENCES).default("ACTIVE"),
     route: z
@@ -23,7 +31,10 @@ export const createAnnouncementSchema = z
       .refine((value) => value === "" || value.startsWith("/"), "route must be an in-app path")
       .optional()
       .nullable(),
-    scheduledAt: z.coerce.date({ message: "scheduledAt must be an ISO date-time" }).optional().nullable(),
+    scheduledAt: z.coerce
+      .date({ message: "scheduledAt must be an ISO date-time" })
+      .optional()
+      .nullable(),
     sendNow: z.boolean().default(true),
   })
   .strict()

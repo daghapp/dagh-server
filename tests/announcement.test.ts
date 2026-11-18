@@ -140,20 +140,18 @@ describe("createAnnouncementSchema", () => {
   });
 
   it("rejects unknown categories, overlong copy, and external routes", () => {
-    expect(
-      createAnnouncementSchema.safeParse({ ...base, category: "SALE" }).success,
-    ).toBe(false);
-    expect(
-      createAnnouncementSchema.safeParse({ ...base, title: "x".repeat(121) }).success,
-    ).toBe(false);
-    expect(
-      createAnnouncementSchema.safeParse({ ...base, body: "x".repeat(501) }).success,
-    ).toBe(false);
+    expect(createAnnouncementSchema.safeParse({ ...base, category: "SALE" }).success).toBe(false);
+    expect(createAnnouncementSchema.safeParse({ ...base, title: "x".repeat(121) }).success).toBe(
+      false,
+    );
+    expect(createAnnouncementSchema.safeParse({ ...base, body: "x".repeat(501) }).success).toBe(
+      false,
+    );
     expect(
       createAnnouncementSchema.safeParse({ ...base, route: "https://example.com" }).success,
     ).toBe(false);
-    expect(
-      createAnnouncementSchema.safeParse({ ...base, route: "/notifications" }).success,
-    ).toBe(true);
+    expect(createAnnouncementSchema.safeParse({ ...base, route: "/notifications" }).success).toBe(
+      true,
+    );
   });
 });
