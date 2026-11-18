@@ -1183,6 +1183,9 @@ model PendingSite {
   status            String     @default("pending") // pending, approved, rejected
   submittedBy       String // userId
   rejectReason      String?
+  // Audit trail for moderation decisions (mirrors SitePhoto).
+  moderatedBy       String? // admin userId
+  moderatedAt       DateTime?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
