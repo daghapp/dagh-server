@@ -102,6 +102,7 @@ model User {
   contactSyncConsent      ContactSyncConsent?
   contactMatches          ContactMatch[]                @relation("ContactMatchOwner")
   matchedByContacts       ContactMatch[]                @relation("ContactMatchMatched")
+  phoneHashVariants       PhoneHashVariant[]
   proximityAlerts         DatingProximityNotification[] @relation("ProximityAlertRecipient")
   proximityAlertsAbout    DatingProximityNotification[] @relation("ProximityAlertNearby")
 
@@ -648,6 +649,21 @@ model UserBlock {
 // CONTACT DISCOVERY — privacy-preserving contact matching across the platform.
 // Only SHA-256 phone hashes are stored; raw contact data never reaches the DB.
 // ─────────────────────────────────────────
+/// Every plausible SHA-256 phone form for a user (local, E.164, country-code).
+/// Lets contacts that arrive as pre-computed hashes match regardless of the
+/// phone format the client hashed.
+model PhoneHashVariant {
+  id     String @id @default(uuid())
+  userId String
+  hash   String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([hash, userId])
+  @@index([hash])
+  @@map("phone_hash_variants")
+}
+
 model ContactSyncConsent {
   id           String    @id @default(uuid())
   userId       String    @unique

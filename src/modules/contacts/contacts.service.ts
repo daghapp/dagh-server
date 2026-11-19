@@ -58,6 +58,25 @@ export function normalizePhone(phone: string | null | undefined): string {
   return normalizePhoneNumber(phone);
 }
 
+/**
+ * Store every plausible hash form of a user's phone number. This allows
+ * contacts sent as pre-computed hashes (which cannot be expanded) to match
+ * regardless of which format the client hashed.
+ */
+export async function syncPhoneHashVariants(
+  userId: string,
+  phone: string | null | undefined,
+): Promise<void> {
+  const hashes = hashPhoneCandidates(phone);
+  if (hashes.length === 0) return;
+
+  await prisma.phoneHashVariant.deleteMany({ where: { userId } });
+  await prisma.phoneHashVariant.createMany({
+    data: hashes.map((hash) => ({ userId, hash })),
+    skipDuplicates: true,
+  });
+}
+
 function extractPhones(contacts: Array<ContactInput | string>): string[] {
   const out: string[] = [];
   for (const c of contacts || []) {
@@ -167,6 +186,9 @@ export async function findContactUsers(
   const or: Prisma.UserWhereInput[] = [];
   if (lookupHashes.length > 0) {
     or.push({ phoneNumberHash: { in: lookupHashes } }, { phoneHash: { in: lookupHashes } });
+    // Pre-hashed contacts cannot be expanded by the server; the variants table
+    // stores every plausible form for each user so these still match.
+    or.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
   }
   if (emails.length > 0) {
     or.push({ email: { in: emails, mode: "insensitive" } });
@@ -176,6 +198,7 @@ export async function findContactUsers(
     where: {
       id: { not: userId },
       accountStatus: "ACTIVE",
+      isDeleted: false,
       OR: or,
     },
     select: contactUserSelect,
@@ -375,12 +398,12 @@ export async function buildInviteLink(userId: string): Promise<{
     select: { fullName: true, username: true, profileImageUrl: true },
   });
   const inviterName = user?.fullName || user?.username || "Diaspora Sync member";
-  const shareUrl = `${API_BASE_URL}/share/app?inviter=${encodeURIComponent(inviterName)}`;
   const smart = await deepLinkService.createSmartLink({
     type: "app",
     id: userId,
     inviterId: userId,
   });
+  const shareUrl = `${API_BASE_URL}/share/app?inviter=${encodeURIComponent(inviterName)}&token=${encodeURIComponent(smart.token)}`;
 
   return {
     inviterName,

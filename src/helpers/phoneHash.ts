@@ -34,13 +34,24 @@ export function phoneDigitCandidates(phone: string | null | undefined): string[]
 
   if (cc) {
     if (raw.startsWith("0")) {
-      candidates.add(cc + raw.slice(1));
-    } else if (!raw.startsWith(cc) && raw.length <= 10) {
+      // Local with leading zero (e.g. 0244000000): also store the national
+      // form without the zero and the E.164 form with the country code.
+      const national = raw.slice(1);
+      candidates.add(national);
+      candidates.add(cc + national);
+    } else if (raw.startsWith(cc) && raw.length > cc.length) {
+      // E.164 (e.g. 233244000000): also store the local forms.
+      const national = raw.slice(cc.length);
+      candidates.add("0" + national);
+      candidates.add(national);
+    } else if (raw.length <= 10 && !raw.startsWith(cc)) {
+      // Local without leading zero (e.g. 244000000).
+      candidates.add("0" + raw);
       candidates.add(cc + raw);
     }
-    // Also cover legacy rows stored in local form when the input is E.164.
-    if (raw.startsWith(cc) && raw.length > cc.length) {
-      candidates.add("0" + raw.slice(cc.length));
+    // International prefix form (e.g. 00233244000000).
+    if (raw.startsWith("00") && raw.length > 2 + cc.length && raw.slice(2).startsWith(cc)) {
+      candidates.add(raw.slice(2));
     }
   }
 

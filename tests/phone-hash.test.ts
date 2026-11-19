@@ -17,6 +17,15 @@ describe("phone digit candidates", () => {
       expect.arrayContaining(["233244000000", "0244000000"]),
     );
   });
+
+  it("includes the national form without the leading zero", () => {
+    expect(phoneDigitCandidates("0244000000")).toContain("244000000");
+    expect(phoneDigitCandidates("+233244000000")).toContain("244000000");
+  });
+
+  it("expands the 00 international prefix form", () => {
+    expect(phoneDigitCandidates("00233244000000")).toContain("233244000000");
+  });
 });
 
 describe("hashPhoneCandidates", () => {

@@ -117,8 +117,11 @@ Valid values are the Ghana regions in `GHANA_REGIONS`
   how local numbers are expanded. Set it in the environment for other markets.
 - **Emails:** if a contact includes `email`, it is compared case-insensitively
   against account emails. Raw emails are not persisted.
-- **Precomputed hashes:** if the client sends `hashes`, the server cannot expand
-  them into format variants. Prefer sending raw phone numbers.
+- **Precomputed hashes:** if the client sends `hashes`, the server matches them
+  against a `phone_hash_variants` table populated at registration/verification.
+  Every plausible phone form (local, E.164, national, international prefix) is
+  stored, so a client-side hash of any form still matches. Raw phone numbers
+  remain the preferred input where possible.
 - **Privacy:** raw phone numbers and emails are hashed/compared in memory and
   are never written to the database. Only matched user IDs and the match owner's
   consent/counts are stored.
@@ -281,11 +284,16 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 
 ## 3. Rollout notes
 
-- **No database migration is required.** Only comments changed in `schema.prisma`.
+- **Run the new migration** `20261119000000_add_phone_hash_variants` (creates the
+  `phone_hash_variants` table).
 - Deploy the server first; clients can adopt the new fields without breaking old
   responses (fields are additive).
 - Contact matches are derived data: users who synced under the old release should
   sync once more to populate the persisted table.
+- **Backfill phone hash variants** for existing users with a saved phone number
+  by re-running registration-style hashing (or call `syncPhoneHashVariants`),
+  otherwise pre-hashed contact matching will miss legacy accounts until they
+  re-verify their phone.
 - Historical tour requests that stored `"Central"` before this change are not
   rewritten automatically. Decide whether to leave them or run a targeted
   backfill after confirming which rows were genuine Central choices.
