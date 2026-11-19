@@ -20,11 +20,14 @@ export class ContactsController {
       const userId = req.user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
       const contacts = extractContacts(req.body);
-      const [result, invite] = await Promise.all([
-        contactsService.syncContacts(userId, contacts),
-        contactsService.buildInviteLink(userId),
-      ]);
-      return ok(res, { ...result, invite }, "Contacts synced");
+      const result = await contactsService.syncContacts(userId, contacts);
+      let invite: Awaited<ReturnType<typeof contactsService.buildInviteLink>> | null = null;
+      try {
+        invite = await contactsService.buildInviteLink(userId);
+      } catch (e) {
+        console.warn("[contacts.sync] failed to build invite link", e);
+      }
+      return ok(res, { ...result, ...(invite ? { invite } : {}) }, "Contacts synced");
     } catch (error) {
       console.error("[contacts.sync]", error);
       return fail(res, 500, "Failed to sync contacts");
@@ -39,10 +42,13 @@ export class ContactsController {
     try {
       const userId = req.user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
-      const [matches, invite] = await Promise.all([
-        contactsService.getContactMatches(userId),
-        contactsService.buildInviteLink(userId),
-      ]);
+      const matches = await contactsService.getContactMatches(userId);
+      let invite: Awaited<ReturnType<typeof contactsService.buildInviteLink>> | null = null;
+      try {
+        invite = await contactsService.buildInviteLink(userId);
+      } catch (e) {
+        console.warn("[contacts.getMatches] failed to build invite link", e);
+      }
       const banner =
         matches.length === 0
           ? "No contacts found on Diaspora Sync yet. Invite them to join."
@@ -51,7 +57,7 @@ export class ContactsController {
         matches,
         matchedCount: matches.length,
         banner,
-        invite,
+        ...(invite ? { invite } : {}),
       });
     } catch (error) {
       console.error("[contacts.getMatches]", error);

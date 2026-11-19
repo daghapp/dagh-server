@@ -87,11 +87,14 @@ describe("pre-hashed contact matching", () => {
     );
   });
 
-  it("excludes deleted accounts from contact matches", async () => {
+  it("excludes deleted and restricted accounts from contact matches", async () => {
     prismaMock.user.findMany.mockResolvedValue([]);
     await findContactUsers("caller", [hashPhoneNumber("0244000000")]);
     const where = prismaMock.user.findMany.mock.calls[0][0].where;
     expect(where.isDeleted).toBe(false);
+    expect(where.accountStatus).toEqual({
+      notIn: ["SUSPENDED", "TERMINATED", "DEACTIVATED"],
+    });
   });
 });
 

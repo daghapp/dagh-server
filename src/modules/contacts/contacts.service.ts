@@ -36,7 +36,7 @@ export const contactUserSelect = {
   phoneNumberHash: true,
   phoneHash: true,
   profileImageUrl: true,
-  profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+  profile: { select: { bio_profile_image_url: true, profileUrl: true, phoneNumber: true } },
   datingProfile: { select: { headline: true, photos: true } },
 } as const;
 
@@ -108,7 +108,21 @@ function extractPhones(contacts: Array<ContactInput | string>): string[] {
     if (!c || typeof c !== "object") continue;
     const record = c as Record<string, unknown>;
 
-    for (const key of ["phone", "phoneNumber", "number", "digits", "hash", "phoneHash"]) {
+    for (const key of [
+      "phone",
+      "phoneNumber",
+      "number",
+      "digits",
+      "hash",
+      "phoneHash",
+      "mobile",
+      "tel",
+      "telephone",
+      "e164",
+      "formattedNumber",
+      "formatted_number",
+      "phone_number",
+    ]) {
       pushPhone(out, record[key]);
     }
 
@@ -118,7 +132,10 @@ function extractPhones(contacts: Array<ContactInput | string>): string[] {
         if (typeof entry === "string" || typeof entry === "number") pushPhone(out, entry);
         else if (entry && typeof entry === "object") {
           const r = entry as Record<string, unknown>;
-          pushPhone(out, r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits);
+          pushPhone(
+            out,
+            r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits ?? r.e164 ?? r.mobile,
+          );
         }
       }
     }
@@ -129,7 +146,10 @@ function extractPhones(contacts: Array<ContactInput | string>): string[] {
         if (typeof entry === "string" || typeof entry === "number") pushPhone(out, entry);
         else if (entry && typeof entry === "object") {
           const r = entry as Record<string, unknown>;
-          pushPhone(out, r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits);
+          pushPhone(
+            out,
+            r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits ?? r.e164 ?? r.mobile,
+          );
         }
       }
     }
@@ -151,7 +171,9 @@ function extractEmails(contacts: Array<ContactInput | string>): string[] {
     if (!c || typeof c !== "object") continue;
     const record = c as Record<string, unknown>;
 
-    pushEmail(out, record.email);
+    for (const key of ["email", "emailAddress", "email_address", "mail"]) {
+      pushEmail(out, record[key]);
+    }
 
     const emails = record.emails;
     if (Array.isArray(emails)) {
@@ -159,7 +181,7 @@ function extractEmails(contacts: Array<ContactInput | string>): string[] {
         if (typeof entry === "string") pushEmail(out, entry);
         else if (entry && typeof entry === "object") {
           const r = entry as Record<string, unknown>;
-          pushEmail(out, r.email ?? r.address ?? r.value);
+          pushEmail(out, r.email ?? r.address ?? r.value ?? r.mail);
         }
       }
     }
@@ -314,24 +336,35 @@ export async function findContactUsers(
   if (lookupHashes.length > 0) {
     const foundIds = new Set(users.map((u) => u.id));
     const lookupSet = new Set(lookupHashes);
-    const candidates: ContactUser[] = await prisma.user.findMany({
-      where: {
-        ...baseWhere,
-        phoneNumber: { not: null },
-        id: foundIds.size > 0 ? { notIn: [...foundIds, userId] } : { not: userId },
-      },
-      select: contactUserSelect,
-    });
-    for (const candidate of candidates) {
-      if (foundIds.has(candidate.id)) continue;
-      const candidateHashes = new Set(hashPhoneCandidates(candidate.phoneNumber));
-      for (const h of candidateHashes) {
-        if (lookupSet.has(h)) {
-          users.push(candidate);
-          foundIds.add(candidate.id);
-          break;
+    try {
+      const candidates: ContactUser[] = await prisma.user.findMany({
+        where: {
+          ...baseWhere,
+          id: foundIds.size > 0 ? { notIn: [...foundIds, userId] } : { not: userId },
+          OR: [{ phoneNumber: { not: null } }, { profile: { is: { phoneNumber: { not: null } } } }],
+        },
+        select: contactUserSelect,
+      });
+      for (const candidate of candidates) {
+        if (foundIds.has(candidate.id)) continue;
+        const profilePhone =
+          candidate.profile && "phoneNumber" in candidate.profile
+            ? (candidate.profile as { phoneNumber?: string | null }).phoneNumber ?? null
+            : null;
+        const candidateHashes = new Set([
+          ...hashPhoneCandidates(candidate.phoneNumber),
+          ...hashPhoneCandidates(profilePhone),
+        ]);
+        for (const h of candidateHashes) {
+          if (lookupSet.has(h)) {
+            users.push(candidate);
+            foundIds.add(candidate.id);
+            break;
+          }
         }
       }
+    } catch (error) {
+      console.warn("[contacts] in-memory fallback scan failed", error);
     }
   }
 
