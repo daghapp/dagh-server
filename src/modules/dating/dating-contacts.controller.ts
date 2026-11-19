@@ -6,6 +6,7 @@ import {
   revokeDatingContactConsent,
   syncDatingContacts,
 } from "../../services/dating-contacts.service.js";
+import { buildInviteLink } from "../contacts/contacts.service.js";
 import type { ContactInput } from "../contacts/contacts.service.js";
 
 function extractContacts(body: Record<string, unknown>): Array<ContactInput | string> {
@@ -50,17 +51,20 @@ export const syncContactsForDating = async (req: Request, res: Response) => {
   }
 };
 
-/** List people in the caller's contacts who are on the dating platform. */
+/** List people in the caller's contacts who are on the platform. */
 export const getContactsForDating = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const matches = await getDatingContactMatches(userId);
+    const [matches, invite] = await Promise.all([
+      getDatingContactMatches(userId),
+      buildInviteLink(userId),
+    ]);
     const banner =
       matches.length === 0
-        ? "No contacts found on Diaspora Sync yet."
+        ? "No contacts found on Diaspora Sync yet. Invite them to join."
         : `${matches.length} people in your contact list are on Diaspora Sync. Tap to connect.`;
 
-    return ok(res, { matches, matchedCount: matches.length, banner });
+    return ok(res, { matches, matchedCount: matches.length, banner, invite });
   } catch (error) {
     console.error("[dating.contacts.matches]", error);
     return fail(res, 500, "Failed to fetch contact matches");

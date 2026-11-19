@@ -93,8 +93,7 @@ router.get("/sites/:siteId/mobility", getSiteMobility);
  *                 maximum: 30
  *               startRegion:
  *                 type: string
- *                 description: Hub the loop is anchored to (defaults to Central / Cape Coast)
- *                 default: Central
+ *                 description: Hub the loop is anchored to (inferred from the selected sites when omitted)
  *               allowAccraOvernight:
  *                 type: boolean
  *                 description: Opt in to more than two Greater Accra nights

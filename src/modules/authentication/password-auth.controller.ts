@@ -19,6 +19,7 @@ import {
 import { ok, created, fail } from "../../helpers/response.js";
 import { toAuthUser } from "../../helpers/auth-user.js";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
+import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { getAllPermissionsForRole } from "../../middleware/permissions.js";
 import { generateMfaToken } from "../../helpers/jwt.js";
 import { getSecuritySettings, isPasswordExpired } from "../../helpers/settings.js";
@@ -82,6 +83,10 @@ export class PasswordAuthController {
           passwordLastChanged: new Date(),
         },
       });
+
+      if (userData.phoneNumber) {
+        await syncPhoneHashVariants(newUser.id, userData.phoneNumber);
+      }
 
       // Phase 1.1 — Strip passwordHash from response before sending to client
       const { passwordHash: _removed, ...safeUser } = newUser;

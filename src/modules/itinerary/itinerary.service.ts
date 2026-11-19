@@ -34,6 +34,7 @@ import {
   applyAccraGatewayConstraint,
   buildRegionDayGroups,
   deriveDayTheme,
+  deriveStartRegion,
   findRegionReentries,
   formatDayTitle,
   orderRegionsByLoop,
@@ -119,8 +120,12 @@ export async function createTourRequest(
 
   const sites = toSiteWithCoords(rawSites);
 
+  // Resolve the hub: an explicit startRegion wins; otherwise derive it from the
+  // selected sites so a request without one never defaults to Central.
+  const resolvedStartRegion = deriveStartRegion(sites, startRegion);
+
   // ── Step 2: Plan the contiguous regional loop from the chosen hub ──────────
-  const plan = planItinerary(sites, startRegion, durationDays, allowAccraOvernight);
+  const plan = planItinerary(sites, resolvedStartRegion, durationDays, allowAccraOvernight);
 
   // ── Step 3: Save tour request to DB (NO itinerary generation here) ─────────
   const tourRequest = await prisma.tourRequest.create({
@@ -128,7 +133,7 @@ export async function createTourRequest(
       userId: userId,
       tourType,
       durationDays,
-      startRegion,
+      startRegion: resolvedStartRegion,
       allowAccraOvernight: allowAccraOvernight ?? false,
       relocationInterest: relocationInterest ?? false,
       apartmentType: apartmentType ?? undefined,
@@ -182,7 +187,7 @@ export async function createTourRequest(
         <p>A new tour request has been submitted:</p>
         <p><strong>Duration:</strong> ${durationDays} days</p>
         <p><strong>Tour type:</strong> ${tourType}</p>
-        <p><strong>Start region:</strong> ${startRegion}</p>
+        <p><strong>Start region:</strong> ${resolvedStartRegion}</p>
         <p><strong>Regions visited:</strong> ${regionDisplay}</p>
         <p><strong>Tour sites (${rawSites.length}):</strong> ${siteList}</p>
         <p><strong>Transport:</strong> ${transportType ?? "not specified"}</p>
@@ -324,7 +329,9 @@ export async function getItineraryByRequestId(
   const sites = toSiteWithCoords(rawSites);
   const durationDays = tourRequest.durationDays;
   const totalDays = durationDays + 2;
-  const startRegion = tourRequest.startRegion ?? DEFAULT_START_REGION;
+  // Legacy rows may carry a null hub; infer it from the selected sites instead
+  // of falling back to Central.
+  const startRegion = deriveStartRegion(sites, tourRequest.startRegion);
 
   const plan = planItinerary(sites, startRegion, durationDays, tourRequest.allowAccraOvernight);
 

@@ -142,10 +142,12 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
       where: { id: userId },
       select: { fullName: true, email: true },
     });
-    await sendEmail({
-      email: "josephbekoe15@gmail.com",
-      subject: "New tour site submitted for review",
-      html: `<!DOCTYPE html>
+    const admins = await prisma.user.findMany({
+      where: { accountType: "ADMIN", accountStatus: "ACTIVE", isDeleted: false },
+      select: { email: true },
+    });
+    const adminEmails = admins.map((a) => a.email).filter((e): e is string => !!e);
+    const html = `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="UTF-8">
@@ -188,8 +190,12 @@ export async function submitPendingSite(userId: string, input: SubmitPendingSite
       </div>
     </div>
   </body>
-</html>`,
-    });
+ </html>`;
+    await Promise.allSettled(
+      adminEmails.map((email) =>
+        sendEmail({ email, subject: "New tour site submitted for review", html }),
+      ),
+    );
   } catch (error) {
     console.error("[pending-sites] submission email failed:", error);
   }
@@ -245,6 +251,8 @@ export async function getMySubmissions(userId: string) {
       category: true,
       status: true,
       rejectReason: true,
+      moderatedBy: true,
+      moderatedAt: true,
       createdAt: true,
       imageUrl: true,
       imageCredit: true,
@@ -264,7 +272,7 @@ export async function getMySubmissions(userId: string) {
  * has no moderatedBy column yet, so it is accepted-but-unused until audit
  * logging lands.
  */
-export async function approvePendingSite(siteId: string, _adminId: string) {
+export async function approvePendingSite(siteId: string, adminId: string) {
   const pendingSite = await prisma.pendingSite.findUnique({ where: { id: siteId } });
   if (!pendingSite) throw new Error("SITE_NOT_FOUND");
   if (pendingSite.status !== "pending") throw new Error("SITE_NOT_PENDING");
@@ -300,7 +308,7 @@ export async function approvePendingSite(siteId: string, _adminId: string) {
 
       await tx.pendingSite.update({
         where: { id: siteId },
-        data: { status: "approved", updatedAt: new Date() },
+        data: { status: "approved", moderatedBy: adminId, moderatedAt: new Date(), updatedAt: new Date() },
       });
 
       return tourSite.id;
@@ -342,7 +350,7 @@ export async function approvePendingSite(siteId: string, _adminId: string) {
  * Reject a pending site, storing the revision requirements on the row.
  * `_adminId` accepted-but-unused — see approvePendingSite above.
  */
-export async function rejectPendingSite(siteId: string, _adminId: string, rejectReason: string) {
+export async function rejectPendingSite(siteId: string, adminId: string, rejectReason: string) {
   const reason = (rejectReason ?? "").trim();
   if (reason.length < 5) throw new Error("INVALID_REJECT_REASON");
 
@@ -352,7 +360,7 @@ export async function rejectPendingSite(siteId: string, _adminId: string, reject
 
   await prisma.pendingSite.update({
     where: { id: siteId },
-    data: { status: "rejected", rejectReason: reason, updatedAt: new Date() },
+    data: { status: "rejected", rejectReason: reason, moderatedBy: adminId, moderatedAt: new Date(), updatedAt: new Date() },
   });
 
   // Best-effort rejection email with the revision requirements (§3).

@@ -19,6 +19,7 @@ export const NOTIFICATION_CATEGORY_PERMISSION: Record<string, string> = {
   subscriptions: "subscriptions.view",
   ngo: "ngo.view",
   dating: "dating.view",
+  tours: "tours.view",
 };
 
 export interface NotifyAdminsInput {

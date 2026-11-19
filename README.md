@@ -296,7 +296,10 @@ src/
 > admin-controlled **lifetime free** accounts that waive every service fee, and
 > `docs/app-store-review-remediation.md` for the **iOS App Store review
 > checklist** (membership IAP gate, Sign in with Apple, account deletion,
-> icon, and cold-start mitigation).
+> icon, and cold-start mitigation). See
+> `docs/contact-discovery-and-start-region.md` for **app-wide contact
+> discovery** (phone-format matching, email matching, invite links) and the
+> **tour start-region inference** rules.
 
 All endpoints return responses in a standardized envelope:
 

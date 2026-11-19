@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TourType, DayType, SiteCategory, TransitProfile } from "../../generated/prisma/client.js";
-import { GHANA_REGIONS, DEFAULT_START_REGION } from "../helpers/itinerary-routing.js";
+import { GHANA_REGIONS } from "../helpers/itinerary-routing.js";
 import type { TravelNote } from "../helpers/transit-profile.js";
 
 export type { TravelNote };
@@ -25,8 +25,9 @@ export const createTourRequestSchema = z.object({
     .min(1, { message: "Tour must be at least 1 touring day" })
     .max(30, { message: "Tour cannot exceed 30 touring days" }),
 
-  // Hub the loop is anchored to. Defaults to Central Region (Cape Coast).
-  startRegion: regionEnum.optional().default(DEFAULT_START_REGION),
+  // Hub the loop is anchored to. When omitted, it is inferred from the selected
+  // sites rather than hard-defaulted to Central. Send it explicitly to override.
+  startRegion: regionEnum.optional(),
 
   // Explicit opt-in to more than two Greater Accra nights. Off by default so the
   // engine keeps Accra to the arrival/departure gateways and cuts urban lodging.

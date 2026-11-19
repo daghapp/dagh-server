@@ -10,6 +10,8 @@ router.post("/sync", contactsController.sync.bind(contactsController));
 router.post("/match", contactsController.match.bind(contactsController));
 router.get("/matches", contactsController.getMatches.bind(contactsController));
 router.get("/suggestions", contactsController.getMatches.bind(contactsController));
+router.get("/invite-link", contactsController.getInviteLink.bind(contactsController));
+router.get("/invite", contactsController.getInviteLink.bind(contactsController));
 router.delete("/matches", contactsController.clear.bind(contactsController));
 
 export { router };

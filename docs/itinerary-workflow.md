@@ -7,6 +7,11 @@ itinerary.
 
 All endpoints are mounted under **`/itinerary`** on the API origin.
 
+> **Start-region note:** `startRegion` is optional. When omitted, the server
+> infers the hub from the selected sites instead of defaulting to Central. See
+> [`contact-discovery-and-start-region.md`](./contact-discovery-and-start-region.md)
+> for the full behaviour and migration caveats.
+
 ---
 
 ## 1. Key concepts

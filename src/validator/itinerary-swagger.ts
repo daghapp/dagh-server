@@ -50,8 +50,8 @@ export const itinerarySchemas = {
       durationDays: { type: "integer", minimum: 1, maximum: 30 },
       startRegion: {
         type: "string",
-        description: "Hub the loop is anchored to. Defaults to Central (Cape Coast).",
-        default: "Central",
+        description:
+          "Hub the loop is anchored to. When omitted, it is inferred from the selected sites (most frequently selected region).",
         example: "Central",
       },
       allowAccraOvernight: {

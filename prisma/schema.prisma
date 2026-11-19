@@ -102,6 +102,7 @@ model User {
   contactSyncConsent      ContactSyncConsent?
   contactMatches          ContactMatch[]                @relation("ContactMatchOwner")
   matchedByContacts       ContactMatch[]                @relation("ContactMatchMatched")
+  phoneHashVariants       PhoneHashVariant[]
   proximityAlerts         DatingProximityNotification[] @relation("ProximityAlertRecipient")
   proximityAlertsAbout    DatingProximityNotification[] @relation("ProximityAlertNearby")
 
@@ -645,9 +646,24 @@ model UserBlock {
 }
 
 // ─────────────────────────────────────────
-// CONTACT DISCOVERY — privacy-preserving contact matching scoped to dating.
+// CONTACT DISCOVERY — privacy-preserving contact matching across the platform.
 // Only SHA-256 phone hashes are stored; raw contact data never reaches the DB.
 // ─────────────────────────────────────────
+/// Every plausible SHA-256 phone form for a user (local, E.164, country-code).
+/// Lets contacts that arrive as pre-computed hashes match regardless of the
+/// phone format the client hashed.
+model PhoneHashVariant {
+  id     String @id @default(uuid())
+  userId String
+  hash   String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([hash, userId])
+  @@index([hash])
+  @@map("phone_hash_variants")
+}
+
 model ContactSyncConsent {
   id           String    @id @default(uuid())
   userId       String    @unique
@@ -1183,6 +1199,9 @@ model PendingSite {
   status            String     @default("pending") // pending, approved, rejected
   submittedBy       String // userId
   rejectReason      String?
+  // Audit trail for moderation decisions (mirrors SitePhoto).
+  moderatedBy       String? // admin userId
+  moderatedAt       DateTime?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -1280,7 +1299,7 @@ model TourRequest {
   relocationInterest Boolean  @default(false) // saved, not acted on yet
 
   // Dynamic loop-routing hub chosen by the user (e.g. "Central" for Cape Coast).
-  // NULL means the engine falls back to the default hub (Central Region).
+  // NULL means the engine infers the hub from the selected sites.
   startRegion         String?
   // Explicit opt-in to more than two Greater Accra nights. The engine otherwise
   // confines Accra to the arrival/departure gateways to cut urban lodging cost.
