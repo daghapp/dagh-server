@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { Prisma } from "../../../generated/prisma/client.js";
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
 import { prisma } from "../../config/index.js";
@@ -5,6 +6,7 @@ import {
   hashPhoneCandidates,
   hashPhoneNumber,
   normalizePhoneNumber,
+  phoneDigitCandidates,
 } from "../../helpers/phoneHash.js";
 import * as deepLinkService from "../deep-links/deep-link.service.js";
 
@@ -34,7 +36,7 @@ export const contactUserSelect = {
   phoneNumberHash: true,
   phoneHash: true,
   profileImageUrl: true,
-  profile: { select: { bio_profile_image_url: true, profileUrl: true } },
+  profile: { select: { bio_profile_image_url: true, profileUrl: true, phoneNumber: true } },
   datingProfile: { select: { headline: true, photos: true } },
 } as const;
 
@@ -70,23 +72,86 @@ export async function syncPhoneHashVariants(
   const hashes = hashPhoneCandidates(phone);
   if (hashes.length === 0) return;
 
-  await prisma.phoneHashVariant.deleteMany({ where: { userId } });
-  await prisma.phoneHashVariant.createMany({
-    data: hashes.map((hash) => ({ userId, hash })),
-    skipDuplicates: true,
-  });
+  try {
+    await prisma.phoneHashVariant.deleteMany({ where: { userId } });
+    await prisma.phoneHashVariant.createMany({
+      data: hashes.map((hash) => ({ id: crypto.randomUUID(), userId, hash })),
+      skipDuplicates: true,
+    });
+  } catch (error) {
+    // Best-effort: table may be missing before migration; hash columns still work.
+    console.warn("[contacts] failed to sync phone hash variants", { userId, error });
+  }
+}
+
+function pushPhone(out: string[], value: unknown): void {
+  if (value === null || value === undefined) return;
+  const str = typeof value === "number" ? String(value) : typeof value === "string" ? value : "";
+  const trimmed = str.trim();
+  if (!trimmed || trimmed.includes("@")) return;
+  out.push(trimmed);
+}
+
+function pushEmail(out: string[], value: unknown): void {
+  if (typeof value !== "string") return;
+  const trimmed = value.trim().toLowerCase();
+  if (/^[^@\s]+@[^@\s]+$/.test(trimmed)) out.push(trimmed);
 }
 
 function extractPhones(contacts: Array<ContactInput | string>): string[] {
   const out: string[] = [];
   for (const c of contacts || []) {
     if (typeof c === "string") {
-      if (!c.includes("@")) out.push(c);
-    } else if (c) {
-      if (c.phone) out.push(c.phone);
-      else if (c.phoneNumber) out.push(c.phoneNumber);
-      else if (c.hash) out.push(c.hash);
-      else if (c.phoneHash) out.push(c.phoneHash);
+      pushPhone(out, c);
+      continue;
+    }
+    if (!c || typeof c !== "object") continue;
+    const record = c as Record<string, unknown>;
+
+    for (const key of [
+      "phone",
+      "phoneNumber",
+      "number",
+      "digits",
+      "hash",
+      "phoneHash",
+      "mobile",
+      "tel",
+      "telephone",
+      "e164",
+      "formattedNumber",
+      "formatted_number",
+      "phone_number",
+    ]) {
+      pushPhone(out, record[key]);
+    }
+
+    const phoneNumbers = record.phoneNumbers;
+    if (Array.isArray(phoneNumbers)) {
+      for (const entry of phoneNumbers) {
+        if (typeof entry === "string" || typeof entry === "number") pushPhone(out, entry);
+        else if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          pushPhone(
+            out,
+            r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits ?? r.e164 ?? r.mobile,
+          );
+        }
+      }
+    }
+
+    const phones = record.phones;
+    if (Array.isArray(phones)) {
+      for (const entry of phones) {
+        if (typeof entry === "string" || typeof entry === "number") pushPhone(out, entry);
+        else if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          pushPhone(
+            out,
+            r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits ?? r.e164 ?? r.mobile,
+          );
+        }
+      }
     }
   }
   return out;
@@ -100,18 +165,28 @@ function extractEmails(contacts: Array<ContactInput | string>): string[] {
   const out: string[] = [];
   for (const c of contacts || []) {
     if (typeof c === "string") {
-      if (c.includes("@")) out.push(c);
-    } else if (c && typeof c.email === "string") {
-      out.push(c.email);
+      pushEmail(out, c);
+      continue;
+    }
+    if (!c || typeof c !== "object") continue;
+    const record = c as Record<string, unknown>;
+
+    for (const key of ["email", "emailAddress", "email_address", "mail"]) {
+      pushEmail(out, record[key]);
+    }
+
+    const emails = record.emails;
+    if (Array.isArray(emails)) {
+      for (const entry of emails) {
+        if (typeof entry === "string") pushEmail(out, entry);
+        else if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          pushEmail(out, r.email ?? r.address ?? r.value ?? r.mail);
+        }
+      }
     }
   }
-  return Array.from(
-    new Set(
-      out
-        .map((email) => email.trim().toLowerCase())
-        .filter((email) => /^[^@\s]+@[^@\s]+$/.test(email)),
-    ),
-  );
+  return Array.from(new Set(out));
 }
 
 /**
@@ -183,26 +258,115 @@ export async function findContactUsers(
     return { users: [], totalContacts };
   }
 
-  const or: Prisma.UserWhereInput[] = [];
-  if (lookupHashes.length > 0) {
-    or.push({ phoneNumberHash: { in: lookupHashes } }, { phoneHash: { in: lookupHashes } });
-    // Pre-hashed contacts cannot be expanded by the server; the variants table
-    // stores every plausible form for each user so these still match.
-    or.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
-  }
-  if (emails.length > 0) {
-    or.push({ email: { in: emails, mode: "insensitive" } });
+  const excludedStatuses: Prisma.EnumAccountStatusFilter["notIn"] = [
+    "SUSPENDED",
+    "TERMINATED",
+    "DEACTIVATED",
+  ];
+  const baseWhere: Prisma.UserWhereInput = {
+    id: { not: userId },
+    isDeleted: false,
+    accountStatus: { notIn: excludedStatuses },
+  };
+
+  const lookupDigits = Array.from(
+    new Set(
+      extractPhones(contacts)
+        .flatMap((p) => {
+          const trimmed = p.trim();
+          if (/^[a-f0-9]{64}$/i.test(trimmed)) return [];
+          return phoneDigitCandidates(trimmed);
+        })
+        .filter(Boolean),
+    ),
+  );
+
+  const phoneStringCandidates = Array.from(
+    new Set(
+      lookupDigits.flatMap((d) => {
+        const forms = [d, `+${d}`];
+        if (d.startsWith("233") && d.length > 3) forms.push(`0${d.slice(3)}`);
+        if (d.length === 10 && d.startsWith("0")) forms.push(`+233${d.slice(1)}`);
+        return forms;
+      }),
+    ),
+  );
+
+  const buildOr = (includeVariants: boolean): Prisma.UserWhereInput[] => {
+    const clauses: Prisma.UserWhereInput[] = [];
+    if (lookupHashes.length > 0) {
+      clauses.push({ phoneNumberHash: { in: lookupHashes } }, { phoneHash: { in: lookupHashes } });
+      if (includeVariants) {
+        // Pre-hashed contacts cannot be expanded by the server; the variants table
+        // stores every plausible form for each user so these still match.
+        clauses.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
+      }
+    }
+    if (phoneStringCandidates.length > 0) {
+      // Fallback for accounts missing/corrupt hashes: compare stored phone strings.
+      clauses.push({ phoneNumber: { in: phoneStringCandidates } });
+      clauses.push({ profile: { is: { phoneNumber: { in: phoneStringCandidates } } } });
+    }
+    if (emails.length > 0) {
+      clauses.push({ email: { in: emails, mode: "insensitive" } });
+    }
+    return clauses;
+  };
+
+  let users: ContactUser[];
+  try {
+    users = await prisma.user.findMany({
+      where: { ...baseWhere, OR: buildOr(true) },
+      select: contactUserSelect,
+    });
+  } catch (error) {
+    // Variants table may be unavailable before migration; fall back to hash columns.
+    console.warn("[contacts] variant lookup failed, retrying without variants", error);
+    const fallbackOr = buildOr(false);
+    if (fallbackOr.length === 0) return { users: [], totalContacts };
+    users = await prisma.user.findMany({
+      where: { ...baseWhere, OR: fallbackOr },
+      select: contactUserSelect,
+    });
   }
 
-  const users = await prisma.user.findMany({
-    where: {
-      id: { not: userId },
-      accountStatus: "ACTIVE",
-      isDeleted: false,
-      OR: or,
-    },
-    select: contactUserSelect,
-  });
+  // Last-resort fallback for environments where hash columns/variants are not yet
+  // populated (migration/backfill pending): compare computed hashes against stored
+  // phone numbers in memory.
+  if (lookupHashes.length > 0) {
+    const foundIds = new Set(users.map((u) => u.id));
+    const lookupSet = new Set(lookupHashes);
+    try {
+      const candidates: ContactUser[] = await prisma.user.findMany({
+        where: {
+          ...baseWhere,
+          id: foundIds.size > 0 ? { notIn: [...foundIds, userId] } : { not: userId },
+          OR: [{ phoneNumber: { not: null } }, { profile: { is: { phoneNumber: { not: null } } } }],
+        },
+        select: contactUserSelect,
+      });
+      for (const candidate of candidates) {
+        if (foundIds.has(candidate.id)) continue;
+        const profilePhone =
+          candidate.profile && "phoneNumber" in candidate.profile
+            ? (candidate.profile as { phoneNumber?: string | null }).phoneNumber ?? null
+            : null;
+        const candidateHashes = new Set([
+          ...hashPhoneCandidates(candidate.phoneNumber),
+          ...hashPhoneCandidates(profilePhone),
+        ]);
+        for (const h of candidateHashes) {
+          if (lookupSet.has(h)) {
+            users.push(candidate);
+            foundIds.add(candidate.id);
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("[contacts] in-memory fallback scan failed", error);
+    }
+  }
 
   const blocked = await blockedUserIds(
     userId,
@@ -221,43 +385,52 @@ export async function persistContactMatches(
   const now = new Date();
   const matchedIds = matchedUsers.map((u) => u.id);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.contactSyncConsent.upsert({
-      where: { userId },
-      create: {
-        userId,
-        granted: true,
-        grantedAt: now,
-        lastSyncedAt: now,
-        contactCount: totalContacts,
-      },
-      update: {
-        granted: true,
-        grantedAt: existing?.grantedAt ?? now,
-        revokedAt: null,
-        lastSyncedAt: now,
-        contactCount: totalContacts,
-      },
-    });
-
-    await tx.contactMatch.deleteMany({
-      where: {
-        userId,
-        ...(matchedIds.length > 0 ? { matchedUserId: { notIn: matchedIds } } : {}),
-      },
-    });
-
-    if (matchedUsers.length > 0) {
-      await tx.contactMatch.createMany({
-        data: matchedUsers.map((u) => ({
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.contactSyncConsent.upsert({
+        where: { userId },
+        create: {
           userId,
-          matchedUserId: u.id,
-          phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
-        })),
-        skipDuplicates: true,
+          granted: true,
+          grantedAt: now,
+          lastSyncedAt: now,
+          contactCount: totalContacts,
+        },
+        update: {
+          granted: true,
+          grantedAt: existing?.grantedAt ?? now,
+          revokedAt: null,
+          lastSyncedAt: now,
+          contactCount: totalContacts,
+        },
       });
-    }
-  });
+
+      await tx.contactMatch.deleteMany({
+        where: {
+          userId,
+          ...(matchedIds.length > 0 ? { matchedUserId: { notIn: matchedIds } } : {}),
+        },
+      });
+
+      if (matchedUsers.length > 0) {
+        const ts = new Date();
+        await tx.contactMatch.createMany({
+          data: matchedUsers.map((u) => ({
+            id: crypto.randomUUID(),
+            userId,
+            matchedUserId: u.id,
+            phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
+            createdAt: ts,
+            updatedAt: ts,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    });
+  } catch (error) {
+    // Best-effort: tables may be unavailable before migration; sync still returns matches.
+    console.warn("[contacts] failed to persist contact matches", { userId, error });
+  }
 }
 
 export function toContactMatch(user: ContactUser): ContactMatch {
@@ -347,26 +520,45 @@ export async function syncContacts(
 
 /** Persisted matches for the caller, excluding blocked pairs. */
 export async function getContactMatches(userId: string): Promise<ContactMatch[]> {
-  const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
-  if (!consent?.granted) return [];
+  let consentGranted = false;
+  try {
+    const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+    consentGranted = !!consent?.granted;
+  } catch {
+    // consent table may be missing; fall through to try reading matches
+  }
 
-  const rows = await prisma.contactMatch.findMany({
+  try {
+    const rows = await prisma.contactMatch.findMany({
     where: {
       userId,
       matchedUser: {
-        accountStatus: "ACTIVE",
+        isDeleted: false,
+        accountStatus: {
+          notIn: [
+            "SUSPENDED" as const,
+            "TERMINATED" as const,
+            "DEACTIVATED" as const,
+          ] as ("SUSPENDED" | "TERMINATED" | "DEACTIVATED")[],
+        },
         blockedUsers: { none: { blockedId: userId } },
         blockedBy: { none: { blockerId: userId } },
       },
     },
-    orderBy: { createdAt: "desc" },
-    select: { matchedUser: { select: contactUserSelect } },
-    take: 2000,
-  });
+      orderBy: { createdAt: "desc" },
+      select: { matchedUser: { select: contactUserSelect } },
+      take: 2000,
+    });
 
-  return rows
-    .filter((row) => row.matchedUser !== null)
-    .map((row) => toContactMatch(row.matchedUser));
+    const matches = rows
+      .filter((row) => row.matchedUser !== null)
+      .map((row) => toContactMatch(row.matchedUser));
+    if (matches.length > 0 || consentGranted) return matches;
+  } catch (error) {
+    console.warn("[contacts] failed to read persisted contact matches", { userId, error });
+  }
+
+  return [];
 }
 
 export async function clearContactMatches(userId: string): Promise<void> {

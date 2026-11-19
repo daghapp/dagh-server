@@ -54,11 +54,17 @@ export async function syncDatingContacts(
   contacts: Array<ContactInput | string>,
   consent?: boolean,
 ): Promise<DatingContactSyncResult> {
-  const existingConsent = await prisma.contactSyncConsent.findUnique({
-    where: { userId },
-  });
+  let existingGranted = false;
+  try {
+    const existingConsent = await prisma.contactSyncConsent.findUnique({
+      where: { userId },
+    });
+    existingGranted = existingConsent?.granted === true;
+  } catch {
+    // consent table may be unavailable before migration; require explicit consent this call
+  }
 
-  const granted = consent === true || existingConsent?.granted === true;
+  const granted = consent === true || existingGranted;
   if (!granted) {
     throw new Error("CONTACT_CONSENT_REQUIRED");
   }
@@ -90,33 +96,49 @@ export async function syncDatingContacts(
 
 /** Persisted contact matches, including contacts without a dating profile. */
 export async function getDatingContactMatches(userId: string): Promise<DatingContactMatch[]> {
-  const rows = await prisma.contactMatch.findMany({
-    where: {
-      userId,
-      matchedUser: {
-        accountStatus: "ACTIVE",
-        blockedUsers: { none: { blockedId: userId } },
-        blockedBy: { none: { blockerId: userId } },
+  try {
+    const rows = await prisma.contactMatch.findMany({
+      where: {
+        userId,
+        matchedUser: {
+          isDeleted: false,
+          accountStatus: {
+            notIn: [
+              "SUSPENDED" as const,
+              "TERMINATED" as const,
+              "DEACTIVATED" as const,
+            ] as ("SUSPENDED" | "TERMINATED" | "DEACTIVATED")[],
+          },
+          blockedUsers: { none: { blockedId: userId } },
+          blockedBy: { none: { blockerId: userId } },
+        },
       },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { matchedUser: { select: contactUserSelect } },
-    take: 2000,
-  });
+      orderBy: { createdAt: "desc" },
+      select: { matchedUser: { select: contactUserSelect } },
+      take: 2000,
+    });
 
-  return rows
-    .filter((row) => row.matchedUser !== null)
-    .map((row) => toPublicMatch(row.matchedUser));
+    return rows
+      .filter((row) => row.matchedUser !== null)
+      .map((row) => toPublicMatch(row.matchedUser));
+  } catch (error) {
+    console.warn("[dating.contacts] failed to read contact matches", { userId, error });
+    return [];
+  }
 }
 
 /** User ids in the caller's synced contacts that are on the platform. */
 export async function getDatingContactUserIds(userId: string): Promise<Set<string>> {
-  const rows = await prisma.contactMatch.findMany({
-    where: { userId },
-    select: { matchedUserId: true },
-    take: 5000,
-  });
-  return new Set(rows.map((row) => row.matchedUserId));
+  try {
+    const rows = await prisma.contactMatch.findMany({
+      where: { userId },
+      select: { matchedUserId: true },
+      take: 5000,
+    });
+    return new Set(rows.map((row) => row.matchedUserId));
+  } catch {
+    return new Set();
+  }
 }
 
 export async function getContactSyncStatus(userId: string): Promise<{
@@ -126,18 +148,28 @@ export async function getContactSyncStatus(userId: string): Promise<{
   contactCount: number;
   matchedCount: number;
 }> {
-  const [consent, matchedCount] = await Promise.all([
-    prisma.contactSyncConsent.findUnique({ where: { userId } }),
-    prisma.contactMatch.count({ where: { userId } }),
-  ]);
+  try {
+    const [consent, matchedCount] = await Promise.all([
+      prisma.contactSyncConsent.findUnique({ where: { userId } }),
+      prisma.contactMatch.count({ where: { userId } }),
+    ]);
 
-  return {
-    granted: consent?.granted ?? false,
-    grantedAt: consent?.grantedAt ?? null,
-    lastSyncedAt: consent?.lastSyncedAt ?? null,
-    contactCount: consent?.contactCount ?? 0,
-    matchedCount,
-  };
+    return {
+      granted: consent?.granted ?? false,
+      grantedAt: consent?.grantedAt ?? null,
+      lastSyncedAt: consent?.lastSyncedAt ?? null,
+      contactCount: consent?.contactCount ?? 0,
+      matchedCount,
+    };
+  } catch {
+    return {
+      granted: false,
+      grantedAt: null,
+      lastSyncedAt: null,
+      contactCount: 0,
+      matchedCount: 0,
+    };
+  }
 }
 
 /** Revoke contact access and delete every derived match. */
