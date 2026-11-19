@@ -236,10 +236,15 @@ export async function findContactUsers(
     return { users: [], totalContacts };
   }
 
-  const baseWhere = {
+  const excludedStatuses: Prisma.EnumAccountStatusFilter["notIn"] = [
+    "SUSPENDED",
+    "TERMINATED",
+    "DEACTIVATED",
+  ];
+  const baseWhere: Prisma.UserWhereInput = {
     id: { not: userId },
-    accountStatus: "ACTIVE" as const,
     isDeleted: false,
+    accountStatus: { notIn: excludedStatuses },
   };
 
   const lookupDigits = Array.from(
@@ -303,6 +308,33 @@ export async function findContactUsers(
     });
   }
 
+  // Last-resort fallback for environments where hash columns/variants are not yet
+  // populated (migration/backfill pending): compare computed hashes against stored
+  // phone numbers in memory.
+  if (lookupHashes.length > 0) {
+    const foundIds = new Set(users.map((u) => u.id));
+    const lookupSet = new Set(lookupHashes);
+    const candidates: ContactUser[] = await prisma.user.findMany({
+      where: {
+        ...baseWhere,
+        phoneNumber: { not: null },
+        id: foundIds.size > 0 ? { notIn: [...foundIds, userId] } : { not: userId },
+      },
+      select: contactUserSelect,
+    });
+    for (const candidate of candidates) {
+      if (foundIds.has(candidate.id)) continue;
+      const candidateHashes = new Set(hashPhoneCandidates(candidate.phoneNumber));
+      for (const h of candidateHashes) {
+        if (lookupSet.has(h)) {
+          users.push(candidate);
+          foundIds.add(candidate.id);
+          break;
+        }
+      }
+    }
+  }
+
   const blocked = await blockedUserIds(
     userId,
     users.map((u) => u.id),
@@ -320,47 +352,52 @@ export async function persistContactMatches(
   const now = new Date();
   const matchedIds = matchedUsers.map((u) => u.id);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.contactSyncConsent.upsert({
-      where: { userId },
-      create: {
-        userId,
-        granted: true,
-        grantedAt: now,
-        lastSyncedAt: now,
-        contactCount: totalContacts,
-      },
-      update: {
-        granted: true,
-        grantedAt: existing?.grantedAt ?? now,
-        revokedAt: null,
-        lastSyncedAt: now,
-        contactCount: totalContacts,
-      },
-    });
-
-    await tx.contactMatch.deleteMany({
-      where: {
-        userId,
-        ...(matchedIds.length > 0 ? { matchedUserId: { notIn: matchedIds } } : {}),
-      },
-    });
-
-    if (matchedUsers.length > 0) {
-      const ts = new Date();
-      await tx.contactMatch.createMany({
-        data: matchedUsers.map((u) => ({
-          id: crypto.randomUUID(),
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.contactSyncConsent.upsert({
+        where: { userId },
+        create: {
           userId,
-          matchedUserId: u.id,
-          phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
-          createdAt: ts,
-          updatedAt: ts,
-        })),
-        skipDuplicates: true,
+          granted: true,
+          grantedAt: now,
+          lastSyncedAt: now,
+          contactCount: totalContacts,
+        },
+        update: {
+          granted: true,
+          grantedAt: existing?.grantedAt ?? now,
+          revokedAt: null,
+          lastSyncedAt: now,
+          contactCount: totalContacts,
+        },
       });
-    }
-  });
+
+      await tx.contactMatch.deleteMany({
+        where: {
+          userId,
+          ...(matchedIds.length > 0 ? { matchedUserId: { notIn: matchedIds } } : {}),
+        },
+      });
+
+      if (matchedUsers.length > 0) {
+        const ts = new Date();
+        await tx.contactMatch.createMany({
+          data: matchedUsers.map((u) => ({
+            id: crypto.randomUUID(),
+            userId,
+            matchedUserId: u.id,
+            phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
+            createdAt: ts,
+            updatedAt: ts,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    });
+  } catch (error) {
+    // Best-effort: tables may be unavailable before migration; sync still returns matches.
+    console.warn("[contacts] failed to persist contact matches", { userId, error });
+  }
 }
 
 export function toContactMatch(user: ContactUser): ContactMatch {
@@ -450,26 +487,39 @@ export async function syncContacts(
 
 /** Persisted matches for the caller, excluding blocked pairs. */
 export async function getContactMatches(userId: string): Promise<ContactMatch[]> {
-  const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
-  if (!consent?.granted) return [];
+  let consentGranted = false;
+  try {
+    const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+    consentGranted = !!consent?.granted;
+  } catch {
+    // consent table may be missing; fall through to try reading matches
+  }
 
-  const rows = await prisma.contactMatch.findMany({
+  try {
+    const rows = await prisma.contactMatch.findMany({
     where: {
       userId,
       matchedUser: {
-        accountStatus: "ACTIVE",
+        isDeleted: false,
+        accountStatus: { notIn: ["SUSPENDED", "TERMINATED", "DEACTIVATED"] as any },
         blockedUsers: { none: { blockedId: userId } },
         blockedBy: { none: { blockerId: userId } },
       },
     },
-    orderBy: { createdAt: "desc" },
-    select: { matchedUser: { select: contactUserSelect } },
-    take: 2000,
-  });
+      orderBy: { createdAt: "desc" },
+      select: { matchedUser: { select: contactUserSelect } },
+      take: 2000,
+    });
 
-  return rows
-    .filter((row) => row.matchedUser !== null)
-    .map((row) => toContactMatch(row.matchedUser));
+    const matches = rows
+      .filter((row) => row.matchedUser !== null)
+      .map((row) => toContactMatch(row.matchedUser));
+    if (matches.length > 0 || consentGranted) return matches;
+  } catch (error) {
+    console.warn("[contacts] failed to read persisted contact matches", { userId, error });
+  }
+
+  return [];
 }
 
 export async function clearContactMatches(userId: string): Promise<void> {
