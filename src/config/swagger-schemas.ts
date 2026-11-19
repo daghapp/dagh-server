@@ -72,6 +72,7 @@ export const DATING_CONTACT_MATCH_SCHEMA = {
     headline: { type: "string", nullable: true },
     photos: { type: "array", items: { type: "string", format: "uri" } },
     profileImageUrl: { type: "string", nullable: true },
+    hasDatingProfile: { type: "boolean" },
   },
 };
 
@@ -79,6 +80,7 @@ export const DATING_CONTACT_SYNC_RESULT_SCHEMA = {
   type: "object",
   properties: {
     matchedCount: { type: "integer", example: 2 },
+    unmatchedCount: { type: "integer", example: 141 },
     totalContacts: { type: "integer", example: 143 },
     matches: {
       type: "array",
@@ -87,6 +89,10 @@ export const DATING_CONTACT_SYNC_RESULT_SCHEMA = {
     banner: {
       type: "string",
       example: "2 people in your contact list (including Ama) are on Diaspora Sync.",
+    },
+    invite: {
+      type: "object",
+      description: "Shareable invite link for contacts who are not on the platform yet.",
     },
   },
 };

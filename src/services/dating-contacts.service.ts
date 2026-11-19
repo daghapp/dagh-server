@@ -1,5 +1,12 @@
 import { prisma } from "../config/index.js";
-import { hashContactsList, type ContactInput } from "../modules/contacts/contacts.service.js";
+import {
+  buildInviteLink,
+  contactUserSelect,
+  findContactUsers,
+  persistContactMatches,
+  type ContactInput,
+  type ContactUser,
+} from "../modules/contacts/contacts.service.js";
 
 export interface DatingContactMatch {
   userId: string;
@@ -7,43 +14,37 @@ export interface DatingContactMatch {
   headline: string | null;
   photos: string[];
   profileImageUrl: string | null;
+  hasDatingProfile: boolean;
 }
 
 export interface DatingContactSyncResult {
   matchedCount: number;
   totalContacts: number;
+  unmatchedCount: number;
   matches: DatingContactMatch[];
   banner: string;
+  invite: Awaited<ReturnType<typeof buildInviteLink>>;
 }
 
-const contactUserSelect = {
-  id: true,
-  fullName: true,
-  phoneNumberHash: true,
-  phoneHash: true,
-  profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-  datingProfile: { select: { headline: true, photos: true } },
-} as const;
-
-function toPublicMatch(user: {
-  id: string;
-  fullName: string;
-  profile: { bio_profile_image_url: string | null; profileUrl: string | null } | null;
-  datingProfile: { headline: string | null; photos: string[] } | null;
-}): DatingContactMatch {
+function toPublicMatch(user: ContactUser): DatingContactMatch {
   return {
     userId: user.id,
     fullName: user.fullName,
     headline: user.datingProfile?.headline ?? null,
     photos: user.datingProfile?.photos ?? [],
-    profileImageUrl: user.profile?.bio_profile_image_url ?? user.profile?.profileUrl ?? null,
+    profileImageUrl:
+      user.profile?.bio_profile_image_url ??
+      user.profileImageUrl ??
+      user.profile?.profileUrl ??
+      null,
+    hasDatingProfile: user.datingProfile !== null,
   };
 }
 
 /**
- * Match hashed phone numbers against active dating users, persisting only the
- * resulting public matches. Raw contact values are hashed in memory and never
- * written to the database.
+ * Match hashed phone numbers against active platform accounts (dating profile or
+ * not) and persist the public matches. Raw contact values are hashed in memory
+ * and never written to the database.
  *
  * The caller must have an active contact-sync consent on record (or pass
  * `consent: true` on the first sync).
@@ -53,135 +54,91 @@ export async function syncDatingContacts(
   contacts: Array<ContactInput | string>,
   consent?: boolean,
 ): Promise<DatingContactSyncResult> {
-  const existingConsent = await prisma.contactSyncConsent.findUnique({
-    where: { userId },
-  });
+  let existingGranted = false;
+  try {
+    const existingConsent = await prisma.contactSyncConsent.findUnique({
+      where: { userId },
+    });
+    existingGranted = existingConsent?.granted === true;
+  } catch {
+    // consent table may be unavailable before migration; require explicit consent this call
+  }
 
-  const granted = consent === true || existingConsent?.granted === true;
+  const granted = consent === true || existingGranted;
   if (!granted) {
     throw new Error("CONTACT_CONSENT_REQUIRED");
   }
 
-  const hashes = hashContactsList(contacts);
+  const { users, totalContacts } = await findContactUsers(userId, contacts);
+  if (totalContacts > 0) {
+    await persistContactMatches(userId, users, totalContacts);
+  }
 
-  const users = hashes.length
-    ? await prisma.user.findMany({
-        where: {
-          id: { not: userId },
-          accountStatus: "ACTIVE",
-          OR: [{ phoneNumberHash: { in: hashes } }, { phoneHash: { in: hashes } }],
-          datingProfile: { isNot: null },
-        },
-        select: contactUserSelect,
-      })
-    : [];
-
-  const blocked = users.length
-    ? await prisma.userBlock.findMany({
-        where: {
-          OR: [
-            { blockerId: userId, blockedId: { in: users.map((u) => u.id) } },
-            { blockerId: { in: users.map((u) => u.id) }, blockedId: userId },
-          ],
-        },
-        select: { blockerId: true, blockedId: true },
-      })
-    : [];
-
-  const blockedIds = new Set(
-    blocked.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId)),
-  );
-
-  const matches = users.filter((u) => !blockedIds.has(u.id));
-  const now = new Date();
-
-  await prisma.$transaction(async (tx) => {
-    await tx.contactSyncConsent.upsert({
-      where: { userId },
-      create: {
-        userId,
-        granted: true,
-        grantedAt: now,
-        lastSyncedAt: now,
-        contactCount: hashes.length,
-      },
-      update: {
-        granted: true,
-        grantedAt: existingConsent?.grantedAt ?? now,
-        revokedAt: null,
-        lastSyncedAt: now,
-        contactCount: hashes.length,
-      },
-    });
-
-    await tx.contactMatch.deleteMany({
-      where: {
-        userId,
-        ...(matches.length > 0 ? { matchedUserId: { notIn: matches.map((m) => m.id) } } : {}),
-      },
-    });
-
-    if (matches.length > 0) {
-      await tx.contactMatch.createMany({
-        data: matches.map((m) => ({
-          userId,
-          matchedUserId: m.id,
-          phoneHash: m.phoneNumberHash ?? m.phoneHash ?? "",
-        })),
-        skipDuplicates: true,
-      });
-    }
-  });
-
-  const publicMatches = matches.map(toPublicMatch);
+  const publicMatches = users.map(toPublicMatch);
+  const unmatchedCount = Math.max(totalContacts - publicMatches.length, 0);
   const firstName = publicMatches[0]?.fullName || "someone";
   const banner =
     publicMatches.length === 0
-      ? "No contacts found on Diaspora Sync yet."
+      ? "No contacts found on Diaspora Sync yet. Invite them to join."
       : publicMatches.length === 1
         ? `1 person in your contact list (${firstName}) is on Diaspora Sync. Tap to connect.`
         : `${publicMatches.length} people in your contact list (including ${firstName}) are on Diaspora Sync. Tap to connect.`;
 
   return {
     matchedCount: publicMatches.length,
-    totalContacts: hashes.length,
+    totalContacts,
+    unmatchedCount,
     matches: publicMatches,
     banner,
+    invite: await buildInviteLink(userId),
   };
 }
 
-/** Persisted contact matches, restricted to users with a dating profile. */
+/** Persisted contact matches, including contacts without a dating profile. */
 export async function getDatingContactMatches(userId: string): Promise<DatingContactMatch[]> {
-  const rows = await prisma.contactMatch.findMany({
-    where: {
-      userId,
-      matchedUser: { datingProfile: { isNot: null }, accountStatus: "ACTIVE" },
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      matchedUser: {
-        select: {
-          id: true,
-          fullName: true,
-          profile: { select: { bio_profile_image_url: true, profileUrl: true } },
-          datingProfile: { select: { headline: true, photos: true } },
+  try {
+    const rows = await prisma.contactMatch.findMany({
+      where: {
+        userId,
+        matchedUser: {
+          isDeleted: false,
+          accountStatus: {
+            notIn: [
+              "SUSPENDED" as const,
+              "TERMINATED" as const,
+              "DEACTIVATED" as const,
+            ] as ("SUSPENDED" | "TERMINATED" | "DEACTIVATED")[],
+          },
+          blockedUsers: { none: { blockedId: userId } },
+          blockedBy: { none: { blockerId: userId } },
         },
       },
-    },
-    take: 1000,
-  });
+      orderBy: { createdAt: "desc" },
+      select: { matchedUser: { select: contactUserSelect } },
+      take: 2000,
+    });
 
-  return rows.map((row) => toPublicMatch(row.matchedUser));
+    return rows
+      .filter((row) => row.matchedUser !== null)
+      .map((row) => toPublicMatch(row.matchedUser));
+  } catch (error) {
+    console.warn("[dating.contacts] failed to read contact matches", { userId, error });
+    return [];
+  }
 }
 
-/** User ids in the caller's synced contacts that are on the dating platform. */
+/** User ids in the caller's synced contacts that are on the platform. */
 export async function getDatingContactUserIds(userId: string): Promise<Set<string>> {
-  const rows = await prisma.contactMatch.findMany({
-    where: { userId },
-    select: { matchedUserId: true },
-    take: 5000,
-  });
-  return new Set(rows.map((row) => row.matchedUserId));
+  try {
+    const rows = await prisma.contactMatch.findMany({
+      where: { userId },
+      select: { matchedUserId: true },
+      take: 5000,
+    });
+    return new Set(rows.map((row) => row.matchedUserId));
+  } catch {
+    return new Set();
+  }
 }
 
 export async function getContactSyncStatus(userId: string): Promise<{
@@ -191,18 +148,28 @@ export async function getContactSyncStatus(userId: string): Promise<{
   contactCount: number;
   matchedCount: number;
 }> {
-  const [consent, matchedCount] = await Promise.all([
-    prisma.contactSyncConsent.findUnique({ where: { userId } }),
-    prisma.contactMatch.count({ where: { userId } }),
-  ]);
+  try {
+    const [consent, matchedCount] = await Promise.all([
+      prisma.contactSyncConsent.findUnique({ where: { userId } }),
+      prisma.contactMatch.count({ where: { userId } }),
+    ]);
 
-  return {
-    granted: consent?.granted ?? false,
-    grantedAt: consent?.grantedAt ?? null,
-    lastSyncedAt: consent?.lastSyncedAt ?? null,
-    contactCount: consent?.contactCount ?? 0,
-    matchedCount,
-  };
+    return {
+      granted: consent?.granted ?? false,
+      grantedAt: consent?.grantedAt ?? null,
+      lastSyncedAt: consent?.lastSyncedAt ?? null,
+      contactCount: consent?.contactCount ?? 0,
+      matchedCount,
+    };
+  } catch {
+    return {
+      granted: false,
+      grantedAt: null,
+      lastSyncedAt: null,
+      contactCount: 0,
+      matchedCount: 0,
+    };
+  }
 }
 
 /** Revoke contact access and delete every derived match. */

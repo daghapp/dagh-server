@@ -1278,7 +1278,7 @@ exists so the backfill does not need shell access to the database. Idempotent.
 | PUT | `/dating/location` | Bearer | Refresh dating coordinates for proximity alerts. |
 | GET | `/dating/contacts/status` | Bearer | Contact-sync consent + last sync/match counts. |
 | POST | `/dating/contacts/sync` | Bearer | Sync phone contacts (`consent: true` on first call); returns public matches. |
-| GET | `/dating/contacts/matches` | Bearer | List contacts who have dating profiles. |
+| GET | `/dating/contacts/matches` | Bearer | List contacts on the platform (all active accounts; dating fields where present). |
 | DELETE | `/dating/contacts` | Bearer | Revoke contact consent and delete derived matches. |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |
 | GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window; `?contactsOnly=true` limits results to synced contacts. |
@@ -1738,13 +1738,24 @@ Device-aware smart link creation and resolution for contextual onboarding.
 
 Securely match a user's hashed device contacts against existing users.
 
+- Matches cover **all active accounts**, not just users with dating profiles. Check
+  `hasDatingProfile` to decide whether to show dating-specific UI.
+- Phone numbers are compared across local (`0244000000`), E.164 (`+233244000000`)
+  and country-code-only forms, so formatting differences no longer hide matches.
+- Contacts may include an `email`; this lets social/Apple/Google sign-ups (which
+  have no phone hash) be discovered. Raw emails/phones are never persisted.
+- `unmatchedCount` + the `invite` link let the client offer "Invite to Diaspora
+  Sync" for contacts who are not on the platform yet.
+
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/contacts/sync` | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); returns `matchedCount`, `matches`, `totalContacts`, and a `banner` message. |
+| POST | `/contacts/sync` | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); matches every active account regardless of dating profile and returns `matchedCount`, `unmatchedCount`, `matches`, `totalContacts`, `banner`, and an `invite` link. |
 | POST | `/contacts/match` | Bearer | Alias of `/contacts/sync`. |
-| GET | `/contacts/matches` | Bearer | Cached contact matches + banner. |
-| GET | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches`. |
-| DELETE | `/contacts/matches` | Bearer | Clear cached contact matches. |
+| GET | `/contacts/matches` | Bearer | Persisted contact matches across the whole app + banner + invite link. |
+| GET | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches` ("people you may know"). |
+| GET | `/contacts/invite-link` | Bearer | Shareable app invite link for contacts not yet on the platform. |
+| GET | `/contacts/invite` | Bearer | Alias of `/contacts/invite-link`. |
+| DELETE | `/contacts/matches` | Bearer | Clear persisted contact matches and revoke sync consent. |
 
 ### Environment
 

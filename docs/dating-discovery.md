@@ -52,14 +52,18 @@ availability; proximity/geofence adds score.
 
 ## Contact discovery
 
-Users can opt in to compare their phone contacts against active dating profiles.
-Only SHA-256 phone hashes are stored; raw contacts are never persisted.
+Users can opt in to compare their contacts against **all active accounts**, not
+only users with a dating profile. Phone numbers are matched across local/E.164
+formats, and contacts may include an optional email (useful for social sign-ups
+with no phone hash). Only SHA-256 phone hashes are stored; raw contacts are never
+persisted. Responses include `hasDatingProfile`, `unmatchedCount`, and an
+`invite` link for people who are not on the platform yet.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/dating/contacts/status` | Consent state + last sync/match counts |
 | `POST` | `/dating/contacts/sync` | Sync contacts (`consent: true` on first call) |
-| `GET` | `/dating/contacts/matches` | List familiar users with dating profiles |
+| `GET` | `/dating/contacts/matches` | List familiar users (dating fields where present) |
 | `DELETE` | `/dating/contacts` | Revoke consent and delete derived matches |
 
 Candidates from the contact book are marked with `isContactMatch` (and the
@@ -69,6 +73,8 @@ restrict discovery to familiar candidates.
 
 Full frontend integration guide:
 [`docs/dating-contacts-and-proximity.md`](./dating-contacts-and-proximity.md).
+Change notes (format variants, app-wide matching, invites):
+[`docs/contact-discovery-and-start-region.md`](./contact-discovery-and-start-region.md).
 
 ## Proximity alerts
 

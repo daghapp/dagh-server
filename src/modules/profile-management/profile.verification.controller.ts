@@ -9,6 +9,7 @@ import { sendSms } from "../../helpers/sms.js";
 import bcrypt from "bcrypt";
 import { randomInt } from "crypto";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
+import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { ok, fail } from "../../helpers/response.js";
 
 export class ProfileVerificationController {
@@ -56,6 +57,7 @@ export class ProfileVerificationController {
             phoneHash: hashPhoneNumber(phoneNormalized),
           },
         });
+        await syncPhoneHashVariants(userId, phoneNormalized);
       } catch {
         // ignore
       }
