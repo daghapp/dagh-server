@@ -170,6 +170,9 @@ Each contact may be a string or an object:
   "message": "Contacts synced",
   "data": {
     "matchedCount": 2,
+    "contactsOnAppCount": 2,
+    "appUserCount": 2,
+    "matchedContactsCount": 2,
     "unmatchedCount": 141,
     "totalContacts": 143,
     "matches": [
@@ -199,8 +202,11 @@ Each contact may be a string or an object:
 }
 ```
 
-`GET /contacts/matches` returns `matches`, `matchedCount`, `banner`, and
-`invite` (no `unmatchedCount`).
+`GET /contacts/matches` returns `matches`, `matchedCount`,
+`contactsOnAppCount`, `appUserCount`, `matchedContactsCount`, `totalContacts`,
+`unmatchedCount`, `banner`, and `invite`. `contactsOnAppCount` /
+`appUserCount` are the explicit answer to “how many of my contacts use the
+app”. `totalContacts` comes from the last successful sync.
 
 #### Dating contact book
 
@@ -236,7 +242,8 @@ flag to decide whether to render dating-specific UI.
 ### 2.5 Inviting contacts who are not on the app
 
 1. Call `POST /contacts/sync` (or `GET /contacts/matches`).
-2. Compare the returned `matchedCount` with `totalContacts`/`unmatchedCount`.
+2. Compare the returned `contactsOnAppCount` (alias `appUserCount`) with
+   `totalContacts`/`unmatchedCount`.
 3. If there are unmatched contacts, present “Invite to Diaspora Sync” using the
    returned `invite.shareUrl` (rich preview page) or `invite.deepLink` (in-app
    navigation). The client can forward the link through the OS share sheet / SMS.
@@ -249,6 +256,7 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 
 - [ ] Re-run contact sync after deploying this release (old in-memory matches are gone).
 - [ ] Send raw phone numbers where possible; include `email` to match social sign-ups.
+- [ ] Use `contactsOnAppCount` / `appUserCount` for “contacts on the app” UI.
 - [ ] Use `hasDatingProfile` before showing dating-only fields.
 - [ ] Show an “Invite” action when `unmatchedCount > 0` using `invite.shareUrl`.
 - [ ] Keep phone normalization consistent in the OS permission flow; the server

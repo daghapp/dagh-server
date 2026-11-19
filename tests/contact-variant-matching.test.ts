@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hashPhoneNumber } from "../src/helpers/phoneHash.js";
 
@@ -12,7 +13,7 @@ const prismaMock = {
     createMany: vi.fn(),
   },
   contactSyncConsent: { findUnique: vi.fn(), upsert: vi.fn() },
-  contactMatch: { deleteMany: vi.fn(), createMany: vi.fn() },
+  contactMatch: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
   userDevice: { findMany: vi.fn() },
   $transaction: vi.fn(),
 };
@@ -37,6 +38,8 @@ const {
   findContactUsers,
   syncPhoneHashVariants,
   buildInviteLink,
+  matchContacts,
+  getContactMatchSummary,
 } = await import("../src/modules/contacts/contacts.service.js");
 
 const MATCHED_USER = {
@@ -63,12 +66,15 @@ describe("pre-hashed contact matching", () => {
   it("stores every plausible hash form for a registered phone", async () => {
     await syncPhoneHashVariants("u1", "+233244000000");
 
-    expect(prismaMock.phoneHashVariant.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    expect(prismaMock.phoneHashVariant.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+    });
     const args = prismaMock.phoneHashVariant.createMany.mock.calls[0][0];
     const hashes = args.data.map((row: { hash: string }) => row.hash);
     expect(hashes).toContain(hashPhoneNumber("+233244000000"));
     expect(hashes).toContain(hashPhoneNumber("0244000000"));
     expect(hashes).toContain(hashPhoneNumber("244000000"));
+    expect(hashes).toContain(crypto.createHash("sha256").update("+233244000000").digest("hex"));
   });
 
   it("matches a pre-hashed local contact to an E.164 registration via variants", async () => {
@@ -95,6 +101,30 @@ describe("pre-hashed contact matching", () => {
     expect(where.accountStatus).toEqual({
       notIn: ["SUSPENDED", "TERMINATED", "DEACTIVATED"],
     });
+  });
+
+  it("returns explicit counts for contacts who use the app", async () => {
+    prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
+    const result = await matchContacts("caller", ["0244000000"]);
+
+    expect(result.totalContacts).toBe(1);
+    expect(result.matchedCount).toBe(1);
+    expect(result.contactsOnAppCount).toBe(1);
+    expect(result.appUserCount).toBe(1);
+    expect(result.matchedContactsCount).toBe(1);
+    expect(result.unmatchedCount).toBe(0);
+  });
+
+  it("includes explicit counts in the persisted matches summary", async () => {
+    prismaMock.contactSyncConsent.findUnique.mockResolvedValue({ contactCount: 4, granted: true });
+    prismaMock.contactMatch.findMany.mockResolvedValue([{ matchedUser: MATCHED_USER }]);
+
+    const summary = await getContactMatchSummary("caller");
+
+    expect(summary.totalContacts).toBe(4);
+    expect(summary.contactsOnAppCount).toBe(1);
+    expect(summary.appUserCount).toBe(1);
+    expect(summary.unmatchedCount).toBe(3);
   });
 });
 

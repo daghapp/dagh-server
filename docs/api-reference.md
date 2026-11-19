@@ -1385,8 +1385,8 @@ has never been granted and `consent` is not `true`.
 ### GET /dating/contacts/matches
 
 Returns persisted contact matches (`matchedCount`, `banner`, `matches[]`).
-Only active users with dating profiles are included; blocks and hidden profiles
-are excluded.
+Matches cover all active users, including those without a dating profile;
+blocks are excluded and dating-specific fields may be empty.
 
 ### GET /dating/contacts/status
 
@@ -1740,16 +1740,19 @@ Securely match a user's hashed device contacts against existing users.
 
 - Matches cover **all active accounts**, not just users with dating profiles. Check
   `hasDatingProfile` to decide whether to show dating-specific UI.
-- Phone numbers are compared across local (`0244000000`), E.164 (`+233244000000`)
-  and country-code-only forms, so formatting differences no longer hide matches.
+- Phone numbers are compared across local (`0244000000`), E.164 (`+233244000000`),
+  country-code-only, raw formatted (`+233 24 400 0000`) and pre-hashed forms, so
+  formatting differences no longer hide matches.
 - Contacts may include an `email`; this lets social/Apple/Google sign-ups (which
   have no phone hash) be discovered. Raw emails/phones are never persisted.
+- `contactsOnAppCount` / `appUserCount` / `matchedContactsCount` explicitly report
+  how many synced contacts are already using the app.
 - `unmatchedCount` + the `invite` link let the client offer "Invite to Diaspora
   Sync" for contacts who are not on the platform yet.
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| POST | `/contacts/sync` | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); matches every active account regardless of dating profile and returns `matchedCount`, `unmatchedCount`, `matches`, `totalContacts`, `banner`, and an `invite` link. |
+| POST | `/contacts/sync` | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); matches every active account regardless of dating profile and returns `matchedCount`, `contactsOnAppCount`, `appUserCount`, `matchedContactsCount`, `unmatchedCount`, `matches`, `totalContacts`, `banner`, and an `invite` link. |
 | POST | `/contacts/match` | Bearer | Alias of `/contacts/sync`. |
 | GET | `/contacts/matches` | Bearer | Persisted contact matches across the whole app + banner + invite link. |
 | GET | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches` ("people you may know"). |
