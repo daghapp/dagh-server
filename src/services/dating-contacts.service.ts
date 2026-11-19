@@ -103,11 +103,9 @@ export async function getDatingContactMatches(userId: string): Promise<DatingCon
         matchedUser: {
           isDeleted: false,
           accountStatus: {
-            notIn: [
-              "SUSPENDED" as const,
-              "TERMINATED" as const,
-              "DEACTIVATED" as const,
-            ] as ("SUSPENDED" | "TERMINATED" | "DEACTIVATED")[],
+            notIn: ["SUSPENDED" as const, "TERMINATED" as const, "DEACTIVATED" as const] as (
+              "SUSPENDED" | "TERMINATED" | "DEACTIVATED"
+            )[],
           },
           blockedUsers: { none: { blockedId: userId } },
           blockedBy: { none: { blockerId: userId } },

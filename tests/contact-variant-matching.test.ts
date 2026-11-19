@@ -66,15 +66,15 @@ describe("pre-hashed contact matching", () => {
   it("stores every plausible hash form for a registered phone", async () => {
     await syncPhoneHashVariants("u1", "+233244000000");
 
-    expect(prismaMock.phoneHashVariant.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    expect(prismaMock.phoneHashVariant.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+    });
     const args = prismaMock.phoneHashVariant.createMany.mock.calls[0][0];
     const hashes = args.data.map((row: { hash: string }) => row.hash);
     expect(hashes).toContain(hashPhoneNumber("+233244000000"));
     expect(hashes).toContain(hashPhoneNumber("0244000000"));
     expect(hashes).toContain(hashPhoneNumber("244000000"));
-    expect(hashes).toContain(
-      crypto.createHash("sha256").update("+233244000000").digest("hex"),
-    );
+    expect(hashes).toContain(crypto.createHash("sha256").update("+233244000000").digest("hex"));
   });
 
   it("matches a pre-hashed local contact to an E.164 registration via variants", async () => {

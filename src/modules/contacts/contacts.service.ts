@@ -348,7 +348,7 @@ export async function findContactUsers(
         if (foundIds.has(candidate.id)) continue;
         const profilePhone =
           candidate.profile && "phoneNumber" in candidate.profile
-            ? (candidate.profile as { phoneNumber?: string | null }).phoneNumber ?? null
+            ? ((candidate.profile as { phoneNumber?: string | null }).phoneNumber ?? null)
             : null;
         const candidateHashes = new Set([
           ...hashPhoneLookupCandidates(candidate.phoneNumber),
@@ -537,21 +537,19 @@ export async function getContactMatches(userId: string): Promise<ContactMatch[]>
 
   try {
     const rows = await prisma.contactMatch.findMany({
-    where: {
-      userId,
-      matchedUser: {
-        isDeleted: false,
-        accountStatus: {
-          notIn: [
-            "SUSPENDED" as const,
-            "TERMINATED" as const,
-            "DEACTIVATED" as const,
-          ] as ("SUSPENDED" | "TERMINATED" | "DEACTIVATED")[],
+      where: {
+        userId,
+        matchedUser: {
+          isDeleted: false,
+          accountStatus: {
+            notIn: ["SUSPENDED" as const, "TERMINATED" as const, "DEACTIVATED" as const] as (
+              "SUSPENDED" | "TERMINATED" | "DEACTIVATED"
+            )[],
+          },
+          blockedUsers: { none: { blockedId: userId } },
+          blockedBy: { none: { blockerId: userId } },
         },
-        blockedUsers: { none: { blockedId: userId } },
-        blockedBy: { none: { blockerId: userId } },
       },
-    },
       orderBy: { createdAt: "desc" },
       select: { matchedUser: { select: contactUserSelect } },
       take: 2000,

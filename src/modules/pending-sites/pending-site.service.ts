@@ -308,7 +308,12 @@ export async function approvePendingSite(siteId: string, adminId: string) {
 
       await tx.pendingSite.update({
         where: { id: siteId },
-        data: { status: "approved", moderatedBy: adminId, moderatedAt: new Date(), updatedAt: new Date() },
+        data: {
+          status: "approved",
+          moderatedBy: adminId,
+          moderatedAt: new Date(),
+          updatedAt: new Date(),
+        },
       });
 
       return tourSite.id;
@@ -360,7 +365,13 @@ export async function rejectPendingSite(siteId: string, adminId: string, rejectR
 
   await prisma.pendingSite.update({
     where: { id: siteId },
-    data: { status: "rejected", rejectReason: reason, moderatedBy: adminId, moderatedAt: new Date(), updatedAt: new Date() },
+    data: {
+      status: "rejected",
+      rejectReason: reason,
+      moderatedBy: adminId,
+      moderatedAt: new Date(),
+      updatedAt: new Date(),
+    },
   });
 
   // Best-effort rejection email with the revision requirements (§3).
