@@ -9,6 +9,11 @@ This guide covers the backend additions that let dating users:
 Both features live under `/dating` and require the normal authenticated
 `Authorization: Bearer <token>` header.
 
+> **Contact matching now covers the whole platform** (not only dating users) and
+> supports local/E.164 phone variants plus optional emails. See
+> [`contact-discovery-and-start-region.md`](./contact-discovery-and-start-region.md)
+> for the full change notes and invite-link flow.
+
 > **Privacy model**
 >
 > - Contact access is opt-in. The app must obtain OS-level contact permission
@@ -61,14 +66,16 @@ idempotent — re-syncing replaces the previous match set.
   "consent": true,
   "contacts": [
     "+233201234567",
-    { "name": "Ama", "phone": "0244000000" }
+    { "name": "Ama", "phone": "0244000000" },
+    { "name": "Kwame", "email": "kwame@example.com" }
   ]
 }
 ```
 
 Alternative keys accepted for convenience: `phoneNumbers`, `phones`, `hashes`.
 If your app hashes locally, send the SHA-256 hex strings under `hashes` (or as
-plain strings).
+plain strings). Contacts may also carry an `email`; this matches social/Apple/
+Google sign-ups that have no phone hash.
 
 **Response**
 
@@ -101,8 +108,11 @@ plain strings).
 | `403` | `consent` was not `true` and no previous consent exists |
 | `500` | Unexpected server error |
 
-> Only users with an **active dating profile** are returned. Contacts who are
-> blocked or have hidden their profile are excluded.
+> Matches include every **active account** on the platform, not just users with a
+> dating profile. Dating-specific fields (`headline`, `photos`) are `null`/empty
+> when the matched user has no dating profile; check `hasDatingProfile`. Contacts
+> who are blocked are excluded. Responses also include `unmatchedCount` and an
+> `invite` object so unmatched contacts can be invited to join.
 
 ### 1.3 List contact matches
 

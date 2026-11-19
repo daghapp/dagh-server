@@ -645,7 +645,7 @@ model UserBlock {
 }
 
 // ─────────────────────────────────────────
-// CONTACT DISCOVERY — privacy-preserving contact matching scoped to dating.
+// CONTACT DISCOVERY — privacy-preserving contact matching across the platform.
 // Only SHA-256 phone hashes are stored; raw contact data never reaches the DB.
 // ─────────────────────────────────────────
 model ContactSyncConsent {
@@ -1283,7 +1283,7 @@ model TourRequest {
   relocationInterest Boolean  @default(false) // saved, not acted on yet
 
   // Dynamic loop-routing hub chosen by the user (e.g. "Central" for Cape Coast).
-  // NULL means the engine falls back to the default hub (Central Region).
+  // NULL means the engine infers the hub from the selected sites.
   startRegion         String?
   // Explicit opt-in to more than two Greater Accra nights. The engine otherwise
   // confines Accra to the arrival/departure gateways to cut urban lodging cost.
