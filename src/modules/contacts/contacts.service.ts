@@ -3,10 +3,11 @@ import type { Prisma } from "../../../generated/prisma/client.js";
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
 import { prisma } from "../../config/index.js";
 import {
-  hashPhoneCandidates,
+  hashPhoneLookupCandidates,
   hashPhoneNumber,
   normalizePhoneNumber,
   phoneDigitCandidates,
+  phoneHashCandidateStrings,
 } from "../../helpers/phoneHash.js";
 import * as deepLinkService from "../deep-links/deep-link.service.js";
 
@@ -69,7 +70,7 @@ export async function syncPhoneHashVariants(
   userId: string,
   phone: string | null | undefined,
 ): Promise<void> {
-  const hashes = hashPhoneCandidates(phone);
+  const hashes = hashPhoneLookupCandidates(phone);
   if (hashes.length === 0) return;
 
   try {
@@ -221,7 +222,7 @@ export function lookupContactHashes(contacts: Array<ContactInput | string>): str
     if (/^[a-f0-9]{64}$/i.test(trimmed)) {
       hashes.add(trimmed.toLowerCase());
     } else {
-      for (const h of hashPhoneCandidates(p)) hashes.add(h);
+      for (const h of hashPhoneLookupCandidates(p)) hashes.add(h);
     }
   }
   return [...hashes];
@@ -269,27 +270,25 @@ export async function findContactUsers(
     accountStatus: { notIn: excludedStatuses },
   };
 
+  const rawPhones = extractPhones(contacts)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !/^[a-f0-9]{64}$/i.test(p));
+
   const lookupDigits = Array.from(
-    new Set(
-      extractPhones(contacts)
-        .flatMap((p) => {
-          const trimmed = p.trim();
-          if (/^[a-f0-9]{64}$/i.test(trimmed)) return [];
-          return phoneDigitCandidates(trimmed);
-        })
-        .filter(Boolean),
-    ),
+    new Set(rawPhones.flatMap((p) => phoneDigitCandidates(p)).filter(Boolean)),
   );
 
   const phoneStringCandidates = Array.from(
-    new Set(
-      lookupDigits.flatMap((d) => {
+    new Set([
+      ...rawPhones,
+      ...rawPhones.flatMap((p) => phoneHashCandidateStrings(p)),
+      ...lookupDigits.flatMap((d) => {
         const forms = [d, `+${d}`];
         if (d.startsWith("233") && d.length > 3) forms.push(`0${d.slice(3)}`);
         if (d.length === 10 && d.startsWith("0")) forms.push(`+233${d.slice(1)}`);
         return forms;
       }),
-    ),
+    ]),
   );
 
   const buildOr = (includeVariants: boolean): Prisma.UserWhereInput[] => {
@@ -352,8 +351,8 @@ export async function findContactUsers(
             ? (candidate.profile as { phoneNumber?: string | null }).phoneNumber ?? null
             : null;
         const candidateHashes = new Set([
-          ...hashPhoneCandidates(candidate.phoneNumber),
-          ...hashPhoneCandidates(profilePhone),
+          ...hashPhoneLookupCandidates(candidate.phoneNumber),
+          ...hashPhoneLookupCandidates(profilePhone),
         ]);
         for (const h of candidateHashes) {
           if (lookupSet.has(h)) {
@@ -448,11 +447,22 @@ export function toContactMatch(user: ContactUser): ContactMatch {
   };
 }
 
+export function buildContactBanner(count: number, firstName?: string | null): string {
+  if (count === 0) return "No contacts found on Diaspora Sync yet. Invite them to join.";
+  const name = firstName || "someone";
+  return count === 1
+    ? `1 person in your contact list (${name}) is already on Diaspora Sync! Tap to connect.`
+    : `${count} people in your contact list (including ${name}) are already on Diaspora Sync! Tap to connect.`;
+}
+
 export async function matchContacts(
   userId: string,
   contacts: Array<ContactInput | string> = [],
 ): Promise<{
   matchedCount: number;
+  contactsOnAppCount: number;
+  appUserCount: number;
+  matchedContactsCount: number;
   matches: ContactMatch[];
   totalContacts: number;
   unmatchedCount: number;
@@ -467,13 +477,7 @@ export async function matchContacts(
   const unmatchedCount = Math.max(totalContacts - matches.length, 0);
 
   const names = matches.map((m) => m.name).filter(Boolean);
-  const firstName = names[0] || "someone";
-  const banner =
-    matches.length === 0
-      ? "No contacts found on Diaspora Sync yet. Invite them to join."
-      : matches.length === 1
-        ? `1 person in your contact list (${firstName}) is already on Diaspora Sync! Tap to connect.`
-        : `${matches.length} people in your contact list (including ${firstName}) are already on Diaspora Sync! Tap to connect.`;
+  const banner = buildContactBanner(matches.length, names[0]);
 
   // Best-effort push notification for the syncing user.
   if (matches.length > 0) {
@@ -504,6 +508,9 @@ export async function matchContacts(
 
   return {
     matchedCount: matches.length,
+    contactsOnAppCount: matches.length,
+    appUserCount: matches.length,
+    matchedContactsCount: matches.length,
     matches,
     totalContacts,
     unmatchedCount,
@@ -559,6 +566,42 @@ export async function getContactMatches(userId: string): Promise<ContactMatch[]>
   }
 
   return [];
+}
+
+/** Persisted matches plus explicit "how many contacts use the app" counts. */
+export async function getContactMatchSummary(userId: string): Promise<{
+  matches: ContactMatch[];
+  matchedCount: number;
+  contactsOnAppCount: number;
+  appUserCount: number;
+  matchedContactsCount: number;
+  totalContacts: number;
+  unmatchedCount: number;
+  banner: string;
+}> {
+  const [matches, totalContacts] = await Promise.all([
+    getContactMatches(userId),
+    (async () => {
+      try {
+        const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+        return consent?.contactCount ?? 0;
+      } catch {
+        return 0;
+      }
+    })(),
+  ]);
+
+  const names = matches.map((m) => m.name).filter(Boolean);
+  return {
+    matches,
+    matchedCount: matches.length,
+    contactsOnAppCount: matches.length,
+    appUserCount: matches.length,
+    matchedContactsCount: matches.length,
+    totalContacts,
+    unmatchedCount: Math.max(totalContacts - matches.length, 0),
+    banner: buildContactBanner(matches.length, names[0]),
+  };
 }
 
 export async function clearContactMatches(userId: string): Promise<void> {

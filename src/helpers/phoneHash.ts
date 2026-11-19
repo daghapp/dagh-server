@@ -65,5 +65,37 @@ export function hashPhoneCandidates(phone: string | null | undefined): string[] 
     .filter(Boolean);
 }
 
+/**
+ * Values a client may hash before sending a contact. Some apps hash the raw
+ * device value (`+233 24 400 0000`) instead of digits only, so lookups must
+ * cover both raw strings and digit variants.
+ */
+export function phoneHashCandidateStrings(phone: string | null | undefined): string[] {
+  if (phone === null || phone === undefined) return [];
+  const original = String(phone).trim();
+  if (!original) return [];
+
+  const digits = normalizePhoneNumber(original);
+  const values = new Set<string>([original]);
+  if (!digits) return [...values];
+
+  const digitForms = phoneDigitCandidates(digits);
+  for (const value of digitForms) {
+    values.add(value);
+    values.add(`+${value}`);
+    if (!value.startsWith("00")) values.add(`00${value}`);
+  }
+
+  return [...values];
+}
+
+/** SHA-256 hashes for raw and digit forms of a phone number. */
+export function hashPhoneLookupCandidates(phone: string | null | undefined): string[] {
+  const hashes = phoneHashCandidateStrings(phone).map((value) =>
+    crypto.createHash("sha256").update(value).digest("hex"),
+  );
+  return [...new Set(hashes)];
+}
+
 export const hashPhone = hashPhoneNumber;
 export const normalizePhone = normalizePhoneNumber;

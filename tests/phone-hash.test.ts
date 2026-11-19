@@ -1,8 +1,11 @@
+import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   hashPhoneCandidates,
+  hashPhoneLookupCandidates,
   hashPhoneNumber,
   phoneDigitCandidates,
+  phoneHashCandidateStrings,
 } from "../src/helpers/phoneHash.js";
 
 describe("phone digit candidates", () => {
@@ -43,5 +46,19 @@ describe("hashPhoneCandidates", () => {
   it("does not invent country-code variants for an already-international number", () => {
     const uk = phoneDigitCandidates("+447911123456");
     expect(uk).toEqual(["447911123456"]);
+  });
+});
+
+describe("hashPhoneLookupCandidates", () => {
+  it("includes hashes of raw formatted values clients may hash", () => {
+    const formatted = "+233244000000";
+    const formattedHash = crypto.createHash("sha256").update(formatted).digest("hex");
+
+    expect(phoneHashCandidateStrings(formatted)).toContain(formatted);
+    expect(hashPhoneLookupCandidates(formatted)).toContain(formattedHash);
+  });
+
+  it("still includes the digit-only hash used by the server", () => {
+    expect(hashPhoneLookupCandidates("0244000000")).toContain(hashPhoneNumber("0244000000"));
   });
 });

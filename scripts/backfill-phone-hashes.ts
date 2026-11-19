@@ -11,7 +11,7 @@ const _origLookup = dns.lookup;
 import "dotenv/config";
 import crypto from "node:crypto";
 import { prisma } from "../src/config/index.js";
-import { hashPhoneCandidates, hashPhoneNumber } from "../src/helpers/phoneHash.js";
+import { hashPhoneLookupCandidates, hashPhoneNumber } from "../src/helpers/phoneHash.js";
 
 async function main() {
   const batchSize = 250;
@@ -26,9 +26,16 @@ async function main() {
           { phoneNumber: { not: null } },
           { phoneNumberHash: { not: null } },
           { phoneHash: { not: null } },
+          { profile: { is: { phoneNumber: { not: null } } } },
         ],
       },
-      select: { id: true, phoneNumber: true, phoneNumberHash: true, phoneHash: true },
+      select: {
+        id: true,
+        phoneNumber: true,
+        phoneNumberHash: true,
+        phoneHash: true,
+        profile: { select: { phoneNumber: true } },
+      },
       orderBy: { id: "asc" },
       take: batchSize,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -37,9 +44,9 @@ async function main() {
     if (users.length === 0) break;
 
     for (const user of users) {
-      const phone = user.phoneNumber;
+      const phone = user.phoneNumber ?? user.profile?.phoneNumber ?? null;
       const canonical = phone ? hashPhoneNumber(phone) : user.phoneNumberHash ?? user.phoneHash ?? null;
-      const hashes = phone ? hashPhoneCandidates(phone) : canonical ? [canonical] : [];
+      const hashes = phone ? hashPhoneLookupCandidates(phone) : canonical ? [canonical] : [];
 
       if (phone || canonical) {
         await prisma.user.update({

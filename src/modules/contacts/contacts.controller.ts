@@ -42,21 +42,15 @@ export class ContactsController {
     try {
       const userId = req.user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
-      const matches = await contactsService.getContactMatches(userId);
+      const summary = await contactsService.getContactMatchSummary(userId);
       let invite: Awaited<ReturnType<typeof contactsService.buildInviteLink>> | null = null;
       try {
         invite = await contactsService.buildInviteLink(userId);
       } catch (e) {
         console.warn("[contacts.getMatches] failed to build invite link", e);
       }
-      const banner =
-        matches.length === 0
-          ? "No contacts found on Diaspora Sync yet. Invite them to join."
-          : `${matches.length} people in your contact list are already on Diaspora Sync! Tap to connect.`;
       return ok(res, {
-        matches,
-        matchedCount: matches.length,
-        banner,
+        ...summary,
         ...(invite ? { invite } : {}),
       });
     } catch (error) {
