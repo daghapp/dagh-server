@@ -203,11 +203,15 @@ model UserDevice {
 }
 
 model UserNotificationPreference {
-  id              String   @id @default(uuid())
-  userId          String   @unique
-  messagesEnabled Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  messagesEnabled      Boolean  @default(true)
+  // Service/operational announcements are on by default; marketing/promotions
+  // require an explicit in-app opt-in (Apple/Google/Expo policy).
+  announcementsEnabled Boolean  @default(true)
+  promotionsEnabled    Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -2154,6 +2158,67 @@ model AdminNotification {
 
   @@index([adminId, read])
   @@map("admin_notifications")
+}
+
+/// Admin-authored push broadcast. Service announcements are opt-out; promos are
+/// sent only to users who explicitly opted in. Delivery rows intentionally do
+/// not store push tokens — they reference the installation and are resolved at
+/// send time so revoked/replaced tokens are never reused.
+model Announcement {
+  id              String    @id @default(uuid())
+  title           String
+  body            String    @db.Text
+  // ANNOUNCEMENT (service/operational) | PROMOTION (marketing)
+  category        String
+  // ACTIVE | VERIFIED | ALL
+  audience        String    @default("ACTIVE")
+  route           String?
+  // DRAFT | SCHEDULED | SENDING | SENT | FAILED | CANCELLED
+  status          String    @default("DRAFT")
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdBy       String
+  recipientCount  Int       @default(0)
+  deviceCount     Int       @default(0)
+  sentCount       Int       @default(0)
+  failedCount     Int       @default(0)
+  skippedCount    Int       @default(0)
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  deliveries AnnouncementDelivery[]
+
+  @@index([status, scheduledAt])
+  @@index([createdAt])
+  @@map("announcements")
+}
+
+model AnnouncementDelivery {
+  id                String    @id @default(uuid())
+  announcementId    String
+  userId            String
+  deviceId          String
+  provider          String
+  // PENDING | SENDING | SENT | DELIVERED | FAILED | SKIPPED | RETRY_PENDING
+  status            String    @default("PENDING")
+  attemptCount      Int       @default(0)
+  providerMessageId String?
+  errorCode         String?
+  availableAt       DateTime  @default(now())
+  sentAt            DateTime?
+  receiptsFetchedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, deviceId, provider])
+  @@index([announcementId, status, availableAt])
+  @@index([status, availableAt])
+  @@index([provider, status, receiptsFetchedAt])
+  @@map("announcement_deliveries")
 }
 
 model TransactionFlag {

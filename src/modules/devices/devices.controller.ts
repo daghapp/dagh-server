@@ -145,6 +145,8 @@ export const getNotificationPreferences = async (req: Request, res: Response) =>
 
     return ok(res, {
       messagesEnabled: preference?.messagesEnabled ?? true,
+      announcementsEnabled: preference?.announcementsEnabled ?? true,
+      promotionsEnabled: preference?.promotionsEnabled ?? false,
     });
   } catch (error) {
     console.error("[Devices] getNotificationPreferences error:", error);
@@ -158,21 +160,47 @@ export const getNotificationPreferences = async (req: Request, res: Response) =>
 export const updateNotificationPreferences = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { messagesEnabled } = req.body;
+    const { messagesEnabled, announcementsEnabled, promotionsEnabled } = req.body ?? {};
 
-    if (typeof messagesEnabled !== "boolean") {
-      return fail(res, 400, "messagesEnabled must be a boolean");
+    const patch: {
+      messagesEnabled?: boolean;
+      announcementsEnabled?: boolean;
+      promotionsEnabled?: boolean;
+    } = {};
+
+    for (const [key, value] of Object.entries({
+      messagesEnabled,
+      announcementsEnabled,
+      promotionsEnabled,
+    })) {
+      if (value === undefined) continue;
+      if (typeof value !== "boolean") {
+        return fail(res, 400, `${key} must be a boolean`);
+      }
+      patch[key as keyof typeof patch] = value;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return fail(
+        res,
+        400,
+        "Provide at least one of messagesEnabled, announcementsEnabled, promotionsEnabled",
+      );
     }
 
     const preference = await prisma.userNotificationPreference.upsert({
       where: { userId },
-      update: { messagesEnabled },
-      create: { userId, messagesEnabled },
+      update: patch,
+      create: { userId, ...patch },
     });
 
     return ok(
       res,
-      { messagesEnabled: preference.messagesEnabled },
+      {
+        messagesEnabled: preference.messagesEnabled,
+        announcementsEnabled: preference.announcementsEnabled,
+        promotionsEnabled: preference.promotionsEnabled,
+      },
       "Notification preferences updated",
     );
   } catch (error) {

@@ -286,7 +286,9 @@ src/
 > guide** (contracts, state machine, error cases, reference client),
 > `docs/payment-control-system.md` for the payment enable/disable toggle
 > (admin API + public status endpoint), and `docs/push-notifications.md` for
-> the push notification architecture. See
+> the push notification architecture. See `docs/admin-broadcasts.md` for
+> admin-authored service announcements and opt-in promotional push broadcasts
+> (audience preview, scheduling, delivery lifecycle, and consent rules). See
 > `docs/youtube-video-feed-setup.md` for the credentials and steps required to
 > populate the community YouTube video feed, and
 > `docs/access-grants.md` for **complimentary (comped) membership** — how an

@@ -296,12 +296,38 @@ export function buildNewMessagePayload(
   });
 }
 
+/**
+ * Build the ANNOUNCEMENT push payload for an admin broadcast. Only a short
+ * title/body and an optional in-app route are carried — no recipient-specific
+ * or sensitive data — so the payload stays safe in provider logs.
+ */
+export function buildAnnouncementPayload(input: {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  route?: string | null;
+}): PushPayload {
+  return sanitizePushData({
+    type: "ANNOUNCEMENT",
+    announcementId: input.id,
+    title: input.title,
+    body: input.body,
+    category: input.category,
+    route: input.route ?? "",
+    schemaVersion: "1",
+  });
+}
+
 export function titleForPayload(payload: PushPayload): string {
   if (payload.type === "INCOMING_CALL") {
     return payload.callType === "VIDEO" ? "Incoming video call" : "Incoming voice call";
   }
   if (payload.type === "NEW_MESSAGE") {
     return payload.senderName || "Simply Mark";
+  }
+  if (payload.type === "ANNOUNCEMENT") {
+    return payload.title || "Diaspora Sync";
   }
   return "Call update";
 }
@@ -316,6 +342,9 @@ export function bodyForPayload(payload: PushPayload): string {
       payload.previewBody ||
       messagePreviewBody(payload.messageType, payload.content)
     );
+  }
+  if (payload.type === "ANNOUNCEMENT") {
+    return payload.body || payload.preview || "You have a new update";
   }
   switch (payload.status) {
     case "DECLINED":
