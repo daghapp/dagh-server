@@ -84,8 +84,9 @@ export async function syncPhoneHashVariants(
 }
 
 function pushPhone(out: string[], value: unknown): void {
-  if (typeof value !== "string") return;
-  const trimmed = value.trim();
+  if (value === null || value === undefined) return;
+  const str = typeof value === "number" ? String(value) : typeof value === "string" ? value : "";
+  const trimmed = str.trim();
   if (!trimmed || trimmed.includes("@")) return;
   out.push(trimmed);
 }
@@ -113,7 +114,7 @@ function extractPhones(contacts: Array<ContactInput | string>): string[] {
     const phoneNumbers = record.phoneNumbers;
     if (Array.isArray(phoneNumbers)) {
       for (const entry of phoneNumbers) {
-        if (typeof entry === "string") pushPhone(out, entry);
+        if (typeof entry === "string" || typeof entry === "number") pushPhone(out, entry);
         else if (entry && typeof entry === "object") {
           const r = entry as Record<string, unknown>;
           pushPhone(out, r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits);
@@ -124,7 +125,7 @@ function extractPhones(contacts: Array<ContactInput | string>): string[] {
     const phones = record.phones;
     if (Array.isArray(phones)) {
       for (const entry of phones) {
-        if (typeof entry === "string") pushPhone(out, entry);
+        if (typeof entry === "string" || typeof entry === "number") pushPhone(out, entry);
         else if (entry && typeof entry === "object") {
           const r = entry as Record<string, unknown>;
           pushPhone(out, r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits);
@@ -252,6 +253,17 @@ export async function findContactUsers(
     ),
   );
 
+  const phoneStringCandidates = Array.from(
+    new Set(
+      lookupDigits.flatMap((d) => {
+        const forms = [d, `+${d}`];
+        if (d.startsWith("233") && d.length > 3) forms.push(`0${d.slice(3)}`);
+        if (d.length === 10 && d.startsWith("0")) forms.push(`+233${d.slice(1)}`);
+        return forms;
+      }),
+    ),
+  );
+
   const buildOr = (includeVariants: boolean): Prisma.UserWhereInput[] => {
     const clauses: Prisma.UserWhereInput[] = [];
     if (lookupHashes.length > 0) {
@@ -262,9 +274,10 @@ export async function findContactUsers(
         clauses.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
       }
     }
-    if (lookupDigits.length > 0) {
-      // Fallback for accounts missing/corrupt hashes: compare stored phone digits.
-      clauses.push({ phoneNumber: { in: lookupDigits } });
+    if (phoneStringCandidates.length > 0) {
+      // Fallback for accounts missing/corrupt hashes: compare stored phone strings.
+      clauses.push({ phoneNumber: { in: phoneStringCandidates } });
+      clauses.push({ profile: { is: { phoneNumber: { in: phoneStringCandidates } } } });
     }
     if (emails.length > 0) {
       clauses.push({ email: { in: emails, mode: "insensitive" } });
