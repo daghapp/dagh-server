@@ -9,6 +9,7 @@ const _origLookup = dns.lookup;
   return _origLookup(hostname, options, callback);
 };
 import "dotenv/config";
+import crypto from "node:crypto";
 import { prisma } from "../src/config/index.js";
 import { hashPhoneCandidates, hashPhoneNumber } from "../src/helpers/phoneHash.js";
 
@@ -45,7 +46,7 @@ async function main() {
 
       await prisma.phoneHashVariant.deleteMany({ where: { userId: user.id } });
       await prisma.phoneHashVariant.createMany({
-        data: hashes.map((hash) => ({ userId: user.id, hash })),
+        data: hashes.map((hash) => ({ id: crypto.randomUUID(), userId: user.id, hash })),
         skipDuplicates: true,
       });
 

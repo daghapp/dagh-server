@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { Prisma } from "../../../generated/prisma/client.js";
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
 import { prisma } from "../../config/index.js";
@@ -74,7 +75,7 @@ export async function syncPhoneHashVariants(
   try {
     await prisma.phoneHashVariant.deleteMany({ where: { userId } });
     await prisma.phoneHashVariant.createMany({
-      data: hashes.map((hash) => ({ userId, hash })),
+      data: hashes.map((hash) => ({ id: crypto.randomUUID(), userId, hash })),
       skipDuplicates: true,
     });
   } catch (error) {
@@ -346,11 +347,15 @@ export async function persistContactMatches(
     });
 
     if (matchedUsers.length > 0) {
+      const ts = new Date();
       await tx.contactMatch.createMany({
         data: matchedUsers.map((u) => ({
+          id: crypto.randomUUID(),
           userId,
           matchedUserId: u.id,
           phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
+          createdAt: ts,
+          updatedAt: ts,
         })),
         skipDuplicates: true,
       });
