@@ -157,13 +157,31 @@ ${storeUrl ? `<p><a href="${escapeHtml(storeUrl)}">Download the app</a></p>` : "
 export class ShareController {
   async appPreview(req: Request, res: Response) {
     const inviter = String(req.query.inviter || req.query.name || "Someone").trim() || "Someone";
+    const token = String(req.query.token || "").trim();
     const title = `${inviter} wants to connect with you on Diaspora Sync 💖`;
     const description =
       "Meet like-minded diaspora singles, build real connections, and unlock exclusive cultural events and travel experiences in Ghana. Download the app and start matching.";
-    const storeUrl = /iPhone|iPad|iPod/i.test(req.headers["user-agent"] || "")
-      ? APP_STORE_URL
-      : PLAY_STORE_URL;
+    const userAgent = req.headers["user-agent"] || "";
+    const storeUrl = /iPhone|iPad|iPod/i.test(userAgent) ? APP_STORE_URL : PLAY_STORE_URL;
     const url = PLAY_STORE_URL;
+    const bot = isBot(userAgent);
+    const deepLink = token
+      ? `${APP_SCHEME}://deferred?token=${encodeURIComponent(token)}`
+      : `${APP_SCHEME}://share/app`;
+    const redirectScript =
+      !bot && token
+        ? `<script>
+(function(){
+  var deepLink = ${JSON.stringify(deepLink)};
+  var storeUrl = ${JSON.stringify(storeUrl || "")};
+  var started = Date.now();
+  window.location.href = deepLink;
+  setTimeout(function(){
+    if (Date.now() - started < 1600 && storeUrl) window.location.replace(storeUrl);
+  }, 1500);
+})();
+</script>`
+        : "";
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -178,6 +196,7 @@ export class ShareController {
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(description)}">
+${redirectScript}
 </head>
 <body>
 <h1>${escapeHtml(title)}</h1>

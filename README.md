@@ -286,7 +286,9 @@ src/
 > guide** (contracts, state machine, error cases, reference client),
 > `docs/payment-control-system.md` for the payment enable/disable toggle
 > (admin API + public status endpoint), and `docs/push-notifications.md` for
-> the push notification architecture. See
+> the push notification architecture. See `docs/admin-broadcasts.md` for
+> admin-authored service announcements and opt-in promotional push broadcasts
+> (audience preview, scheduling, delivery lifecycle, and consent rules). See
 > `docs/youtube-video-feed-setup.md` for the credentials and steps required to
 > populate the community YouTube video feed, and
 > `docs/access-grants.md` for **complimentary (comped) membership** — how an
@@ -294,7 +296,10 @@ src/
 > admin-controlled **lifetime free** accounts that waive every service fee, and
 > `docs/app-store-review-remediation.md` for the **iOS App Store review
 > checklist** (membership IAP gate, Sign in with Apple, account deletion,
-> icon, and cold-start mitigation).
+> icon, and cold-start mitigation). See
+> `docs/contact-discovery-and-start-region.md` for **app-wide contact
+> discovery** (phone-format matching, email matching, invite links) and the
+> **tour start-region inference** rules.
 
 All endpoints return responses in a standardized envelope:
 

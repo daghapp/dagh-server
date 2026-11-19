@@ -6,6 +6,7 @@ import {
   buildRegionDayGroups,
   clusterSitesIntoSessions,
   deriveDayTheme,
+  deriveStartRegion,
   findRegionReentries,
   formatDayTitle,
   orderRegionsByLoop,
@@ -52,6 +53,28 @@ describe("orderRegionsByLoop", () => {
     const order = orderRegionsByLoop("Central", sites);
     expect(new Set(order).size).toBe(order.length);
     expect(order.filter((r) => r === "Central")).toHaveLength(1);
+  });
+});
+
+describe("deriveStartRegion", () => {
+  it("honours an explicit hub even when no selected site is in that region", () => {
+    expect(deriveStartRegion([ASHANTI(), VOLTA()], "Central")).toBe("Central");
+  });
+
+  it("infers the most frequently selected region when no hub is supplied", () => {
+    const sites = [ASHANTI(), site("Ashanti", 6.8, -1.7), VOLTA()];
+    expect(deriveStartRegion(sites)).toBe("Ashanti");
+  });
+
+  it("never falls back to Central when the selection is elsewhere", () => {
+    const sites = [ASHANTI(), VOLTA(), ACCRA()];
+    const hub = deriveStartRegion(sites);
+    expect(hub).not.toBe("Central");
+    expect(sites.map((s) => s.region)).toContain(hub);
+  });
+
+  it("falls back to the default hub only for an empty selection", () => {
+    expect(deriveStartRegion([])).toBe("Central");
   });
 });
 

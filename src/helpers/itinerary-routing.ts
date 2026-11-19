@@ -106,6 +106,38 @@ export function regionCentroid(region: string, sites: RoutableSite[]): Coordinat
   return REGION_FALLBACK_CENTROIDS[region] ?? { latitude: 5.6037, longitude: -0.187 };
 }
 
+/**
+ * Resolve the loop hub. An explicit region always wins; otherwise infer the hub
+ * from the selected sites so a request that omits `startRegion` is never silently
+ * anchored to Central even when every selected site lies elsewhere. The most
+ * frequently selected region wins; ties are broken by whichever regional centroid
+ * sits closest to the selection's overall centroid.
+ */
+export function deriveStartRegion(sites: RoutableSite[], requested?: string | null): string {
+  if (requested) return requested;
+  if (sites.length === 0) return DEFAULT_START_REGION;
+
+  const counts = new Map<string, number>();
+  for (const site of sites) {
+    counts.set(site.region, (counts.get(site.region) ?? 0) + 1);
+  }
+
+  const overall = {
+    latitude: sites.reduce((sum, s) => sum + s.latitude, 0) / sites.length,
+    longitude: sites.reduce((sum, s) => sum + s.longitude, 0) / sites.length,
+  };
+
+  const ranked = [...counts.entries()].sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    const distanceTo = (region: string) =>
+      haversineDistance(overall, regionCentroid(region, sites));
+    const byDistance = distanceTo(a[0]) - distanceTo(b[0]);
+    return byDistance !== 0 ? byDistance : a[0].localeCompare(b[0]);
+  });
+
+  return ranked[0][0];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Loop ordering — convex-hull (angular) sort anchored at the hub
 // ─────────────────────────────────────────────────────────────────────────────

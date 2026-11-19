@@ -1,6 +1,11 @@
 import cron from "node-cron";
 import { withDistributedLock } from "../helpers/jobLock.js";
 import {
+  promoteDueAnnouncements,
+  dispatchAnnouncements,
+  fetchAnnouncementExpoReceipts,
+} from "../services/announcement.service.js";
+import {
   sendPendingPushDeliveries,
   fetchExpoPushReceipts,
   sendPendingMessagePushDeliveries,
@@ -16,6 +21,8 @@ import {
  *   2. Fetch Expo push receipts for SENT EXPO call rows and invalidate stale tokens.
  *   3. Deliver PENDING message push outbox rows.
  *   4. Fetch Expo push receipts for SENT EXPO message rows.
+ *   5. Promote due scheduled broadcasts, send queued announcement rows, and
+ *      check their Expo receipts.
  *
  * The outbox rows are written synchronously when a call/message is created or
  * changes state, so a backend restart between commit and delivery never loses
@@ -24,6 +31,9 @@ import {
 export const pushDeliveryJob = () => {
   cron.schedule("*/10 * * * * *", async () => {
     await withDistributedLock("push-delivery", 8000, async () => {
+      await promoteDueAnnouncements();
+      await dispatchAnnouncements();
+      await fetchAnnouncementExpoReceipts();
       await sendPendingPushDeliveries();
       await dispatchNotificationOutbox();
       await sendPendingMessagePushDeliveries();

@@ -24,6 +24,7 @@ export const AdminEntityType = {
   MAINTENANCE: "MAINTENANCE",
   TOUR_DESTINATION: "TOUR_DESTINATION",
   DATING: "DATING",
+  ANNOUNCEMENT: "ANNOUNCEMENT",
 } as const;
 
 export type AdminEntityType = (typeof AdminEntityType)[keyof typeof AdminEntityType];

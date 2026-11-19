@@ -74,7 +74,7 @@ Created resources generally use HTTP `201`; ordinary success is `200`. Exception
 | Payments and gateway | `/admin/payments*`; `/admin/settings/payment-gateway*` |
 | Plans and access grants | `/admin/plans*`; `/admin/access-grants*`; `/admin/users/:userId/access` |
 | Moderation and verification | `/admin/reports*`; `/admin/profile-verifications*` |
-| Roles and notifications | `/admin/roles`; `/admin/notifications*` |
+| Roles and notifications | `/admin/roles`; `/admin/notifications*`; `/admin/notifications/broadcasts*` |
 | Community content | `/community/admin/*`; `/community/videos/:videoId/analytics` |
 | Other admin-gated resources | `/tours*`; `/faq/admin*`; `/data-policy/admin/policy` |
 
@@ -282,6 +282,27 @@ All require `notifications.view`. Data is scoped to the currently signed-in admi
 - `DELETE /admin/notifications` — Permanently clears own notifications; returns `data:null` and a message.
 
 Errors: `401` if unauthenticated; `403` permission missing; `500` with operation-specific message.
+
+### Broadcasts (`/admin/notifications/broadcasts`) — `notifications.manage` (SUPER_ADMIN)
+
+Admin-authored push broadcasts. `category` is `ANNOUNCEMENT` (service/operational,
+opt-out via `announcementsEnabled`) or `PROMOTION` (marketing, delivered only to
+users who explicitly set `promotionsEnabled: true`). Suspended, terminated and
+deleted accounts are never targeted. Payloads carry only the title, body, category
+and an optional in-app route — no recipient-specific data.
+
+- `GET /admin/notifications/broadcasts/audience-preview?category=&audience=` — Counts eligible recipients/devices without sending. `category` is `ANNOUNCEMENT|PROMOTION`; `audience` is `ACTIVE|VERIFIED|ALL`.
+- `POST /admin/notifications/broadcasts` — Body: `{title, body, category, audience?, route?, scheduledAt?, sendNow?}`. `title` ≤120 chars, `body` ≤500 chars, `route` must be an in-app path. `sendNow` defaults true; when false a future `scheduledAt` is required. Identical immediate broadcasts from the same admin within 10 minutes return `409`. Returns `201` with the announcement and audience counts.
+- `GET /admin/notifications/broadcasts?status=&page=&limit=` — Paginated history.
+- `GET /admin/notifications/broadcasts/:id` — Detail plus the latest 100 delivery rows (provider/status/error; never tokens).
+- `POST /admin/notifications/broadcasts/:id/cancel` — Cancels a `DRAFT`, `SCHEDULED` or `SENDING` broadcast and skips unsent rows; `409` otherwise.
+
+Delivery runs through the existing push worker (`src/jobs/push-delivery.ts`): Expo
+sends are chunked to 100 per request and paced under Expo's 600/s guideline; FCM
+sends are concurrency-limited. Invalid tokens are cleared, and Expo receipts are
+checked after the provider delay. Schedule delivery requires the worker to be
+running (it is initialized in `src/server.ts`). Full guide:
+`docs/admin-broadcasts.md`.
 
 ## 11. Admin community content and YouTube access
 

@@ -103,6 +103,7 @@ const contactEntrySchema = z.union([
     phoneNumber: z.string().min(1).optional(),
     hash: z.string().min(1).optional(),
     phoneHash: z.string().min(1).optional(),
+    email: z.string().email().optional(),
   }),
 ]);
 

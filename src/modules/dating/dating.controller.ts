@@ -297,8 +297,7 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
       return fail(res, 404, "Dating profile not found. Initialize it first.");
     }
 
-    const hasCoords =
-      typeof body.locationLat === "number" && typeof body.locationLng === "number";
+    const hasCoords = typeof body.locationLat === "number" && typeof body.locationLng === "number";
     const clearedCoords = body.locationLat === null || body.locationLng === null;
 
     const preference = await prisma.discoveryPreference.upsert({
