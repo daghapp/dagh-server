@@ -5,6 +5,7 @@ import {
   hashPhoneCandidates,
   hashPhoneNumber,
   normalizePhoneNumber,
+  phoneDigitCandidates,
 } from "../../helpers/phoneHash.js";
 import * as deepLinkService from "../deep-links/deep-link.service.js";
 
@@ -70,23 +71,65 @@ export async function syncPhoneHashVariants(
   const hashes = hashPhoneCandidates(phone);
   if (hashes.length === 0) return;
 
-  await prisma.phoneHashVariant.deleteMany({ where: { userId } });
-  await prisma.phoneHashVariant.createMany({
-    data: hashes.map((hash) => ({ userId, hash })),
-    skipDuplicates: true,
-  });
+  try {
+    await prisma.phoneHashVariant.deleteMany({ where: { userId } });
+    await prisma.phoneHashVariant.createMany({
+      data: hashes.map((hash) => ({ userId, hash })),
+      skipDuplicates: true,
+    });
+  } catch (error) {
+    // Best-effort: table may be missing before migration; hash columns still work.
+    console.warn("[contacts] failed to sync phone hash variants", { userId, error });
+  }
+}
+
+function pushPhone(out: string[], value: unknown): void {
+  if (typeof value !== "string") return;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes("@")) return;
+  out.push(trimmed);
+}
+
+function pushEmail(out: string[], value: unknown): void {
+  if (typeof value !== "string") return;
+  const trimmed = value.trim().toLowerCase();
+  if (/^[^@\s]+@[^@\s]+$/.test(trimmed)) out.push(trimmed);
 }
 
 function extractPhones(contacts: Array<ContactInput | string>): string[] {
   const out: string[] = [];
   for (const c of contacts || []) {
     if (typeof c === "string") {
-      if (!c.includes("@")) out.push(c);
-    } else if (c) {
-      if (c.phone) out.push(c.phone);
-      else if (c.phoneNumber) out.push(c.phoneNumber);
-      else if (c.hash) out.push(c.hash);
-      else if (c.phoneHash) out.push(c.phoneHash);
+      pushPhone(out, c);
+      continue;
+    }
+    if (!c || typeof c !== "object") continue;
+    const record = c as Record<string, unknown>;
+
+    for (const key of ["phone", "phoneNumber", "number", "digits", "hash", "phoneHash"]) {
+      pushPhone(out, record[key]);
+    }
+
+    const phoneNumbers = record.phoneNumbers;
+    if (Array.isArray(phoneNumbers)) {
+      for (const entry of phoneNumbers) {
+        if (typeof entry === "string") pushPhone(out, entry);
+        else if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          pushPhone(out, r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits);
+        }
+      }
+    }
+
+    const phones = record.phones;
+    if (Array.isArray(phones)) {
+      for (const entry of phones) {
+        if (typeof entry === "string") pushPhone(out, entry);
+        else if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          pushPhone(out, r.number ?? r.phone ?? r.phoneNumber ?? r.value ?? r.digits);
+        }
+      }
     }
   }
   return out;
@@ -100,18 +143,26 @@ function extractEmails(contacts: Array<ContactInput | string>): string[] {
   const out: string[] = [];
   for (const c of contacts || []) {
     if (typeof c === "string") {
-      if (c.includes("@")) out.push(c);
-    } else if (c && typeof c.email === "string") {
-      out.push(c.email);
+      pushEmail(out, c);
+      continue;
+    }
+    if (!c || typeof c !== "object") continue;
+    const record = c as Record<string, unknown>;
+
+    pushEmail(out, record.email);
+
+    const emails = record.emails;
+    if (Array.isArray(emails)) {
+      for (const entry of emails) {
+        if (typeof entry === "string") pushEmail(out, entry);
+        else if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          pushEmail(out, r.email ?? r.address ?? r.value);
+        }
+      }
     }
   }
-  return Array.from(
-    new Set(
-      out
-        .map((email) => email.trim().toLowerCase())
-        .filter((email) => /^[^@\s]+@[^@\s]+$/.test(email)),
-    ),
-  );
+  return Array.from(new Set(out));
 }
 
 /**
@@ -183,26 +234,60 @@ export async function findContactUsers(
     return { users: [], totalContacts };
   }
 
-  const or: Prisma.UserWhereInput[] = [];
-  if (lookupHashes.length > 0) {
-    or.push({ phoneNumberHash: { in: lookupHashes } }, { phoneHash: { in: lookupHashes } });
-    // Pre-hashed contacts cannot be expanded by the server; the variants table
-    // stores every plausible form for each user so these still match.
-    or.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
-  }
-  if (emails.length > 0) {
-    or.push({ email: { in: emails, mode: "insensitive" } });
-  }
+  const baseWhere = {
+    id: { not: userId },
+    accountStatus: "ACTIVE" as const,
+    isDeleted: false,
+  };
 
-  const users = await prisma.user.findMany({
-    where: {
-      id: { not: userId },
-      accountStatus: "ACTIVE",
-      isDeleted: false,
-      OR: or,
-    },
-    select: contactUserSelect,
-  });
+  const lookupDigits = Array.from(
+    new Set(
+      extractPhones(contacts)
+        .flatMap((p) => {
+          const trimmed = p.trim();
+          if (/^[a-f0-9]{64}$/i.test(trimmed)) return [];
+          return phoneDigitCandidates(trimmed);
+        })
+        .filter(Boolean),
+    ),
+  );
+
+  const buildOr = (includeVariants: boolean): Prisma.UserWhereInput[] => {
+    const clauses: Prisma.UserWhereInput[] = [];
+    if (lookupHashes.length > 0) {
+      clauses.push({ phoneNumberHash: { in: lookupHashes } }, { phoneHash: { in: lookupHashes } });
+      if (includeVariants) {
+        // Pre-hashed contacts cannot be expanded by the server; the variants table
+        // stores every plausible form for each user so these still match.
+        clauses.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
+      }
+    }
+    if (lookupDigits.length > 0) {
+      // Fallback for accounts missing/corrupt hashes: compare stored phone digits.
+      clauses.push({ phoneNumber: { in: lookupDigits } });
+    }
+    if (emails.length > 0) {
+      clauses.push({ email: { in: emails, mode: "insensitive" } });
+    }
+    return clauses;
+  };
+
+  let users: ContactUser[];
+  try {
+    users = await prisma.user.findMany({
+      where: { ...baseWhere, OR: buildOr(true) },
+      select: contactUserSelect,
+    });
+  } catch (error) {
+    // Variants table may be unavailable before migration; fall back to hash columns.
+    console.warn("[contacts] variant lookup failed, retrying without variants", error);
+    const fallbackOr = buildOr(false);
+    if (fallbackOr.length === 0) return { users: [], totalContacts };
+    users = await prisma.user.findMany({
+      where: { ...baseWhere, OR: fallbackOr },
+      select: contactUserSelect,
+    });
+  }
 
   const blocked = await blockedUserIds(
     userId,
