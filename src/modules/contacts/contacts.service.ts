@@ -534,7 +534,13 @@ export async function getContactMatches(userId: string): Promise<ContactMatch[]>
       userId,
       matchedUser: {
         isDeleted: false,
-        accountStatus: { notIn: ["SUSPENDED", "TERMINATED", "DEACTIVATED"] as any },
+        accountStatus: {
+          notIn: [
+            "SUSPENDED" as const,
+            "TERMINATED" as const,
+            "DEACTIVATED" as const,
+          ] as ("SUSPENDED" | "TERMINATED" | "DEACTIVATED")[],
+        },
         blockedUsers: { none: { blockedId: userId } },
         blockedBy: { none: { blockerId: userId } },
       },
