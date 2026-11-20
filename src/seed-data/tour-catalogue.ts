@@ -4,6 +4,7 @@ import { baseTourSites } from "./base-tour-sites.js";
 import { extraTourSites } from "./ghana-tour-sites.js";
 import { siteHistories } from "./ghana-tour-site-histories.js";
 import { siteImages, type SiteImageDetail } from "./ghana-tour-site-images.js";
+import { uniqueSiteImages } from "./ghana-tour-site-images-unique.js";
 
 /**
  * The complete Ghana tour-site catalogue used by both the demo seed and the
@@ -12,13 +13,15 @@ import { siteImages, type SiteImageDetail } from "./ghana-tour-site-images.js";
  * is always derived from the region.
  *
  * Up to 4 images per site are selected from the siteImages gallery; if a site
- * has fewer than 4 images, only the available images are rendered.
+ * has fewer than 4 images, only the available images are rendered. The
+ * uniqueSiteImages overrides take precedence so shared fallback photos are not
+ * reused across different destinations.
  */
 export const tourSiteCatalogue: Prisma.TourSiteCreateInput[] = [
   ...baseTourSites,
   ...extraTourSites,
 ].map((site) => {
-  const rawImage = siteImages[site.name];
+  const rawImage = uniqueSiteImages[site.name] ?? siteImages[site.name];
   const imageGallery: SiteImageDetail[] = Array.isArray(rawImage)
     ? rawImage
     : rawImage

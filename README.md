@@ -481,8 +481,10 @@ Verification flows: phone OTP → `bio_profile_url` (face scan) → `bio_documen
 
 #### Destination detail content
 
-Every `TourSite` carries `history`, `imageUrl` and `imageCredit` for the frontend destination-detail page
-(the seed fills all 156 sites across the 16 regions). A moderated gallery sits alongside the hero image:
+Every `TourSite` carries `history`, `imageUrl` and `imageCredit` for the frontend destination-detail page.
+The seed fills all 156 sites across the 16 regions with a distinct hero image per site, so cards never
+reuse the same photo. Sites without a suitable licensed photo use a unique Wikimedia Maps location image.
+A moderated gallery sits alongside the hero image:
 
 | Method | Endpoint                             | Auth   | Description                                                   |
 | ------ | ------------------------------------ | ------ | ------------------------------------------------------------- |
@@ -913,7 +915,7 @@ references are capped at 36 characters to satisfy Hubtel's validation.
 | Method | Endpoint  | Auth   | Description                |
 | ------ | --------- | ------ | -------------------------- |
 | POST   | `/upload` | Bearer | Upload image to Cloudinary |
-| GET    | `/media/images` | Public | Caching image proxy for supported upstream sources (`url`, `w`); falls back to a placeholder SVG |
+| GET    | `/media/images` | Public | Caching image proxy for Wikimedia Commons/Maps, Unsplash, Google Places and Cloudinary (`url`, `w`); falls back to a placeholder SVG |
 | GET    | `/media/images/placeholder` | Public | Placeholder SVG for missing/broken images |
 
 ### Providers

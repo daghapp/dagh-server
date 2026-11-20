@@ -6,6 +6,7 @@ import path from "node:path";
 export const ALLOWED_IMAGE_HOSTS = new Set([
   "upload.wikimedia.org",
   "thumb.wikimedia.org",
+  "maps.wikimedia.org",
   "images.unsplash.com",
   "places.googleapis.com",
   "res.cloudinary.com",

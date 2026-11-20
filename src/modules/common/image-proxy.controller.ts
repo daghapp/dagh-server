@@ -86,9 +86,16 @@ export class ImageProxyController {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
+      // Wikimedia's map renderer rejects requests without a user agent and
+      // referer, so send both for every upstream (they are ignored by the
+      // photo hosts and harmless there).
       const upstream = await fetch(sourceUrl, {
         signal: controller.signal,
         redirect: "follow",
+        headers: {
+          "User-Agent": "DAGH-Image-Proxy/1.0 (tour catalogue images)",
+          Referer: "https://www.wikipedia.org/",
+        },
       });
       if (!upstream.ok) throw new Error(`upstream status ${upstream.status}`);
       const contentType = upstream.headers.get("content-type") || "application/octet-stream";

@@ -134,7 +134,7 @@ device store; `403` if the account is no longer active; `404` if the user is gon
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| GET | `/media/images` | Public | Caching proxy for supported upstream sources (Wikimedia, Unsplash, Google Places, Cloudinary). Query: `url` (source URL), `w` (target width, default 800). Returns image bytes with long-lived cache headers; falls back to a placeholder SVG on upstream failure or disallowed host. |
+| GET | `/media/images` | Public | Caching proxy for supported upstream sources (Wikimedia Commons/Maps, Unsplash, Google Places, Cloudinary). Query: `url` (source URL), `w` (target width, default 800). Returns image bytes with long-lived cache headers; falls back to a placeholder SVG on upstream failure or disallowed host. Wikimedia Maps URLs require the proxy's upstream `User-Agent` and `Referer` headers, so call the proxy rather than the map host directly. |
 | GET | `/media/images/placeholder` | Public | Placeholder SVG for missing/broken images. |
 
 ---
@@ -305,9 +305,10 @@ user-submitted tour sites with admin approval (§3).
 
 Every tour site row exposes `history`, `imageUrl` and `imageCredit` for the
 destination-detail page. The seed populates all 156 sites across the 16 regions
-and inserts one APPROVED gallery photo per site (idempotency marker
-`publicId=seed-gallery:<name>`), so `GET /tour-sites/:siteId/photos` is never
-empty out of the box.
+with a distinct hero image per site; sites without a suitable licensed photo use
+a unique Wikimedia Maps static location image. It also inserts one APPROVED
+gallery photo per site (idempotency marker `publicId=seed-gallery:<name>`), so
+`GET /tour-sites/:siteId/photos` is never empty out of the box.
 
 ### Community experiences (§4)
 
@@ -338,7 +339,7 @@ empty out of the box.
 
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
-| GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker) — full rows including `history`, `imageUrl`, `imageCredit`. |
+| GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker) — full rows including `history`, `imageUrl`, `imageCredit`; every seeded site has a distinct image. |
 | GET | `/itinerary/sites/:siteId/mobility` | Public | Mobility options for one site (§2): ride-hailing availability by transit profile, STC/VIP intercity coaches, trotro corridors, nearest airport, verified car rentals. Query: `transportType` (optional) prefers a car-rental category. |
 | POST | `/itinerary/request` | Bearer | Create a custom tour request (site + preferences; `casualDatingInterest` opts into dating recommendations and requires KYC). |
 | GET | `/itinerary/my-itineraries` | Bearer | List the user's generated itineraries. Provider catalogues and dating selections load once per request, with bounded DB concurrency. |

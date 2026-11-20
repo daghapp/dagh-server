@@ -17,9 +17,11 @@ All endpoints are relative to the API host (for example
 ```
 
 The catalogue is **156 seeded sites across all 16 regions**. Every seeded site
-has `history`, `imageUrl` and `imageCredit`, and one approved gallery photo.
-Gallery items can also be user experiences: a caption, an optional image, or
-both.
+has `history`, `imageUrl` and `imageCredit`, a **distinct hero image**, and one
+approved gallery photo. Obscure sites without a suitable licensed photo use a
+unique Wikimedia Maps static location image rather than borrowing another
+site's photo. Gallery items can also be user experiences: a caption, an
+optional image, or both.
 
 ---
 
@@ -63,7 +65,7 @@ Rendering rules:
 
 - `history` is long-form text for the detail page. Render it when present and
   fall back to `description` when it is `null`.
-- `imageUrl` is the hero image. Show a placeholder when it is `null`. Image URLs may be served through the server's caching image proxy (`/media/images`) for supported sources (Wikimedia, Unsplash, Google Places, Cloudinary) to improve load times and provide a fallback placeholder; unsupported sources are returned as-is.
+- `imageUrl` is the hero image. Show a placeholder when it is `null`. Image URLs may be served through the server's caching image proxy (`/media/images`) for supported sources (Wikimedia Commons/Maps, Unsplash, Google Places, Cloudinary) to improve load times and provide a fallback placeholder; unsupported sources are returned as-is. The proxy supplies the `User-Agent` and `Referer` that Wikimedia Maps requires, so do not call `maps.wikimedia.org` directly.
 - `imageCredit` is attribution text (for example `"Wikimedia Commons"`). Render
   it only when present, typically as a small caption under the hero or in the
   lightbox.
@@ -523,10 +525,11 @@ public and can be cached briefly.
 - **Newly approved sites and galleries:** approving a `PendingSite` copies its
   image to `TourSite.imageUrl`, but does not create a gallery row immediately.
   The next catalogue sync adds one.
-- **Seeded images are illustrative in a few cases:** the catalogue uses
-  Wikimedia Commons URLs with a generic `"Wikimedia Commons"` credit. Some
-  obscure sites use a representative regional/category photo; do not treat the
-  image as a guarantee of the exact location.
+- **Every seeded site has a distinct image:** the catalogue no longer reuses
+  one photo across a region/category. Sites with a suitable licensed photo use
+  it; obscure sites use a unique Wikimedia Maps static location image with a
+  `"Wikimedia Maps"` credit. Treat map images as location context, not as a
+  photograph of the site itself.
 - **No site-by-id endpoint:** deep links must resolve the id against
   `GET /itinerary/sites` (or pass the row through navigation state).
 - **Google Maps key:** not required by any of these endpoints. The current

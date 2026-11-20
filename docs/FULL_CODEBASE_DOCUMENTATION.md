@@ -646,7 +646,9 @@ User selects tour → POST /tours/bookings or /tours/initiate-booking-momo
 | GET    | `/itinerary/:tourRequestId`         | Yes  | Get specific itinerary    |
 
 Every `TourSite` also exposes `history`, `imageUrl` and `imageCredit` for the
-destination-detail page, and each site has a moderated experience gallery
+destination-detail page, and each site has a distinct hero image: licensed
+photos where available, otherwise a unique Wikimedia Maps static location
+image. Each site also has a moderated experience gallery
 (`GET /tour-sites/:siteId/photos`). Gallery items accept a caption and an
 optional image, so users can post text-only experiences; owners can edit or
 delete their own submissions (edits return to `PENDING`).

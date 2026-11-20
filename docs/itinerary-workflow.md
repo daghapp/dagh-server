@@ -166,7 +166,10 @@ site-picker list/map.
 `transit_profile` is one of:
 `URBAN_CENTER | PERI_URBAN | RURAL` (drives which transport is suggested).
 
-`history` and `imageCredit` (with `imageUrl`) are the destination-detail fields;
+`history` and `imageCredit` (with `imageUrl`) are the destination-detail fields.
+Every seeded site has a distinct `imageUrl`, so repeated photo cards are not
+expected; obscure sites without a suitable licensed photo use a unique
+Wikimedia Maps static location image instead of borrowing another site's photo.
 `GET /tour-sites/:siteId/photos` returns the site's moderated gallery, which the
 seed pre-populates with one approved photo per site.
 

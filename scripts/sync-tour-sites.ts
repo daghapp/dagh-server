@@ -3,7 +3,9 @@
  *
  * Unlike `npm run db:seed`, this only touches `tour_sites`: it inserts missing
  * catalogue entries and fills content gaps (`history`, `imageUrl`,
- * `imageCredit`) on existing rows. Admin-edited values are never overwritten.
+ * `imageCredit`) on existing rows. Admin-edited values are never overwritten,
+ * except by the explicit unique-image overrides that replace shared fallback
+ * photos.
  *
  * Usage:
  *   DATABASE_URL="postgresql://..." npx tsx scripts/sync-tour-sites.ts
@@ -11,6 +13,7 @@
  */
 import { prisma } from "../src/config/index.js";
 import { tourSiteCatalogue } from "../src/seed-data/tour-catalogue.js";
+import { uniqueSiteImages } from "../src/seed-data/ghana-tour-site-images-unique.js";
 import { optimizeImageUrl } from "../src/helpers/image-url.js";
 
 const REGIONS = [
@@ -59,8 +62,13 @@ async function main() {
       imageCredit?: string | null;
     } = {};
     if (!current.history && site.history) patch.history = site.history;
-    if (!current.imageUrl && site.imageUrl) patch.imageUrl = site.imageUrl;
-    if (!current.imageCredit && site.imageCredit) patch.imageCredit = site.imageCredit;
+    if (uniqueSiteImages[site.name]) {
+      if (current.imageUrl !== site.imageUrl) patch.imageUrl = site.imageUrl;
+      if (current.imageCredit !== site.imageCredit) patch.imageCredit = site.imageCredit;
+    } else {
+      if (!current.imageUrl && site.imageUrl) patch.imageUrl = site.imageUrl;
+      if (!current.imageCredit && site.imageCredit) patch.imageCredit = site.imageCredit;
+    }
 
     if (Object.keys(patch).length > 0) {
       if (!dryRun) {
@@ -81,15 +89,25 @@ async function main() {
     const marker = `seed-gallery:${site.name}`;
     const existingPhoto = await prisma.sitePhoto.findFirst({
       where: { tourSiteId: site.id, publicId: marker },
-      select: { id: true },
+      select: { id: true, url: true },
     });
-    if (existingPhoto) continue;
+    if (existingPhoto) {
+      if (uniqueSiteImages[site.name] && existingPhoto.url !== site.imageUrl) {
+        if (!dryRun) {
+          await prisma.sitePhoto.update({
+            where: { id: existingPhoto.id },
+            data: { url: site.imageUrl, thumbUrl: optimizeImageUrl(site.imageUrl, 400) },
+          });
+        }
+      }
+      continue;
+    }
     if (!dryRun) {
       await prisma.sitePhoto.create({
         data: {
           tourSiteId: site.id,
-           url: site.imageUrl,
-           thumbUrl: optimizeImageUrl(site.imageUrl, 400),
+          url: site.imageUrl,
+          thumbUrl: optimizeImageUrl(site.imageUrl, 400),
           publicId: marker,
           status: "APPROVED",
           moderatedAt: new Date(),

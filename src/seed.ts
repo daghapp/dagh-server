@@ -5,6 +5,7 @@ import { prisma } from "./config/prisma.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { deriveTransitProfile } from "./helpers/transit-profile.js";
 import { tourSiteCatalogue } from "./seed-data/tour-catalogue.js";
+import { uniqueSiteImages } from "./seed-data/ghana-tour-site-images-unique.js";
 import {
   AccountStatus,
   AccountType,
@@ -2205,9 +2206,19 @@ async function seedSitePhotoGalleries() {
     const marker = `seed-gallery:${site.name}`;
     const existing = await prisma.sitePhoto.findFirst({
       where: { tourSiteId: site.id, publicId: marker },
-      select: { id: true },
+      select: { id: true, url: true },
     });
-    if (existing) continue;
+    if (existing) {
+      // Keep the seeded gallery aligned when a unique-image override replaces
+      // the previously shared hero photo.
+      if (uniqueSiteImages[site.name] && existing.url !== site.imageUrl) {
+        await prisma.sitePhoto.update({
+          where: { id: existing.id },
+          data: { url: site.imageUrl, thumbUrl: site.imageUrl },
+        });
+      }
+      continue;
+    }
 
     await prisma.sitePhoto.create({
       data: {
@@ -2243,11 +2254,18 @@ async function main() {
       continue;
     }
 
-    // Fill content gaps on existing rows without overwriting admin edits.
+    // Fill content gaps on existing rows without overwriting admin edits. The
+    // unique-image overrides are the exception: they exist precisely to replace
+    // a shared fallback photo that makes different cards look identical.
     const patch: Prisma.TourSiteUpdateInput = {};
     if (!existing.history && site.history) patch.history = site.history;
-    if (!existing.imageUrl && site.imageUrl) patch.imageUrl = site.imageUrl;
-    if (!existing.imageCredit && site.imageCredit) patch.imageCredit = site.imageCredit;
+    if (uniqueSiteImages[site.name]) {
+      if (existing.imageUrl !== site.imageUrl) patch.imageUrl = site.imageUrl;
+      if (existing.imageCredit !== site.imageCredit) patch.imageCredit = site.imageCredit;
+    } else {
+      if (!existing.imageUrl && site.imageUrl) patch.imageUrl = site.imageUrl;
+      if (!existing.imageCredit && site.imageCredit) patch.imageCredit = site.imageCredit;
+    }
 
     if (Object.keys(patch).length > 0) {
       await prisma.tourSite.update({ where: { id: existing.id }, data: patch });
