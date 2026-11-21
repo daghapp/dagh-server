@@ -35,7 +35,7 @@ export class KYCVerificationError extends Error {
     super(message);
     this.name = "KYCVerificationError";
     this.statusCode = 403;
-    this.code = "KYV_VERIFICATION_REQUIRED";
+    this.code = "KYC_VERIFICATION_REQUIRED";
     this.currentStep = currentStep;
     this.details = details;
   }

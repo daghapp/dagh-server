@@ -3,6 +3,7 @@ import { prisma } from "../../config/index.js";
 import type { PostBioDocumentInput } from "../../validator/profile-bio-document-validator.js";
 import type { BioDocumentType } from "../../../generated/prisma/client.js";
 import { ok, fail } from "../../helpers/response.js";
+import { ensureUserProfile } from "../../helpers/ensure-user-profile.js";
 
 export async function postBioDocument(req: Request, res: Response) {
   try {
@@ -13,14 +14,7 @@ export async function postBioDocument(req: Request, res: Response) {
 
     const body = req.body as PostBioDocumentInput;
 
-    const existingProfile = await prisma.userProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-
-    if (!existingProfile) {
-      return fail(res, 404, "Profile not found. Please initialize your profile first.");
-    }
+    await ensureUserProfile(userId);
 
     const existingDoc = await prisma.userProfile.findUnique({
       where: { bio_document_number: body.bio_document_number },

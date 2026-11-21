@@ -11,6 +11,7 @@ import { randomInt } from "crypto";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { ok, fail } from "../../helpers/response.js";
+import { ensureUserProfile } from "../../helpers/ensure-user-profile.js";
 
 export class ProfileVerificationController {
   async sendPhoneOtpForVerification(req: Request, res: Response) {
@@ -22,13 +23,7 @@ export class ProfileVerificationController {
     try {
       const body = req.body as SendPhoneOtpSchema;
 
-      const profile = await prisma.userProfile.findUnique({
-        where: { userId },
-      });
-
-      if (!profile) {
-        return fail(res, 404, "Profile not found");
-      }
+      const profile = await ensureUserProfile(userId);
 
       const phoneNumberFromRequest = body.phoneNumber as string | undefined;
       const phoneNumberFromProfile = profile.phoneNumber ?? null;
@@ -141,14 +136,11 @@ export class ProfileVerificationController {
     try {
       const body = req.body as VerifyPhoneOtpSchema;
 
-      const profile = await prisma.userProfile.findUnique({
-        where: { userId },
-        include: { user: { select: { email: true } } },
+      const profile = await ensureUserProfile(userId);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
       });
-
-      if (!profile) {
-        return fail(res, 404, "Profile not found");
-      }
 
       const existingVerification = await prisma.profileVerification.findUnique({
         where: { userProfileId: profile.id },
@@ -174,7 +166,7 @@ export class ProfileVerificationController {
       }
 
       // Scope OTP to the authenticated user — reject if the challenge belongs to a different account
-      if (otpRecord.email !== profile.user?.email) {
+      if (otpRecord.email !== user?.email) {
         console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", { userId, challengeId });
         return fail(res, 404, { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" });
       }

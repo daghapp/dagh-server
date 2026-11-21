@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import { ensureUserProfile } from "../../helpers/ensure-user-profile.js";
 
 export async function postBioProfileUrl(req: Request, res: Response) {
   try {
@@ -14,14 +15,7 @@ export async function postBioProfileUrl(req: Request, res: Response) {
       return fail(res, 400, "bio_profile_url is required");
     }
 
-    const existingProfile = await prisma.userProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-
-    if (!existingProfile) {
-      return fail(res, 404, "Profile not found. Please initialize your profile first.");
-    }
+    await ensureUserProfile(userId);
 
     const updated = await prisma.userProfile.update({
       where: { userId },
