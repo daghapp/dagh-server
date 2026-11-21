@@ -11,6 +11,7 @@
  *   DATABASE_URL="postgresql://..." npx tsx scripts/sync-tour-sites.ts
  *   DATABASE_URL="postgresql://..." npx tsx scripts/sync-tour-sites.ts --dry-run
  */
+import { pathToFileURL } from "node:url";
 import { prisma } from "../src/config/index.js";
 import { tourSiteCatalogue } from "../src/seed-data/tour-catalogue.js";
 import { uniqueSiteImages } from "../src/seed-data/ghana-tour-site-images-unique.js";
@@ -36,8 +37,7 @@ const REGIONS = [
   "Upper West",
 ];
 
-async function main() {
-  const dryRun = process.argv.includes("--dry-run");
+export async function syncTourSites(dryRun = process.argv.includes("--dry-run")) {
   console.log(`${dryRun ? "[dry-run] " : ""}Syncing ${tourSiteCatalogue.length} tour sites...`);
 
   const existing = await prisma.tourSite.findMany({
@@ -155,11 +155,13 @@ async function main() {
   if (missingRegions.length > 0) console.log(`Missing regions: ${missingRegions.join(", ")}`);
 }
 
-main()
-  .catch((error) => {
-    console.error("Tour-site sync failed:", error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  syncTourSites()
+    .catch((error) => {
+      console.error("Tour-site sync failed:", error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

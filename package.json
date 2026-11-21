@@ -6,7 +6,7 @@
     "dev": "nodemon",
     "build": "prisma generate && tsc && npm run build:views",
     "build:views": "node -e \"require('fs').cpSync('src/views','dist/src/views',{recursive:true})\"",
-    "start": "node dist/scripts/sync-tour-sites.js || echo '[start] tour-site sync failed; continuing'; node dist/src/index.js",
+    "start": "node dist/src/index.js",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:sync-sites": "tsx scripts/sync-tour-sites.ts",
     "sentry:sourcemaps": "test -n \"$SENTRY_AUTH_TOKEN\" && sentry-cli sourcemaps upload --org \"$SENTRY_ORG\" --project \"$SENTRY_PROJECT\" --release \"$SENTRY_RELEASE\" dist/src || echo 'Sentry sourcemap upload skipped (SENTRY_AUTH_TOKEN not set)'",

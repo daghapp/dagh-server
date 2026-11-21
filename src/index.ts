@@ -1,7 +1,12 @@
 import "./instrument.js";
 import { server } from "./server.js";
+import { syncTourSites } from "../scripts/sync-tour-sites.js";
 
 const PORT = process.env.PORT || 5000;
+
+void syncTourSites().catch((error) => {
+  console.error("[startup] tour-site sync failed; continuing", error);
+});
 
 const httpServer = server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
