@@ -192,6 +192,7 @@ router.patch("/", protectedRoute, validate(profileSettingsSchema), updateOwnProf
  *         description: Username already taken
  */
 router.get("/account", protectedRoute, getAccountProfile);
+router.get("/me", protectedRoute, getAccountProfile);
 router.patch("/account", protectedRoute, validate(accountProfileSchema), updateAccountProfile);
 
 // ─────────────────────────────────────────

@@ -257,6 +257,7 @@ router.post(
  *         description: Unauthorized
  */
 router.get("/my-subscription", protectedRoute, controller.getMySubscription.bind(controller));
+router.get("/subscription", protectedRoute, controller.getMySubscription.bind(controller));
 
 /**
  * @swagger
