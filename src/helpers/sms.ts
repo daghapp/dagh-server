@@ -17,16 +17,33 @@ export async function sendSms({ to, message }: SmsPayload): Promise<void> {
   }
 
   const url = "https://smsc.hubtel.com/v1/messages/send";
-  await axios.get(url, {
-    params: {
-      clientid: clientId,
-      clientsecret: clientSecret,
-      from: sender,
-      to,
-      content: message,
-    },
-    timeout: 15000,
-  });
+  try {
+    await axios.get(url, {
+      params: {
+        clientid: clientId,
+        clientsecret: clientSecret,
+        from: sender,
+        to,
+        content: message,
+      },
+      timeout: 15000,
+    });
+  } catch (err: any) {
+    if (err.response) {
+      // Hubtel returned a non-2xx response — log the body for diagnosis.
+      console.error("[HUBTEL_ERROR]", {
+        status: err.response.status,
+        data: err.response.data,
+        to,
+        sender,
+      });
+    } else if (err.request) {
+      console.error("[HUBTEL_NO_RESPONSE]", { to, sender, message: err.message });
+    } else {
+      console.error("[HUBTEL_REQUEST_ERROR]", { to, sender, message: err.message });
+    }
+    throw err;
+  }
 }
 
 export const sendSMS = sendSms;

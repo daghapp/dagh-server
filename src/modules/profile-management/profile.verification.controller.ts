@@ -97,8 +97,12 @@ export class ProfileVerificationController {
           message: `Your Diaspora Sync verification code is: ${otp}. It expires in 10 minutes.`,
         });
       } catch (smsError) {
-        console.error("[SMS_SEND_ERROR]", smsError);
-        return fail(res, 502, "Failed to deliver verification code. Please try again.");
+        console.error("[SMS_SEND_ERROR]", { to: phoneNormalized, error: smsError });
+        return fail(
+          res,
+          502,
+          "Failed to deliver verification code. Please use international format (e.g. +233501234567) and try again.",
+        );
       }
 
       const otpResult = { challengeId: otpRecord.id, expiresAt: expirationTime };
