@@ -23,6 +23,7 @@ import {
 import * as paymentService from "../../services/payment.service.js";
 import { paymentStatusFromHubtel } from "../../helpers/payment.js";
 import { ok, created, fail, paginated } from "../../helpers/response.js";
+import { optimizeImageUrl } from "../../helpers/image-url.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
 import { hasServiceFeeWaiver } from "../../helpers/membership.js";
 import { getCategoryAlbum, getRegionAlbum, listAlbums } from "./tour-album.service.js";
@@ -88,7 +89,11 @@ export class UserTourController {
         prisma.tour_packages.count({ where }),
       ]);
 
-      return paginated(res, tours, total, pageNum, limitNum);
+      const optimized = tours.map((tour) => ({
+        ...tour,
+        coverImage: optimizeImageUrl(tour.coverImage, 800),
+      }));
+      return paginated(res, optimized, total, pageNum, limitNum);
     } catch (error) {
       console.error("Error fetching tours:", error);
       return fail(res, 500, "Failed to fetch tours");
@@ -650,7 +655,19 @@ export class UserTourController {
         return fail(res, 404, "Tour not found");
       }
 
-      return ok(res, tour, "Tour details retrieved successfully");
+      const optimized = {
+        ...tour,
+        coverImage: optimizeImageUrl(tour.coverImage, 800),
+        tour_locations: tour.tour_locations.map((location) => ({
+          ...location,
+          photos: location.photos.map((photo) => optimizeImageUrl(photo, 800) ?? photo),
+        })),
+        tour_media: tour.tour_media.map((media) => ({
+          ...media,
+          url: optimizeImageUrl(media.url, 800),
+        })),
+      };
+      return ok(res, optimized, "Tour details retrieved successfully");
     } catch (error) {
       console.error("Error fetching tour details:", error);
       return fail(res, 500, "Failed to fetch tour details");

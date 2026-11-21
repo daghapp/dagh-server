@@ -385,7 +385,7 @@ export async function listAlbums(): Promise<{
       regions.set(key, entry);
     }
     entry.siteCount += 1;
-    if (!entry.coverImage && site.imageUrl) entry.coverImage = site.imageUrl;
+    if (!entry.coverImage && site.imageUrl) entry.coverImage = optimizeImageUrl(site.imageUrl, 800);
   }
 
   const byCountThenTitle = <T extends { title: string; siteCount: number }>(a: T, b: T): number =>

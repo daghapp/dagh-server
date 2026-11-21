@@ -8,6 +8,7 @@ export const ALLOWED_IMAGE_HOSTS = new Set([
   "thumb.wikimedia.org",
   "maps.wikimedia.org",
   "images.unsplash.com",
+  "live.staticflickr.com",
   "places.googleapis.com",
   "res.cloudinary.com",
 ]);
