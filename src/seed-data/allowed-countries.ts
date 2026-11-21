@@ -1,40 +1,13 @@
 import type { Prisma } from "../../generated/prisma/client.js";
 
-export const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = [
-  { code: "US", name: "United States" },
-  { code: "CA", name: "Canada" },
-  { code: "MX", name: "Mexico" },
-  { code: "GT", name: "Guatemala" },
-  { code: "BZ", name: "Belize" },
-  { code: "HN", name: "Honduras" },
-  { code: "SV", name: "El Salvador" },
-  { code: "NI", name: "Nicaragua" },
-  { code: "CR", name: "Costa Rica" },
-  { code: "PA", name: "Panama" },
-  { code: "CO", name: "Colombia" },
-  { code: "VE", name: "Venezuela" },
-  { code: "GY", name: "Guyana" },
-  { code: "SR", name: "Suriname" },
-  { code: "BR", name: "Brazil" },
-  { code: "EC", name: "Ecuador" },
-  { code: "PE", name: "Peru" },
-  { code: "BO", name: "Bolivia" },
-  { code: "PY", name: "Paraguay" },
-  { code: "CL", name: "Chile" },
-  { code: "AR", name: "Argentina" },
-  { code: "UY", name: "Uruguay" },
-  { code: "CU", name: "Cuba" },
-  { code: "JM", name: "Jamaica" },
-  { code: "HT", name: "Haiti" },
-  { code: "DO", name: "Dominican Republic" },
-  { code: "BS", name: "Bahamas" },
-  { code: "BB", name: "Barbados" },
-  { code: "TT", name: "Trinidad and Tobago" },
-  { code: "GD", name: "Grenada" },
-  { code: "LC", name: "Saint Lucia" },
-  { code: "VC", name: "Saint Vincent and the Grenadines" },
-  { code: "AG", name: "Antigua and Barbuda" },
-  { code: "DM", name: "Dominica" },
-  { code: "KN", name: "Saint Kitts and Nevis" },
-  { code: "GH", name: "Ghana" },
-];
+const COUNTRY_CODES =
+  "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(
+    " ",
+  );
+
+const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+export const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = COUNTRY_CODES.map((code) => ({
+  code,
+  name: displayNames.of(code) ?? code,
+}));
