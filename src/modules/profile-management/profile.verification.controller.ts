@@ -88,6 +88,9 @@ export class ProfileVerificationController {
       });
 
       // Send the verification code to the phone number via SMS.
+      // A delivery failure must surface to the client: returning success here
+      // would tell the user the OTP was sent when it never reached their phone,
+      // leaving them unable to continue verification.
       try {
         await sendSms({
           to: phoneNormalized,
@@ -95,6 +98,7 @@ export class ProfileVerificationController {
         });
       } catch (smsError) {
         console.error("[SMS_SEND_ERROR]", smsError);
+        return fail(res, 502, "Failed to deliver verification code. Please try again.");
       }
 
       const otpResult = { challengeId: otpRecord.id, expiresAt: expirationTime };
