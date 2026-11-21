@@ -14,8 +14,8 @@ describe("normalizePhone", () => {
     expect(normalizePhone("+233501234567")).toBe("233501234567");
   });
 
-  it("normalizes Ghanaian local format to E.164", () => {
-    expect(normalizePhone("0501234567")).toBe("233501234567");
+  it("normalizes Ghanaian local format", () => {
+    expect(normalizePhone("0501234567")).toBe("0501234567");
   });
 
   it("strips spaces and dashes", () => {
@@ -37,8 +37,8 @@ describe("normalizePhone", () => {
     expect(normalizePhone("+233ABC1234")).toBeNull();
   });
 
-  it("converts 10-digit Ghana local number to E.164", () => {
-    expect(normalizePhone("0501234567")).toBe("233501234567");
+  it("accepts 10-digit local numbers", () => {
+    expect(normalizePhone("0501234567")).toBe("0501234567");
   });
 
   it("accepts 15-digit international numbers", () => {

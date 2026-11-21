@@ -37,20 +37,13 @@ export async function verifyOtp(hashedCode: string, plainCode: string): Promise<
 }
 
 /**
- * Normalize a phone number to E.164 digits-only format.
- * Strips spaces, dashes, parentheses, and leading +.
- * Converts Ghana local numbers (leading 0) to international format (233...).
+ * Normalize a phone number to digits-only format.
+ * Strips spaces, dashes, parentheses, and a leading + (country code preserved).
  * Returns null if the result is not a plausible phone number (10-15 digits).
  */
 export function normalizePhone(phone: string): string | null {
   const digits = phone.replace(/[\s\-()+]/g, "");
   if (!/^\d{10,15}$/.test(digits)) return null;
-
-  // Convert Ghana local format (leading 0) to E.164 international format.
-  if (digits.startsWith("0")) {
-    return "233" + digits.slice(1);
-  }
-
   return digits;
 }
 
