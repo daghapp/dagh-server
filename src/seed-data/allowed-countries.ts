@@ -16,10 +16,12 @@ const pseudoCountryNames: Record<string, string> = {
   ZZ: "Unknown Region",
 };
 
-export const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = COUNTRY_CODES.map((code) => ({
-  code,
-  name: pseudoCountryNames[code] ?? safeDisplayName(code),
-}));
+export const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = COUNTRY_CODES.map(
+  (code) => ({
+    code,
+    name: pseudoCountryNames[code] ?? safeDisplayName(code),
+  }),
+);
 
 function safeDisplayName(code: string) {
   try {

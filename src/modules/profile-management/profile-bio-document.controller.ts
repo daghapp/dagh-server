@@ -56,6 +56,13 @@ export async function postBioDocument(req: Request, res: Response) {
       "Bio documents updated successfully.",
     );
   } catch (error) {
+    if ((error as { code?: string } | null)?.code === "P2002") {
+      return fail(
+        res,
+        409,
+        "This document number has already been used to verify another account.",
+      );
+    }
     console.error("[postBioDocument]", error);
     return fail(res, 500, "Failed to update bio documents.");
   }

@@ -83,6 +83,26 @@ export const recordSwipe = async (req: Request, res: Response) => {
       direction: SwipeDirection;
     };
 
+    try {
+      await requireKYCVerification(swiperId);
+    } catch (error) {
+      if (error instanceof KYCVerificationError) {
+        return fail(
+          res,
+          error.statusCode,
+          {
+            code: error.code,
+            message: error.message,
+            nextStep: error.currentStep,
+            completedSteps: error.details.completedSteps,
+            requiredSteps: error.details.requiredSteps,
+          },
+          { action: "COMPLETE_VERIFICATION", redirect: "/verification" },
+        );
+      }
+      throw error;
+    }
+
     if (swiperId === targetId) {
       return fail(res, 400, "You cannot swipe on yourself");
     }

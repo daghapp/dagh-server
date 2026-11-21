@@ -196,15 +196,15 @@ Settings "Basic Info" and "Cultural Background" steps). All fields optional.
 | Method | Endpoint | Auth | What it does |
 |--------|----------|------|--------------|
 | POST | `/verification/init` | Bearer | Initialize the verification profile (idempotent). |
-| POST | `/verification/phone/send-otp` | Bearer | Save/normalize the phone number and email a 6-digit OTP. |
-| POST | `/verification/phone/verify-otp` | Bearer | Validate the 6-digit code; marks phone step verified. |
-| POST | `/verification/bio_profile_url` | Bearer | Save the face-scan image URL; advance to document step. |
+| POST | `/verification/phone/send-otp` | Bearer | Save/normalize the phone number and SMS a 6-digit OTP via Hubtel. |
+| POST | `/verification/phone/verify-otp` | Bearer | Validate `challengeId` + `code` (or legacy `phoneNumber` + `code`). |
+| POST | `/verification/bio_profile_url` | Bearer | Save the face-scan image URL; face approval still requires admin review. |
 | POST | `/verification/bio_document_urls` | Bearer | Save document images + type; enter pending review. |
 | GET | `/verification/status` | Bearer | Full verification status (per-step `PENDING / VERIFIED / REJECTED`, current step, completed steps). |
 | GET | `/verification/validation-step/status` | Bearer | Poll current step and its `PENDING / VERIFIED / REJECTED` status. |
 
-The OTP arrives **by email** (subject "Phone Verification OTP", 10-minute expiry).
-Phone numbers are normalized (whitespace + leading `+` stripped).
+The OTP arrives **by SMS via Hubtel** (10-minute expiry). Phone numbers are
+normalized (whitespace + leading `+` stripped).
 
 ```json
 // POST /verification/bio_document_urls
@@ -218,6 +218,8 @@ Phone numbers are normalized (whitespace + leading `+` stripped).
   "success": true,
   "data": {
     "profileExists": true,
+    "verificationProfileExists": true,
+    "datingProfileExists": false,
     "isVerified": false,
     "currentStep": "DOCUMENT_VERIFICATION",
     "verificationMessage": null,

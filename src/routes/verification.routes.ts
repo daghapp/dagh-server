@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request } from "express";
 import protectedRoute from "../middleware/protected.js";
 import { validate } from "../middleware/validation.js";
 import { ProfileVerificationController } from "../modules/profile-management/profile.verification.controller.js";
@@ -18,13 +18,21 @@ import rateLimit from "express-rate-limit";
 
 const router = express.Router();
 
-const otpRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { success: false, error: { code: "OTP_RATE_LIMITED", message: "Too many attempts" } },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const createOtpRateLimiter = (action: "send" | "verify") =>
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    keyGenerator: (req: Request) => {
+      const userId = (req as Request & { user?: { id?: string } }).user?.id ?? "anonymous";
+      return `otp:${action}:${userId}`;
+    },
+    message: { success: false, error: { code: "OTP_RATE_LIMITED", message: "Too many attempts" } },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+const sendOtpRateLimiter = createOtpRateLimiter("send");
+const verifyOtpRateLimiter = createOtpRateLimiter("verify");
 
 const profileVerificationController = new ProfileVerificationController();
 
@@ -39,9 +47,9 @@ const profileVerificationController = new ProfileVerificationController();
  * @swagger
  * /verification/phone/send-otp:
  *   post:
- *     summary: Send OTP to the authenticated user's email
+ *     summary: Send phone verification OTP by SMS
  *     description: |
- *       Sends a 6-digit OTP code to the user's registered email address.
+ *       Sends a 6-digit OTP code by SMS to the normalized phone number via Hubtel.
  *       The code expires in 10 minutes. Resending invalidates all previous active codes.
  *       The phone number is normalized and stored on the user's profile for verification records.
  *     tags: [Verification]
@@ -92,8 +100,8 @@ const profileVerificationController = new ProfileVerificationController();
  */
 router.post(
   "/phone/send-otp",
-  otpRateLimiter,
   protectedRoute,
+  sendOtpRateLimiter,
   validate(sendPhoneOtpSchema),
   profileVerificationController.sendPhoneOtpForVerification.bind(profileVerificationController),
 );
@@ -112,12 +120,15 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [challengeId, code]
+ *             required: [code]
  *             properties:
  *               challengeId:
  *                 type: string
  *                 format: uuid
- *                 description: Challenge ID from send-otp response
+ *                 description: Preferred. Challenge ID from send-otp response. Either challengeId or phoneNumber is required.
+ *               phoneNumber:
+ *                 type: string
+ *                 description: Legacy alternative to challengeId. Must match the phone saved by send-otp.
  *               code:
  *                 type: string
  *                 description: 6-digit OTP code
@@ -186,8 +197,8 @@ router.post(
  */
 router.post(
   "/phone/verify-otp",
-  otpRateLimiter,
   protectedRoute,
+  verifyOtpRateLimiter,
   validate(verifyPhoneOtpSchema),
   profileVerificationController.verifyPhoneOtpForVerification.bind(profileVerificationController),
 );

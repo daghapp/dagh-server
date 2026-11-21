@@ -3,12 +3,12 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import {
   STEP_PHONE_NUMBER_VERIFICATION,
-  VERIFICATION_STEPS,
   buildVerificationSteps,
   getCompletedVerificationSteps,
   getRejectionReason,
   getStatusForStep,
   inferCurrentStep,
+  isFullyVerified,
   type VerificationStepStatus,
 } from "../../helpers/verification-status.js";
 
@@ -19,6 +19,7 @@ type CurrentStepResponse = {
 };
 
 export type VerificationStatusResponse = {
+  profileExists: boolean;
   verificationProfileExists: boolean;
   datingProfileExists: boolean;
   isVerified: boolean;
@@ -53,6 +54,7 @@ export async function getVerificationStatus(req: Request, res: Response) {
       return ok(
         res,
         {
+          profileExists: false,
           verificationProfileExists: false,
           datingProfileExists: !!datingProfile,
           isVerified: false,
@@ -78,9 +80,10 @@ export async function getVerificationStatus(req: Request, res: Response) {
 
     const completedSteps = getCompletedVerificationSteps(verification);
 
-    const isVerified = completedSteps.length === VERIFICATION_STEPS.length;
+    const isVerified = isFullyVerified(verification);
 
     const payload: VerificationStatusResponse = {
+      profileExists: true,
       verificationProfileExists: true,
       datingProfileExists: !!datingProfile,
       isVerified,

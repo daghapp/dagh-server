@@ -154,16 +154,40 @@ export class ProfileVerificationController {
         });
       }
 
-      const challengeId = body.challengeId;
+      const requestedChallengeId = body.challengeId;
 
-      const otpRecord = await prisma.otp.findUnique({
-        where: { id: challengeId },
-      });
+      let otpRecord;
+      if (requestedChallengeId) {
+        otpRecord = await prisma.otp.findUnique({
+          where: { id: requestedChallengeId },
+        });
+      } else {
+        const requestedPhone = normalizePhone(body.phoneNumber ?? "");
+        if (!requestedPhone || (profile.phoneNumber && requestedPhone !== profile.phoneNumber)) {
+          return fail(res, 404, {
+            code: "OTP_CHALLENGE_NOT_FOUND",
+            message: "No active challenge",
+          });
+        }
+        otpRecord = await prisma.otp.findFirst({
+          where: {
+            email: user?.email,
+            purpose: "PHONE_VERIFICATION",
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+      }
 
       if (!otpRecord) {
-        console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", { userId, challengeId });
+        console.log("[OTP_VERIFY_CHALLENGE_NOT_FOUND]", {
+          userId,
+          challengeId: requestedChallengeId,
+        });
         return fail(res, 404, { code: "OTP_CHALLENGE_NOT_FOUND", message: "No active challenge" });
       }
+
+      const challengeId = otpRecord.id;
 
       // Scope OTP to the authenticated user — reject if the challenge belongs to a different account
       if (otpRecord.email !== user?.email) {

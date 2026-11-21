@@ -70,7 +70,7 @@ request-body validators (`/verification/phone/*` and `/verification/bio_document
 ```
  1. POST /verification/init                 ← "Begin Verification" button
  2. POST /verification/phone/send-otp       ← phone number
- 3. POST /verification/phone/verify-otp     ← 6-digit code  (OTP arrives by email)
+  3. POST /verification/phone/verify-otp     ← 6-digit code  (OTP arrives by SMS)
  4. POST /upload                            ← face image  (multipart)
  5. POST /verification/bio_profile_url      ← face image URL
  6. POST /upload                            ← document front  (multipart)
@@ -149,17 +149,24 @@ is used.
 - The number is normalized before saving: whitespace and a leading `+` are
   stripped (so `+233240000000` → `233240000000`). It must match
   `/^\d{10,15}$/` after normalization.
-- **Important:** the OTP is delivered to the user's **email address on their
-  account** (via Resend), not as an SMS. The subject line is
-  "Phone Verification OTP" and it expires after **10 minutes**.
+- **Important:** the OTP is delivered by **SMS (Hubtel)** to the normalized phone
+  number. It expires after **10 minutes**. If Hubtel SMS credentials are not
+  configured, delivery is unavailable and the code is only written to the server
+  log in development; production must configure `HUBTEL_CLIENT_ID` (or
+  `HUBTEL_CLIENTID`) and `HUBTEL_CLIENT_SECRET` (or `HUBTEL_CLIENTSECRET`).
 
 **Response 200:**
 
 ```json
 {
   "success": true,
-  "data": { "phoneNumber": "233240000000" },
-  "message": "OTP sent successfully."
+  "data": {
+    "challengeId": "uuid-from-this-response",
+    "phoneNumber": "233240000000",
+    "expiresAt": "2026-11-21T20:00:00.000Z",
+    "resendAvailableAt": "2026-11-21T19:51:00.000Z"
+  },
+  "message": "OTP sent successfully"
 }
 ```
 
@@ -168,7 +175,6 @@ is used.
 | Status | Error |
 |--------|-------|
 | 400 | `Phone number is required` / `Phone number must be a valid phone number` |
-| 404 | `Profile not found` (call `/verification/init` first) |
 | 401 | `Unauthorized` |
 | 500 | `Failed to send OTP` |
 
@@ -187,13 +193,14 @@ Confirms the 6-digit code and marks the phone step verified.
 
 ```json
 {
-  "phoneNumber": "+233240000000",
+  "challengeId": "uuid-from-step-2.2",
   "code": "123456"
 }
 ```
 
-`phoneNumber` is optional (it is already saved from step 2.2). `code` is
-required and must be exactly 6 digits.
+`challengeId` is the preferred identifier from step 2.2. For older clients,
+`phoneNumber` is also accepted; the backend then uses the newest active challenge
+for that phone. `code` is required and must be exactly 6 digits.
 
 **Response 200:**
 
@@ -203,12 +210,15 @@ required and must be exactly 6 digits.
   "data": {
     "id": "…",
     "phone_number_verified": true,
-    "isVerified": true,
+    "isVerified": false,
     "validationStep": "PROFILE_IMAGE_VERIFICATION"
   },
-  "message": "Phone number verified successfully."
+  "message": "Phone number verified successfully"
 }
 ```
+
+`isVerified` in this response only reflects the phone step. The stored account
+flag stays `false` until phone, face and documents are all approved.
 
 **Errors:**
 
@@ -443,6 +453,8 @@ for returning users.
   "success": true,
   "data": {
     "profileExists": true,
+    "verificationProfileExists": true,
+    "datingProfileExists": false,
     "isVerified": false,
     "currentStep": "DOCUMENT_VERIFICATION",
     "verificationMessage": null,

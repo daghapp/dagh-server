@@ -69,6 +69,21 @@ describe("Super-like daily limit under free mode", () => {
     };
 
     swiperId = await mkUser("swiper");
+    await prisma.userProfile.create({
+      data: {
+        userId: swiperId,
+        profileVerification: {
+          create: {
+            phone_number_verified: true,
+            bio_profile_verification: true,
+            document_verification: true,
+            faceStatus: "APPROVED",
+            documentStatus: "APPROVED",
+            isVerified: true,
+          },
+        },
+      },
+    });
     for (let i = 0; i < 2; i++) {
       const id = await mkUser(`target${i}`);
       await prisma.datingProfile.create({ data: { userId: id, photos: [], interests: [] } });
@@ -84,6 +99,8 @@ describe("Super-like daily limit under free mode", () => {
   afterAll(async () => {
     await prisma.userSwipe.deleteMany({ where: { swiperId } });
     await prisma.datingProfile.deleteMany({ where: { userId: { in: targetIds } } });
+    await prisma.profileVerification.deleteMany({ where: { userProfile: { userId: swiperId } } });
+    await prisma.userProfile.deleteMany({ where: { userId: swiperId } });
     await prisma.user.deleteMany({ where: { id: { in: [swiperId, ...targetIds] } } });
     await prisma.systemSetting.deleteMany({ where: { key: "PAYMENTS_ENABLED" } });
     await cleanupPlans();

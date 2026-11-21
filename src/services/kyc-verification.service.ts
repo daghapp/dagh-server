@@ -4,6 +4,7 @@ import {
   VERIFICATION_STEPS,
   getCompletedVerificationSteps,
   inferCurrentStep,
+  isFullyVerified,
 } from "../helpers/verification-status.js";
 
 // ─────────────────────────────────────────
@@ -69,7 +70,7 @@ export async function getKYCVerificationState(userId: string): Promise<KYCVerdic
   });
 
   const completedSteps = getCompletedVerificationSteps(verification);
-  const verified = completedSteps.length === VERIFICATION_STEPS.length;
+  const verified = isFullyVerified(verification);
 
   return {
     verified,

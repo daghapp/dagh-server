@@ -60,6 +60,11 @@ describe("getStatusForStep", () => {
     expect(getStatusForStep(STEP_DOCUMENT_VERIFICATION, state)).toBe("VERIFIED");
   });
 
+  it("reports VERIFIED for documents when bio data is approved", () => {
+    const state: VerificationStepState = { bioDataStatus: "APPROVED" };
+    expect(getStatusForStep(STEP_DOCUMENT_VERIFICATION, state)).toBe("VERIFIED");
+  });
+
   it("reports PENDING for documents before any review", () => {
     expect(getStatusForStep(STEP_DOCUMENT_VERIFICATION, {})).toBe("PENDING");
   });
@@ -123,6 +128,15 @@ describe("inferCurrentStep", () => {
 
   it("prefers the persisted validationStep", () => {
     expect(inferCurrentStep({}, "DOCUMENT_VERIFICATION")).toBe(STEP_DOCUMENT_VERIFICATION);
+  });
+
+  it("does not skip an unapproved image step just because a URL was submitted", () => {
+    expect(
+      inferCurrentStep(
+        { phone_number_verified: true, faceStatus: "PENDING" },
+        "PROFILE_IMAGE_VERIFICATION",
+      ),
+    ).toBe(STEP_PROFILE_IMAGE_VERIFICATION);
   });
 
   it("defaults to documents when every step is done", () => {

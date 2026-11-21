@@ -3,8 +3,24 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import { VerificationStatus } from "../../../generated/prisma/client.js";
 import type { Prisma } from "../../../generated/prisma/client.js";
+import { isFullyVerified, type VerificationStepState } from "../../helpers/verification-status.js";
 
 const ADMIN_ACTIONS = ["APPROVED", "REJECTED"] as const;
+
+function deriveIsVerified(
+  verification: VerificationStepState & { isVerified?: boolean },
+  patch: VerificationStepState,
+): boolean {
+  return isFullyVerified({
+    phone_number_verified: patch.phone_number_verified ?? verification.phone_number_verified,
+    bio_profile_verification:
+      patch.bio_profile_verification ?? verification.bio_profile_verification,
+    document_verification: patch.document_verification ?? verification.document_verification,
+    faceStatus: patch.faceStatus ?? verification.faceStatus,
+    documentStatus: patch.documentStatus ?? verification.documentStatus,
+    bioDataStatus: patch.bioDataStatus ?? verification.bioDataStatus,
+  });
+}
 
 export class AdminProfileController {
   async getAllVerifications(req: Request, res: Response) {
@@ -109,10 +125,11 @@ export class AdminProfileController {
 
       const adminId = req.user?.id ? String(req.user.id) : null;
 
+      const proposedStatus =
+        action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
       const updateData: Record<string, unknown> = {
-        bioDataStatus:
-          action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
-        isVerified: action === "APPROVED" ? verification.isVerified : false,
+        bioDataStatus: proposedStatus,
+        isVerified: deriveIsVerified(verification, { bioDataStatus: proposedStatus }),
       };
 
       if (action === "APPROVED") {
@@ -165,11 +182,15 @@ export class AdminProfileController {
 
       const adminId = req.user?.id ? String(req.user.id) : null;
 
+      const proposedStatus =
+        action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
       const updateData: Record<string, unknown> = {
-        faceStatus:
-          action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+        faceStatus: proposedStatus,
         bio_profile_verification: action === "APPROVED",
-        isVerified: action === "APPROVED" ? verification.isVerified : false,
+        isVerified: deriveIsVerified(verification, {
+          faceStatus: proposedStatus,
+          bio_profile_verification: action === "APPROVED",
+        }),
       };
 
       if (action === "APPROVED") {
@@ -222,11 +243,15 @@ export class AdminProfileController {
 
       const adminId = req.user?.id ? String(req.user.id) : null;
 
+      const proposedStatus =
+        action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
       const updateData: Record<string, unknown> = {
-        documentStatus:
-          action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+        documentStatus: proposedStatus,
         document_verification: action === "APPROVED",
-        isVerified: action === "APPROVED" ? verification.isVerified : false,
+        isVerified: deriveIsVerified(verification, {
+          documentStatus: proposedStatus,
+          document_verification: action === "APPROVED",
+        }),
       };
 
       if (action === "APPROVED") {

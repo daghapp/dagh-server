@@ -49,7 +49,6 @@ import { router as PendingSitesRoutes } from "./routes/pending-sites.routes.js";
 import { router as SitePhotosRoutes } from "./routes/site-photos.routes.js";
 import { router as TourSitesRoutes } from "./routes/tour-sites.routes.js";
 import { router as ProviderRoutes } from "./routes/provider.routes.js";
-import { router as ProfileValidationStepRoutes } from "./routes/profile-validation-step.routes.js";
 import { router as ProfileEthnicityRoutes } from "./routes/profile-ethnicity.routes.js";
 import { router as MessageRoutes } from "./routes/message.routes.js";
 import { router as CallsRoutes } from "./routes/calls.routes.js";
@@ -285,7 +284,6 @@ app.use("/payment", paymentLimiter, PaymentRoutes);
 app.use("/tours", TourRoutes);
 app.use("/profile", ProfileRoutes);
 app.use("/verification", VerificationRoutes);
-app.use("/verification", ProfileValidationStepRoutes);
 app.use("/profile", ProfileEthnicityRoutes);
 
 app.use("/admin", AdminRoutes);

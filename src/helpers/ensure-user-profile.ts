@@ -20,6 +20,10 @@ export async function ensureUserProfile(userId: string) {
           ip_address_verification: false,
         },
       });
+      return prisma.userProfile.findUniqueOrThrow({
+        where: { userId },
+        include: { profileVerification: true },
+      });
     }
     return existing;
   }

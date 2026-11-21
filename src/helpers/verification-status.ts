@@ -39,7 +39,11 @@ export function getStatusForStep(
     if (state?.documentStatus === "REJECTED" || state?.bioDataStatus === "REJECTED") {
       return "REJECTED";
     }
-    if (state?.document_verification || state?.documentStatus === "APPROVED") {
+    if (
+      state?.document_verification ||
+      state?.documentStatus === "APPROVED" ||
+      state?.bioDataStatus === "APPROVED"
+    ) {
       return "VERIFIED";
     }
     return "PENDING";
@@ -132,4 +136,8 @@ export function buildVerificationSteps(
 
 export function getCompletedVerificationSteps(state: VerificationStepState | null): string[] {
   return VERIFICATION_STEPS.filter((step) => getStatusForStep(step, state) === "VERIFIED");
+}
+
+export function isFullyVerified(state: VerificationStepState | null): boolean {
+  return getCompletedVerificationSteps(state).length === VERIFICATION_STEPS.length;
 }

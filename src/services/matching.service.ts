@@ -1,5 +1,5 @@
 import { prisma } from "../config/index.js";
-import type { Gender, LookingFor } from "../../generated/prisma/enums.js";
+import { VerificationStatus, type Gender, type LookingFor } from "../../generated/prisma/enums.js";
 import { haversineDistance, maxPairwiseDistance } from "../helpers/haversine.js";
 import {
   TIER_VALUE,
@@ -362,6 +362,32 @@ export async function getDiscoveryCandidates(
             { discoveryPreference: null },
             { discoveryPreference: { is: { showProfile: true } } },
           ],
+        },
+      },
+      {
+        profile: {
+          is: {
+            profileVerification: {
+              is: {
+                phone_number_verified: true,
+                AND: [
+                  {
+                    OR: [
+                      { bio_profile_verification: true },
+                      { faceStatus: VerificationStatus.APPROVED },
+                    ],
+                  },
+                  {
+                    OR: [
+                      { document_verification: true },
+                      { documentStatus: VerificationStatus.APPROVED },
+                      { bioDataStatus: VerificationStatus.APPROVED },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
         },
       },
     ],
