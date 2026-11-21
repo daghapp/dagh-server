@@ -1,11 +1,16 @@
 import "./instrument.js";
 import { server } from "./server.js";
 import { syncTourSites } from "../scripts/sync-tour-sites.js";
+import { syncAllowedCountries } from "../scripts/sync-allowed-countries.js";
 
 const PORT = process.env.PORT || 5000;
 
 void syncTourSites().catch((error) => {
   console.error("[startup] tour-site sync failed; continuing", error);
+});
+
+void syncAllowedCountries().catch((error) => {
+  console.error("[startup] allowed-country sync failed; continuing", error);
 });
 
 const httpServer = server.listen(PORT, () => {

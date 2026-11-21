@@ -6,6 +6,7 @@ import type { Prisma } from "../generated/prisma/client.js";
 import { deriveTransitProfile } from "./helpers/transit-profile.js";
 import { tourSiteCatalogue } from "./seed-data/tour-catalogue.js";
 import { uniqueSiteImages } from "./seed-data/ghana-tour-site-images-unique.js";
+import { allowedCountries } from "./seed-data/allowed-countries.js";
 import {
   AccountStatus,
   AccountType,
@@ -35,45 +36,6 @@ import crypto from "crypto";
 
 const DEMO_PASSWORD = "Demo@12345";
 const ADMIN_PASSWORD = "Admin@12345";
-
-const allowedCountries: Prisma.AllowedCountryCreateManyInput[] = [
-  { code: "US", name: "United States" },
-  { code: "CA", name: "Canada" },
-  { code: "MX", name: "Mexico" },
-  { code: "GT", name: "Guatemala" },
-  { code: "BZ", name: "Belize" },
-  { code: "HN", name: "Honduras" },
-  { code: "SV", name: "El Salvador" },
-  { code: "NI", name: "Nicaragua" },
-  { code: "CR", name: "Costa Rica" },
-  { code: "PA", name: "Panama" },
-  { code: "CO", name: "Colombia" },
-  { code: "VE", name: "Venezuela" },
-  { code: "GY", name: "Guyana" },
-  { code: "SR", name: "Suriname" },
-  { code: "BR", name: "Brazil" },
-  { code: "EC", name: "Ecuador" },
-  { code: "PE", name: "Peru" },
-  { code: "BO", name: "Bolivia" },
-  { code: "PY", name: "Paraguay" },
-  { code: "CL", name: "Chile" },
-  { code: "AR", name: "Argentina" },
-  { code: "UY", name: "Uruguay" },
-  { code: "CU", name: "Cuba" },
-  { code: "JM", name: "Jamaica" },
-  { code: "HT", name: "Haiti" },
-  { code: "DO", name: "Dominican Republic" },
-  { code: "BS", name: "Bahamas" },
-  { code: "BB", name: "Barbados" },
-  { code: "TT", name: "Trinidad and Tobago" },
-  { code: "GD", name: "Grenada" },
-  { code: "LC", name: "Saint Lucia" },
-  { code: "VC", name: "Saint Vincent and the Grenadines" },
-  { code: "AG", name: "Antigua and Barbuda" },
-  { code: "DM", name: "Dominica" },
-  { code: "KN", name: "Saint Kitts and Nevis" },
-  { code: "GH", name: "Ghana" },
-];
 
 // ── Dating module demo data ──────────────────────────────────────────────
 // Idempotent: re-running refreshes the demo dating profiles with the values
