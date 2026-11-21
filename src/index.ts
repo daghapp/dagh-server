@@ -3,6 +3,8 @@ import { server } from "./server.js";
 import { syncTourSites } from "../scripts/sync-tour-sites.js";
 import { syncAllowedCountries } from "../scripts/sync-allowed-countries.js";
 import { syncCommunityVideos } from "../scripts/sync-community-videos.js";
+import { syncMembershipPlans } from "../scripts/sync-membership-plans.js";
+import { syncTourPackages } from "../scripts/sync-tour-packages.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -16,6 +18,14 @@ void syncAllowedCountries().catch((error) => {
 
 void syncCommunityVideos().catch((error) => {
   console.error("[startup] community-video sync failed; continuing", error);
+});
+
+void syncMembershipPlans().catch((error) => {
+  console.error("[startup] membership-plan sync failed; continuing", error);
+});
+
+void syncTourPackages().catch((error) => {
+  console.error("[startup] tour-package sync failed; continuing", error);
 });
 
 const httpServer = server.listen(PORT, () => {
