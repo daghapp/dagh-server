@@ -192,9 +192,8 @@ router.post(
  *                   example: false
  *                   message:
  *                     type: string
- *                     example: Payments are temporarily disabled. Please try again later.
- *                     Apple Pay initialization failed
- *     */
+*                     example: Payments are temporarily disabled. Please try again later.
+*     */
 router.post(
   "/apple-pay",
   protectedRoute,
