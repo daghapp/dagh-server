@@ -1,6 +1,6 @@
 import session from "express-session";
-import pg from "pg";
 import connectPgSimple from "connect-pg-simple";
+import { createPgPool } from "./pg-pool.js";
 
 if (!process.env.SESSIONSECRET && process.env.NODE_ENV !== "test") {
   throw new Error("Missing SESSIONSECRET environment variable. Please set it in your environment.");
@@ -22,11 +22,9 @@ export const sessionConfig = session({
     maxAge: 24 * 60 * 60 * 1000,
   },
   store: new PgSession({
-    pool: new pg.Pool({
+    pool: createPgPool({
       connectionString: process.env.DATABASE_URL,
       max: 2,
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 30000,
     }),
     tableName: "session",
     createTableIfMissing: true,
