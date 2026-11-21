@@ -14,6 +14,7 @@
 import { prisma } from "../src/config/index.js";
 import { tourSiteCatalogue } from "../src/seed-data/tour-catalogue.js";
 import { uniqueSiteImages } from "../src/seed-data/ghana-tour-site-images-unique.js";
+import { siteCoordinateOverrides } from "../src/seed-data/tour-site-coordinates.js";
 import { optimizeImageUrl } from "../src/helpers/image-url.js";
 
 const REGIONS = [
@@ -40,7 +41,15 @@ async function main() {
   console.log(`${dryRun ? "[dry-run] " : ""}Syncing ${tourSiteCatalogue.length} tour sites...`);
 
   const existing = await prisma.tourSite.findMany({
-    select: { id: true, name: true, history: true, imageUrl: true, imageCredit: true },
+    select: {
+      id: true,
+      name: true,
+      history: true,
+      imageUrl: true,
+      imageCredit: true,
+      latitude: true,
+      longitude: true,
+    },
   });
   const byName = new Map(existing.map((site) => [site.name, site]));
 
@@ -60,8 +69,18 @@ async function main() {
       history?: string | null;
       imageUrl?: string | null;
       imageCredit?: string | null;
+      latitude?: number;
+      longitude?: number;
     } = {};
     if (!current.history && site.history) patch.history = site.history;
+    const coordinates = siteCoordinateOverrides[site.name];
+    if (
+      coordinates &&
+      (current.latitude !== coordinates.latitude || current.longitude !== coordinates.longitude)
+    ) {
+      patch.latitude = coordinates.latitude;
+      patch.longitude = coordinates.longitude;
+    }
     if (uniqueSiteImages[site.name]) {
       if (current.imageUrl !== site.imageUrl) patch.imageUrl = site.imageUrl;
       if (current.imageCredit !== site.imageCredit) patch.imageCredit = site.imageCredit;

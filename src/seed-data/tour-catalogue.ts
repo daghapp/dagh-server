@@ -2,6 +2,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import { deriveTransitProfile } from "../helpers/transit-profile.js";
 import { baseTourSites } from "./base-tour-sites.js";
 import { extraTourSites } from "./ghana-tour-sites.js";
+import { siteCoordinateOverrides } from "./tour-site-coordinates.js";
 import { siteHistories } from "./ghana-tour-site-histories.js";
 import { siteImages, type SiteImageDetail } from "./ghana-tour-site-images.js";
 import { uniqueSiteImages } from "./ghana-tour-site-images-unique.js";
@@ -31,6 +32,7 @@ export const tourSiteCatalogue: Prisma.TourSiteCreateInput[] = [
   const selectedImages = imageGallery.slice(0, maxImages);
   return {
     ...site,
+    ...siteCoordinateOverrides[site.name],
     history: siteHistories[site.name] ?? site.history ?? null,
     imageUrl: selectedImages.length > 0 ? selectedImages[0].url : (site.imageUrl ?? null),
     imageCredit: selectedImages.length > 0 ? selectedImages[0].credit : null,
