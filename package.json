@@ -13,6 +13,7 @@
     "db:sync-community-videos": "tsx scripts/sync-community-videos.ts",
     "db:sync-membership-plans": "tsx scripts/sync-membership-plans.ts",
     "db:sync-tour-packages": "tsx scripts/sync-tour-packages.ts",
+    "admin:bootstrap": "tsx scripts/bootstrap-super-admin.ts",
     "sentry:sourcemaps": "test -n \"$SENTRY_AUTH_TOKEN\" && sentry-cli sourcemaps upload --org \"$SENTRY_ORG\" --project \"$SENTRY_PROJECT\" --release \"$SENTRY_RELEASE\" dist/src || echo 'Sentry sourcemap upload skipped (SENTRY_AUTH_TOKEN not set)'",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

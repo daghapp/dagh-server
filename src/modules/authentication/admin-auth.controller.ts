@@ -3,13 +3,14 @@ import * as bcrypt from "bcrypt";
 import { prisma } from "../../config/index.js";
 import { AdminRegistrationSchema } from "../../validator/admin-auth-validator.js";
 import { created, fail } from "../../helpers/response.js";
+import { ROLE_DEPARTMENT } from "../../config/admin-roles.js";
+import { AdminRole } from "../../../generated/prisma/client.js";
 
 // Optional gate: when ADMIN_OFFICIAL_EMAIL_DOMAIN is set, only emails under that
 // domain can self-register as admins (e.g. "dagh.app"). Leave unset to allow any.
 const OFFICIAL_EMAIL_DOMAIN = process.env.ADMIN_OFFICIAL_EMAIL_DOMAIN?.toLowerCase();
 
 export class AdminAuthController {
-  // Direct admin registration — creates an ACTIVE admin account with department + role
   async register(req: Request, res: Response) {
     try {
       const data = req.body as AdminRegistrationSchema;
@@ -46,6 +47,11 @@ export class AdminAuthController {
         }
       }
 
+      const adminCount = await prisma.user.count({ where: { accountType: "ADMIN" } });
+      const isFirstAdmin = adminCount === 0;
+      const role: AdminRole = isFirstAdmin ? AdminRole.SUPER_ADMIN : data.role;
+      const department = isFirstAdmin ? ROLE_DEPARTMENT[role] : data.department;
+
       const hashedPassword = await bcrypt.hash(data.password, 10);
 
       const newUser = await prisma.user.create({
@@ -56,11 +62,11 @@ export class AdminAuthController {
           phoneNumber: data.phoneNumber ?? null,
           passwordHash: hashedPassword,
           accountType: "ADMIN",
-          accountStatus: "PENDING",
+          accountStatus: isFirstAdmin ? "ACTIVE" : "PENDING",
           adminProfile: {
             create: {
-              department: data.department,
-              role: data.role,
+              department,
+              role,
             },
           },
         },
