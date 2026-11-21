@@ -15,13 +15,13 @@ export async function verifyJurisdiction(req: Request, res: Response) {
       ? await prisma.allowedCountry.findUnique({ where: { code: countryCode } })
       : null;
 
-    if (!allowed) {
+    if (countryCode && !allowed) {
       // Same wipe as POST /auth/logout — invalidates every device for this user.
       await prisma.deviceToken.deleteMany({ where: { userId } });
       return fail(res, 403, "Access from this location is not permitted");
     }
 
-    return ok(res, { country: allowed.code });
+    return ok(res, { country: countryCode ?? "UNKNOWN" });
   } catch (error) {
     console.error("Jurisdiction check error:", error);
     return fail(res, 500, "Jurisdiction check failed");
