@@ -546,11 +546,15 @@ export class PasswordAuthController {
         },
       });
 
-      // Generate new OTP — non-fatal if email fails (record is still created)
+      // Surface delivery failures: telling the client "sent" when the mailbox
+      // received nothing leaves the user waiting for a code that will never
+      // arrive. sendOtp already discards the record on failure, so retrying is
+      // immediately allowed.
       try {
         await sendOtp({ email, subject: "Verify Your Email", purpose: "EMAIL_VERIFICATION" });
       } catch (otpError) {
         console.error("Failed to resend verification email:", otpError);
+        return fail(res, 502, "Failed to send verification email. Please try again shortly");
       }
 
       return ok(res, null as never, "OTP sent successfully");

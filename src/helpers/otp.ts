@@ -23,11 +23,19 @@ export async function sendOtp({ email, subject, purpose }: OtpPayload) {
     },
   });
 
-  await sendEmail({
-    email: email,
-    subject: subject,
-    html: `<p>Your OTP code is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
-  });
+  try {
+    await sendEmail({
+      email: email,
+      subject: subject,
+      html: `<p>Your OTP code is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+    });
+  } catch (error) {
+    // The record was only created so the code could be delivered. If delivery
+    // fails, remove it so the caller can retry immediately instead of being
+    // rate-limited by a code the user never received.
+    await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
+    throw error;
+  }
 
   return { challengeId: otpRecord.id, expiresAt: expirationTime };
 }
