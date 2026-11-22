@@ -288,14 +288,15 @@ export const updateDiscoveryPreference = async (req: Request, res: Response) => 
     const userId = req.user!.id;
     const body = req.body;
 
-    const profile = await prisma.datingProfile.findUnique({
+    // Auto-initialize a minimal dating profile if the user has not created
+    // one yet, so discovery preferences can be saved without a separate
+    // profile-creation step.
+    const profile = await prisma.datingProfile.upsert({
       where: { userId },
+      update: {},
+      create: { userId, photos: [], interests: [], languages: [] },
       select: { id: true },
     });
-
-    if (!profile) {
-      return fail(res, 404, "Dating profile not found. Initialize it first.");
-    }
 
     const hasCoords = typeof body.locationLat === "number" && typeof body.locationLng === "number";
     const clearedCoords = body.locationLat === null || body.locationLng === null;
