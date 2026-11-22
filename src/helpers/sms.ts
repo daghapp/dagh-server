@@ -11,9 +11,9 @@ export async function sendSms({ to, message }: SmsPayload): Promise<void> {
   const sender = process.env.HUBTEL_SMS_SENDER || process.env.SMS_SENDER || "DiasporaSync";
 
   if (!clientId || !clientSecret) {
-    // Dev fallback: no SMS provider configured.
-    console.log(`[SMS-DEV] to=${to} message=${message}`);
-    return;
+    // No SMS provider configured — cannot actually deliver. Throw so the
+    // controller can fall back to email instead of falsely reporting success.
+    throw new Error("SMS provider not configured (HUBTEL_CLIENT_ID / HUBTEL_CLIENT_SECRET missing)");
   }
 
   const url = "https://smsc.hubtel.com/v1/messages/send";

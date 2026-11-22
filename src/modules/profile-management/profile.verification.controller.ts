@@ -126,7 +126,7 @@ export class ProfileVerificationController {
             resendAvailableAt,
             deliveryChannel: "EMAIL",
           },
-          "Verification code sent by email (SMS unavailable)",
+          "Verification code sent to your email (SMS unavailable)",
         );
       }
 
