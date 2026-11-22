@@ -6,6 +6,7 @@ import type {
 } from "../../validator/profile-phone-verification-validator.js";
 import { verifyOtp, normalizePhone, maskPhone } from "../../helpers/otp.js";
 import { sendSms } from "../../helpers/sms.js";
+import sendEmail from "../../config/resend.config.js";
 import bcrypt from "bcrypt";
 import { randomInt } from "crypto";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
@@ -87,10 +88,10 @@ export class ProfileVerificationController {
         },
       });
 
+      const otpResult = { challengeId: otpRecord.id, expiresAt: expirationTime };
+      const resendAvailableAt = new Date(Date.now() + 60 * 1000);
+
       // Send the verification code to the phone number via SMS.
-      // A delivery failure must surface to the client: returning success here
-      // would tell the user the OTP was sent when it never reached their phone,
-      // leaving them unable to continue verification.
       try {
         await sendSms({
           to: phoneNormalized,
@@ -98,16 +99,36 @@ export class ProfileVerificationController {
         });
       } catch (smsError) {
         console.error("[SMS_SEND_ERROR]", { to: phoneNormalized, error: smsError });
-        return fail(
+
+        // Fall back to email delivery so the user still receives their code
+        // and can continue verification even when SMS is unavailable.
+        try {
+          await sendEmail({
+            email: updatedProfile.user.email,
+            subject: "Your Diaspora Sync verification code",
+            html: `<p>Your verification code is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`,
+          });
+        } catch (emailError) {
+          console.error("[EMAIL_FALLBACK_ERROR]", { userId, error: emailError });
+          return fail(
+            res,
+            502,
+            "Failed to deliver verification code by SMS or email. Please try again.",
+          );
+        }
+
+        return ok(
           res,
-          502,
-          "Failed to deliver verification code. Please use international format (e.g. +233501234567) and try again.",
+          {
+            challengeId: otpResult.challengeId,
+            phoneNumber: phoneNormalized,
+            expiresAt: otpResult.expiresAt,
+            resendAvailableAt,
+            deliveryChannel: "EMAIL",
+          },
+          "Verification code sent by email (SMS unavailable)",
         );
       }
-
-      const otpResult = { challengeId: otpRecord.id, expiresAt: expirationTime };
-
-      const resendAvailableAt = new Date(Date.now() + 60 * 1000);
 
       console.log("[OTP_SEND]", {
         userId,
