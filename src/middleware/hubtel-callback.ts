@@ -33,7 +33,7 @@ export default async function verifyHubtelCallback(
       if (statusData.Status === "FAILED") {
         return ok(res, null, "Transaction confirmed as failed by Hubtel");
       }
-    } catch (e) {
+    } catch (_e) {
       // If the status check fails, reject the callback — Hubtel will retry
       console.error("Failed to verify transaction status with Hubtel API, rejecting callback");
       return fail(res, 502, "Unable to verify transaction with Hubtel");

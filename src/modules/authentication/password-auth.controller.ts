@@ -233,7 +233,7 @@ export class PasswordAuthController {
       // rather than failing the sign-in, and it never opens anything.
       const communityAccess = await resolveChannelAccessForLogin(user.id);
 
-      const response: any = {
+      const response: Record<string, unknown> = {
         ...toAuthUser(user, communityAccess),
         accessToken,
         refreshToken,

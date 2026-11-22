@@ -3,9 +3,14 @@ import net from "node:net";
 
 function createSocket() {
   const socket = new net.Socket();
-  (socket as any).connect = function (port: number, host: string) {
-    return (net.Socket.prototype.connect as any).call(this, { port, host, family: 4 });
-  };
+  const protoConnect = net.Socket.prototype.connect as (
+    this: net.Socket,
+    options: { port: number; host: string; family: number },
+  ) => net.Socket;
+  (socket as unknown as { connect: (port: number, host: string) => net.Socket }).connect =
+    function (port: number, host: string) {
+      return protoConnect.call(this as net.Socket, { port, host, family: 4 });
+    };
   return socket;
 }
 

@@ -5,7 +5,7 @@ import * as deepLinkService from "./deep-link.service.js";
 export class DeepLinksController {
   async create(req: Request, res: Response) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = req.user?.id;
       if (!userId) return fail(res, 401, "Unauthorized");
       const { type, id } = req.body || {};
       if (!type || !id || !["profile", "event", "post", "app"].includes(type)) {
@@ -44,7 +44,10 @@ export class DeepLinksController {
       const ua = req.headers["user-agent"] || "";
       const platform = deepLinkService.detectPlatform(ua);
       const token = String(req.query.token || "");
-      const deepLink = deepLinkService.buildDeepLink({ type: type as any, id }, token || undefined);
+      const deepLink = deepLinkService.buildDeepLink(
+        { type: type as "profile" | "event" | "post" | "app", id },
+        token || undefined,
+      );
       const storeUrl = token
         ? deepLinkService.buildStoreUrl(platform === "ios" ? "ios" : "android", token)
         : platform === "ios"

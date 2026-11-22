@@ -194,6 +194,37 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * Distance between the viewer's saved location and a candidate's saved
+ * location. Returns null when either side has no coordinates — callers treat
+ * that as "unknown", not as zero distance.
+ */
+export function distanceFromViewer(
+  filters: DiscoveryFilters,
+  candidateLat: number | null | undefined,
+  candidateLng: number | null | undefined,
+): number | null {
+  if (
+    filters.locationLat == null ||
+    filters.locationLng == null ||
+    candidateLat == null ||
+    candidateLng == null
+  ) {
+    return null;
+  }
+  return haversineDistance(
+    { latitude: filters.locationLat, longitude: filters.locationLng },
+    { latitude: candidateLat, longitude: candidateLng },
+  );
+}
+
+/** True when the viewer has opted into nearby matching with a usable center. */
+export function isNearbyDiscovery(filters: DiscoveryFilters): boolean {
+  return (
+    filters.globalDiscovery === false && filters.locationLat != null && filters.locationLng != null
+  );
+}
+
 export function scoreCandidate(
   candidate: MatchCandidate,
   filters: DiscoveryFilters,
@@ -227,7 +258,11 @@ export function scoreCandidate(
   if (!filters.globalDiscovery) {
     if (travel && candidate.distanceKm !== null && candidate.distanceKm !== undefined) {
       score += Math.max(0, 15 - candidate.distanceKm / 20);
-    } else if (filters.locationLat && filters.locationLng && candidate.distanceKm !== null) {
+    } else if (
+      filters.locationLat != null &&
+      filters.locationLng != null &&
+      candidate.distanceKm !== null
+    ) {
       score += Math.max(0, 10 - candidate.distanceKm / 100);
     }
   }
@@ -329,6 +364,16 @@ export async function getDiscoveryCandidates(
     ...blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId)),
   ]);
 
+  const today = new Date();
+  // Someone aged exactly maxAge today was born on (today - maxAge years). The
+  // lower bound is one day after (today - (maxAge + 1) years), which excludes
+  // people who turn maxAge + 1 today while still including everyone younger.
+  const oldestAllowed = new Date(today);
+  oldestAllowed.setFullYear(oldestAllowed.getFullYear() - filters.maxAge - 1);
+  oldestAllowed.setDate(oldestAllowed.getDate() + 1);
+  const youngestAllowed = new Date(today);
+  youngestAllowed.setFullYear(youngestAllowed.getFullYear() - filters.minAge);
+
   const ageFilter =
     filters.minAge > 18 || filters.maxAge < 99
       ? {
@@ -336,10 +381,8 @@ export async function getDiscoveryCandidates(
             { dateOfBirth: null },
             {
               dateOfBirth: {
-                gte: new Date(
-                  new Date().setFullYear(new Date().getFullYear() - filters.maxAge - 1),
-                ),
-                lte: new Date(new Date().setFullYear(new Date().getFullYear() - filters.minAge)),
+                gte: oldestAllowed,
+                lte: youngestAllowed,
               },
             },
           ],
@@ -356,6 +399,18 @@ export async function getDiscoveryCandidates(
     ...ageFilter,
     AND: [
       { datingProfile: { isNot: null } },
+      // Intent filter: keep candidates whose stated intent matches the viewer's
+      // preference. Profiles that have not stated an intent stay in the pool so
+      // an incomplete profile is not hidden from everyone.
+      ...(filters.lookingFor
+        ? [
+            {
+              datingProfile: {
+                OR: [{ lookingFor: filters.lookingFor }, { lookingFor: null }],
+              },
+            },
+          ]
+        : []),
       {
         datingProfile: {
           OR: [
@@ -416,6 +471,9 @@ export async function getDiscoveryCandidates(
           travelLocationLng: true,
           availableFrom: true,
           availableTo: true,
+          discoveryPreference: {
+            select: { locationLat: true, locationLng: true },
+          },
         },
       },
       subscription: { select: { tierCode: true, status: true, endDate: true } },
@@ -469,6 +527,22 @@ export async function getDiscoveryCandidates(
       ? schedulesOverlap(profile.availableFrom, profile.availableTo, travel.start, travel.end)
       : true;
 
+    // Static distance is only meaningful in nearby mode. Travel mode keeps
+    // using the trip geofence distance, which is computed above.
+    const nearby = !travel && isNearbyDiscovery(filters);
+    const staticDistanceKm = nearby
+      ? distanceFromViewer(
+          filters,
+          profile.discoveryPreference?.locationLat,
+          profile.discoveryPreference?.locationLng,
+        )
+      : null;
+    const distanceKm = travel ? travelDistanceKm : staticDistanceKm;
+
+    // Nearby discovery is opt-in: when enabled, candidates without coordinates
+    // cannot be shown as nearby and candidates beyond the radius are excluded.
+    const withinRange = !nearby || (distanceKm !== null && distanceKm <= filters.maxDistanceKm);
+
     const baseCandidate: MatchCandidate = {
       userId: u.id,
       fullName: u.fullName,
@@ -480,9 +554,9 @@ export async function getDiscoveryCandidates(
       lookingFor: profile.lookingFor,
       age,
       gender: u.gender,
-      // In global discovery the candidate's static location is not computed;
-      // the travel context supplies the distance used for proximity scoring.
-      distanceKm: travel ? travelDistanceKm : null,
+      // In global discovery distance is not computed; nearby mode uses the
+      // saved locations, while travel mode supplies the geofence distance.
+      distanceKm,
       interestsOverlap: profile.interests.filter((i) => myInterests.includes(i)).length,
       score: 0,
       // Rank by the perks tier, so a comp granted without includePaidPerks
@@ -506,13 +580,12 @@ export async function getDiscoveryCandidates(
 
     baseCandidate.score = scoreCandidate(baseCandidate, filters, myInterests, travel);
 
-    return { baseCandidate, overlaps };
+    return { baseCandidate, overlaps, withinRange };
   });
 
-  // Keep only candidates whose schedules overlap the trip (when travel context given).
-  const filtered = travel
-    ? ranked.filter((r) => r.overlaps).map((r) => r.baseCandidate)
-    : ranked.map((r) => r.baseCandidate);
+  // Travel mode keeps only schedule-overlapping candidates; nearby mode keeps
+  // only candidates inside the radius (unknown coordinates are excluded).
+  const filtered = ranked.filter((r) => r.overlaps && r.withinRange).map((r) => r.baseCandidate);
 
   filtered.sort((a, b) => b.score - a.score);
 

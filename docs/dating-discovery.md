@@ -9,8 +9,10 @@ module (`src/services/matching.service.ts`, `src/modules/dating/*`).
   candidates regardless of country. There is no country/IP restriction.
 - Candidate pool is filtered only by gender (opposite of viewer, compliance rule),
   age range, and hidden/blocked/passed users.
-- Distance and location influence **ranking (score)**, never the candidate pool,
-  unless the user opts into nearby matching.
+- In global mode, distance never restricts the candidate pool. In nearby mode
+  (`globalDiscovery = false` with a saved location), candidates without
+  coordinates or farther than `maxDistanceKm` are excluded from the pool;
+  distance still influences ranking for those retained.
 
 ## User preference (`DiscoveryPreference`)
 
@@ -21,7 +23,7 @@ module (`src/services/matching.service.ts`, `src/modules/dating/*`).
 | `locationLat` / `locationLng` / `locationName` | null | User's chosen center point for nearby matching. |
 | `locationUpdatedAt` | null | Server-managed timestamp of the last location refresh. Proximity alerts only use locations refreshed within 12 hours. |
 | `minAge` / `maxAge` | 18 / 60 | Age filter. |
-| `lookingFor` | — | Optional intent filter. |
+| `lookingFor` | — | Optional intent filter. Candidates whose `lookingFor` matches the viewer's value, or whose `lookingFor` is unset, are included. |
 | `showProfile` / `showOnlineStatus` | true | Visibility toggles. |
 
 Toggle via `PUT /dating/preferences` with `globalDiscovery: true|false`.
@@ -98,7 +100,8 @@ Dating is only available to KYC-verified users (`requireKYCVerification`).
 ## Global vs nearby summary
 
 - Default: global, no distance restriction.
-- Opt-in nearby: set `globalDiscovery=false` with a location; distance scoring
+- Opt-in nearby: set `globalDiscovery=false` with a location; candidates without
+  coordinates or beyond `maxDistanceKm` are excluded, and distance scoring
   applies up to `maxDistanceKm`.
 - Earth's max antipodal distance is ~20,037 km, so the 20,000 km cap is
   effectively "anywhere".

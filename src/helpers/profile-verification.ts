@@ -2,7 +2,7 @@ import { prisma } from "../config/index.js";
 
 export async function isProfileVerified(userId: string): Promise<boolean> {
   try {
-    const profile = await (prisma as any).userProfile.findUnique({
+    const profile = await prisma.userProfile.findUnique({
       where: { userId },
       include: { profileVerification: true },
     });

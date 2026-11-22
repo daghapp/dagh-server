@@ -33,10 +33,12 @@ function mockRes(): {
   // is what the controllers' `if (unauthorizedResponse) return ...` guards rely
   // on. A bare vi.fn() returns undefined and would let execution continue past
   // a rejection — masking exactly the guard under test.
-  const res: any = {};
-  res.json = vi.fn().mockReturnValue(res);
-  res.status = vi.fn().mockReturnValue(res);
-  return { res: res as Response, json: res.json, status: res.status };
+  const res = {} as unknown as Response;
+  const jsonMock = vi.fn().mockReturnValue(res);
+  const statusMock = vi.fn().mockReturnValue(res);
+  res.json = jsonMock as never;
+  res.status = statusMock as never;
+  return { res, json: jsonMock, status: statusMock };
 }
 
 /** The caller is an admin (accountType) deleting `targetId` from params. */

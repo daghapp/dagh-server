@@ -36,7 +36,7 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 | POST | `/auth/register` | Public | Create a new account; returns the user. |
 | POST | `/auth/login` | Public | Log in; returns `accessToken` + `refreshToken`. |
 | POST | `/auth/verify-otp` | Public | Verify an email OTP (email verification or password reset). |
-| POST | `/auth/resend-otp` | Public | Resend the email-verification OTP (rate-limited, 1/min). |
+| POST | `/auth/resend-otp` | Public | Resend the email-verification OTP (rate-limited, 1/min). Returns `502` when the OTP email cannot be delivered. |
 | POST | `/auth/refresh-token` | Public | Exchange a refresh token for a new access token + the signed-in user (same shape as login). |
 | POST | `/auth/request-reset-password` | Public | Send a password-reset OTP to an email. |
 | POST | `/auth/reset-password` | Bearer | Verify OTP + old password, then set a new password. |

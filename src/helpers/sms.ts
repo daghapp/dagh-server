@@ -30,19 +30,24 @@ export async function sendSms({ to, message }: SmsPayload): Promise<void> {
       },
       timeout: 15000,
     });
-  } catch (err: any) {
-    if (err.response) {
+  } catch (err) {
+    const e = err as {
+      response?: { status?: number; data?: unknown };
+      request?: unknown;
+      message?: string;
+    };
+    if (e.response) {
       // Hubtel returned a non-2xx response — log the body for diagnosis.
       console.error("[HUBTEL_ERROR]", {
-        status: err.response.status,
-        data: err.response.data,
+        status: e.response?.status,
+        data: e.response?.data,
         to,
         sender,
       });
-    } else if (err.request) {
-      console.error("[HUBTEL_NO_RESPONSE]", { to, sender, message: err.message });
+    } else if (e.request) {
+      console.error("[HUBTEL_NO_RESPONSE]", { to, sender, message: e.message });
     } else {
-      console.error("[HUBTEL_REQUEST_ERROR]", { to, sender, message: err.message });
+      console.error("[HUBTEL_REQUEST_ERROR]", { to, sender, message: e.message });
     }
     throw err;
   }

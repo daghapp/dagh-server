@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { PaymentStatus, VerificationStatus } from "../../../generated/prisma/client.js";
-import { ok, fail, paginated } from "../../helpers/response.js";
+import { ok, fail } from "../../helpers/response.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
 
 function monthBounds(offsetMonths: number): { from: Date; to: Date } {

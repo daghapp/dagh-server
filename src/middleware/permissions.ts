@@ -212,9 +212,13 @@ export function hasPermissionKey(role: AdminRole, permission: string): boolean {
 const ROLE_CACHE_KEY = "__adminRole";
 
 export async function loadAdminRole(req: Request): Promise<AdminRole | null> {
-  const cacheable = req as any;
-  if (cacheable[ROLE_CACHE_KEY] !== undefined) {
-    return cacheable[ROLE_CACHE_KEY]?.role ?? cacheable[ROLE_CACHE_KEY];
+  const cacheable = req as unknown as Record<string, unknown>;
+  const cached = cacheable[ROLE_CACHE_KEY] as { role?: AdminRole } | AdminRole | null | undefined;
+  if (cached !== undefined) {
+    if (cached && typeof cached === "object" && "role" in cached) {
+      return cached.role ?? null;
+    }
+    return cached as AdminRole | null;
   }
   const user = req.user;
   if (!user) return null;
@@ -286,7 +290,7 @@ export async function assertPermission(
 }
 
 export function _clearAdminRoleCache(req: Request): void {
-  delete (req as any)[ROLE_CACHE_KEY];
+  delete (req as unknown as Record<string, unknown>)[ROLE_CACHE_KEY];
 }
 
 export function getAllPermissionsForRole(role: AdminRole): string[] {

@@ -16,20 +16,6 @@ import type { TransitProfile } from "../../generated/prisma/client.js";
 
 export type TransitProfileValue = TransitProfile;
 
-// Regions whose population centres carry reliable ride-hailing coverage.
-const URBAN_REGIONS = new Set(["Greater Accra", "Ashanti", "Central", "Western"]);
-
-// Regions that are predominantly rural: local transit is station-based.
-const RURAL_REGIONS = new Set([
-  "Volta",
-  "Oti",
-  "Northern",
-  "North East",
-  "Upper East",
-  "Upper West",
-  "Savannah",
-]);
-
 /**
  * Region → accessibility tier. Mirrors the seeded knowledge of Ghana's
  * geography: the Greater Accra/Ashanti/Central/Western corridor is urbanised,

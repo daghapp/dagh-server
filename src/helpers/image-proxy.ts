@@ -42,10 +42,7 @@ export async function ensureImageProxyCacheDir(): Promise<void> {
   await fs.mkdir(IMAGE_PROXY_CACHE_DIR, { recursive: true });
 }
 
-export function resolveImageUrl(
-  candidates: Array<string | null | undefined>,
-  width = 800,
-): string | null {
+export function resolveImageUrl(candidates: Array<string | null | undefined>): string | null {
   for (const candidate of candidates) {
     if (candidate && candidate.trim()) {
       return candidate.trim();

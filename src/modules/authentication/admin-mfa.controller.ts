@@ -26,7 +26,7 @@ export async function mfaSetupAuth(req: Request, res: Response, next: NextFuncti
       const { default: protectedRoute } = await import("../../middleware/protected.js");
       return protectedRoute(req, res, next);
     }
-    const identity = resolveMfaIdentity((req.body as any)?.mfaToken);
+    const identity = resolveMfaIdentity((req.body as { mfaToken?: string })?.mfaToken);
     if (!identity) return fail(res, 401, "Not authenticated");
     const user = await prisma.user.findUnique({
       where: { id: identity.id },
@@ -61,13 +61,6 @@ import { getAdminPermissions } from "../../services/admin-permissions.service.js
 
 const MFA_TOKEN_TTL_MS = 5 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 30 * 1000;
-
-interface MfaTokenPayload {
-  id: string;
-  email: string;
-  accountType: string;
-  kind: "admin_mfa";
-}
 
 /** Verification codes are stored hashed, and expire on their own row. */
 async function issueMfaChallenge(userId: string, method: "SMS" | "TOTP"): Promise<string> {
@@ -195,7 +188,9 @@ export class AdminMfaController {
     try {
       // Session OR short-lived mfaToken: the global-2FA setup-required flow
       // hands the admin only an mfaToken, so setup must accept it.
-      const mfaIdentity = req.user ? null : resolveMfaIdentity((req.body as any)?.mfaToken);
+      const mfaIdentity = req.user
+        ? null
+        : resolveMfaIdentity((req.body as { mfaToken?: string })?.mfaToken);
       const identity =
         req.user ?? (mfaIdentity ? { id: mfaIdentity.id, email: mfaIdentity.email } : null);
       if (!identity) return fail(res, 401, "Not authenticated");
@@ -226,7 +221,9 @@ export class AdminMfaController {
   /** POST /admin/auth/2fa/totp/verify — confirms the first code, enables TOTP. */
   async totpVerify(req: Request, res: Response) {
     try {
-      const mfaIdentity = req.user ? null : resolveMfaIdentity((req.body as any)?.mfaToken);
+      const mfaIdentity = req.user
+        ? null
+        : resolveMfaIdentity((req.body as { mfaToken?: string })?.mfaToken);
       const identity = req.user ?? (mfaIdentity ? { id: mfaIdentity.id } : null);
       if (!identity) return fail(res, 401, "Not authenticated");
       const user = identity as { id: string };

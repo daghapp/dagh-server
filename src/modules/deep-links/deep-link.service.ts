@@ -1,5 +1,4 @@
 import jwt from "jsonwebtoken";
-import { prisma } from "../../config/index.js";
 
 export type ShareType = "profile" | "event" | "post" | "app";
 
@@ -28,7 +27,19 @@ const PLAY_STORE_URL =
   process.env.PLAY_STORE_URL?.trim() ||
   "https://play.google.com/store/apps/details?id=com.simplymark.diasporansync";
 const APP_STORE_URL = process.env.APP_STORE_URL?.trim() || "";
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "deep-link-secret";
+const DEEP_LINK_SECRET =
+  process.env.DEEP_LINK_SECRET ||
+  process.env.JWT_ACCESS_SECRET ||
+  process.env.JWT_SECRET ||
+  process.env.SESSIONSECRET;
+
+if (!DEEP_LINK_SECRET && process.env.NODE_ENV !== "test") {
+  throw new Error(
+    "Missing JWT_ACCESS_SECRET (or DEEP_LINK_SECRET) environment variable for deep-link signing.",
+  );
+}
+
+const JWT_SECRET = DEEP_LINK_SECRET ?? "deep-link-test-secret";
 
 export function detectPlatform(userAgent: string): "android" | "ios" | "web" | "bot" {
   const ua = userAgent || "";
@@ -114,15 +125,6 @@ export async function createSmartLink(params: {
 export async function resolveDeferredDeepLink(token: string): Promise<DeepLinkTarget | null> {
   const resolved = verifyDeepLinkToken(token);
   if (!resolved) return null;
-  try {
-    // Optional persistence hook (best effort).
-    await (prisma as any).deferredDeepLink?.updateMany?.({
-      where: { token },
-      data: { claimedAt: new Date() },
-    });
-  } catch {
-    // ignore
-  }
   return { type: resolved.type, id: resolved.id };
 }
 

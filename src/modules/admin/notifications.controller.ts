@@ -12,7 +12,7 @@ export class AdminNotificationsController {
       const skip = (page - 1) * limit;
       const category = req.query.category as string | undefined;
 
-      const where: any = { adminId: user.id };
+      const where: { adminId: string; category?: string } = { adminId: user.id };
       if (category) where.category = category;
 
       const [items, total, unreadCount] = await Promise.all([
@@ -43,7 +43,7 @@ export class AdminNotificationsController {
         data: { read: true, readAt: new Date() },
       });
       return ok(res, { id }, "Marked as read");
-    } catch (error) {
+    } catch (_error) {
       return fail(res, 500, "Failed to mark as read");
     }
   }
@@ -57,7 +57,7 @@ export class AdminNotificationsController {
         data: { read: true, readAt: new Date() },
       });
       return ok(res, null as never, "All notifications marked as read");
-    } catch (error) {
+    } catch (_error) {
       return fail(res, 500, "Failed to mark all as read");
     }
   }
@@ -68,7 +68,7 @@ export class AdminNotificationsController {
       if (!user) return fail(res, 401, "Not authenticated");
       await prisma.adminNotification.deleteMany({ where: { adminId: user.id } });
       return ok(res, null as never, "Notifications cleared");
-    } catch (error) {
+    } catch (_error) {
       return fail(res, 500, "Failed to clear notifications");
     }
   }

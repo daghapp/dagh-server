@@ -60,8 +60,8 @@ export class AdminTourController {
 
       const {
         gallery,
-        itineraries,
-        locations,
+        itineraries: _itineraries,
+        locations: _locations,
         media: _media,
         ...scalar
       } = tourData as TourSchema & {
@@ -118,8 +118,8 @@ export class AdminTourController {
 
       const {
         gallery,
-        itineraries,
-        locations,
+        itineraries: _itineraries,
+        locations: _locations,
         media: _media,
         ...scalar
       } = tourData as UpdateTourSchema & {

@@ -1,3 +1,4 @@
+import type { Request, Response } from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
@@ -81,8 +82,9 @@ const baseVerification = {
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.profileVerification.findUnique.mockResolvedValue(baseVerification);
-  prismaMock.profileVerification.update.mockImplementation((args: any) =>
-    Promise.resolve({ ...baseVerification, ...args.data }),
+  prismaMock.profileVerification.update.mockImplementation(
+    (args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ ...baseVerification, ...args.data }),
   );
   prismaMock.userProfile.findUnique.mockResolvedValue({
     id: "profile-1",
@@ -107,8 +109,8 @@ describe("verification approval", () => {
         params: { id: "verification-1" },
         body: { action: "APPROVED" },
         user: { id: "admin-1" },
-      } as any,
-      res as any,
+      } as unknown as Request,
+      res as unknown as Response,
     );
 
     expect(res.statusCode).toBe(200);
@@ -126,8 +128,8 @@ describe("verification approval", () => {
         params: { id: "verification-1" },
         body: { action: "APPROVED" },
         user: { id: "admin-1" },
-      } as any,
-      res as any,
+      } as unknown as Request,
+      res as unknown as Response,
     );
 
     expect(res.statusCode).toBe(200);
@@ -145,8 +147,8 @@ describe("verification approval", () => {
     const res = createRes();
 
     await new AdminProfileController().updateFaceStatus(
-      { params: { id: "verification-1" }, body: { action: "REJECTED" } } as any,
-      res as any,
+      { params: { id: "verification-1" }, body: { action: "REJECTED" } } as unknown as Request,
+      res as unknown as Response,
     );
 
     expect(prismaMock.profileVerification.update.mock.calls[0][0].data.isVerified).toBe(false);
@@ -164,7 +166,10 @@ describe("verification status", () => {
     });
     const res = createRes();
 
-    await getVerificationStatus({ user: { id: "user-1" } } as any, res as any);
+    await getVerificationStatus(
+      { user: { id: "user-1" } } as unknown as Request,
+      res as unknown as Response,
+    );
 
     expect(res.statusCode).toBe(200);
     expect(res.body.data.profileExists).toBe(true);
@@ -191,8 +196,8 @@ describe("dating KYC enforcement", () => {
       {
         user: { id: "user-1" },
         body: { targetId: "user-2", direction: "LIKE" },
-      } as any,
-      res as any,
+      } as unknown as Request,
+      res as unknown as Response,
     );
 
     expect(res.statusCode).toBe(403);

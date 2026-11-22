@@ -425,7 +425,13 @@ export const getDatingProfileByName = async (req: Request, res: Response) => {
     } as const;
 
     const hits = await searchDatingProfiles(name, { size: 1 });
-    let user: any = null;
+    let user: {
+      id: string;
+      fullName: string;
+      username: string | null;
+      profileImageUrl: string | null;
+      profile: { bio_profile_image_url: string | null; profileUrl: string | null } | null;
+    } | null = null;
 
     if (hits && hits.length > 0 && typeof prisma.user.findUnique === "function") {
       user = await prisma.user.findUnique({
