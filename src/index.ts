@@ -8,25 +8,32 @@ import { syncTourPackages } from "../scripts/sync-tour-packages.js";
 
 const PORT = process.env.PORT || 5000;
 
-void syncTourSites().catch((error) => {
-  console.error("[startup] tour-site sync failed; continuing", error);
-});
+// Run startup syncs sequentially (not concurrently) so a cold database is
+// not hit by five parallel sync jobs at once, which previously caused
+// connection timeouts on Render/Neon. Each job gets a few retries.
+void (async () => {
+  const jobs: Array<[string, () => Promise<unknown>]> = [
+    ["tour-site", () => syncTourSites()],
+    ["allowed-country", () => syncAllowedCountries()],
+    ["community-video", () => syncCommunityVideos()],
+    ["membership-plan", () => syncMembershipPlans()],
+    ["tour-package", () => syncTourPackages()],
+  ];
 
-void syncAllowedCountries().catch((error) => {
-  console.error("[startup] allowed-country sync failed; continuing", error);
-});
-
-void syncCommunityVideos().catch((error) => {
-  console.error("[startup] community-video sync failed; continuing", error);
-});
-
-void syncMembershipPlans().catch((error) => {
-  console.error("[startup] membership-plan sync failed; continuing", error);
-});
-
-void syncTourPackages().catch((error) => {
-  console.error("[startup] tour-package sync failed; continuing", error);
-});
+  for (const [name, job] of jobs) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await job();
+        break;
+      } catch (error) {
+        console.error(`[startup] ${name} sync failed (attempt ${attempt}/3); continuing`, error);
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+        }
+      }
+    }
+  }
+})();
 
 const httpServer = server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

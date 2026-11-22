@@ -18,10 +18,10 @@ export function createPgPool(config: pg.PoolConfig = {}): pg.Pool {
   return new pg.Pool({
     stream: createSocket,
     max: Number(process.env.DATABASE_POOL_MAX) || 10,
-    connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS) || 5000,
+    connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS) || 15000,
     idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS) || 30000,
-    query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 10000,
-    statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS) || 10000,
+    query_timeout: Number(process.env.DATABASE_QUERY_TIMEOUT_MS) || 30000,
+    statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS) || 30000,
     ...config,
   } as pg.PoolConfig);
 }
