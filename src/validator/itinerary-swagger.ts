@@ -52,7 +52,7 @@ export const itinerarySchemas = {
         type: "string",
         description:
           "Hub the loop is anchored to. When omitted, it is inferred from the selected sites (most frequently selected region).",
-        example: "Central",
+        example: "Ashanti",
       },
       allowAccraOvernight: {
         type: "boolean",

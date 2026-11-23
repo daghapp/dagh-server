@@ -253,7 +253,6 @@ Failures: `404` when the site does not exist.
   "tourSiteIds": ["0f2f6a4e-8f2c-4d5a-9a3e-1b6c7d8e9f01", "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"],
   "tourType": "SINGLE",
   "durationDays": 5,
-  "startRegion": "Central",
   "allowAccraOvernight": false,
   "relocationInterest": false,
   "apartmentType": "HOTEL",
@@ -270,7 +269,7 @@ Failures: `404` when the site does not exist.
 | `tourSiteIds`          | `string[]` (UUID)                                                | ✅       | —           | 1–50 sites. Must all exist.                                 |
 | `tourType`             | `"GROUP" \| "SINGLE"`                                            | ✅       | —           | Echoed back in the request.                                 |
 | `durationDays`         | `integer`                                                        | ✅       | —           | **Touring days only**, 1–30. Final itinerary has `+2` days. |
-| `startRegion`          | Ghana region string                                              | ❌       | `"Central"` | Hub the loop is anchored to.                                |
+| `startRegion`          | Ghana region string                                              | ❌       | —           | Optional hub; omitted = inferred from selected sites.       |
 | `allowAccraOvernight`  | `boolean`                                                        | ❌       | `false`     | Opt in to more than 2 Greater Accra nights.                 |
 | `relocationInterest`   | `boolean`                                                        | ❌       | `false`     | Adds a nearby accommodation suggestion per site.            |
 | `apartmentType`        | `"HOTEL" \| "GUESTHOUSE" \| "AIRBNB" \| "APARTMENTS" \| "MOTEL"` | ❌       | `null`      | Preference, falls back to closest supply.                   |
@@ -1143,7 +1142,8 @@ interface ItineraryResponseData {
 - Enforce the 3-sites-per-day limit client-side to avoid avoidable `422`s:
   `selectedSites.length <= durationDays * 3`.
 - If `durationDays === 1`, warn when two selected sites are very far apart.
-- Offer `startRegion` (default Central), `apartmentType`, and `transportType`.
+- Leave `startRegion` unset unless the user chose a hub; the server infers it
+  from the selected sites. Offer `apartmentType` and `transportType`.
 - Only show the "add casual dating" toggle if KYC is complete. If not, route
   to `/verification` instead of letting the request fail.
 

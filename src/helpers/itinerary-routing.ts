@@ -40,7 +40,7 @@ export const GHANA_REGIONS = [
 
 export type GhanaRegion = (typeof GHANA_REGIONS)[number];
 
-/** Cape Coast / Central Region is the default hub when none is supplied. */
+/** Defensive fallback hub when no sites are available to infer from. */
 export const DEFAULT_START_REGION = "Central";
 
 export const ACCRA_REGION = "Greater Accra";
