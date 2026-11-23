@@ -78,6 +78,11 @@ export async function resolveAppleUser(identity: AppleIdentity): Promise<User> {
           ...(byEmail.authProvider === AuthProvider.PASSWORD
             ? { authProvider: AuthProvider.ICLOUD }
             : {}),
+          // The provider verified this email, so a password signup that never
+          // completed its OTP no longer needs admin approval.
+          ...(byEmail.accountStatus === "PENDING_VERIFICATION"
+            ? { accountStatus: "ACTIVE" }
+            : {}),
         },
       });
     }
@@ -94,6 +99,7 @@ export async function resolveAppleUser(identity: AppleIdentity): Promise<User> {
         email: identity.email,
         authProvider: AuthProvider.ICLOUD,
         appleId: identity.appleId,
+        accountStatus: "ACTIVE",
       },
     });
   } catch (error) {

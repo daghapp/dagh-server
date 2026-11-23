@@ -52,6 +52,12 @@ const VALID_DEPARTMENTS = [
 
 const MAX_WARNINGS_PER_USER = 2;
 
+const APPROVABLE_STATUSES = ["PENDING", "PENDING_VERIFICATION"] as const;
+
+function isApprovableStatus(status: string): status is (typeof APPROVABLE_STATUSES)[number] {
+  return (APPROVABLE_STATUSES as readonly string[]).includes(status);
+}
+
 /**
  * Status-based row actions. Kept status-based only (not filtered by caller
  * permissions) so the panel can explain why an action is unavailable; the
@@ -724,7 +730,7 @@ export class AuthAdminController {
     }
   }
 
-  // Approve pending user (PENDING → ACTIVE; login already blocks non-ACTIVE)
+  // Approve a pending user (PENDING or PENDING_VERIFICATION → ACTIVE).
   async approveUser(req: Request, res: Response) {
     try {
       const unauthorizedResponse = ensureAdmin(req, res);
@@ -735,11 +741,21 @@ export class AuthAdminController {
       if (!user || user.isDeleted) {
         return fail(res, 404, { code: "USER_NOT_FOUND", message: "User not found" });
       }
-      if (user.accountStatus !== "PENDING") {
+      const fromStatus = user.accountStatus;
+      const summary = {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        accountStatus: fromStatus,
+      };
+      if (fromStatus === "ACTIVE") {
+        return ok(res, summary, "User already approved");
+      }
+      if (!isApprovableStatus(fromStatus)) {
         return fail(res, 409, {
           code: "INVALID_STATUS_TRANSITION",
           message: "Only pending users can be approved",
-          currentStatus: user.accountStatus,
+          currentStatus: fromStatus,
         });
       }
       const now = new Date();
@@ -757,7 +773,7 @@ export class AuthAdminController {
       await this.recordTrail({
         actorId,
         userId,
-        from: "PENDING",
+        from: fromStatus,
         to: "ACTIVE",
         action: "APPROVE",
         note: `Approved user ${user.email}`,
@@ -790,7 +806,7 @@ export class AuthAdminController {
     }
   }
 
-  // Reject pending user (PENDING → TERMINATED, reason required)
+  // Reject a pending user (PENDING or PENDING_VERIFICATION → TERMINATED).
   async rejectUser(req: Request, res: Response) {
     try {
       const unauthorizedResponse = ensureAdmin(req, res);
@@ -805,11 +821,21 @@ export class AuthAdminController {
       if (!user || user.isDeleted) {
         return fail(res, 404, { code: "USER_NOT_FOUND", message: "User not found" });
       }
-      if (user.accountStatus !== "PENDING") {
+      const fromStatus = user.accountStatus;
+      const summary = {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        accountStatus: fromStatus,
+      };
+      if (fromStatus === "TERMINATED") {
+        return ok(res, summary, "User already rejected");
+      }
+      if (!isApprovableStatus(fromStatus)) {
         return fail(res, 409, {
           code: "INVALID_STATUS_TRANSITION",
           message: "Only pending users can be rejected",
-          currentStatus: user.accountStatus,
+          currentStatus: fromStatus,
         });
       }
       const now = new Date();
@@ -827,7 +853,7 @@ export class AuthAdminController {
       await this.recordTrail({
         actorId,
         userId,
-        from: "PENDING",
+        from: fromStatus,
         to: "TERMINATED",
         reason: reason.trim(),
         action: "REJECT",

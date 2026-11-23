@@ -39,10 +39,15 @@ if (CLIENTID && CLIENTSECRETE && REDIRECTURI) {
           let user = await prisma.user.findUnique({ where: { email } });
 
           if (user) {
-            if (user.authProvider === "PASSWORD") {
+            const relabelProvider = user.authProvider === "PASSWORD";
+            const activate = user.accountStatus === "PENDING_VERIFICATION";
+            if (relabelProvider || activate) {
               user = await prisma.user.update({
                 where: { id: user.id },
-                data: { authProvider: "GOOGLE" },
+                data: {
+                  ...(relabelProvider ? { authProvider: "GOOGLE" } : {}),
+                  ...(activate ? { accountStatus: "ACTIVE" } : {}),
+                },
               });
             }
             return done(null, user);
@@ -53,6 +58,7 @@ if (CLIENTID && CLIENTSECRETE && REDIRECTURI) {
               fullName: profile.displayName ?? email.split("@")[0],
               email,
               authProvider: "GOOGLE",
+              accountStatus: "ACTIVE",
             },
           });
 
@@ -83,10 +89,15 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET && FACEBOOK_CALLBACK_URL) {
           let user = await prisma.user.findUnique({ where: { email } });
 
           if (user) {
-            if (user.authProvider !== "FACEBOOK") {
+            const relabelProvider = user.authProvider !== "FACEBOOK";
+            const activate = user.accountStatus === "PENDING_VERIFICATION";
+            if (relabelProvider || activate) {
               user = await prisma.user.update({
                 where: { id: user.id },
-                data: { authProvider: "FACEBOOK" },
+                data: {
+                  ...(relabelProvider ? { authProvider: "FACEBOOK" } : {}),
+                  ...(activate ? { accountStatus: "ACTIVE" } : {}),
+                },
               });
             }
             return done(null, user);
@@ -97,6 +108,7 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET && FACEBOOK_CALLBACK_URL) {
               fullName: profile.displayName ?? email.split("@")[0],
               email,
               authProvider: "FACEBOOK",
+              accountStatus: "ACTIVE",
             },
           });
 

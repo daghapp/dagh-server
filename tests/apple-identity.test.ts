@@ -47,6 +47,7 @@ describe("resolveAppleUser", () => {
     expect(user.email).toBe(address);
     expect(user.appleId).toBe(`apple-${stamp}-new`);
     expect(user.authProvider).toBe(AuthProvider.ICLOUD);
+    expect(user.accountStatus).toBe("ACTIVE");
   });
 
   it("finds an existing user by appleId even when Apple omits the email", async () => {
@@ -66,6 +67,7 @@ describe("resolveAppleUser", () => {
     expect(user.id).toBe(created.id);
     expect(user.appleId).toBe(`apple-${stamp}-link`);
     expect(user.authProvider).toBe(AuthProvider.ICLOUD);
+    expect(user.accountStatus).toBe("ACTIVE");
   });
 
   it("does not let a second Apple identity claim an already-linked email", async () => {

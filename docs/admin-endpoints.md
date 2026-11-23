@@ -167,8 +167,8 @@ All paths use `:userId`. Mutations return `{ success:true, data:<selected update
 - `PATCH /admin/users/:userId/suspend` — Requires `users.suspend`. Sets `accountStatus=SUSPENDED`. Data: `{id, fullName, email, accountStatus}`. Errors: `400` already suspended; `404`; `403`; `500`.
 - `PATCH /admin/users/:userId/reactivate` — Requires `users.edit`. Sets `accountStatus=ACTIVE`. Same data shape. Errors: `400` already active; `404`; `403`; `500`.
 - `PATCH /admin/users/:userId/terminate` — Requires `users.terminate`. Body: `{ "reason":"Required explanation" }`. Sets `accountStatus=TERMINATED`; returns `{id,fullName,email,accountStatus}`. Errors: `400` missing reason or already terminated; `404`; `403`; `500`.
-- `PATCH /admin/users/:userId/approve` — Requires `users.approve`. Only a `PENDING` user can be approved; status becomes `ACTIVE`. Returns `{id,fullName,email,accountStatus}`. Errors: `400` not pending; `404`; `403`; `500`.
-- `PATCH /admin/users/:userId/reject` — Requires `users.reject`. Body: `{ "reason":"Required explanation" }`. Only a `PENDING` user can be rejected; status becomes `SUSPENDED`. Returns `{id,fullName,email,accountStatus}`. Errors: `400` missing reason or not pending; `404`; `403`; `500`.
+- `PATCH /admin/users/:userId/approve` — Requires `users.approve`. A `PENDING` or `PENDING_VERIFICATION` user becomes `ACTIVE`; an already-`ACTIVE` user returns `200` with "User already approved". Returns `{id,fullName,email,accountStatus}`. Errors: `409` for any other status; `404`; `403`; `500`.
+- `PATCH /admin/users/:userId/reject` — Requires `users.reject`. Body: `{ "reason":"Required explanation" }`. A `PENDING` or `PENDING_VERIFICATION` user becomes `TERMINATED`; an already-`TERMINATED` user returns `200` with "User already rejected". Returns `{id,fullName,email,accountStatus}`. Errors: `400` missing reason, `409` for any other status; `404`; `403`; `500`.
 - `DELETE /admin/users/:userId` — Requires `users.delete`. Permanently removes the account and returns `{success:true,data:null,message:"User deleted successfully"}`. Errors: `404` user not found; `403`; `500` (`Failed to delete user`).
 
 ## 5. Visa request management
