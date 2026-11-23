@@ -68,7 +68,6 @@ import { router as FaqRoutes } from "./routes/faq.routes.js";
 import { router as CommunityRoutes } from "./routes/community.routes.js";
 import { ShareRoutes } from "./modules/share/share.routes.js";
 
-import { deleteInactiveUsersJob } from "./jobs/user-cleanup.js";
 import { callExpiryJob, setCallExpiryIo } from "./jobs/call-expiry.js";
 import { pushDeliveryJob } from "./jobs/push-delivery.js";
 import { setupSocketHandlers } from "./sockets/socketHandlers.js";
@@ -197,7 +196,6 @@ app.use(passport.session());
 // Registered before every router so login/registration gating works too.
 app.use(maintenanceGate);
 
-deleteInactiveUsersJob();
 checkPendingPaymentsJob();
 subscriptionExpiryJob();
 weeklyDigestJob();

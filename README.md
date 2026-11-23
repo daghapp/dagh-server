@@ -215,9 +215,9 @@ behind a load balancer:
 2. **Session store** is Postgres-backed (`connect-pg-simple`, `session` table
    auto-created), so OAuth/passport sessions survive restarts and are shared
    across instances.
-3. **Cron jobs** (`check-pending-payments`, `user-cleanup`,
-   `subscription-expiry`, `channel-grant-reverify`, `call-expiry`,
-   `push-delivery`) run under a Redis distributed lock and per-item claims, so
+3. **Cron jobs** (`check-pending-payments`, `subscription-expiry`,
+   `channel-grant-reverify`, `call-expiry`, `push-delivery`) run under a Redis
+   distributed lock and per-item claims, so
    exactly one replica executes them and crashed runs can't double-credit the
    ledger.
 4. **Presence** fan-out is scoped to conversation partners & matches instead of
@@ -1147,7 +1147,6 @@ See `prisma/schema.prisma` for the full schema with all fields and relations.
 | ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Pending payments check  | Every 5 minutes  | Verifies stale PENDING payments with Hubtel API, updates status, processes ledger entries                                                                           |
 | Subscription lifecycle  | Every 10 minutes | Renews auto-renewing memberships and expires lapsed ones                                                                                                             |
-| Unverified user cleanup | Hourly           | Deletes `PENDING_VERIFICATION` users older than 24 hours                                                                                                            |
 | Call expiry             | Every 10 seconds | Expires RINGING calls past `expiresAt`, emits `call.missed`, pushes `CALL_STATE_CHANGED` to both participants                                                       |
 | Push delivery           | Every 10 seconds | Sends PENDING `CallPushDelivery` and `MessagePushDelivery` outbox rows (bounded exponential backoff), fetches Expo push receipts, invalidates rejected/stale tokens |
 | Channel grant re-verify | Daily (03:17 server-local) | Backstop for dormant accounts: re-confirms YouTube channel grants past `YOUTUBE_CHANNEL_REVERIFY_INTERVAL_MS` and revokes those whose subscription was cancelled. Fails open — only a definite negative verdict revokes, so a YouTube outage never locks out subscribers. A pass drains the due queue in batches of 200 until it is empty or `YOUTUBE_REVERIFY_BUDGET_MS` runs out; the job logs "Ran out of budget" when grants are still due |
