@@ -8,6 +8,7 @@ import {
   normalizePhoneNumber,
   phoneDigitCandidates,
   phoneHashCandidateStrings,
+  phoneNumbersMatch,
 } from "../../helpers/phoneHash.js";
 import * as deepLinkService from "../deep-links/deep-link.service.js";
 
@@ -250,13 +251,13 @@ async function blockedUserIds(userId: string, candidateIds: string[]): Promise<S
 export async function findContactUsers(
   userId: string,
   contacts: Array<ContactInput | string> = [],
-): Promise<{ users: ContactUser[]; totalContacts: number }> {
+): Promise<{ users: ContactUser[]; totalContacts: number; lookupHashes: string[] }> {
   const phoneHashes = hashContactsList(contacts);
   const emails = extractEmails(contacts);
   const totalContacts = new Set([...phoneHashes, ...emails]).size;
   const lookupHashes = lookupContactHashes(contacts);
   if (lookupHashes.length === 0 && emails.length === 0) {
-    return { users: [], totalContacts };
+    return { users: [], totalContacts, lookupHashes };
   }
 
   const excludedStatuses: Prisma.EnumAccountStatusFilter["notIn"] = [
@@ -322,7 +323,7 @@ export async function findContactUsers(
     // Variants table may be unavailable before migration; fall back to hash columns.
     console.warn("[contacts] variant lookup failed, retrying without variants", error);
     const fallbackOr = buildOr(false);
-    if (fallbackOr.length === 0) return { users: [], totalContacts };
+    if (fallbackOr.length === 0) return { users: [], totalContacts, lookupHashes };
     users = await prisma.user.findMany({
       where: { ...baseWhere, OR: fallbackOr },
       select: contactUserSelect,
@@ -350,16 +351,20 @@ export async function findContactUsers(
           candidate.profile && "phoneNumber" in candidate.profile
             ? ((candidate.profile as { phoneNumber?: string | null }).phoneNumber ?? null)
             : null;
+        const storedPhones = [candidate.phoneNumber, profilePhone].filter(
+          (phone): phone is string => typeof phone === "string" && phone.length > 0,
+        );
         const candidateHashes = new Set([
           ...hashPhoneLookupCandidates(candidate.phoneNumber),
           ...hashPhoneLookupCandidates(profilePhone),
         ]);
-        for (const h of candidateHashes) {
-          if (lookupSet.has(h)) {
-            users.push(candidate);
-            foundIds.add(candidate.id);
-            break;
-          }
+        const hashMatch = [...candidateHashes].some((h) => lookupSet.has(h));
+        const phoneMatch = rawPhones.some((contactPhone) =>
+          storedPhones.some((storedPhone) => phoneNumbersMatch(contactPhone, storedPhone)),
+        );
+        if (hashMatch || phoneMatch) {
+          users.push(candidate);
+          foundIds.add(candidate.id);
         }
       }
     } catch (error) {
@@ -371,7 +376,7 @@ export async function findContactUsers(
     userId,
     users.map((u) => u.id),
   );
-  return { users: users.filter((u) => !blocked.has(u.id)), totalContacts };
+  return { users: users.filter((u) => !blocked.has(u.id)), totalContacts, lookupHashes };
 }
 
 /** Persist the derived matches and record the caller's sync consent. */
@@ -379,6 +384,7 @@ export async function persistContactMatches(
   userId: string,
   matchedUsers: Array<Pick<ContactUser, "id" | "phoneNumberHash" | "phoneHash">>,
   totalContacts: number,
+  lookupHashes: string[] = [],
 ): Promise<void> {
   const existing = await prisma.contactSyncConsent.findUnique({ where: { userId } });
   const now = new Date();
@@ -394,6 +400,7 @@ export async function persistContactMatches(
           grantedAt: now,
           lastSyncedAt: now,
           contactCount: totalContacts,
+          lookupHashes,
         },
         update: {
           granted: true,
@@ -401,6 +408,7 @@ export async function persistContactMatches(
           revokedAt: null,
           lastSyncedAt: now,
           contactCount: totalContacts,
+          lookupHashes,
         },
       });
 
@@ -427,9 +435,36 @@ export async function persistContactMatches(
       }
     });
   } catch (error) {
-    // Best-effort: tables may be unavailable before migration; sync still returns matches.
-    console.warn("[contacts] failed to persist contact matches", { userId, error });
+    console.error("[contacts] failed to persist contact matches", { userId, error });
+    throw error;
   }
+}
+
+export async function mergeContactMatches(
+  userId: string,
+  matchedUsers: Array<Pick<ContactUser, "id" | "phoneNumberHash" | "phoneHash">>,
+): Promise<void> {
+  if (matchedUsers.length === 0) return;
+  const ts = new Date();
+  await prisma.contactMatch.createMany({
+    data: matchedUsers.map((u) => ({
+      id: crypto.randomUUID(),
+      userId,
+      matchedUserId: u.id,
+      phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
+      createdAt: ts,
+      updatedAt: ts,
+    })),
+    skipDuplicates: true,
+  });
+}
+
+export async function refreshContactMatches(userId: string): Promise<void> {
+  const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+  if (!consent?.granted || !consent.lookupHashes?.length) return;
+
+  const { users } = await findContactUsers(userId, consent.lookupHashes);
+  await mergeContactMatches(userId, users);
 }
 
 export function toContactMatch(user: ContactUser): ContactMatch {
@@ -468,9 +503,9 @@ export async function matchContacts(
   unmatchedCount: number;
   banner: string;
 }> {
-  const { users, totalContacts } = await findContactUsers(userId, contacts);
+  const { users, totalContacts, lookupHashes } = await findContactUsers(userId, contacts);
   if (totalContacts > 0) {
-    await persistContactMatches(userId, users, totalContacts);
+    await persistContactMatches(userId, users, totalContacts, lookupHashes);
   }
 
   const matches = users.map(toContactMatch);
@@ -527,6 +562,12 @@ export async function syncContacts(
 
 /** Persisted matches for the caller, excluding blocked pairs. */
 export async function getContactMatches(userId: string): Promise<ContactMatch[]> {
+  try {
+    await refreshContactMatches(userId);
+  } catch (error) {
+    console.warn("[contacts] failed to refresh contact matches", { userId, error });
+  }
+
   let consentGranted = false;
   try {
     const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
@@ -608,7 +649,7 @@ export async function clearContactMatches(userId: string): Promise<void> {
     await tx.contactSyncConsent.upsert({
       where: { userId },
       create: { userId, granted: false, revokedAt: new Date() },
-      update: { granted: false, revokedAt: new Date(), contactCount: 0 },
+      update: { granted: false, revokedAt: new Date(), contactCount: 0, lookupHashes: [] },
     });
   });
 }

@@ -672,6 +672,7 @@ model ContactSyncConsent {
   revokedAt    DateTime?
   lastSyncedAt DateTime?
   contactCount Int       @default(0)
+  lookupHashes String[]  @default([])
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

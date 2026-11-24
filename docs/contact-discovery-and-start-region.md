@@ -111,10 +111,12 @@ Valid values are the Ghana regions in `GHANA_REGIONS`
 - **Accounts covered:** all `accountStatus = "ACTIVE"` users except the caller.
 - **Blocked pairs:** excluded in both directions.
 - **Phone formats:** for each contact phone the server hashes the raw digits plus
-  local/country-code variants. Example: `0244000000`, `244000000`, and
-  `+233244000000` all resolve to the same account.
-- **Country code:** `DEFAULT_PHONE_COUNTRY_CODE` (default `233`, Ghana) controls
-  how local numbers are expanded. Set it in the environment for other markets.
+  local/country-code variants, and also compares national-number suffixes against
+  stored E.164 numbers. Example: `0244000000`, `244000000`, and
+  `+233244000000` all resolve to the same account, even in other countries.
+- **Country codes:** `DEFAULT_PHONE_COUNTRY_CODES` (or singular
+  `DEFAULT_PHONE_COUNTRY_CODE`, default `233`) controls how local numbers are
+  expanded. Use a comma-separated list for multi-market deployments.
 - **Emails:** if a contact includes `email`, it is compared case-insensitively
   against account emails. Raw emails are not persisted.
 - **Precomputed hashes:** if the client sends `hashes`, the server matches them
@@ -122,14 +124,18 @@ Valid values are the Ghana regions in `GHANA_REGIONS`
   Every plausible phone form (local, E.164, national, international prefix) is
   stored, so a client-side hash of any form still matches. Raw phone numbers
   remain the preferred input where possible.
-- **Privacy:** raw phone numbers and emails are hashed/compared in memory and
-  are never written to the database. Only matched user IDs and the match owner's
-  consent/counts are stored.
+- **Privacy:** raw phone numbers and emails are never written to the database.
+  SHA-256 lookup hashes are stored with the consent record; emails are only
+  compared transiently and are not stored.
 
 ### 2.3 Persistence & consent
 
 - A successful sync upserts `ContactSyncConsent` (`granted = true`,
-  `lastSyncedAt`, `contactCount`) and reconciles `ContactMatch` rows.
+  `lastSyncedAt`, `contactCount`, `lookupHashes`) and reconciles `ContactMatch`
+  rows. Persistence failures now fail the sync instead of silently returning
+  matches that cannot be read later.
+- `GET /contacts/matches` refreshes matches from stored `lookupHashes`, so users
+  who join after the original sync appear without another client sync.
 - `GET /contacts/matches` returns `[]` until a consent row exists, so existing
   users must re-sync once after this release.
 - `DELETE /contacts/matches` removes derived matches and revokes consent.
@@ -268,7 +274,8 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 
 | Variable                          | Default                       | Purpose                                                      |
 | --------------------------------- | ----------------------------- | ------------------------------------------------------------ |
-| `DEFAULT_PHONE_COUNTRY_CODE`      | `233`                         | Country code used to expand local phone numbers for matching |
+| `DEFAULT_PHONE_COUNTRY_CODES`     | `233`                         | Comma-separated country codes for expanding local phone numbers |
+| `DEFAULT_PHONE_COUNTRY_CODE`      | `233`                         | Legacy singular fallback for one country code                |
 | `API_URL` / `RENDER_EXTERNAL_URL` | —                             | Base URL for invite/share links                              |
 | `PLAY_STORE_URL`                  | configured Play Store listing | Android invite fallback                                      |
 | `APP_STORE_URL`                   | —                             | iOS invite fallback                                          |
@@ -307,8 +314,9 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 - Historical tour requests that stored `"Central"` before this change are not
   rewritten automatically. Decide whether to leave them or run a targeted
   backfill after confirming which rows were genuine Central choices.
-- `DEFAULT_PHONE_COUNTRY_CODE` defaults to Ghana (`233`); set it explicitly for
-  non-Ghana deployments.
+- `DEFAULT_PHONE_COUNTRY_CODES` defaults to Ghana (`233`); set it explicitly for
+  multi-country deployments. Local numbers from other countries can also match
+  via national-suffix comparison without configuration.
 
 ---
 

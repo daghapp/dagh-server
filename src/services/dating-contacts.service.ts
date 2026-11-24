@@ -5,6 +5,7 @@ import {
   contactUserSelect,
   findContactUsers,
   persistContactMatches,
+  refreshContactMatches,
   type ContactInput,
   type ContactUser,
 } from "../modules/contacts/contacts.service.js";
@@ -72,7 +73,7 @@ export async function syncDatingContacts(
     throw new Error("CONTACT_CONSENT_REQUIRED");
   }
 
-  const { users, totalContacts } = await findContactUsers(userId, contacts);
+  const { users, totalContacts, lookupHashes } = await findContactUsers(userId, contacts);
   const viewer = await prisma.user.findUnique({
     where: { id: userId },
     select: { gender: true },
@@ -90,7 +91,7 @@ export async function syncDatingContacts(
   const compatibleUsers = users.filter((user) => compatibleIds.has(user.id));
 
   if (totalContacts > 0) {
-    await persistContactMatches(userId, compatibleUsers, totalContacts);
+    await persistContactMatches(userId, compatibleUsers, totalContacts, lookupHashes);
   }
 
   const publicMatches = compatibleUsers.map(toPublicMatch);
@@ -115,6 +116,12 @@ export async function syncDatingContacts(
 
 /** Persisted contact matches, including contacts without a dating profile. */
 export async function getDatingContactMatches(userId: string): Promise<DatingContactMatch[]> {
+  try {
+    await refreshContactMatches(userId);
+  } catch (error) {
+    console.warn("[dating.contacts] failed to refresh contact matches", { userId, error });
+  }
+
   try {
     const viewer = await prisma.user.findUnique({
       where: { id: userId },
@@ -154,6 +161,12 @@ export async function getDatingContactMatches(userId: string): Promise<DatingCon
 
 /** User ids in the caller's synced contacts that are on the platform. */
 export async function getDatingContactUserIds(userId: string): Promise<Set<string>> {
+  try {
+    await refreshContactMatches(userId);
+  } catch (error) {
+    console.warn("[dating.contacts] failed to refresh contact ids", { userId, error });
+  }
+
   try {
     const rows = await prisma.contactMatch.findMany({
       where: { userId },

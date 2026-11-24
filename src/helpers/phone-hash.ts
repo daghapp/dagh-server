@@ -2,6 +2,8 @@ export {
   normalizePhoneNumber,
   hashPhoneNumber,
   phoneDigitCandidates,
+  toNationalDigits,
+  phoneNumbersMatch,
   hashPhoneCandidates,
   phoneHashCandidateStrings,
   hashPhoneLookupCandidates,

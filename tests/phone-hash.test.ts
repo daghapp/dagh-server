@@ -6,6 +6,7 @@ import {
   hashPhoneNumber,
   phoneDigitCandidates,
   phoneHashCandidateStrings,
+  phoneNumbersMatch,
 } from "../src/helpers/phoneHash.js";
 
 describe("phone digit candidates", () => {
@@ -28,6 +29,17 @@ describe("phone digit candidates", () => {
 
   it("expands the 00 international prefix form", () => {
     expect(phoneDigitCandidates("00233244000000")).toContain("233244000000");
+  });
+});
+
+describe("phoneNumbersMatch", () => {
+  it("matches a local contact to an E.164 number from another country", () => {
+    expect(phoneNumbersMatch("07911123456", "+447911123456")).toBe(true);
+    expect(phoneNumbersMatch("0712345678", "+254712345678")).toBe(true);
+  });
+
+  it("does not match unrelated numbers", () => {
+    expect(phoneNumbersMatch("0244000000", "+233244000001")).toBe(false);
   });
 });
 

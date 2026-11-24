@@ -1390,7 +1390,8 @@ has never been granted and `consent` is not `true`.
 
 ### GET /dating/contacts/matches
 
-Returns persisted contact matches (`matchedCount`, `banner`, `matches[]`).
+Refreshes matches from the stored phone lookup hashes, then returns persisted
+contact matches (`matchedCount`, `banner`, `matches[]`).
 For dating compatibility, matches cover opposite-gender active users only,
 including those without a dating profile; blocks are excluded and
 dating-specific fields may be empty. General `/contacts/*` endpoints still
@@ -1753,10 +1754,11 @@ Securely match a user's hashed device contacts against existing users.
   with dating profiles. `/dating/contacts/*` is opposite-gender only. Check
   `hasDatingProfile` to decide whether to show dating-specific UI.
 - Phone numbers are compared across local (`0244000000`), E.164 (`+233244000000`),
-  country-code-only, raw formatted (`+233 24 400 0000`) and pre-hashed forms, so
-  formatting differences no longer hide matches.
+  country-code-only, raw formatted (`+233 24 400 0000`), national-suffix and
+  pre-hashed forms, so formatting differences no longer hide matches.
 - Contacts may include an `email`; this lets social/Apple/Google sign-ups (which
-  have no phone hash) be discovered. Raw emails/phones are never persisted.
+  have no phone hash) be discovered. Raw emails/phones are never persisted;
+  SHA-256 phone lookup hashes are stored so suggestions refresh for new users.
 - `contactsOnAppCount` / `appUserCount` / `matchedContactsCount` explicitly report
   how many synced contacts are already using the app.
 - `unmatchedCount` + the `invite` link let the client offer "Invite to Diaspora

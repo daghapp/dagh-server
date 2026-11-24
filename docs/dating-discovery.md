@@ -71,9 +71,10 @@ availability; proximity/geofence adds score.
 
 Users can opt in to compare their contacts against **opposite-gender active
 accounts** for the dating endpoints, not only users with a dating profile. Phone
-numbers are matched across local/E.164 formats, and contacts may include an
-optional email (useful for social sign-ups with no phone hash). Only SHA-256
-phone hashes are stored; raw contacts are never persisted. Responses include
+numbers are matched across local/E.164 and national-suffix formats, and contacts
+may include an optional email (useful for social sign-ups with no phone hash).
+Only SHA-256 phone lookup hashes are stored; raw contacts are never persisted.
+Responses include
 `hasDatingProfile`, `unmatchedCount`, and an `invite` link for people who are not
 on the platform yet. The general `/contacts/*` endpoints still cover all active
 accounts.

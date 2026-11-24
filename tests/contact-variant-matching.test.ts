@@ -113,6 +113,32 @@ describe("pre-hashed contact matching", () => {
     expect(result.appUserCount).toBe(1);
     expect(result.matchedContactsCount).toBe(1);
     expect(result.unmatchedCount).toBe(0);
+
+    const consentArgs = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
+    expect(consentArgs.create.lookupHashes).toContain(hashPhoneNumber("0244000000"));
+    expect(consentArgs.create.lookupHashes).toContain(hashPhoneNumber("233244000000"));
+  });
+
+  it("fails sync when matches cannot be persisted", async () => {
+    prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
+    prismaMock.$transaction.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(matchContacts("caller", ["0244000000"])).rejects.toThrow("db down");
+  });
+
+  it("refreshes newly joined matches from stored lookup hashes", async () => {
+    prismaMock.contactSyncConsent.findUnique.mockResolvedValue({
+      granted: true,
+      contactCount: 1,
+      lookupHashes: [hashPhoneNumber("0244000000")],
+    });
+    prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
+    prismaMock.contactMatch.findMany.mockResolvedValue([{ matchedUser: MATCHED_USER }]);
+
+    const summary = await getContactMatchSummary("caller");
+
+    expect(prismaMock.contactMatch.createMany).toHaveBeenCalled();
+    expect(summary.matchedCount).toBe(1);
   });
 
   it("includes explicit counts in the persisted matches summary", async () => {
