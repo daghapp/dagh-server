@@ -81,7 +81,7 @@ function isMissingLookupHashesColumn(error: unknown): boolean {
   return code === "P2022" && modelName === "ContactSyncConsent";
 }
 
-export const CONTACT_QUERY_CHUNK_SIZE = 250;
+export const CONTACT_QUERY_CHUNK_SIZE = 2000;
 
 export function chunkValues<T>(values: readonly T[], size = CONTACT_QUERY_CHUNK_SIZE): T[][] {
   if (size < 1) return values.length > 0 ? [[...values]] : [];

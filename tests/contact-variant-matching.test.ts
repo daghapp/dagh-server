@@ -96,7 +96,7 @@ describe("pre-hashed contact matching", () => {
   });
 
   it("chunks large hash lookups to stay below Prisma bind-parameter limits", async () => {
-    const contacts = Array.from({ length: 325 }, (_, index) =>
+    const contacts = Array.from({ length: 2250 }, (_, index) =>
       index.toString(16).padStart(64, "0"),
     );
     prismaMock.user.findMany.mockResolvedValue([]);
@@ -116,9 +116,9 @@ describe("pre-hashed contact matching", () => {
           phoneHash?: { in?: string[] };
           phoneHashVariants?: { some?: { hash?: { in?: string[] } } };
         };
-        expect(clause.phoneNumberHash?.in?.length ?? 0).toBeLessThanOrEqual(250);
-        expect(clause.phoneHash?.in?.length ?? 0).toBeLessThanOrEqual(250);
-        expect(clause.phoneHashVariants?.some?.hash?.in?.length ?? 0).toBeLessThanOrEqual(250);
+        expect(clause.phoneNumberHash?.in?.length ?? 0).toBeLessThanOrEqual(2000);
+        expect(clause.phoneHash?.in?.length ?? 0).toBeLessThanOrEqual(2000);
+        expect(clause.phoneHashVariants?.some?.hash?.in?.length ?? 0).toBeLessThanOrEqual(2000);
       }
     }
   });

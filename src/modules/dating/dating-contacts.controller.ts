@@ -18,6 +18,76 @@ function extractContacts(body: Record<string, unknown>): Array<ContactInput | st
   return [];
 }
 
+type DatingContactErrorCode =
+  | "CONTACT_CONSENT_REQUIRED"
+  | "CONTACT_LIST_TOO_COMPLEX"
+  | "CONTACT_SYNC_TIMEOUT"
+  | "CONTACT_SYNC_FAILED"
+  | "CONTACT_MATCHES_UNAVAILABLE"
+  | "CONTACT_STATUS_UNAVAILABLE"
+  | "CONTACT_ACCESS_REVOKE_FAILED";
+
+interface FriendlyDatingContactError {
+  status: number;
+  error: string;
+  code: DatingContactErrorCode;
+  retryable: boolean;
+}
+
+export function friendlyDatingContactError(
+  error: unknown,
+  fallback: { error: string; code: DatingContactErrorCode },
+): FriendlyDatingContactError {
+  if (error instanceof Error && error.message === "CONTACT_CONSENT_REQUIRED") {
+    return {
+      status: 403,
+      error: "Contact access permission is required before syncing contacts for dating.",
+      code: "CONTACT_CONSENT_REQUIRED",
+      retryable: false,
+    };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    /bind message|08P01|parameter formats|too many parameters|prepared statement/i.test(message)
+  ) {
+    return {
+      status: 422,
+      error: "We couldn't process this contact list. Try syncing again with fewer contacts.",
+      code: "CONTACT_LIST_TOO_COMPLEX",
+      retryable: true,
+    };
+  }
+  if (/timeout|timed out|ECONNRESET|ETIMEDOUT|socket hang up/i.test(message)) {
+    return {
+      status: 504,
+      error: "Contact sync is taking longer than expected. Please try again.",
+      code: "CONTACT_SYNC_TIMEOUT",
+      retryable: true,
+    };
+  }
+  return {
+    status: 503,
+    error: fallback.error,
+    code: fallback.code,
+    retryable: true,
+  };
+}
+
+function respondWithDatingContactError(
+  res: Response,
+  label: string,
+  error: unknown,
+  fallback: { error: string; code: DatingContactErrorCode },
+): Response {
+  console.error(label, error);
+  const friendly = friendlyDatingContactError(error, fallback);
+  return fail(res, friendly.status, friendly.error, {
+    code: friendly.code,
+    retryable: friendly.retryable,
+  });
+}
+
 /**
  * Sync the caller's contacts for dating discovery.
  *
@@ -39,15 +109,10 @@ export const syncContactsForDating = async (req: Request, res: Response) => {
     const result = await syncDatingContacts(userId, contacts, consent);
     return ok(res, result, "Contacts synced for dating discovery");
   } catch (error) {
-    if (error instanceof Error && error.message === "CONTACT_CONSENT_REQUIRED") {
-      return fail(
-        res,
-        403,
-        "Contact access permission is required before syncing contacts for dating.",
-      );
-    }
-    console.error("[dating.contacts.sync]", error);
-    return fail(res, 500, "Failed to sync contacts");
+    return respondWithDatingContactError(res, "[dating.contacts.sync]", error, {
+      error: "Contacts couldn't be synced right now. Please try again.",
+      code: "CONTACT_SYNC_FAILED",
+    });
   }
 };
 
@@ -70,8 +135,10 @@ export const getContactsForDating = async (req: Request, res: Response) => {
 
     return ok(res, { matches, matchedCount: matches.length, banner, invite });
   } catch (error) {
-    console.error("[dating.contacts.matches]", error);
-    return fail(res, 500, "Failed to fetch contact matches");
+    return respondWithDatingContactError(res, "[dating.contacts.matches]", error, {
+      error: "We couldn't load your contact matches right now. Please try again.",
+      code: "CONTACT_MATCHES_UNAVAILABLE",
+    });
   }
 };
 
@@ -81,8 +148,10 @@ export const getContactsForDatingStatus = async (req: Request, res: Response) =>
     const status = await getContactSyncStatus(req.user!.id);
     return ok(res, status);
   } catch (error) {
-    console.error("[dating.contacts.status]", error);
-    return fail(res, 500, "Failed to fetch contact sync status");
+    return respondWithDatingContactError(res, "[dating.contacts.status]", error, {
+      error: "We couldn't load your contact sync status right now. Please try again.",
+      code: "CONTACT_STATUS_UNAVAILABLE",
+    });
   }
 };
 
@@ -92,7 +161,9 @@ export const deleteContactsForDating = async (req: Request, res: Response) => {
     await revokeDatingContactConsent(req.user!.id);
     return ok(res, { granted: false }, "Contact access revoked");
   } catch (error) {
-    console.error("[dating.contacts.revoke]", error);
-    return fail(res, 500, "Failed to revoke contact access");
+    return respondWithDatingContactError(res, "[dating.contacts.revoke]", error, {
+      error: "We couldn't revoke contact access right now. Please try again.",
+      code: "CONTACT_ACCESS_REVOKE_FAILED",
+    });
   }
 };

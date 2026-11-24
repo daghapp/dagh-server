@@ -10,7 +10,7 @@ const prismaMock = {
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
 
 const contactsMock = {
-  chunkValues: <T>(values: T[], size = 250): T[][] => {
+  chunkValues: <T>(values: T[], size = 2000): T[][] => {
     const chunks: T[][] = [];
     for (let index = 0; index < values.length; index += size) {
       chunks.push(values.slice(index, index + size));
@@ -53,6 +53,8 @@ vi.mock("../src/modules/contacts/contacts.service.js", () => ({
 
 const { syncDatingContacts, getDatingContactMatches, revokeDatingContactConsent } =
   await import("../src/services/dating-contacts.service.js");
+const { friendlyDatingContactError } =
+  await import("../src/modules/dating/dating-contacts.controller.js");
 
 function contact(id: string, fullName: string) {
   return {
@@ -180,5 +182,52 @@ describe("dating contacts enforce the opposite-gender rule", () => {
       expect.objectContaining({ granted: false, contactCount: 0 }),
     );
     expect(prismaMock.contactSyncConsent.upsert).not.toHaveBeenCalled();
+  });
+
+  describe("friendlyDatingContactError", () => {
+    const fallback = {
+      error: "Contacts couldn't be synced right now. Please try again.",
+      code: "CONTACT_SYNC_FAILED" as const,
+    };
+
+    it("keeps consent errors actionable", () => {
+      expect(friendlyDatingContactError(new Error("CONTACT_CONSENT_REQUIRED"), fallback)).toEqual({
+        status: 403,
+        error: "Contact access permission is required before syncing contacts for dating.",
+        code: "CONTACT_CONSENT_REQUIRED",
+        retryable: false,
+      });
+    });
+
+    it("maps Prisma bind failures to a retryable contact-list message", () => {
+      const error = new Error(
+        "DriverAdapterError: bind message has 48862 parameter formats but 0 parameters",
+      );
+
+      expect(friendlyDatingContactError(error, fallback)).toEqual({
+        status: 422,
+        error: "We couldn't process this contact list. Try syncing again with fewer contacts.",
+        code: "CONTACT_LIST_TOO_COMPLEX",
+        retryable: true,
+      });
+    });
+
+    it("maps timeouts to a retryable sync message", () => {
+      expect(friendlyDatingContactError(new Error("ETIMEDOUT"), fallback)).toEqual({
+        status: 504,
+        error: "Contact sync is taking longer than expected. Please try again.",
+        code: "CONTACT_SYNC_TIMEOUT",
+        retryable: true,
+      });
+    });
+
+    it("hides internal errors behind a friendly retry message", () => {
+      expect(friendlyDatingContactError(new Error("secret internal detail"), fallback)).toEqual({
+        status: 503,
+        error: fallback.error,
+        code: fallback.code,
+        retryable: true,
+      });
+    });
   });
 });
