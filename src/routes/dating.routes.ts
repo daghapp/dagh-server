@@ -442,7 +442,8 @@ router.put("/location", validate(datingLocationSchema), updateDatingLocation);
  *     description: |
  *       Requires OS contact permission and explicit `consent: true` on the first
  *       sync. Contacts are hashed in memory; only SHA-256 phone hashes are compared.
- *       Matches include every active account on the platform, not only dating users.
+ *       Every matched contact is persisted, but dating responses include only
+ *       opposite-gender active accounts, not just dating users.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
@@ -499,7 +500,7 @@ router.post("/contacts/sync", validate(datingContactSyncSchema), syncContactsFor
  * /dating/contacts/matches:
  *   get:
  *     summary: List contacts who are on the platform
- *     description: Includes all active accounts; dating fields are null when the user has no dating profile.
+ *     description: Includes opposite-gender active accounts; dating fields are null when the user has no dating profile.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []

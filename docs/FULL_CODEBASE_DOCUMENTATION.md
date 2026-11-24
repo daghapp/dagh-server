@@ -95,10 +95,13 @@ Register/Login → { accessToken, refreshToken }
 - **Email/Password** — traditional register + login
 - **Google OAuth** — `GET /auth/google` → callback
 - **Facebook OAuth** — `GET /auth/facebook` → callback
-- **Apple Sign-In** — `GET /auth/apple` → callback (POST). Accounts are linked by
-  Apple's stable `sub` claim (`User.appleId`); a new account requires an email,
-  while an existing linked account may sign in without one. The Apple refresh
-  token is encrypted at rest and the grant is revoked on self-service deletion.
+- **Apple Sign-In** — `GET /auth/apple` → callback (POST). The authorize redirect
+  uses the backend HTTPS callback and `response_mode=form_post`; the app return
+  URL is signed into stateless state and tokens are returned in the deep-link
+  fragment. Accounts are linked by Apple's stable `sub` claim (`User.appleId`);
+  a new account requires an email, while an existing linked account may sign in
+  without one. The Apple refresh token is encrypted at rest and the grant is
+  revoked on self-service deletion.
 
 ### Middleware Chain
 
@@ -183,14 +186,14 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 
 ### Endpoints
 
-| Method | Path                 | Auth | Description                          |
-| ------ | -------------------- | ---- | ------------------------------------ |
-| POST   | `/profile/init`      | Yes  | Initialize user profile (idempotent) |
-| GET    | `/profile/account`   | Yes  | Get the login profile                |
+| Method | Path                 | Auth | Description                           |
+| ------ | -------------------- | ---- | ------------------------------------- |
+| POST   | `/profile/init`      | Yes  | Initialize user profile (idempotent)  |
+| GET    | `/profile/account`   | Yes  | Get the login profile                 |
 | PATCH  | `/profile/account`   | Yes  | Update username, names, profile image |
-| DELETE | `/profile/account`   | Yes  | Permanently delete the account       |
-| PATCH  | `/profile/`          | Yes  | Update profile settings              |
-| PATCH  | `/profile/ethnicity` | Yes  | Set user ethnicity                   |
+| DELETE | `/profile/account`   | Yes  | Permanently delete the account        |
+| PATCH  | `/profile/`          | Yes  | Update profile settings               |
+| PATCH  | `/profile/ethnicity` | Yes  | Set user ethnicity                    |
 
 ### Logic
 
@@ -267,24 +270,24 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 
 ### Endpoints
 
-| Method | Path                         | Auth | Description                                      |
-| ------ | ---------------------------- | ---- | ------------------------------------------------ |
-| GET    | `/dating/profile`            | Yes  | Get own dating profile                           |
-| POST   | `/dating/profile/init`       | Yes  | Initialize dating profile (idempotent)           |
-| PATCH  | `/dating/profile`            | Yes  | Update dating profile                            |
-| DELETE | `/dating/profile/deactivate` | Yes  | Deactivate (soft-delete) dating profile          |
-| GET    | `/dating/profile/status`     | Yes  | Check profile existence + completeness           |
-| GET    | `/dating/profile/:userId`    | Yes  | View another user's dating profile (block/same-gender aware) |
-| GET    | `/dating/profile/search`     | Yes  | Find an opposite-gender profile by name (OG metadata)  |
-| GET    | `/dating/profile/suggestions` | Yes  | Opposite-gender typeahead suggestions                   |
-| GET    | `/dating/profile/share`      | Yes  | Generate a shareable profile link                |
-| GET    | `/dating/preferences`        | Yes  | Get discovery preferences                        |
-| PUT    | `/dating/preferences`        | Yes  | Create/update discovery preferences              |
-| POST   | `/dating/swipe`              | Yes  | Record swipe (LIKE/SUPER_LIKE/PASS)              |
-| GET    | `/dating/recommendations`    | Yes  | Get ranked discovery candidates                  |
-| GET    | `/dating/matches`            | Yes  | Get all active matches                           |
-| GET    | `/dating/likes-received`     | Yes  | See who liked you (tier-gated)                   |
-| DELETE | `/dating/matches/:matchId`   | Yes  | Unmatch a user                                   |
+| Method | Path                          | Auth | Description                                                  |
+| ------ | ----------------------------- | ---- | ------------------------------------------------------------ |
+| GET    | `/dating/profile`             | Yes  | Get own dating profile                                       |
+| POST   | `/dating/profile/init`        | Yes  | Initialize dating profile (idempotent)                       |
+| PATCH  | `/dating/profile`             | Yes  | Update dating profile                                        |
+| DELETE | `/dating/profile/deactivate`  | Yes  | Deactivate (soft-delete) dating profile                      |
+| GET    | `/dating/profile/status`      | Yes  | Check profile existence + completeness                       |
+| GET    | `/dating/profile/:userId`     | Yes  | View another user's dating profile (block/same-gender aware) |
+| GET    | `/dating/profile/search`      | Yes  | Find an opposite-gender profile by name (OG metadata)        |
+| GET    | `/dating/profile/suggestions` | Yes  | Opposite-gender typeahead suggestions                        |
+| GET    | `/dating/profile/share`       | Yes  | Generate a shareable profile link                            |
+| GET    | `/dating/preferences`         | Yes  | Get discovery preferences                                    |
+| PUT    | `/dating/preferences`         | Yes  | Create/update discovery preferences                          |
+| POST   | `/dating/swipe`               | Yes  | Record swipe (LIKE/SUPER_LIKE/PASS)                          |
+| GET    | `/dating/recommendations`     | Yes  | Get ranked discovery candidates                              |
+| GET    | `/dating/matches`             | Yes  | Get all active matches                                       |
+| GET    | `/dating/likes-received`      | Yes  | See who liked you (tier-gated)                               |
+| DELETE | `/dating/matches/:matchId`    | Yes  | Unmatch a user                                               |
 
 ### Profile Fields
 
@@ -517,13 +520,13 @@ live in `UserNotificationPreference`, read/written via
 
 ### Endpoints
 
-| Method | Path                           | Auth | Description                                |
-| ------ | ------------------------------ | ---- | ------------------------------------------ |
-| GET    | `/membership/plans`            | No   | List all active membership plans           |
-| POST   | `/membership/subscribe`        | Yes  | Subscribe to a plan                        |
+| Method | Path                           | Auth | Description                                                      |
+| ------ | ------------------------------ | ---- | ---------------------------------------------------------------- |
+| GET    | `/membership/plans`            | No   | List all active membership plans                                 |
+| POST   | `/membership/subscribe`        | Yes  | Subscribe to a plan                                              |
 | GET    | `/membership/my-subscription`  | Yes  | Get current subscription (`waiveServiceFees` when lifetime free) |
-| POST   | `/membership/support`          | Yes  | Create priority support ticket (paid only) |
-| POST   | `/membership/payment-callback` | No   | Hubtel payment callback                    |
+| POST   | `/membership/support`          | Yes  | Create priority support ticket (paid only)                       |
+| POST   | `/membership/payment-callback` | No   | Hubtel payment callback                                          |
 
 ### Membership Tiers (enum `MembershipTierCode`)
 
@@ -639,15 +642,15 @@ User selects tour → POST /tours/bookings or /tours/initiate-booking-momo
 
 ### Endpoints
 
-| Method | Path                                | Auth | Description               |
-| ------ | ----------------------------------- | ---- | ------------------------- |
-| GET    | `/itinerary/sites`                  | No   | List available tour sites |
-| POST   | `/itinerary/request`                | Yes  | Submit a tour request     |
-| GET    | `/itinerary/my-itineraries`         | Yes  | Get user's itineraries (shared catalogues, bounded concurrency) |
-| POST   | `/itinerary/:tourRequestId/payment` | Yes  | Pay for itinerary         |
-| POST   | `/itinerary/payment-callback`       | No   | Hubtel payment callback   |
+| Method | Path                                | Auth | Description                                                      |
+| ------ | ----------------------------------- | ---- | ---------------------------------------------------------------- |
+| GET    | `/itinerary/sites`                  | No   | List available tour sites                                        |
+| POST   | `/itinerary/request`                | Yes  | Submit a tour request                                            |
+| GET    | `/itinerary/my-itineraries`         | Yes  | Get user's itineraries (shared catalogues, bounded concurrency)  |
+| POST   | `/itinerary/:tourRequestId/payment` | Yes  | Pay for itinerary                                                |
+| POST   | `/itinerary/payment-callback`       | No   | Hubtel payment callback                                          |
 | GET    | `/itinerary/requests`               | Yes  | Get user's tour requests (`page`, `limit`; omits site `history`) |
-| GET    | `/itinerary/:tourRequestId`         | Yes  | Get specific itinerary    |
+| GET    | `/itinerary/:tourRequestId`         | Yes  | Get specific itinerary                                           |
 
 Every `TourSite` also exposes `history`, `imageUrl` and `imageCredit` for the
 destination-detail page, and each site has a distinct hero image: licensed
@@ -1097,29 +1100,31 @@ Client connects with: io(url, { auth: { token: "<JWT>" } })
 
 ## 19. Environment Variables
 
-| Variable              | Required | Description                                |
-| --------------------- | -------- | ------------------------------------------ |
-| `JWT_ACCESS_SECRET`   | Yes      | JWT access token secret                    |
-| `JWT_REFRESH_SECRET`  | Yes      | JWT refresh token secret                   |
-| `DATABASE_URL`        | Yes      | PostgreSQL connection string               |
-| `REDIS_URL`           | No       | Redis URL (enables multi-instance support) |
-| `ALLOWED_ORIGINS`     | Yes      | Comma-separated CORS origins               |
-| `API_URL`             | Yes      | Public API URL                             |
-| `RENDER_EXTERNAL_URL` | Yes      | Render deployment URL                      |
-| `CLOUDINARY_*`        | Yes      | Cloudinary credentials                     |
-| `HUBTEL_*`            | Yes      | Hubtel payment credentials                 |
-| `RESEND_API_KEY`      | Yes      | Resend email service key                   |
-| `EMAIL_FROM`          | No       | Sender address (defaults to `Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>`) |
-| `SENTRY_DSN`          | No       | Sentry error tracking                      |
-| `LIVEKIT_*`           | Yes      | LiveKit call service credentials           |
-| `APPLE_CLIENT_ID`     | Apple    | Apple Services ID (Sign in with Apple)     |
-| `APPLE_TEAM_ID`       | Apple    | Apple Developer Team ID                    |
-| `APPLE_KEY_ID`        | Apple    | Apple private key ID                       |
-| `APPLE_PRIVATE_KEY`   | Apple*   | Inline `.p8` key (use `\n` escapes)        |
-| `APPLE_PRIVATE_KEY_PATH` | Apple* | Mounted `.p8` file path (alternative to inline) |
-| `APPLE_CALLBACK_URL`  | Apple    | `{API_URL}/auth/apple/callback`            |
-| `IOS_EXTERNAL_DIGITAL_PURCHASES` | No | Set `true` only with Apple's external-purchase entitlement |
-| `PAYMENT_GATEWAY_ENCRYPTION_KEY` | Yes | AES-256-GCM key; also seals Apple refresh tokens |
+| Variable                         | Required | Description                                                                            |
+| -------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `JWT_ACCESS_SECRET`              | Yes      | JWT access token secret                                                                |
+| `JWT_REFRESH_SECRET`             | Yes      | JWT refresh token secret                                                               |
+| `DATABASE_URL`                   | Yes      | PostgreSQL connection string                                                           |
+| `REDIS_URL`                      | No       | Redis URL (enables multi-instance support)                                             |
+| `ALLOWED_ORIGINS`                | Yes      | Comma-separated CORS origins                                                           |
+| `API_URL`                        | Yes      | Public API URL                                                                         |
+| `RENDER_EXTERNAL_URL`            | Yes      | Render deployment URL                                                                  |
+| `CLOUDINARY_*`                   | Yes      | Cloudinary credentials                                                                 |
+| `HUBTEL_*`                       | Yes      | Hubtel payment credentials                                                             |
+| `RESEND_API_KEY`                 | Yes      | Resend email service key                                                               |
+| `EMAIL_FROM`                     | No       | Sender address (defaults to `Diaspora Affairs Ghana <noreply@diasporaadvocacygh.org>`) |
+| `SENTRY_DSN`                     | No       | Sentry error tracking                                                                  |
+| `LIVEKIT_*`                      | Yes      | LiveKit call service credentials                                                       |
+| `APPLE_CLIENT_ID`                | Apple    | Apple Services ID (Sign in with Apple)                                                 |
+| `APPLE_TEAM_ID`                  | Apple    | Apple Developer Team ID                                                                |
+| `APPLE_KEY_ID`                   | Apple    | Apple private key ID                                                                   |
+| `APPLE_PRIVATE_KEY`              | Apple*   | Inline `.p8` key (use `\n` escapes)                                                    |
+| `APPLE_PRIVATE_KEY_PATH`         | Apple*   | Mounted `.p8` file path (alternative to inline)                                        |
+| `APPLE_CALLBACK_URL`             | Apple    | HTTPS `{API_URL}/auth/apple/callback` (non-HTTPS falls back to Render URL)             |
+| `APP_OAUTH_REDIRECTS`            | No       | Comma-separated allowlisted app return URLs                                            |
+| `APPLE_OAUTH_STATE_SECRET`       | No       | Signs Apple OAuth state; falls back to `JWT_ACCESS_SECRET`                             |
+| `IOS_EXTERNAL_DIGITAL_PURCHASES` | No       | Set `true` only with Apple's external-purchase entitlement                             |
+| `PAYMENT_GATEWAY_ENCRYPTION_KEY` | Yes      | AES-256-GCM key; also seals Apple refresh tokens                                       |
 
 Apple requires `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and one of
 `APPLE_PRIVATE_KEY` / `APPLE_PRIVATE_KEY_PATH`; otherwise `GET /auth/apple`

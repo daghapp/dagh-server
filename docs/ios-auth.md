@@ -12,20 +12,25 @@ the web OAuth redirect flow. Password login uses `POST /auth/login`.
 ## Apple Sign In flow
 
 1. App opens `GET /auth/apple?redirect=diasporansync:///oauth`.
-2. Server validates the redirect against the allow-list, issues a single-use
-   OAuth state token bound to the session, and redirects to Apple.
-3. Apple authenticates the user and POSTs `code` + `id_token` to
-   `/auth/apple/callback` (`response_mode=form_post`).
-4. Server verifies the `id_token` (issuer `https://appleid.apple.com`,
-   audience = `APPLE_CLIENT_ID`), extracts the stable `sub` as `appleId`.
+2. Server validates the redirect against the allow-list, issues a signed,
+   short-lived stateless state token containing the app redirect and nonce hash,
+   and redirects to Apple with `redirect_uri` set to the backend HTTPS callback
+   (`https://dagh-server-fo64.onrender.com/auth/apple/callback`) and
+   `response_mode=form_post`.
+3. Apple authenticates the user and POSTs `code` + `state` to
+   `/auth/apple/callback`.
+4. Server validates state, exchanges the code at Apple, and verifies the returned
+   `id_token` against Apple's JWKS (issuer `https://appleid.apple.com`, audience
+   = `APPLE_CLIENT_ID`, expiration, nonce), extracting the stable `sub` as
+   `appleId`.
 5. `resolveAppleUser` resolves the local account:
    - by `appleId` (normal case);
    - by verified email, linking `appleId` (no conflict);
    - creates a new account only if Apple supplied an email.
-   Email conflicts across two Apple identities are rejected
-   (`AppleIdentityConflictError`).
+     Email conflicts across two Apple identities are rejected
+     (`AppleIdentityConflictError`).
 6. Server stores the Apple refresh token (encrypted) for later revocation and
-   issues app session JWTs, redirecting to the app return URL.
+   issues app JWTs, redirecting to the app return URL.
 
 ### App return URL
 
@@ -35,7 +40,7 @@ Allowed destination (exact match only):
 diasporansync:///oauth
 ```
 
-The server appends query params to this deep link:
+For Apple, the server appends params to the **URL fragment** after `#`:
 
 - `accessToken`
 - `refreshToken`
@@ -44,7 +49,13 @@ The server appends query params to this deep link:
 - `accessVersion`
 - `hasChannelAccess`
 
-On failure:
+Example:
+
+```
+diasporansync:///oauth#accessToken=...&refreshToken=...&provider=apple
+```
+
+On failure, an error is returned as a query param:
 
 - `error=OAuth authorization failed`
 
@@ -62,7 +73,8 @@ Required for Apple Sign In:
 - `APPLE_TEAM_ID`
 - `APPLE_KEY_ID`
 - `APPLE_PRIVATE_KEY` or `APPLE_PRIVATE_KEY_PATH`
-- `APPLE_CALLBACK_URL` = `https://<host>/auth/apple/callback`
+- `APPLE_CALLBACK_URL` = `https://<host>/auth/apple/callback` (non-HTTPS values are ignored and the Render URL is used)
+- `APP_OAUTH_REDIRECTS` = `diasporansync:///oauth`
 - `APPLE_BUNDLE_ID` (bundle id; PushKit topic is `<bundle-id>.voip`)
 
 Optional/related:
@@ -91,14 +103,14 @@ configured encryption key.
 
 ## Key endpoints
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/auth/apple` | Public | Initiate Apple Sign In. |
-| POST | `/auth/apple/callback` | Public | Apple callback (`form_post`). |
-| GET | `/auth/apple/success` | Public | Success landing. |
-| GET | `/auth/apple/failed` | Public | Failure landing. |
-| POST | `/auth/login` | Public | Password login. |
-| POST | `/auth/refresh-token` | Public | Refresh access token. |
+| Method | Path                   | Auth   | Purpose                       |
+| ------ | ---------------------- | ------ | ----------------------------- |
+| GET    | `/auth/apple`          | Public | Initiate Apple Sign In.       |
+| POST   | `/auth/apple/callback` | Public | Apple callback (`form_post`). |
+| GET    | `/auth/apple/success`  | Public | Success landing.              |
+| GET    | `/auth/apple/failed`   | Public | Failure landing.              |
+| POST   | `/auth/login`          | Public | Password login.               |
+| POST   | `/auth/refresh-token`  | Public | Refresh access token.         |
 
 ## Error handling
 

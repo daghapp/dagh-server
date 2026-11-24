@@ -37,7 +37,7 @@ export async function storeAppleRefreshToken(userId: string, refreshToken: strin
   });
 }
 
-function appleClientSecret(): { clientSecret: string; clientID: string } | null {
+export function createAppleClientSecret(): { clientSecret: string; clientID: string } | null {
   const config = getAppleSignInConfig();
   if (!config) return null;
 
@@ -82,7 +82,7 @@ export async function revokeAppleRefreshToken(user: {
 
   let credentials: { clientSecret: string; clientID: string } | null;
   try {
-    credentials = appleClientSecret();
+    credentials = createAppleClientSecret();
   } catch (error) {
     console.error(
       `[apple] could not build the revocation client secret for user ${user.id}; skipping revocation:`,

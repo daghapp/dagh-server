@@ -76,11 +76,11 @@ The backend only redirects to this exact destination. Other schemes
 
 ## Providers At A Glance
 
-| Provider | Initiation | Callback | State Param | Scope |
-|----------|-----------|----------|-------------|-------|
-| Google | `GET /auth/google` | `GET /auth/google/callback` | Yes | `profile email` |
-| Facebook | `GET /auth/facebook` | `GET /auth/facebook/callback` | Yes | `email` |
-| Apple | `GET /auth/apple` | `POST /auth/apple/callback` | Yes | `name email` |
+| Provider | Initiation           | Callback                      | State Param | Scope           |
+| -------- | -------------------- | ----------------------------- | ----------- | --------------- |
+| Google   | `GET /auth/google`   | `GET /auth/google/callback`   | Yes         | `profile email` |
+| Facebook | `GET /auth/facebook` | `GET /auth/facebook/callback` | Yes         | `email`         |
+| Apple    | `GET /auth/apple`    | `POST /auth/apple/callback`   | Yes         | `name email`    |
 
 All initiation routes accept `?redirect=diasporansync%3A%2F%2F%2Foauth`.
 
@@ -130,18 +130,18 @@ async function signInWithGoogle() {
 
 ### Callback parameters on success
 
-| Parameter | Description |
-|-----------|-------------|
-| `accessToken` | JWT access token (24h expiry) |
+| Parameter      | Description                   |
+| -------------- | ----------------------------- |
+| `accessToken`  | JWT access token (24h expiry) |
 | `refreshToken` | JWT refresh token (7d expiry) |
-| `provider` | `"google"` |
-| `email` | User's email address |
+| `provider`     | `"google"`                    |
+| `email`        | User's email address          |
 
 ### Callback parameters on failure
 
-| Parameter | Description |
-|-----------|-------------|
-| `error` | URL-encoded error message (e.g. `"OAuth authorization failed"`) |
+| Parameter | Description                                                     |
+| --------- | --------------------------------------------------------------- |
+| `error`   | URL-encoded error message (e.g. `"OAuth authorization failed"`) |
 
 ---
 
@@ -213,7 +213,8 @@ async function signInWithApple() {
   const result = await WebBrowser.openAuthSessionAsync(url, REDIRECT);
 
   if (result.type === "success" && result.url) {
-    const params = new URL(result.url).searchParams;
+    const callbackUrl = new URL(result.url);
+    const params = new URLSearchParams(callbackUrl.hash.replace(/^#/, ""));
     const accessToken = params.get("accessToken");
     const refreshToken = params.get("refreshToken");
     const email = params.get("email");
@@ -228,7 +229,9 @@ async function signInWithApple() {
 
 ### Callback parameters
 
-Identical format to Google. `provider` is `"apple"`.
+Apple returns tokens in the URL **fragment** (after `#`) rather than the query string:
+`diasporansync:///oauth#accessToken=...&refreshToken=...&provider=apple`.
+`provider` is `"apple"`.
 
 ### Apple-specific notes
 
@@ -353,12 +356,12 @@ diasporansync:///oauth?error=<url-encoded-message>
 Both `accessToken` and `refreshToken` are JWTs. They are URL-encoded when
 placed in the deep link query string.
 
-| Field | Description |
-|-------|-------------|
-| `accessToken` | Short-lived JWT (24 hours). Use in `Authorization: Bearer <token>` headers. |
+| Field          | Description                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `accessToken`  | Short-lived JWT (24 hours). Use in `Authorization: Bearer <token>` headers.              |
 | `refreshToken` | Long-lived JWT (7 days). Exchange for a new access token via `POST /auth/refresh-token`. |
-| `provider` | One of `google`, `facebook`, `apple`. |
-| `email` | The user's email (may be a private relay address for Apple). |
+| `provider`     | One of `google`, `facebook`, `apple`.                                                    |
+| `email`        | The user's email (may be a private relay address for Apple).                             |
 
 ### Token storage
 
@@ -397,8 +400,8 @@ diasporansync:///oauth?error=<message>
 
 The `error` value is URL-encoded. Common messages:
 
-| Message | Meaning |
-|---------|---------|
+| Message                      | Meaning                                   |
+| ---------------------------- | ----------------------------------------- |
 | `OAuth authorization failed` | User denied or provider returned an error |
 
 ### Network errors
@@ -506,50 +509,50 @@ default `sameSite: "lax"` is sufficient.
 
 ### Initiation
 
-| Method | Path | Parameters | Response |
-|--------|------|------------|----------|
-| `GET` | `/auth/google` | `?redirect=<app-scheme-url>` | 302 → Google consent |
-| `GET` | `/auth/facebook` | `?redirect=<app-scheme-url>` | 302 → Facebook consent |
-| `GET` | `/auth/apple` | `?redirect=<app-scheme-url>` | 302 → Apple consent (or 503 if unconfigured) |
+| Method | Path             | Parameters                   | Response                                     |
+| ------ | ---------------- | ---------------------------- | -------------------------------------------- |
+| `GET`  | `/auth/google`   | `?redirect=<app-scheme-url>` | 302 → Google consent                         |
+| `GET`  | `/auth/facebook` | `?redirect=<app-scheme-url>` | 302 → Facebook consent                       |
+| `GET`  | `/auth/apple`    | `?redirect=<app-scheme-url>` | 302 → Apple consent (or 503 if unconfigured) |
 
 ### Callbacks
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/auth/google/callback` | Exchanges code, redirects to app or success page |
-| `GET` | `/auth/facebook/callback` | Exchanges code, redirects to app or success page |
-| `POST` | `/auth/apple/callback` | Exchanges code, redirects to app or success page |
+| Method | Path                      | Description                                      |
+| ------ | ------------------------- | ------------------------------------------------ |
+| `GET`  | `/auth/google/callback`   | Exchanges code, redirects to app or success page |
+| `GET`  | `/auth/facebook/callback` | Exchanges code, redirects to app or success page |
+| `POST` | `/auth/apple/callback`    | Exchanges code, redirects to app or success page |
 
 ### Failure / Success pages (browser fallback)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/auth/google/failed` | Redirects to app with `error` param, or shows retry page |
-| `GET` | `/auth/google/success` | Shows success page with auto-redirect to app |
-| `GET` | `/auth/facebook/failed` | Same as Google failure |
-| `GET` | `/auth/facebook/success` | Same as Google success |
-| `GET` | `/auth/apple/failed` | Same as Google failure |
-| `GET` | `/auth/apple/success` | Same as Google success |
+| Method | Path                     | Description                                              |
+| ------ | ------------------------ | -------------------------------------------------------- |
+| `GET`  | `/auth/google/failed`    | Redirects to app with `error` param, or shows retry page |
+| `GET`  | `/auth/google/success`   | Shows success page with auto-redirect to app             |
+| `GET`  | `/auth/facebook/failed`  | Same as Google failure                                   |
+| `GET`  | `/auth/facebook/success` | Same as Google success                                   |
+| `GET`  | `/auth/apple/failed`     | Same as Google failure                                   |
+| `GET`  | `/auth/apple/success`    | Same as Google success                                   |
 
 ### Base URLs
 
-| Environment | URL |
-|-------------|-----|
-| Production | `https://dagh-server-fo64.onrender.com` |
-| Development | `http://localhost:5000` |
+| Environment | URL                                     |
+| ----------- | --------------------------------------- |
+| Production  | `https://dagh-server-fo64.onrender.com` |
+| Development | `http://localhost:5000`                 |
 
 ---
 
 ## Full Provider Comparison
 
-| Feature | Google | Facebook | Apple |
-|---------|--------|----------|-------|
-| Initiation method | GET | GET | GET |
-| Callback method | GET | GET | POST |
-| Scope | `profile email` | `email` | `name email` |
-| Email always provided | Yes | Yes (if permitted) | Optional (relay possible) |
-| Name always provided | Yes (display name) | Yes (display name) | First login only |
-| Session cookie needed | Yes (Lax) | Yes (Lax) | Yes (None, cross-site) |
-| Provider callback URL | `{BASE}/auth/google/callback` | `{BASE}/auth/facebook/callback` | `{BASE}/auth/apple/callback` |
-| Deep link on success | `diasporansync:///oauth?accessToken=...&refreshToken=...&provider=google&email=...` | Same, `provider=facebook` | Same, `provider=apple` |
-| Deep link on failure | `diasporansync:///oauth?error=...` | Same | Same |
+| Feature               | Google                                                                              | Facebook                        | Apple                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------- |
+| Initiation method     | GET                                                                                 | GET                             | GET                                                                                |
+| Callback method       | GET                                                                                 | GET                             | POST                                                                               |
+| Scope                 | `profile email`                                                                     | `email`                         | `name email`                                                                       |
+| Email always provided | Yes                                                                                 | Yes (if permitted)              | Optional (relay possible)                                                          |
+| Name always provided  | Yes (display name)                                                                  | Yes (display name)              | First login only                                                                   |
+| Session cookie needed | Yes (Lax)                                                                           | Yes (Lax)                       | No (stateless signed state)                                                        |
+| Provider callback URL | `{BASE}/auth/google/callback`                                                       | `{BASE}/auth/facebook/callback` | `https://dagh-server-fo64.onrender.com/auth/apple/callback`                        |
+| Deep link on success  | `diasporansync:///oauth?accessToken=...&refreshToken=...&provider=google&email=...` | Same, `provider=facebook`       | `diasporansync:///oauth#accessToken=...&refreshToken=...&provider=apple&email=...` |
+| Deep link on failure  | `diasporansync:///oauth?error=...`                                                  | Same                            | Same                                                                               |

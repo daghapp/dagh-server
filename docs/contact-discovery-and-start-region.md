@@ -132,8 +132,11 @@ Valid values are the Ghana regions in `GHANA_REGIONS`
 
 - A successful sync upserts `ContactSyncConsent` (`granted = true`,
   `lastSyncedAt`, `contactCount`, `lookupHashes`) and reconciles `ContactMatch`
-  rows. Persistence failures now fail the sync instead of silently returning
-  matches that cannot be read later.
+  rows. Persistence failures still fail the sync instead of silently returning
+  matches that cannot be read later. If the `lookupHashes` column has not been
+  deployed yet, sync falls back to writing consent without it rather than
+  returning “could not sync contact”; the next sync after migration stores the
+  hashes.
 - `GET /contacts/matches` refreshes matches from stored `lookupHashes`, so users
   who join after the original sync appear without another client sync.
 - `GET /contacts/matches` returns `[]` until a consent row exists, so existing
@@ -216,10 +219,11 @@ app”. `totalContacts` comes from the last successful sync.
 
 #### Dating contact book
 
-The same matching engine powers the dating contact endpoints. They include
-**opposite-gender active accounts**, not just dating profiles. Same-gender
-contacts are hidden from `/dating/contacts/*`; general `/contacts/*` endpoints
-still cover all active accounts.
+The same matching engine powers the dating contact endpoints. General
+`/contacts/*` is “People You May Know” and includes **all active accounts**,
+regardless of gender. `/dating/contacts/*` persists every match but shows only
+**opposite-gender active accounts** in dating responses, consistent with the
+rest of the dating module.
 
 | Method | Endpoint                   | What it does                                                      |
 | ------ | -------------------------- | ----------------------------------------------------------------- |
@@ -272,14 +276,14 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 
 ### 2.7 Environment
 
-| Variable                          | Default                       | Purpose                                                      |
-| --------------------------------- | ----------------------------- | ------------------------------------------------------------ |
+| Variable                          | Default                       | Purpose                                                         |
+| --------------------------------- | ----------------------------- | --------------------------------------------------------------- |
 | `DEFAULT_PHONE_COUNTRY_CODES`     | `233`                         | Comma-separated country codes for expanding local phone numbers |
-| `DEFAULT_PHONE_COUNTRY_CODE`      | `233`                         | Legacy singular fallback for one country code                |
-| `API_URL` / `RENDER_EXTERNAL_URL` | —                             | Base URL for invite/share links                              |
-| `PLAY_STORE_URL`                  | configured Play Store listing | Android invite fallback                                      |
-| `APP_STORE_URL`                   | —                             | iOS invite fallback                                          |
-| `APP_DEEP_LINK_SCHEME`            | `diasporansync`               | Deep-link scheme in `invite.deepLink`                        |
+| `DEFAULT_PHONE_COUNTRY_CODE`      | `233`                         | Legacy singular fallback for one country code                   |
+| `API_URL` / `RENDER_EXTERNAL_URL` | —                             | Base URL for invite/share links                                 |
+| `PLAY_STORE_URL`                  | configured Play Store listing | Android invite fallback                                         |
+| `APP_STORE_URL`                   | —                             | iOS invite fallback                                             |
+| `APP_DEEP_LINK_SCHEME`            | `diasporansync`               | Deep-link scheme in `invite.deepLink`                           |
 
 ### 2.8 Files
 
@@ -290,7 +294,7 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 | `src/modules/contacts/contacts.service.ts`                     | Lookup candidates, email matching, persistence, invite builder, DB-backed matches |
 | `src/modules/contacts/contacts.controller.ts`                  | Async matches/clear, invite handler, invite in sync responses                     |
 | `src/routes/contacts.routes.ts`                                | Added `/invite-link` and `/invite`                                                |
-| `src/services/dating-contacts.service.ts`                      | Uses shared matching; opposite-gender active accounts; dating fields optional     |
+| `src/services/dating-contacts.service.ts`                      | Uses shared matching; persists all matches; dating responses opposite-gender only |
 | `src/modules/dating/dating-contacts.controller.ts`             | Includes invite in matches response                                               |
 | `src/validator/datingValidation.ts`                            | Contact entries accept `email`                                                    |
 | `src/config/swagger-schemas.ts`, `src/routes/dating.routes.ts` | Schema/docs updated                                                               |

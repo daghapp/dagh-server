@@ -126,6 +126,20 @@ describe("pre-hashed contact matching", () => {
     await expect(matchContacts("caller", ["0244000000"])).rejects.toThrow("db down");
   });
 
+  it("still syncs when the lookupHashes column is not deployed", async () => {
+    prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
+    prismaMock.contactSyncConsent.findUnique
+      .mockRejectedValueOnce(new Error("Unknown argument `lookupHashes`"))
+      .mockResolvedValueOnce({ granted: true, contactCount: 1 });
+
+    const result = await matchContacts("caller", ["0244000000"]);
+
+    expect(result.matchedCount).toBe(1);
+    const consentArgs = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
+    expect(consentArgs.create.lookupHashes).toBeUndefined();
+    expect(consentArgs.update.lookupHashes).toBeUndefined();
+  });
+
   it("refreshes newly joined matches from stored lookup hashes", async () => {
     prismaMock.contactSyncConsent.findUnique.mockResolvedValue({
       granted: true,

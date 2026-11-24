@@ -19,7 +19,7 @@ module (`src/services/matching.service.ts`, `src/modules/dating/*`).
 - `MALE` viewers see only `FEMALE` profiles; `FEMALE` viewers see only `MALE`
   profiles. The rule applies to `/dating/recommendations`, swipes/likes/matches,
   direct profile lookup/search/suggestions, `/dating/contacts/*`, tour dating
-  selections, and proximity alerts.
+  selections, and proximity alerts. General `/contacts/*` is exempt.
 - `genderPreference` is stored but ignored by the server. `OTHER`, `NON_BINARY`,
   `PREFER_NOT_TO_SAY`, `null`, and unknown genders produce an empty discovery
   queue and cannot interact with dating profiles.
@@ -31,15 +31,15 @@ module (`src/services/matching.service.ts`, `src/modules/dating/*`).
 
 ## User preference (`DiscoveryPreference`)
 
-| Field | Default | Meaning |
-|---|---|---|
-| `globalDiscovery` | `true` | When true, discovery is worldwide and ignores location/distance. |
-| `maxDistanceKm` | 50 | Used only when `globalDiscovery = false` and a location is set. Capped at 20,000 km. Also caps proximity alerts at 10 km. |
-| `locationLat` / `locationLng` / `locationName` | null | User's chosen center point for nearby matching. |
-| `locationUpdatedAt` | null | Server-managed timestamp of the last location refresh. Proximity alerts only use locations refreshed within 12 hours. |
-| `minAge` / `maxAge` | 18 / 60 | Age filter. |
-| `lookingFor` | — | Optional intent filter. Candidates whose `lookingFor` matches the viewer's value, or whose `lookingFor` is unset, are included. |
-| `showProfile` / `showOnlineStatus` | true | Visibility toggles. |
+| Field                                          | Default | Meaning                                                                                                                         |
+| ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `globalDiscovery`                              | `true`  | When true, discovery is worldwide and ignores location/distance.                                                                |
+| `maxDistanceKm`                                | 50      | Used only when `globalDiscovery = false` and a location is set. Capped at 20,000 km. Also caps proximity alerts at 10 km.       |
+| `locationLat` / `locationLng` / `locationName` | null    | User's chosen center point for nearby matching.                                                                                 |
+| `locationUpdatedAt`                            | null    | Server-managed timestamp of the last location refresh. Proximity alerts only use locations refreshed within 12 hours.           |
+| `minAge` / `maxAge`                            | 18 / 60 | Age filter.                                                                                                                     |
+| `lookingFor`                                   | —       | Optional intent filter. Candidates whose `lookingFor` matches the viewer's value, or whose `lookingFor` is unset, are included. |
+| `showProfile` / `showOnlineStatus`             | true    | Visibility toggles.                                                                                                             |
 
 Toggle via `PUT /dating/preferences` with `globalDiscovery: true|false`.
 
@@ -69,22 +69,23 @@ availability; proximity/geofence adds score.
 
 ## Contact discovery
 
-Users can opt in to compare their contacts against **opposite-gender active
-accounts** for the dating endpoints, not only users with a dating profile. Phone
-numbers are matched across local/E.164 and national-suffix formats, and contacts
-may include an optional email (useful for social sign-ups with no phone hash).
-Only SHA-256 phone lookup hashes are stored; raw contacts are never persisted.
-Responses include
-`hasDatingProfile`, `unmatchedCount`, and an `invite` link for people who are not
-on the platform yet. The general `/contacts/*` endpoints still cover all active
-accounts.
+Users can opt in to compare their contacts against **active accounts**, not only
+users with a dating profile. The matching engine persists every match, but
+`/dating/contacts/*` responses apply the dating opposite-gender rule: male
+viewers see only female contacts and female viewers see only male contacts.
+General `/contacts/*` (“People You May Know”) remains unfiltered. Phone numbers
+are matched across local/E.164 and national-suffix formats, and contacts may
+include an optional email (useful for social sign-ups with no phone hash). Only
+SHA-256 phone lookup hashes are stored; raw contacts are never persisted.
+Responses include `hasDatingProfile`, `unmatchedCount`, and an `invite` link for
+people who are not on the platform yet.
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/dating/contacts/status` | Consent state + last sync/match counts |
-| `POST` | `/dating/contacts/sync` | Sync contacts (`consent: true` on first call) |
-| `GET` | `/dating/contacts/matches` | List familiar users (dating fields where present) |
-| `DELETE` | `/dating/contacts` | Revoke consent and delete derived matches |
+| Method   | Endpoint                   | Purpose                                           |
+| -------- | -------------------------- | ------------------------------------------------- |
+| `GET`    | `/dating/contacts/status`  | Consent state + last sync/match counts            |
+| `POST`   | `/dating/contacts/sync`    | Sync contacts (`consent: true` on first call)     |
+| `GET`    | `/dating/contacts/matches` | List familiar users (dating fields where present) |
+| `DELETE` | `/dating/contacts`         | Revoke consent and delete derived matches         |
 
 Candidates from the contact book are marked with `isContactMatch` (and the
 `familiar` alias) in `GET /dating/recommendations`, ranked with the +15 bonus, and

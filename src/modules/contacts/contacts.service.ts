@@ -44,6 +44,70 @@ export const contactUserSelect = {
 
 export type ContactUser = Prisma.UserGetPayload<{ select: typeof contactUserSelect }>;
 
+export interface ContactSyncConsentSnapshot {
+  granted: boolean;
+  grantedAt: Date | null;
+  lastSyncedAt: Date | null;
+  contactCount: number;
+  lookupHashes: string[];
+}
+
+interface ContactSyncConsentRead {
+  consent: ContactSyncConsentSnapshot | null;
+  supportsLookupHashes: boolean;
+}
+
+const consentSelectWithHashes = {
+  granted: true,
+  grantedAt: true,
+  lastSyncedAt: true,
+  contactCount: true,
+  lookupHashes: true,
+} as const;
+
+const consentSelectWithoutHashes = {
+  granted: true,
+  grantedAt: true,
+  lastSyncedAt: true,
+  contactCount: true,
+} as const;
+
+function isMissingLookupHashesColumn(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /lookuphash(es)?|lookup_hash(es)?/i.test(message);
+}
+
+export async function getContactSyncConsentWithCapabilities(
+  userId: string,
+): Promise<ContactSyncConsentRead> {
+  try {
+    const consent = await prisma.contactSyncConsent.findUnique({
+      where: { userId },
+      select: consentSelectWithHashes,
+    });
+    return {
+      consent: consent ? { ...consent, lookupHashes: consent.lookupHashes ?? [] } : null,
+      supportsLookupHashes: true,
+    };
+  } catch (error) {
+    if (!isMissingLookupHashesColumn(error)) throw error;
+    const consent = await prisma.contactSyncConsent.findUnique({
+      where: { userId },
+      select: consentSelectWithoutHashes,
+    });
+    return {
+      consent: consent ? { ...consent, lookupHashes: [] } : null,
+      supportsLookupHashes: false,
+    };
+  }
+}
+
+export async function getContactSyncConsent(
+  userId: string,
+): Promise<ContactSyncConsentSnapshot | null> {
+  return (await getContactSyncConsentWithCapabilities(userId)).consent;
+}
+
 const API_BASE_URL = (process.env.API_URL || process.env.RENDER_EXTERNAL_URL || "").replace(
   /\/$/,
   "",
@@ -386,7 +450,8 @@ export async function persistContactMatches(
   totalContacts: number,
   lookupHashes: string[] = [],
 ): Promise<void> {
-  const existing = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+  const { consent: existing, supportsLookupHashes } =
+    await getContactSyncConsentWithCapabilities(userId);
   const now = new Date();
   const matchedIds = matchedUsers.map((u) => u.id);
 
@@ -400,7 +465,7 @@ export async function persistContactMatches(
           grantedAt: now,
           lastSyncedAt: now,
           contactCount: totalContacts,
-          lookupHashes,
+          ...(supportsLookupHashes ? { lookupHashes } : {}),
         },
         update: {
           granted: true,
@@ -408,7 +473,7 @@ export async function persistContactMatches(
           revokedAt: null,
           lastSyncedAt: now,
           contactCount: totalContacts,
-          lookupHashes,
+          ...(supportsLookupHashes ? { lookupHashes } : {}),
         },
       });
 
@@ -460,8 +525,8 @@ export async function mergeContactMatches(
 }
 
 export async function refreshContactMatches(userId: string): Promise<void> {
-  const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
-  if (!consent?.granted || !consent.lookupHashes?.length) return;
+  const consent = await getContactSyncConsent(userId);
+  if (!consent?.granted || !consent.lookupHashes.length) return;
 
   const { users } = await findContactUsers(userId, consent.lookupHashes);
   await mergeContactMatches(userId, users);
@@ -570,7 +635,7 @@ export async function getContactMatches(userId: string): Promise<ContactMatch[]>
 
   let consentGranted = false;
   try {
-    const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+    const consent = await getContactSyncConsent(userId);
     consentGranted = !!consent?.granted;
   } catch {
     // consent table may be missing; fall through to try reading matches
@@ -622,7 +687,7 @@ export async function getContactMatchSummary(userId: string): Promise<{
     getContactMatches(userId),
     (async () => {
       try {
-        const consent = await prisma.contactSyncConsent.findUnique({ where: { userId } });
+        const consent = await getContactSyncConsent(userId);
         return consent?.contactCount ?? 0;
       } catch {
         return 0;
@@ -644,12 +709,18 @@ export async function getContactMatchSummary(userId: string): Promise<{
 }
 
 export async function clearContactMatches(userId: string): Promise<void> {
+  const { supportsLookupHashes } = await getContactSyncConsentWithCapabilities(userId);
   await prisma.$transaction(async (tx) => {
     await tx.contactMatch.deleteMany({ where: { userId } });
     await tx.contactSyncConsent.upsert({
       where: { userId },
       create: { userId, granted: false, revokedAt: new Date() },
-      update: { granted: false, revokedAt: new Date(), contactCount: 0, lookupHashes: [] },
+      update: {
+        granted: false,
+        revokedAt: new Date(),
+        contactCount: 0,
+        ...(supportsLookupHashes ? { lookupHashes: [] } : {}),
+      },
     });
   });
 }

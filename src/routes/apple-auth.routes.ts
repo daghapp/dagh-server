@@ -1,12 +1,10 @@
 import { readFileSync } from "node:fs";
-import { Router } from "express";
-import passport from "passport";
+import { Router, urlencoded } from "express";
 import { AppleAuthController } from "../modules/authentication/apple-auth.controller.js";
-import {
-  createOAuthState,
-  isAllowedAppReturnDestination,
-} from "../modules/authentication/oauth-state.js";
+import { createAppleOAuthState } from "../modules/authentication/apple-oauth-state.js";
+import { isAllowedAppReturnDestination } from "../modules/authentication/oauth-state.js";
 import { handleOauthFailure } from "../modules/authentication/oauth-handler.js";
+import { buildAppleAuthorizeUrl } from "../services/apple-oauth.service.js";
 import { viewsPath } from "../helpers/view-path.js";
 import { isAppleSignInConfigured } from "../config/apple.js";
 
@@ -14,14 +12,12 @@ const router = Router();
 
 const appleAuthController = new AppleAuthController();
 
-const appleStrategyConfigured = () => isAppleSignInConfigured();
-
 const appleStrategyGuard = (
   req: import("express").Request,
   res: import("express").Response,
   next: import("express").NextFunction,
 ) => {
-  if (!appleStrategyConfigured()) {
+  if (!isAppleSignInConfigured()) {
     return res.status(503).json({
       success: false,
       error: "Apple Sign In is not configured on this server.",
@@ -42,22 +38,22 @@ const appleStrategyGuard = (
  *         required: false
  *         schema:
  *           type: string
- *         description: Exact app return destination (e.g. diasporansync:///oauth)
+ *         description: Allowlisted app return destination (defaults to diasporansync:///oauth)
  *     responses:
  *       302:
- *         description: Redirects to Apple Sign In
+ *         description: Redirects to Apple Sign In using the backend HTTPS callback
  *       503:
  *         description: Apple Sign In is not configured on this server
  */
-router.get("/apple", appleStrategyGuard, (req, res, next) => {
-  const redirect = req.query.redirect as string | undefined;
-  // Issue an unpredictable, single-use state token bound to the session. Only
-  // exact approved app return destinations survive the round-trip.
-  const state = createOAuthState(req.session, redirect);
-  passport.authenticate("apple", {
-    scope: ["name", "email"],
-    state,
-  })(req, res, next);
+router.get("/apple", appleStrategyGuard, (req, res) => {
+  try {
+    const requested = typeof req.query.redirect === "string" ? req.query.redirect : undefined;
+    const { state, nonceHash } = createAppleOAuthState(requested);
+    res.redirect(buildAppleAuthorizeUrl(state, nonceHash));
+  } catch (error) {
+    console.error("[apple] failed to start authorization:", error);
+    res.status(500).json({ success: false, error: "Failed to start Apple Sign In" });
+  }
 });
 
 /**
@@ -65,7 +61,7 @@ router.get("/apple", appleStrategyGuard, (req, res, next) => {
  * /auth/apple/callback:
  *   post:
  *     summary: Apple Sign In callback endpoint
- *     description: Handles the callback from Apple Sign In after user authentication (POST due to Apple's response_mode=form_post)
+ *     description: Handles Apple's form_post with an HTTPS backend callback URL.
  *     tags: [OAuth]
  *     requestBody:
  *       required: true
@@ -76,28 +72,23 @@ router.get("/apple", appleStrategyGuard, (req, res, next) => {
  *             properties:
  *               code:
  *                 type: string
- *                 description: Authorization code from Apple
- *               id_token:
- *                 type: string
- *                 description: JWT containing user identity info
  *               state:
  *                 type: string
- *                 description: Opaque one-time state token issued at initiation
+ *               id_token:
+ *                 type: string
  *               user:
  *                 type: string
- *                 description: JSON string with user profile (first login only)
+ *               error:
+ *                 type: string
  *     responses:
  *       302:
- *         description: Redirects to the app return destination or success/failure page
+ *         description: Redirects to the app with tokens in the URL fragment or an error
  */
 router.post(
   "/apple/callback",
   appleStrategyGuard,
-  passport.authenticate("apple", {
-    failureRedirect: "/auth/apple/failed",
-    session: false,
-  }),
-  appleAuthController.appleAuthCallback,
+  urlencoded({ extended: false }),
+  appleAuthController.appleAuthCallback.bind(appleAuthController),
 );
 
 /**
@@ -105,11 +96,10 @@ router.post(
  * /auth/apple/failed:
  *   get:
  *     summary: Apple Sign In authentication failed page
- *     description: Displayed when Apple Sign In authentication fails
  *     tags: [OAuth]
  *     responses:
  *       302:
- *         description: Returns to the app return destination with an error parameter
+ *         description: Returns to an allowlisted app return destination with an error
  *       401:
  *         description: Authentication failed - renders failure page
  */
@@ -122,7 +112,6 @@ router.get("/apple/failed", (req, res) => {
  * /auth/apple/success:
  *   get:
  *     summary: Apple Sign In authentication success page
- *     description: Displayed when Apple Sign In authentication succeeds
  *     tags: [OAuth]
  *     responses:
  *       200:

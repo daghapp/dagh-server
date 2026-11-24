@@ -13,12 +13,17 @@ type OAuthSession = Session & Partial<SessionData>;
 // and opens `<scheme>:///oauth`; base64-encoding a redirect in the OAuth `state`
 // is NOT CSRF protection, so a redirect is only ever honored here and only when
 // it exactly matches one of these destinations.
-export const ALLOWED_APP_RETURN_DESTINATIONS = ["diasporansync:///oauth"] as const;
+export const DEFAULT_APP_RETURN_DESTINATION = "diasporansync:///oauth";
+export const ALLOWED_APP_RETURN_DESTINATIONS = [DEFAULT_APP_RETURN_DESTINATION] as const;
 
 export type OAuthProvider = "google" | "facebook" | "apple";
 
 export function isAllowedAppReturnDestination(uri: string): boolean {
-  return (ALLOWED_APP_RETURN_DESTINATIONS as readonly string[]).includes(uri);
+  const configured = (process.env.APP_OAUTH_REDIRECTS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return [...ALLOWED_APP_RETURN_DESTINATIONS, ...configured].includes(uri);
 }
 
 // Generate an unpredictable, single-use state token, bind it to the requested
@@ -73,5 +78,18 @@ export function buildAppCallbackUrl(
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
   }
+  return url.toString();
+}
+
+export function buildAppCallbackUrlWithFragment(
+  destination: string,
+  params: Record<string, string | null | undefined>,
+): string {
+  const url = new URL(destination);
+  const fragment = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) fragment.set(key, value);
+  }
+  url.hash = fragment.toString();
   return url.toString();
 }

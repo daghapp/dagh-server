@@ -39,17 +39,17 @@ dagh-server. Deeper references: `payment-gateway-settings.md`,
 
 ### Key endpoints
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| POST | `/payment/initialize` | Bearer | Start a checkout (Hubtel). |
-| POST | `/payment/initialize-momo` | Bearer | Mobile Money specific init. |
-| POST | `/payment/subscription` | Bearer | Paid membership upgrade. |
-| POST | `/payment/apple-pay` | Bearer | Apple Pay init (labeled as APPLE_PAY provider). |
-| GET | `/payment/status/:reference` | Bearer | Check payment status. |
-| POST | `/payment/callback` | Public | Hubtel server-to-server callback. |
-| GET | `/payment/status` | Public | Global payment-enabled flag. |
-| PATCH | `/admin/payments/status` | Admin | Legacy toggle. |
-| (admin settings) | `/admin/settings/payment-gateway/*` | Admin (scoped) | Credentials, env, verify, master switch. |
+| Method           | Path                                | Auth           | Purpose                                         |
+| ---------------- | ----------------------------------- | -------------- | ----------------------------------------------- |
+| POST             | `/payment/initialize`               | Bearer         | Start a checkout (Hubtel).                      |
+| POST             | `/payment/initialize-momo`          | Bearer         | Mobile Money specific init.                     |
+| POST             | `/payment/subscription`             | Bearer         | Paid membership upgrade.                        |
+| POST             | `/payment/apple-pay`                | Bearer         | Apple Pay init (labeled as APPLE_PAY provider). |
+| GET              | `/payment/status/:reference`        | Bearer         | Check payment status.                           |
+| POST             | `/payment/callback`                 | Public         | Hubtel server-to-server callback.               |
+| GET              | `/payment/status`                   | Public         | Global payment-enabled flag.                    |
+| PATCH            | `/admin/payments/status`            | Admin          | Legacy toggle.                                  |
+| (admin settings) | `/admin/settings/payment-gateway/*` | Admin (scoped) | Credentials, env, verify, master switch.        |
 
 ### Config (env)
 
@@ -70,26 +70,36 @@ responds `503`. See `docs/oauth-deployment-config.md`.
 
 - `APPLE_CLIENT_ID` = Services ID (e.g. `com.example.service.signin`).
 - `APPLE_BUNDLE_ID` = app bundle id; PushKit topic is `<bundle-id>.voip`.
-- `APPLE_CALLBACK_URL` = `https://<host>/auth/apple/callback`.
+- `APPLE_CALLBACK_URL` = `https://<host>/auth/apple/callback`; non-HTTPS values
+  are ignored and `https://dagh-server-fo64.onrender.com/auth/apple/callback`
+  is used.
+- `APP_OAUTH_REDIRECTS` = comma-separated exact app return destinations.
+- `APPLE_OAUTH_STATE_SECRET` = optional state signing secret (falls back to
+  `JWT_ACCESS_SECRET`).
 
 ### Flow
 
 1. Client opens `/auth/apple?redirect=<app-return-url>` (optional exact app
    destination).
-2. Server validates the redirect against the allow-list, issues a single-use
-   OAuth state token bound to the session, and redirects to Apple.
-3. Apple authenticates the user and POSTs `code` + `id_token` to
-   `/auth/apple/callback`.
-4. Server verifies the `id_token` (issuer `https://appleid.apple.com`, audience
-   = client id), extracts the stable `sub` claim as `appleId`.
+2. Server validates the redirect against the allow-list, issues a signed,
+   short-lived stateless state token containing the app redirect and a nonce
+   hash, and redirects to Apple with `redirect_uri` set to the backend HTTPS
+   callback and `response_mode=form_post`.
+3. Apple authenticates the user and POSTs `code`, `state`, and (on first login)
+   `user` to `/auth/apple/callback`.
+4. Server validates state, exchanges the code at Apple's token endpoint using
+   the same HTTPS `redirect_uri`, and verifies the returned `id_token` against
+   Apple's JWKS (issuer, audience, expiration, nonce), extracting the stable
+   `sub` claim as `appleId`.
 5. `resolveAppleUser` resolves the local account:
    - by `appleId` (normal case);
    - by verified email, linking `appleId` (if no conflict);
    - create new account (only if Apple supplied an email).
-   Email conflicts across two Apple identities are rejected
-   (`AppleIdentityConflictError`).
+     Email conflicts across two Apple identities are rejected
+     (`AppleIdentityConflictError`).
 6. Server stores the Apple refresh token (encrypted) for later revocation and
-   issues the app session/JWT, redirecting to the app return URL.
+   redirects to the app with tokens in the URL fragment:
+   `diasporansync:///oauth#accessToken=...&refreshToken=...&provider=apple`.
 
 ### Apple refresh-token revocation
 
@@ -109,9 +119,9 @@ calls Apple's revoke endpoint (best-effort; never blocks deletion). Requires
 
 ### Key endpoints
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/auth/apple` | Public | Initiate Apple Sign In. |
-| GET/POST | `/auth/apple/callback` | Public | Apple callback. |
-| GET | `/auth/apple/success` | Public | Success landing. |
-| GET | `/auth/apple/failed` | Public | Failure landing. |
+| Method | Path                   | Auth   | Purpose                     |
+| ------ | ---------------------- | ------ | --------------------------- |
+| GET    | `/auth/apple`          | Public | Initiate Apple Sign In.     |
+| POST   | `/auth/apple/callback` | Public | Apple `form_post` callback. |
+| GET    | `/auth/apple/success`  | Public | Success landing.            |
+| GET    | `/auth/apple/failed`   | Public | Failure landing.            |

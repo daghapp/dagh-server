@@ -102,19 +102,20 @@ Google sign-ups that have no phone hash.
 
 **Errors**
 
-| Status | Meaning |
-|---|---|
-| `400` | No contacts supplied |
-| `403` | `consent` was not `true` and no previous consent exists |
-| `500` | Unexpected server error |
+| Status | Meaning                                                 |
+| ------ | ------------------------------------------------------- |
+| `400`  | No contacts supplied                                    |
+| `403`  | `consent` was not `true` and no previous consent exists |
+| `500`  | Unexpected server error                                 |
 
-> Dating matches include only **opposite-gender active accounts**, not just users
-> with a dating profile. Same-gender contacts are hidden from dating responses.
-> Dating-specific fields (`headline`, `photos`) are `null`/empty when the matched
-> user has no dating profile; check `hasDatingProfile`. Contacts who are blocked
-> are excluded. Responses also include `unmatchedCount` and an `invite` object so
-> unmatched contacts can be invited to join. General `/contacts/*` endpoints are
-> unaffected and still cover all active accounts.
+> Dating contact responses include only **opposite-gender active accounts**, not
+> just users with a dating profile. Every matched contact is persisted, but male
+> viewers see only female contacts and female viewers see only male contacts in
+> dating endpoints. General `/contacts/*` remains unfiltered. Dating-specific
+> fields (`headline`, `photos`) are `null`/empty when the matched user has no
+> dating profile; check `hasDatingProfile`. Blocked contacts are excluded.
+> Responses also include `unmatchedCount` and an `invite` object so unmatched
+> contacts can be invited to join.
 
 ### 1.3 List contact matches
 
@@ -162,10 +163,10 @@ Show this as **"Remove imported contacts"** in Settings.
 
 `GET /dating/recommendations` now includes two extra fields per candidate:
 
-| Field | Type | Meaning |
-|---|---|---|
+| Field            | Type      | Meaning                                      |
+| ---------------- | --------- | -------------------------------------------- |
 | `isContactMatch` | `boolean` | Candidate is in the caller's synced contacts |
-| `familiar` | `boolean` | Same value, provided for direct UI use |
+| `familiar`       | `boolean` | Same value, provided for direct UI use       |
 
 Contact matches are also **ranked higher** (a familiarity bonus is applied after
 the normal interest/age/completeness score).
@@ -239,11 +240,11 @@ Proximity pushes arrive through the normal device notification channel with:
 }
 ```
 
-| Key | Meaning |
-|---|---|
-| `type` | Always `DATING_NEARBY` |
+| Key          | Meaning                                                                |
+| ------------ | ---------------------------------------------------------------------- |
+| `type`       | Always `DATING_NEARBY`                                                 |
 | `distanceKm` | Rounded distance in kilometres (string, as required by push providers) |
-| `route` | Suggested in-app route to open |
+| `route`      | Suggested in-app route to open                                         |
 
 Suggested copy:
 
@@ -256,15 +257,15 @@ consent-aware recommendations.
 
 ### 3.4 Eligibility summary
 
-| Rule | Value |
-|---|---|
-| Alert radius | `min(10 km, user's maxDistanceKm)` |
-| Per-user frequency | 1 alert / 24 hours |
-| Location freshness | 12 hours |
-| Gender | Opposite gender only on both sides (legal compliance) |
-| Blocks | Always excluded |
-| Dating profile | Required |
-| Push provider | Expo push token registered via `POST /devices/register` |
+| Rule               | Value                                                   |
+| ------------------ | ------------------------------------------------------- |
+| Alert radius       | `min(10 km, user's maxDistanceKm)`                      |
+| Per-user frequency | 1 alert / 24 hours                                      |
+| Location freshness | 12 hours                                                |
+| Gender             | Opposite gender only on both sides (legal compliance)   |
+| Blocks             | Always excluded                                         |
+| Dating profile     | Required                                                |
+| Push provider      | Expo push token registered via `POST /devices/register` |
 
 ---
 
@@ -286,25 +287,25 @@ consent-aware recommendations.
 
 ## 5. API summary
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/dating/contacts/status` | Consent + last sync/match counts |
-| `POST` | `/dating/contacts/sync` | Upload contacts and persist matches |
-| `GET` | `/dating/contacts/matches` | List familiar users |
-| `DELETE` | `/dating/contacts` | Revoke consent and delete matches |
-| `PUT` | `/dating/location` | Refresh dating location for proximity alerts |
-| `GET` | `/dating/recommendations?contactsOnly=true` | Only familiar candidates |
+| Method   | Endpoint                                    | Purpose                                      |
+| -------- | ------------------------------------------- | -------------------------------------------- |
+| `GET`    | `/dating/contacts/status`                   | Consent + last sync/match counts             |
+| `POST`   | `/dating/contacts/sync`                     | Upload contacts and persist matches          |
+| `GET`    | `/dating/contacts/matches`                  | List familiar users                          |
+| `DELETE` | `/dating/contacts`                          | Revoke consent and delete matches            |
+| `PUT`    | `/dating/location`                          | Refresh dating location for proximity alerts |
+| `GET`    | `/dating/recommendations?contactsOnly=true` | Only familiar candidates                     |
 
 OpenAPI/Swagger: these paths and schemas are included in `/api-docs`
 (`DatingContactMatch`, `DatingContactSyncResult`, `DatingContactStatus`).
 
 ## 6. Backend files
 
-| File | Responsibility |
-|---|---|
-| `src/modules/dating/dating-contacts.controller.ts` | Contact sync/list/status/revoke handlers |
-| `src/services/dating-contacts.service.ts` | Hashing, matching, persistence, consent |
-| `src/services/dating-proximity.service.ts` | Nearby scan, cooldown, Expo push |
-| `src/jobs/dating-proximity.ts` | 30-minute proximity worker |
-| `src/services/matching.service.ts` | Contact boost + `contactsOnly` filter |
-| `prisma/schema.prisma` | `ContactSyncConsent`, `ContactMatch`, `DatingProximityNotification` |
+| File                                               | Responsibility                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| `src/modules/dating/dating-contacts.controller.ts` | Contact sync/list/status/revoke handlers                            |
+| `src/services/dating-contacts.service.ts`          | Hashing, matching, persistence, consent                             |
+| `src/services/dating-proximity.service.ts`         | Nearby scan, cooldown, Expo push                                    |
+| `src/jobs/dating-proximity.ts`                     | 30-minute proximity worker                                          |
+| `src/services/matching.service.ts`                 | Contact boost + `contactsOnly` filter                               |
+| `prisma/schema.prisma`                             | `ContactSyncConsent`, `ContactMatch`, `DatingProximityNotification` |

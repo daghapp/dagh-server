@@ -28,12 +28,14 @@ This document describes all enhancements made to the DAGH dating module, includi
 **Description:** Blocks a user, preventing them from appearing in recommendations and blocking all future interaction. The action is audit-logged.
 
 **Request:**
+
 ```
 POST /dating/block/{targetId}
 Authorization: Bearer <token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "success": true,
@@ -46,6 +48,7 @@ Authorization: Bearer <token>
 **Response (409):** User is already blocked
 
 **Implementation:**
+
 - Creates a `UserBlock` record (bidirectional check)
 - Logs to `dating_activity_logs` with `entityType: "BLOCK"`, `action: "USER_BLOCKED"`
 - Blocked users are filtered out of `GET /dating/recommendations` results
@@ -61,6 +64,7 @@ Authorization: Bearer <token>
 **Description:** Flags a user for moderation with a reason. The action is audit-logged.
 
 **Request:**
+
 ```json
 POST /dating/report/{targetId}
 Authorization: Bearer <token>
@@ -72,6 +76,7 @@ Content-Type: application/json
 ```
 
 **Response (200):**
+
 ```json
 {
   "success": true,
@@ -84,6 +89,7 @@ Content-Type: application/json
 **Response (409):** User is already blocked or reported
 
 **Implementation:**
+
 - Creates a `UserReport` record with `status: PENDING`
 - Logs to `dating_activity_logs` with `entityType: "REPORT"`, `action: "USER_REPORTED"`
 - Tracks `reporterId`, `targetId`, `reason`
@@ -100,27 +106,30 @@ All enhancements are applied to the existing `GET /dating/recommendations` endpo
 
 ### 2.2 New Fields in Response
 
-| Field | Type | Description |
-|---|---|---|
-| `isPrimary` | `boolean` | `true` if the candidate's first photo is the primary profile image |
-| `photoCount` | `number` | How many photos the candidate has (0-9) |
-| `photoRatio` | `number` | Profile photo completeness ratio (0-100%), calculated as `(photoCount / 9) * 100` |
-| `reasons` | `String[]` | Top 3 reasons why this candidate was recommended (e.g., `"Shared 3 interests"`, `"Complete profile"`, `"Nearby (5km)"`, `"Great match"`) |
-| `isLuckyToday` | `boolean` | 30% daily chance — candidate marked as "surprise me" to encourage exploration outside normal preferences |
-| `stackType` | `String` | Curated stack assignment: `"MOST_COMPATIBLE"` (first 3 candidates), `"NEW_PROFILES"` (last 1-2 candidates), `"NONE"` (all others) |
+| Field          | Type       | Description                                                                                                                              |
+| -------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `isPrimary`    | `boolean`  | `true` if the candidate's first photo is the primary profile image                                                                       |
+| `photoCount`   | `number`   | How many photos the candidate has (0-9)                                                                                                  |
+| `photoRatio`   | `number`   | Profile photo completeness ratio (0-100%), calculated as `(photoCount / 9) * 100`                                                        |
+| `reasons`      | `String[]` | Top 3 reasons why this candidate was recommended (e.g., `"Shared 3 interests"`, `"Complete profile"`, `"Nearby (5km)"`, `"Great match"`) |
+| `isLuckyToday` | `boolean`  | 30% daily chance — candidate marked as "surprise me" to encourage exploration outside normal preferences                                 |
+| `stackType`    | `String`   | Curated stack assignment: `"MOST_COMPATIBLE"` (first 3 candidates), `"NEW_PROFILES"` (last 1-2 candidates), `"NONE"` (all others)        |
 
 ### 2.3 Implementation Details
 
 **Primary Photo Highlight (`isPrimary`):**
+
 - Calculated as: `photoCount > 0 && c.profileImage === c.photos[0]`
 - Helps users quickly identify the main profile picture vs. additional photos
 
 **Photo Count Badge (`photoCount`, `photoRatio`):**
+
 - `photoCount`: `c.photos?.length || 0`
 - `photoRatio`: `Math.round((photoCount / 9) * 100)`
 - Encourages profile completeness by showing users how many photos others have
 
 **"Why This Profile?" Reasons (`reasons`):**
+
 - Built from available candidate data:
   - Interest count: `"Has 3 interests"` or `"Has multiple interests"`
   - Age: `"28+"` (age indicator)
@@ -130,11 +139,13 @@ All enhancements are applied to the existing `GET /dating/recommendations` endpo
 - Returns top 3 reasons only (`reasons.slice(0, 3)`)
 
 **"Surprise Me" Gamified Button (`isLuckyToday`):**
+
 - 30% chance per candidate to mark as "surprise me"
 - Encourages users to explore candidates outside their normal filter bubble
 - Daily tracking to be implemented with cooldown store in future
 
 **Curated Stacks (`stackType`):**
+
 - `"MOST_COMPATIBLE"`: First 3 candidates (highest scored)
 - `"NEW_PROFILES"`: Last 1-2 candidates (recently created profiles)
 - `"NONE"`: All other candidates
@@ -156,12 +167,14 @@ configured it is fuzzy/typo-tolerant and relevance-ranked; otherwise the
 endpoint falls back to Postgres `contains`.
 
 **Request:**
+
 ```
 GET /dating/profile/search?name=john
 Authorization: Bearer <token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "success": true,
@@ -185,6 +198,7 @@ Authorization: Bearer <token>
 **Response (403):** Cannot view this profile (blocked or same gender)
 
 **Implementation:**
+
 - Searches OpenSearch (`fullName`, `username`, `headline`, `about`) with fuzziness
 - Falls back to `fullName`/`username` `contains` in Postgres when search is off
 - Includes block check (bidirectional) and opposite-gender filter
@@ -226,12 +240,14 @@ Profile create/update/deactivate keeps the index in sync automatically.
 **Description:** Generate a shareable profile link with the user's primary image URL. Useful for sharing via social media, QR codes, or invites.
 
 **Request:**
+
 ```
 GET /dating/profile/share
 Authorization: Bearer <token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "success": true,
@@ -245,6 +261,7 @@ Authorization: Bearer <token>
 ```
 
 **Implementation:**
+
 - Returns the user's dating profile primary photo URL
 - `primaryImage` = `profile.photos[0]` or fallback to `bio_profile_image_url`
 - Frontend appends username to create the final shareable URL
@@ -263,34 +280,36 @@ When a user shares their dating profile on social media (Twitter/X, Facebook, Li
 
 The `GET /dating/profile/search?username=` endpoint now returns OG metadata:
 
-| Field | Source | Example |
-|---|---|---|
-| `ogTitle` | `user.fullName + "'s Dating Profile"` | `"John Doe's Dating Profile"` |
-| `ogDescription` | `headline + about` (trimmed) | `"Looking for long-term partner"` |
-| `ogImage` | `profile.photos[0]` or `bio_profile_image_url` fallback | `"https://app.com/uploads/photos/john/primary.jpg"` |
-| `ogUrl` | Profile search URL | `"http://app.com/dating/profile/search?username=john_doe"` |
+| Field           | Source                                                  | Example                                                    |
+| --------------- | ------------------------------------------------------- | ---------------------------------------------------------- |
+| `ogTitle`       | `user.fullName + "'s Dating Profile"`                   | `"John Doe's Dating Profile"`                              |
+| `ogDescription` | `headline + about` (trimmed)                            | `"Looking for long-term partner"`                          |
+| `ogImage`       | `profile.photos[0]` or `bio_profile_image_url` fallback | `"https://app.com/uploads/photos/john/primary.jpg"`        |
+| `ogUrl`         | Profile search URL                                      | `"http://app.com/dating/profile/search?username=john_doe"` |
 
 ### 4.3 Frontend Requirement
 
 The profile search page must render these OG tags in the HTML `<head>`:
 
 ```html
-<meta property="og:title" content="John Doe's Dating Profile">
-<meta property="og:description" content="Looking for long-term partner">
-<meta property="og:image" content="https://app.com/uploads/photos/john/primary.jpg">
-<meta property="og:url" content="http://app.com/dating/profile/search?username=john_doe">
-<meta property="og:type" content="website">
-<meta property="og:sitename" content="DAGH Dating">
+<meta property="og:title" content="John Doe's Dating Profile" />
+<meta property="og:description" content="Looking for long-term partner" />
+<meta property="og:image" content="https://app.com/uploads/photos/john/primary.jpg" />
+<meta property="og:url" content="http://app.com/dating/profile/search?username=john_doe" />
+<meta property="og:type" content="website" />
+<meta property="og:sitename" content="DAGH Dating" />
 ```
 
 ### 4.4 Why This Matters
 
 Profile images are the **primary attraction factor** in dating apps. When sharing without images:
+
 - Social media shows generic preview or just the URL text
 - Users are less likely to click through
 - The "cold link" problem reduces engagement
 
 With OG tags:
+
 - Social media displays a rich preview card with the user's photo
 - Higher click-through rates
 - Better user acquisition through organic sharing
@@ -323,11 +342,11 @@ model DatingActivityLog {
 
 ### 5.2 Logged Actions
 
-| Action | entityType | action | note |
-|---|---|---|---|
-| Block user | `BLOCK` | `USER_BLOCKED` | `User {userId} blocked {targetId}` |
-| Report user | `REPORT` | `USER_REPORTED` | `User {userId} reported {targetId}: {reason}` |
-| Swipe | `SWIPE` | `SWIPE_LIKE` / `SWIPE_PASS` / `SWIPE_SUPER_LIKE` | `User {swiperId} swiped {direction} on target {targetId}` |
+| Action      | entityType | action                                           | note                                                      |
+| ----------- | ---------- | ------------------------------------------------ | --------------------------------------------------------- |
+| Block user  | `BLOCK`    | `USER_BLOCKED`                                   | `User {userId} blocked {targetId}`                        |
+| Report user | `REPORT`   | `USER_REPORTED`                                  | `User {userId} reported {targetId}: {reason}`             |
+| Swipe       | `SWIPE`    | `SWIPE_LIKE` / `SWIPE_PASS` / `SWIPE_SUPER_LIKE` | `User {swiperId} swiped {direction} on target {targetId}` |
 
 ### 5.3 Admin Entity Type
 
@@ -363,15 +382,15 @@ export function logDatingActivity(input: LogDatingActivityInput) {
 
 ## 6. Files Modified
 
-| File | Change |
-|---|---|
-| `src/modules/dating/swipe.controller.ts` | Block/report controllers, cooldown logic, recommendation enhancements (isPrimary, photoCount, photoRatio, reasons, isLuckyToday, stackType) |
-| `src/modules/dating/dating.controller.ts` | `getDatingProfileByUsername`, `getDatingProfileShare` controllers, OG metadata in profile search |
-| `src/routes/dating.routes.ts` | Added routes for `/block/:targetId`, `/report/:targetId`, `/profile/search`, `/profile/share` |
-| `src/helpers/admin-activity.ts` | Added `DATING` entity type |
-| `src/helpers/dating-activity.ts` | **New file** — dating activity logging helper |
-| `prisma/schema.prisma` | Added `DatingActivityLog` model |
-| `README.md` | Documentation updated |
+| File                                      | Change                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/modules/dating/swipe.controller.ts`  | Block/report controllers, cooldown logic, recommendation enhancements (isPrimary, photoCount, photoRatio, reasons, isLuckyToday, stackType) |
+| `src/modules/dating/dating.controller.ts` | `getDatingProfileByUsername`, `getDatingProfileShare` controllers, OG metadata in profile search                                            |
+| `src/routes/dating.routes.ts`             | Added routes for `/block/:targetId`, `/report/:targetId`, `/profile/search`, `/profile/share`                                               |
+| `src/helpers/admin-activity.ts`           | Added `DATING` entity type                                                                                                                  |
+| `src/helpers/dating-activity.ts`          | **New file** — dating activity logging helper                                                                                               |
+| `prisma/schema.prisma`                    | Added `DatingActivityLog` model                                                                                                             |
+| `README.md`                               | Documentation updated                                                                                                                       |
 
 ---
 
@@ -379,19 +398,19 @@ export function logDatingActivity(input: LogDatingActivityInput) {
 
 ### New Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/dating/block/{targetId}` | Block a user |
-| `POST` | `/dating/report/{targetId}` | Report a user for moderation |
-| `GET` | `/dating/profile/search?username=` | Find user by username |
-| `GET` | `/dating/profile/share` | Generate shareable profile link |
+| Method | Path                               | Description                     |
+| ------ | ---------------------------------- | ------------------------------- |
+| `POST` | `/dating/block/{targetId}`         | Block a user                    |
+| `POST` | `/dating/report/{targetId}`        | Report a user for moderation    |
+| `GET`  | `/dating/profile/search?username=` | Find user by username           |
+| `GET`  | `/dating/profile/share`            | Generate shareable profile link |
 
 ### Modified Endpoints
 
-| Method | Path | New Fields/Behavior |
-|---|---|---|
-| `GET` | `/dating/recommendations` | Added: `isPrimary`, `photoCount`, `photoRatio`, `reasons`, `isLuckyToday`, `stackType` |
-| `GET` | `/dating/profile/search?username=` | Added: `ogTitle`, `ogDescription`, `ogImage`, `ogUrl` |
+| Method | Path                               | New Fields/Behavior                                                                    |
+| ------ | ---------------------------------- | -------------------------------------------------------------------------------------- |
+| `GET`  | `/dating/recommendations`          | Added: `isPrimary`, `photoCount`, `photoRatio`, `reasons`, `isLuckyToday`, `stackType` |
+| `GET`  | `/dating/profile/search?username=` | Added: `ogTitle`, `ogDescription`, `ogImage`, `ogUrl`                                  |
 
 ---
 
@@ -399,12 +418,12 @@ export function logDatingActivity(input: LogDatingActivityInput) {
 
 The following features require database schema changes and are deferred:
 
-| Feature | Schema Change Required |
-|---|---|
-| **Photo verified badge** | Add `photoVerified: Boolean @default(false)` to `DatingProfile` model |
-| **Expanded filters** | Add `educationLevel`, `drinkSmoke`, `zodiacSign` to `User`/`DatingProfile` models |
-| **Behavioral learning** | New tables: `user_swipe_feedback`, `preference_drift` |
-| **Last active** | Add `lastActiveAt: DateTime?` to `User` model |
+| Feature                  | Schema Change Required                                                            |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| **Photo verified badge** | Add `photoVerified: Boolean @default(false)` to `DatingProfile` model             |
+| **Expanded filters**     | Add `educationLevel`, `drinkSmoke`, `zodiacSign` to `User`/`DatingProfile` models |
+| **Behavioral learning**  | New tables: `user_swipe_feedback`, `preference_drift`                             |
+| **Last active**          | Add `lastActiveAt: DateTime?` to `User` model                                     |
 
 These can be implemented in a follow-up session when database migration is acceptable.
 
@@ -467,8 +486,9 @@ GET /dating/profile/share
 - Discovery fails closed: an empty compatibility list returns zero candidates,
   and the Prisma query always includes `gender IN (<opposite gender>)`.
 - The same compatibility helper now guards swipes, likes received/sent, matches,
-  relationship status, direct profile lookup, name search/suggestions, dating
-  contacts, tour dating selections, and proximity alerts.
+  relationship status, direct profile lookup/search/suggestions, dating contacts,
+  tour dating selections, and proximity alerts. General `/contacts/*` is the only
+  contact endpoint intentionally not gender-filtered.
 - Write validators normalize `woman`/`man`/case/whitespace/separator variants and
   reject unknown gender values. Migration
   `20261124000000_normalize_user_gender` cleans legacy rows and adds a database
@@ -478,4 +498,4 @@ GET /dating/profile/share
 
 ---
 
-*Document generated for the DAGH dating module enhancements.*
+_Document generated for the DAGH dating module enhancements._

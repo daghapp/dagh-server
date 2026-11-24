@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────
 // Apple Sign In configuration
 // ─────────────────────────────────────────
-// `passport-apple` accepts either a path to the .p8 key or the key string
-// itself. Render (and most container hosts) make it easier to paste the key as
-// a secret env var than to mount a file, so support both. An inline
+// The manual Apple OAuth flow accepts either a path to the .p8 key or the key
+// string itself. Render (and most container hosts) make it easier to paste the
+// key as a secret env var than to mount a file, so support both. An inline
 // APPLE_PRIVATE_KEY wins over APPLE_PRIVATE_KEY_PATH.
 
 import { existsSync } from "node:fs";
@@ -20,9 +20,29 @@ function inlinePrivateKey(): string | undefined {
 
 function privateKeyPath(): string | undefined {
   const path = clean(process.env.APPLE_PRIVATE_KEY_PATH);
-  // A path that does not exist would register a strategy that fails only at
-  // callback time. Treat it as unconfigured so /auth/apple honestly returns 503.
+  // A path that does not exist would fail only when signing the client secret.
+  // Treat it as unconfigured so /auth/apple honestly returns 503.
   return path && existsSync(path) ? path : undefined;
+}
+
+export const DEFAULT_APPLE_CALLBACK_URL =
+  "https://dagh-server-fo64.onrender.com/auth/apple/callback";
+
+let warnedInvalidCallback = false;
+
+function callbackURL(): string {
+  const raw = clean(process.env.APPLE_CALLBACK_URL);
+  if (!raw || /^https:\/\//i.test(raw))
+    return raw?.replace(/\/+$/, "") ?? DEFAULT_APPLE_CALLBACK_URL;
+
+  if (!warnedInvalidCallback) {
+    console.warn(
+      "[apple] APPLE_CALLBACK_URL must be an https:// URL; using",
+      DEFAULT_APPLE_CALLBACK_URL,
+    );
+    warnedInvalidCallback = true;
+  }
+  return DEFAULT_APPLE_CALLBACK_URL;
 }
 
 export interface AppleSignInConfig {
@@ -38,18 +58,18 @@ export function getAppleSignInConfig(): AppleSignInConfig | null {
   const clientID = clean(process.env.APPLE_CLIENT_ID);
   const teamID = clean(process.env.APPLE_TEAM_ID);
   const keyID = clean(process.env.APPLE_KEY_ID);
-  const callbackURL = clean(process.env.APPLE_CALLBACK_URL);
+  const resolvedCallbackURL = callbackURL();
 
-  if (!clientID || !teamID || !keyID || !callbackURL) return null;
+  if (!clientID || !teamID || !keyID) return null;
 
   const privateKeyString = inlinePrivateKey();
   if (privateKeyString) {
-    return { clientID, teamID, keyID, callbackURL, privateKeyString };
+    return { clientID, teamID, keyID, callbackURL: resolvedCallbackURL, privateKeyString };
   }
 
   const privateKeyLocation = privateKeyPath();
   if (privateKeyLocation) {
-    return { clientID, teamID, keyID, callbackURL, privateKeyLocation };
+    return { clientID, teamID, keyID, callbackURL: resolvedCallbackURL, privateKeyLocation };
   }
 
   return null;

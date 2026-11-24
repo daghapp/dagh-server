@@ -25,10 +25,19 @@ skipped for those users. The condition is now `if (user.appleRefreshToken)`,
 so any account holding an Apple refresh token is revoked (best-effort, never
 blocking deletion).
 
+### 3. Apple callback now uses the backend HTTPS URL
+
+`GET /auth/apple` previously sent Apple `redirect_uri=diasporansync:///oauth`,
+which Apple rejects. The manual stateless OAuth flow now sends
+`redirect_uri=https://dagh-server-fo64.onrender.com/auth/apple/callback` with
+`response_mode=form_post`, verifies the `id_token` against Apple's JWKS, and
+returns app tokens in the deep-link fragment. See
+`docs/app-store-review-remediation.md`.
+
 ## Verification
 
 ```bash
-npx vitest run tests/ios-purchase-gate.test.ts tests/apple-token.test.ts tests/apple-identity.test.ts tests/delete-account-validator.test.ts
+npx vitest run tests/ios-purchase-gate.test.ts tests/apple-token.test.ts tests/apple-identity.test.ts tests/apple-signin-config.test.ts tests/apple-oauth-state.test.ts tests/apple-oauth-service.test.ts tests/delete-account-validator.test.ts
 npx eslint src/modules/payment-management/payment.controller.ts src/modules/profile-management/account-profile.controller.ts
 ```
 
@@ -38,8 +47,13 @@ Blocking (config / app side):
 
 - Apple Sign In env vars unset on Render → `GET /auth/apple` returns `503`.
   Set `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`,
-  `APPLE_CALLBACK_URL`, and `APPLE_PRIVATE_KEY` (or `APPLE_PRIVATE_KEY_PATH`),
-  plus APNs vars for VoIP pushes. See `docs/apple-setup-requirements.md`.
+  `APPLE_CALLBACK_URL=https://dagh-server-fo64.onrender.com/auth/apple/callback`,
+  and `APPLE_PRIVATE_KEY` (or `APPLE_PRIVATE_KEY_PATH`), plus
+  `APP_OAUTH_REDIRECTS=diasporansync:///oauth` and optionally
+  `APPLE_OAUTH_STATE_SECRET`, plus APNs vars for VoIP pushes. See
+  `docs/apple-setup-requirements.md`.
+- After redeploy, test Apple sign-in on the TestFlight build: Share My Email,
+  Hide My Email, cancel once, then sign in again with the same Apple ID.
 - Render free-tier cold starts during review — warm the instance or use an
   always-on host.
 - 1024×1024 marketing icon exported with transparency — re-export opaque PNG
@@ -56,4 +70,4 @@ Non-blocking follow-ups:
   Guideline 1.2.
 - `PAYMENT_GATEWAY_ENCRYPTION_KEY` must be set in every environment where Apple
   token revocation should work.
-" filePath=/home/hollali/Projects/dagh-server/docs/ios-app-store-gaps.md
+  " filePath=/home/hollali/Projects/dagh-server/docs/ios-app-store-gaps.md

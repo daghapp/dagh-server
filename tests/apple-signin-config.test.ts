@@ -74,4 +74,22 @@ describe("Apple Sign In configuration", () => {
     vi.stubEnv("APPLE_PRIVATE_KEY_PATH", join(process.cwd(), "does-not-exist.p8"));
     expect(getAppleSignInConfig()).toBeNull();
   });
+
+  it("uses the HTTPS backend callback when the configured URL is not HTTPS", () => {
+    setBaseEnv();
+    vi.stubEnv("APPLE_CALLBACK_URL", "diasporansync:///oauth");
+    vi.stubEnv("APPLE_PRIVATE_KEY", "inline-key");
+
+    expect(getAppleSignInConfig()?.callbackURL).toBe(
+      "https://dagh-server-fo64.onrender.com/auth/apple/callback",
+    );
+  });
+
+  it("strips a trailing slash from the configured HTTPS callback", () => {
+    setBaseEnv();
+    vi.stubEnv("APPLE_CALLBACK_URL", "https://example.test/auth/apple/callback/");
+    vi.stubEnv("APPLE_PRIVATE_KEY", "inline-key");
+
+    expect(getAppleSignInConfig()?.callbackURL).toBe("https://example.test/auth/apple/callback");
+  });
 });

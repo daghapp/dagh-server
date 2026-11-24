@@ -6,6 +6,7 @@ This is the **deployment/config** companion to `docs/frontend-oauth-integration.
 the backend code itself already implements the required flow.
 
 > TL;DR — two things break production OAuth and both are configuration:
+>
 > 1. A provider callback URL pointing at an old domain (e.g. `dagh-server-3.onrender.com`).
 > 2. Apple Sign In env vars never set → `/auth/apple` returns **503** (by design).
 
@@ -13,14 +14,17 @@ the backend code itself already implements the required flow.
 
 ## 1. Production values (single source of truth)
 
-| Provider | Initiation | Callback (must be registered) |
-| -------- | ---------- | ----------------------------- |
-| Google   | `GET /auth/google` | `https://dagh-server-fo64.onrender.com/auth/google/callback` |
-| Facebook | `GET /auth/facebook` | `https://dagh-server-fo64.onrender.com/auth/facebook/callback` |
-| Apple    | `GET /auth/apple` | `https://dagh-server-fo64.onrender.com/auth/apple/callback` (POST) |
+| Provider | Initiation           | Callback (must be registered)                                      |
+| -------- | -------------------- | ------------------------------------------------------------------ |
+| Google   | `GET /auth/google`   | `https://dagh-server-fo64.onrender.com/auth/google/callback`       |
+| Facebook | `GET /auth/facebook` | `https://dagh-server-fo64.onrender.com/auth/facebook/callback`     |
+| Apple    | `GET /auth/apple`    | `https://dagh-server-fo64.onrender.com/auth/apple/callback` (POST) |
 
 The app never calls the callback; the provider's browser does. After the
-backend exchanges the code it redirects to `diasporansync:///oauth?accessToken=…&refreshToken=…&provider=…&email=…`, or `…?error=…` on failure.
+backend exchanges the code, Google/Facebook redirect to
+`diasporansync:///oauth?accessToken=…&refreshToken=…&provider=…&email=…` while
+Apple redirects to `diasporansync:///oauth#accessToken=…&refreshToken=…&provider=apple&email=…`.
+Failures use the query string: `diasporansync:///oauth?error=…`.
 
 ---
 
@@ -37,6 +41,8 @@ APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 # ... OR as a file mounted on the host. Inline wins; a missing path counts as unconfigured.
 # APPLE_PRIVATE_KEY_PATH=/etc/secrets/AuthKey_<keyid>.p8
 APPLE_CALLBACK_URL=https://dagh-server-fo64.onrender.com/auth/apple/callback
+APP_OAUTH_REDIRECTS=diasporansync:///oauth
+APPLE_OAUTH_STATE_SECRET=<optional; falls back to JWT_ACCESS_SECRET>
 ```
 
 `CLIENTID` / `CLIENTSECRETE` (Google) and `FACEBOOK_APP_ID` /
@@ -98,10 +104,14 @@ Steps:
      escapes), or mount it as a secret file and set `APPLE_PRIVATE_KEY_PATH` to
      that path (e.g. `/etc/secrets/AuthKey_<keyid>.p8`). Inline wins when both
      are present. Never commit the key.
-   - Set `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CALLBACK_URL`.
+   - Set `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CALLBACK_URL` (HTTPS only),
+     `APP_OAUTH_REDIRECTS`, and optionally `APPLE_OAUTH_STATE_SECRET`.
 3. Apple posts the callback as `application/x-www-form-urlencoded` POST. The
-   server's session cookie uses `sameSite: none` in production so it survives
-   Apple's cross-site POST (commit `0032648`).
+   Apple callback is stateless: the signed `state` carries the allowlisted app
+   return destination and nonce hash, so no session cookie is required.
+4. `GET /auth/apple` now sends Apple `redirect_uri` equal to the HTTPS backend
+   callback and `response_mode=form_post`; the app deep link is never sent to
+   Apple.
 
 ---
 
@@ -118,8 +128,8 @@ curl -si "$BASE/auth/google?redirect=$REDIRECT"   # -> accounts.google.com ... s
 curl -si "$BASE/auth/facebook?redirect=$REDIRECT" # -> www.facebook.com ... state=...
 curl -si "$BASE/auth/apple?redirect=$REDIRECT"    # 302 (or 503 if Apple unconfigured)
 
-# 2. Allowed deep link from the state (base64url): must decode diasporansync:///oauth.
-#    Non-matching redirect is silently dropped — no open redirect.
+# 2. Apple 302 Location must include redirect_uri=https://dagh-server-fo64.onrender.com/auth/apple/callback
+#    and response_mode=form_post. A custom redirect must be allowlisted via APP_OAUTH_REDIRECTS.
 
 # 3. Callback without a real code cannot be tested; it fails state/auth on purpose.
 #    Test the full flow on a physical device via WebBrowser.openAuthSessionAsync.
@@ -130,7 +140,10 @@ What to check:
 - Google **302 Location** contains `state=`.
 - Facebook **302 Location** contains `state=` and a callback on the current domain.
 - Success (device test) lands on
-  `diasporansync:///oauth?accessToken=…&refreshToken=…&provider=google&email=…`.
+  `diasporansync:///oauth?accessToken=…&refreshToken=…&provider=google&email=…`
+  for Google/Facebook, or
+  `diasporansync:///oauth#accessToken=…&refreshToken=…&provider=apple&email=…`
+  for Apple.
 - Failure lands on `diasporansync:///oauth?error=…`.
 - `/auth/google/success` without the mobile redirect shows the fallback page
   with the **Open Diaspora Sync** handoff button; it must not print tokens.
@@ -139,30 +152,37 @@ What to check:
 
 ## 7. Common failures → fixes
 
-| Symptom | Cause | Fix |
-| ------- | ----- | --- |
-| Facebook init redirects to old domain callback | `FACEBOOK_CALLBACK_URL` stale on server | Set to current domain, redeploy |
-| Facebook login error "redirect_uri is not an authorized URI" | Missing in Facebook console | Add to **Valid OAuth Redirect URIs** |
-| `/auth/apple` → 503 | Apple env vars or private key missing | Set all vars and supply `APPLE_PRIVATE_KEY` (inline) or a valid `APPLE_PRIVATE_KEY_PATH` |
-| Apple consent error "redirect URL not validated" | Redirect URL not re-entered on first save | Edit Services ID → re-enter URL → Save |
-| App never reopens after success page | Browser (not app) hit `/auth/google/success` | Use `WebBrowser.openAuthSessionAsync` with the `redirect` param |
+| Symptom                                                      | Cause                                        | Fix                                                                                      |
+| ------------------------------------------------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Facebook init redirects to old domain callback               | `FACEBOOK_CALLBACK_URL` stale on server      | Set to current domain, redeploy                                                          |
+| Facebook login error "redirect_uri is not an authorized URI" | Missing in Facebook console                  | Add to **Valid OAuth Redirect URIs**                                                     |
+| `/auth/apple` → 503                                          | Apple env vars or private key missing        | Set all vars and supply `APPLE_PRIVATE_KEY` (inline) or a valid `APPLE_PRIVATE_KEY_PATH` |
+| Apple consent error "redirect URL not validated"             | Redirect URL not re-entered on first save    | Edit Services ID → re-enter URL → Save                                                   |
+| App never reopens after success page                         | Browser (not app) hit `/auth/google/success` | Use `WebBrowser.openAuthSessionAsync` with the `redirect` param                          |
 
 ---
 
-## 8. Code-level guarantees already in place (no change needed)
+## 8. Code-level guarantees
 
-- Random 32-byte, single-use `state` bound to the server session; validated and
-  consumed on callback — `src/modules/authentication/oauth-state.ts`.
+- Google/Facebook use random session-bound `state`; Apple uses signed stateless
+  state containing the app redirect and nonce hash —
+  `src/modules/authentication/oauth-state.ts`,
+  `src/modules/authentication/apple-oauth-state.ts`.
 - Apple accounts are keyed by Apple's stable `sub` (`users.appleId`), never by a
   missing-email fallback; a legacy email-matched account is linked on first
   Apple login — `src/modules/authentication/apple-identity.ts`.
+- Apple `id_token` is verified against Apple's JWKS (RS256, issuer, audience,
+  expiration, nonce) before creating a session —
+  `src/services/apple-oauth.service.ts`.
 - Apple refresh tokens are stored encrypted and revoked on account deletion —
   `src/services/apple-token.service.ts`.
-- Only `diasporansync:///oauth` is an approved return destination.
-- Provider codes are exchanged server-side by Passport; the app only ever
-  receives backend-issued JWTs.
-- Deep links built with `new URL(...)` so token values are encoded —
-  `src/modules/authentication/oauth-handler.ts`.
+- Only `diasporansync:///oauth` and values from `APP_OAUTH_REDIRECTS` are
+  approved return destinations.
+- Provider codes are exchanged server-side; the app only ever receives
+  backend-issued JWTs.
+- Deep links are built with `new URL(...)` so token values are encoded —
+  `src/modules/authentication/oauth-handler.ts`,
+  `src/modules/authentication/apple-auth.controller.ts`.
 - Session persists in Postgres (survives restarts, shared across instances) —
   `src/config/session.ts`.
 - Success page auto-redirects only when the embedded link carries `accessToken=`,
@@ -171,6 +191,6 @@ What to check:
 
 ---
 
-*Backend code references: `src/routes/{google,facebook,apple}-auth.routes.ts`,
+_Backend code references: `src/routes/{google,facebook,apple}-auth.routes.ts`,
 `src/config/passport.ts`, `src/modules/authentication/oauth-state.ts`,
-`src/modules/authentication/oauth-handler.ts`.*
+`src/modules/authentication/oauth-handler.ts`._

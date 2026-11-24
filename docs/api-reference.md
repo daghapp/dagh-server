@@ -10,12 +10,12 @@ what each one does, its request payload, and key response/error details.
 
 **Auth column legend**
 
-| Value | Meaning |
-|-------|---------|
-| Public | No authentication required |
-| Bearer | Requires `Authorization: Bearer <accessToken>` |
-| Admin | Bearer token **plus** an `ADMIN` (or `MODERATOR`) account type |
-| Hubtel | Called by Hubtel's payment server (validated signature) |
+| Value  | Meaning                                                        |
+| ------ | -------------------------------------------------------------- |
+| Public | No authentication required                                     |
+| Bearer | Requires `Authorization: Bearer <accessToken>`                 |
+| Admin  | Bearer token **plus** an `ADMIN` (or `MODERATOR`) account type |
+| Hubtel | Called by Hubtel's payment server (validated signature)        |
 
 **Response envelope**
 
@@ -31,35 +31,40 @@ Paginated lists wrap data as `{ success, data: [...], pagination: { total, page,
 
 ## Authentication
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/auth/register` | Public | Create a new account; returns the user. |
-| POST | `/auth/login` | Public | Log in; returns `accessToken` + `refreshToken`. |
-| POST | `/auth/verify-otp` | Public | Verify an email OTP (email verification or password reset). |
-| POST | `/auth/resend-otp` | Public | Resend the email-verification OTP (rate-limited, 1/min). Returns `502` when the OTP email cannot be delivered. |
-| POST | `/auth/refresh-token` | Public | Exchange a refresh token for a new access token + the signed-in user (same shape as login). |
-| POST | `/auth/request-reset-password` | Public | Send a password-reset OTP to an email. |
-| POST | `/auth/reset-password` | Bearer | Verify OTP + old password, then set a new password. |
-| POST | `/auth/logout` | Bearer | Log out; invalidates all of the user's refresh tokens. |
-| GET | `/auth/google` | Public | Redirect to Google OAuth consent. |
-| GET | `/auth/google/callback` | Public | Google OAuth callback (302 → success/failure page). |
-| GET | `/auth/google/failed` | Public | Renders "auth failed" page (401). |
-| GET | `/auth/google/success` | Public | Renders "auth success" page. |
-| GET | `/auth/facebook` | Public | Redirect to Facebook OAuth consent. |
-| GET | `/auth/facebook/callback` | Public | Facebook OAuth callback. |
-| GET | `/auth/facebook/failed` | Public | Renders "auth failed" page (401). |
-| GET | `/auth/facebook/success` | Public | Renders "auth success" page. |
-| GET | `/auth/apple` | Public | Redirect to Apple Sign In. |
-| POST | `/auth/apple/callback` | Public | Apple Sign In callback (body includes `user` JSON on first login). |
-| GET | `/auth/apple/failed` | Public | Renders "auth failed" page (401). |
-| GET | `/auth/apple/success` | Public | Renders "auth success" page. |
+| Method | Endpoint                       | Auth   | What it does                                                                                                   |
+| ------ | ------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/register`               | Public | Create a new account; returns the user.                                                                        |
+| POST   | `/auth/login`                  | Public | Log in; returns `accessToken` + `refreshToken`.                                                                |
+| POST   | `/auth/verify-otp`             | Public | Verify an email OTP (email verification or password reset).                                                    |
+| POST   | `/auth/resend-otp`             | Public | Resend the email-verification OTP (rate-limited, 1/min). Returns `502` when the OTP email cannot be delivered. |
+| POST   | `/auth/refresh-token`          | Public | Exchange a refresh token for a new access token + the signed-in user (same shape as login).                    |
+| POST   | `/auth/request-reset-password` | Public | Send a password-reset OTP to an email.                                                                         |
+| POST   | `/auth/reset-password`         | Bearer | Verify OTP + old password, then set a new password.                                                            |
+| POST   | `/auth/logout`                 | Bearer | Log out; invalidates all of the user's refresh tokens.                                                         |
+| GET    | `/auth/google`                 | Public | Redirect to Google OAuth consent.                                                                              |
+| GET    | `/auth/google/callback`        | Public | Google OAuth callback (302 → success/failure page).                                                            |
+| GET    | `/auth/google/failed`          | Public | Renders "auth failed" page (401).                                                                              |
+| GET    | `/auth/google/success`         | Public | Renders "auth success" page.                                                                                   |
+| GET    | `/auth/facebook`               | Public | Redirect to Facebook OAuth consent.                                                                            |
+| GET    | `/auth/facebook/callback`      | Public | Facebook OAuth callback.                                                                                       |
+| GET    | `/auth/facebook/failed`        | Public | Renders "auth failed" page (401).                                                                              |
+| GET    | `/auth/facebook/success`       | Public | Renders "auth success" page.                                                                                   |
+| GET    | `/auth/apple`                  | Public | Redirect to Apple Sign In.                                                                                     |
+| POST   | `/auth/apple/callback`         | Public | Apple Sign In callback (body includes `user` JSON on first login).                                             |
+| GET    | `/auth/apple/failed`           | Public | Renders "auth failed" page (401).                                                                              |
+| GET    | `/auth/apple/success`          | Public | Renders "auth success" page.                                                                                   |
 
 Apple accounts are linked by Apple's stable `sub` claim (`User.appleId`). A new
 Apple user must provide an email; existing linked accounts may sign in without
 one. Hiding the email still works via Apple's `@privaterelay.appleid.com` relay
-address. `/auth/apple` returns `503` when `APPLE_CLIENT_ID`, the team/key IDs, or
-the private key (inline `APPLE_PRIVATE_KEY` or `APPLE_PRIVATE_KEY_PATH`) are
-missing or unreadable.
+address. `/auth/apple` redirects to Apple with the backend HTTPS callback
+(`redirect_uri=https://dagh-server-fo64.onrender.com/auth/apple/callback`) and
+`response_mode=form_post`; the app return destination is allowlisted via
+`APP_OAUTH_REDIRECTS`. Successful Apple login redirects to
+`diasporansync:///oauth#accessToken=...&refreshToken=...&provider=apple`.
+`/auth/apple` returns `503` when `APPLE_CLIENT_ID`, the team/key IDs, or the
+private key (inline `APPLE_PRIVATE_KEY` or `APPLE_PRIVATE_KEY_PATH`) are missing
+or unreadable.
 
 ### POST /auth/register
 
@@ -117,38 +122,42 @@ device store; `403` if the account is no longer active; `404` if the user is gon
 
 ## Image Upload
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/upload` | Bearer | Upload one file to Cloudinary; returns its URL and public ID. |
+| Method | Endpoint  | Auth   | What it does                                                  |
+| ------ | --------- | ------ | ------------------------------------------------------------- |
+| POST   | `/upload` | Bearer | Upload one file to Cloudinary; returns its URL and public ID. |
 
 `multipart/form-data`, field name **`image`**. Limits: **5 MB**; only **JPG, PNG, PDF**.
 
 ```json
 // 201
-{ "success": true, "data": { "url": "https://res.cloudinary.com/...", "publicId": "dagh/uploads/..." }, "message": "Upload successful." }
+{
+  "success": true,
+  "data": { "url": "https://res.cloudinary.com/...", "publicId": "dagh/uploads/..." },
+  "message": "Upload successful."
+}
 ```
 
 `413` = file too large; `400` = no file / wrong type. Used by verification (face + documents) and anywhere else an image URL is needed.
 
 ### Image proxy (CDN/cache)
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/media/images` | Public | Caching proxy for supported upstream sources (Wikimedia Commons/Maps, Unsplash, Google Places, Cloudinary). Query: `url` (source URL), `w` (target width, default 800). Returns image bytes with long-lived cache headers; falls back to a placeholder SVG on upstream failure or disallowed host. Wikimedia Maps URLs require the proxy's upstream `User-Agent` and `Referer` headers, so call the proxy rather than the map host directly. |
-| GET | `/media/images/placeholder` | Public | Placeholder SVG for missing/broken images. |
+| Method | Endpoint                    | Auth   | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | --------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/media/images`             | Public | Caching proxy for supported upstream sources (Wikimedia Commons/Maps, Unsplash, Google Places, Cloudinary). Query: `url` (source URL), `w` (target width, default 800). Returns image bytes with long-lived cache headers; falls back to a placeholder SVG on upstream failure or disallowed host. Wikimedia Maps URLs require the proxy's upstream `User-Agent` and `Referer` headers, so call the proxy rather than the map host directly. |
+| GET    | `/media/images/placeholder` | Public | Placeholder SVG for missing/broken images.                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ---
 
 ## Profile Management
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/profile/init` | Bearer | Create the user's `UserProfile` + empty `ProfileVerification` row (idempotent). |
-| GET | `/profile/account` | Bearer | Get the authenticated user's login profile: `username`, `firstName`, `lastName`, `fullName`, `profileImageUrl`, plus account fields. |
-| PATCH | `/profile/account` | Bearer | Update own login profile: `username`, `firstName`, `lastName`, `profileImageUrl` (send `null` on `profileImageUrl` to remove the picture). |
-| DELETE | `/profile/account` | Bearer | Permanently delete the account and all owned data. |
-| PATCH | `/profile` | Bearer | Update own account fields: `fullName`, `gender`, `dateOfBirth`, `ethnicity`. |
-| PATCH | `/profile/ethnicity` | Bearer | Set the user's ethnicity (used for itinerary personalization). |
+| Method | Endpoint             | Auth   | What it does                                                                                                                               |
+| ------ | -------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/profile/init`      | Bearer | Create the user's `UserProfile` + empty `ProfileVerification` row (idempotent).                                                            |
+| GET    | `/profile/account`   | Bearer | Get the authenticated user's login profile: `username`, `firstName`, `lastName`, `fullName`, `profileImageUrl`, plus account fields.       |
+| PATCH  | `/profile/account`   | Bearer | Update own login profile: `username`, `firstName`, `lastName`, `profileImageUrl` (send `null` on `profileImageUrl` to remove the picture). |
+| DELETE | `/profile/account`   | Bearer | Permanently delete the account and all owned data.                                                                                         |
+| PATCH  | `/profile`           | Bearer | Update own account fields: `fullName`, `gender`, `dateOfBirth`, `ethnicity`.                                                               |
+| PATCH  | `/profile/ethnicity` | Bearer | Set the user's ethnicity (used for itinerary personalization).                                                                             |
 
 ### DELETE /profile/account
 
@@ -172,7 +181,12 @@ Updates the authenticated user's own account-level fields (used by the Profile
 Settings "Basic Info" and "Cultural Background" steps). All fields optional.
 
 ```json
-{ "fullName": "Ama Mensah", "gender": "FEMALE", "dateOfBirth": "1995-06-15", "ethnicity": "African" }
+{
+  "fullName": "Ama Mensah",
+  "gender": "FEMALE",
+  "dateOfBirth": "1995-06-15",
+  "ethnicity": "African"
+}
 ```
 
 - `gender` ∈ `MALE | FEMALE | OTHER | NON_BINARY | PREFER_NOT_TO_SAY`; values
@@ -195,15 +209,15 @@ Settings "Basic Info" and "Cultural Background" steps). All fields optional.
 
 ## Identity Verification
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/verification/init` | Bearer | Initialize the verification profile (idempotent). |
-| POST | `/verification/phone/send-otp` | Bearer | Save/normalize the phone number and SMS a 6-digit OTP via Hubtel. |
-| POST | `/verification/phone/verify-otp` | Bearer | Validate `challengeId` + `code` (or legacy `phoneNumber` + `code`). |
-| POST | `/verification/bio_profile_url` | Bearer | Save the face-scan image URL; face approval still requires admin review. |
-| POST | `/verification/bio_document_urls` | Bearer | Save document images + type; enter pending review. |
-| GET | `/verification/status` | Bearer | Full verification status (per-step `PENDING / VERIFIED / REJECTED`, current step, completed steps). |
-| GET | `/verification/validation-step/status` | Bearer | Poll current step and its `PENDING / VERIFIED / REJECTED` status. |
+| Method | Endpoint                               | Auth   | What it does                                                                                        |
+| ------ | -------------------------------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| POST   | `/verification/init`                   | Bearer | Initialize the verification profile (idempotent).                                                   |
+| POST   | `/verification/phone/send-otp`         | Bearer | Save/normalize the phone number and SMS a 6-digit OTP via Hubtel.                                   |
+| POST   | `/verification/phone/verify-otp`       | Bearer | Validate `challengeId` + `code` (or legacy `phoneNumber` + `code`).                                 |
+| POST   | `/verification/bio_profile_url`        | Bearer | Save the face-scan image URL; face approval still requires admin review.                            |
+| POST   | `/verification/bio_document_urls`      | Bearer | Save document images + type; enter pending review.                                                  |
+| GET    | `/verification/status`                 | Bearer | Full verification status (per-step `PENDING / VERIFIED / REJECTED`, current step, completed steps). |
+| GET    | `/verification/validation-step/status` | Bearer | Poll current step and its `PENDING / VERIFIED / REJECTED` status.                                   |
 
 The OTP arrives **by SMS via Hubtel** (10-minute expiry). Phone numbers are
 normalized (whitespace + leading `+` stripped).
@@ -245,25 +259,25 @@ See `docs/verification-flow.md` for the full frontend integration guide.
 
 ## Tours
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/tours` | Public | List tours (filterable + paginated). |
-| GET | `/tours/:tourId` | Public | Full tour detail (itineraries, activities, locations, media, pricing). |
-| POST | `/tours` | Admin | Create a tour package. |
-| PUT | `/tours/:id` | Admin | Update a tour. |
-| DELETE | `/tours/:id` | Admin | Delete a tour. |
-| POST | `/tours/:id/itinerary` | Admin | Add an itinerary day to a tour. |
-| PUT | `/tours/itinerary/:id` | Admin | Update a tour itinerary day. |
-| DELETE | `/tours/itinerary/:id` | Admin | Delete a tour itinerary day. |
-| POST | `/tours/bookings` | Bearer | Book a tour (Hubtel checkout flow). |
-| POST | `/tours/initiate-booking-momo` | Bearer | Book a tour (direct Mobile Money via Hubtel). |
-| POST | `/tours/hubtel-callback` | Hubtel | Hubtel payment callback (confirms booking). |
-| GET | `/tours/bookings/my` | Bearer | List the current user's bookings. |
-| PATCH | `/tours/user-itineraries/:itineraryId` | Bearer | Edit the user's personalized tour itinerary. |
-| DELETE | `/tours/bookings/:bookingId` | Bearer | Cancel a booking. |
-| GET | `/tours/albums` | Public | Album index — category and region bundles (cover, site/package counts). |
-| GET | `/tours/albums/category/:tag` | Public | Paginated album: sites + packages carrying a category tag. |
-| GET | `/tours/albums/region/:region` | Public | Paginated album for one region. |
+| Method | Endpoint                               | Auth   | What it does                                                            |
+| ------ | -------------------------------------- | ------ | ----------------------------------------------------------------------- |
+| GET    | `/tours`                               | Public | List tours (filterable + paginated).                                    |
+| GET    | `/tours/:tourId`                       | Public | Full tour detail (itineraries, activities, locations, media, pricing).  |
+| POST   | `/tours`                               | Admin  | Create a tour package.                                                  |
+| PUT    | `/tours/:id`                           | Admin  | Update a tour.                                                          |
+| DELETE | `/tours/:id`                           | Admin  | Delete a tour.                                                          |
+| POST   | `/tours/:id/itinerary`                 | Admin  | Add an itinerary day to a tour.                                         |
+| PUT    | `/tours/itinerary/:id`                 | Admin  | Update a tour itinerary day.                                            |
+| DELETE | `/tours/itinerary/:id`                 | Admin  | Delete a tour itinerary day.                                            |
+| POST   | `/tours/bookings`                      | Bearer | Book a tour (Hubtel checkout flow).                                     |
+| POST   | `/tours/initiate-booking-momo`         | Bearer | Book a tour (direct Mobile Money via Hubtel).                           |
+| POST   | `/tours/hubtel-callback`               | Hubtel | Hubtel payment callback (confirms booking).                             |
+| GET    | `/tours/bookings/my`                   | Bearer | List the current user's bookings.                                       |
+| PATCH  | `/tours/user-itineraries/:itineraryId` | Bearer | Edit the user's personalized tour itinerary.                            |
+| DELETE | `/tours/bookings/:bookingId`           | Bearer | Cancel a booking.                                                       |
+| GET    | `/tours/albums`                        | Public | Album index — category and region bundles (cover, site/package counts). |
+| GET    | `/tours/albums/category/:tag`          | Public | Paginated album: sites + packages carrying a category tag.              |
+| GET    | `/tours/albums/region/:region`         | Public | Paginated album for one region.                                         |
 
 ### GET /tours — query filters
 
@@ -284,7 +298,13 @@ Album `sites[]` entries include the destination-detail fields `history`,
 ### POST /tours/bookings
 
 ```json
-{ "tourId": "uuid", "numberOfPeople": 2, "bookingDate": "2026-05-25", "tourStartDate": "2026-06-01", "specialRequests": "Vegetarian meals" }
+{
+  "tourId": "uuid",
+  "numberOfPeople": 2,
+  "bookingDate": "2026-05-25",
+  "tourStartDate": "2026-06-01",
+  "specialRequests": "Vegetarian meals"
+}
 ```
 
 Returns `201` with `data: { paymentData, booking }` (Hubtel checkout data + created booking).
@@ -292,7 +312,15 @@ Returns `201` with `data: { paymentData, booking }` (Hubtel checkout data + crea
 ### POST /tours/initiate-booking-momo
 
 ```json
-{ "tourId": "uuid", "numberOfPeople": 2, "bookingDate": "2026-05-25T10:00:00Z", "tourStartDate": "2026-06-01T08:00:00Z", "paymentMethod": "MTN_MOMO", "phoneNumber": "233501234567", "specialRequests": "..." }
+{
+  "tourId": "uuid",
+  "numberOfPeople": 2,
+  "bookingDate": "2026-05-25T10:00:00Z",
+  "tourStartDate": "2026-06-01T08:00:00Z",
+  "paymentMethod": "MTN_MOMO",
+  "phoneNumber": "233501234567",
+  "specialRequests": "..."
+}
 ```
 
 `paymentMethod` ∈ `MTN_MOMO | TELECEL_MOMO | AT_MOMO`; `phoneNumber` must match `^233\d{9}$`.
@@ -316,43 +344,43 @@ gallery photo per site (idempotency marker `publicId=seed-gallery:<name>`), so
 
 ### Community experiences (§4)
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/tour-sites/:siteId/photos` | Bearer | Submit an experience with `caption` and/or `image`. Multipart for files (JPEG/PNG, max 10 MB, min 800×600) or JSON `{ "caption": "…" }` for text-only posts (max 2000 chars). Stored PENDING; a WebP thumbnail is generated for images. |
-| PATCH | `/tour-sites/:siteId/photos/:photoId` | Bearer (owner) | Edit the caption (body: `caption`). Resets the row to PENDING for re-moderation. |
-| DELETE | `/tour-sites/:siteId/photos/:photoId` | Bearer (owner/admin) | Delete the experience and its Cloudinary asset. |
-| GET | `/tour-sites/:siteId/photos` | Public | List the site's approved experiences (text-only rows have `url: null`). |
-| GET | `/tour-sites/admin/photos` | Admin | Moderation queue (`?status=PENDING&page=&limit=`; defaults to `PENDING`). |
-| POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve an experience — it becomes visible on the site. |
-| POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject an experience (body: `rejectReason`). |
+| Method | Endpoint                                    | Auth                 | What it does                                                                                                                                                                                                                            |
+| ------ | ------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/tour-sites/:siteId/photos`                | Bearer               | Submit an experience with `caption` and/or `image`. Multipart for files (JPEG/PNG, max 10 MB, min 800×600) or JSON `{ "caption": "…" }` for text-only posts (max 2000 chars). Stored PENDING; a WebP thumbnail is generated for images. |
+| PATCH  | `/tour-sites/:siteId/photos/:photoId`       | Bearer (owner)       | Edit the caption (body: `caption`). Resets the row to PENDING for re-moderation.                                                                                                                                                        |
+| DELETE | `/tour-sites/:siteId/photos/:photoId`       | Bearer (owner/admin) | Delete the experience and its Cloudinary asset.                                                                                                                                                                                         |
+| GET    | `/tour-sites/:siteId/photos`                | Public               | List the site's approved experiences (text-only rows have `url: null`).                                                                                                                                                                 |
+| GET    | `/tour-sites/admin/photos`                  | Admin                | Moderation queue (`?status=PENDING&page=&limit=`; defaults to `PENDING`).                                                                                                                                                               |
+| POST   | `/tour-sites/admin/photos/:photoId/approve` | Admin                | Approve an experience — it becomes visible on the site.                                                                                                                                                                                 |
+| POST   | `/tour-sites/admin/photos/:photoId/reject`  | Admin                | Reject an experience (body: `rejectReason`).                                                                                                                                                                                            |
 
 ### User-submitted tour sites (§3)
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/tour-sites/admin` | Admin | Add a site directly to the live catalogue (requires `tours.edit`; same fields as a submission but `description` is required). Normalizes the category, merges album tags, derives the transit profile from the region. |
-| POST | `/pending-sites` | Bearer | Submit a new tour site for moderation (name, region, lat/lng, free-text category, `description`, `history`, optional `imageUrl` + `imageCredit`). |
-| GET | `/pending-sites/mine` | Bearer | The caller's own submissions and their status (includes `imageUrl`/`imageCredit`). |
-| GET | `/pending-sites/admin` | Admin | Moderation queue of pending submissions (full rows, including `history`/`imageCredit`). |
-| POST | `/pending-sites/admin/:siteId/approve` | Admin | Approve — migrates the submission into a production `tour_sites` row (normalizes the category, derives the transit profile from the region, preserves album tags, carries `history`/`imageCredit` through) and notifies the submitter by email. |
-| POST | `/pending-sites/admin/:siteId/reject` | Admin | Reject with a reason (body: `reason`) — the submitter is notified by email. |
+| Method | Endpoint                               | Auth   | What it does                                                                                                                                                                                                                                    |
+| ------ | -------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/tour-sites/admin`                    | Admin  | Add a site directly to the live catalogue (requires `tours.edit`; same fields as a submission but `description` is required). Normalizes the category, merges album tags, derives the transit profile from the region.                          |
+| POST   | `/pending-sites`                       | Bearer | Submit a new tour site for moderation (name, region, lat/lng, free-text category, `description`, `history`, optional `imageUrl` + `imageCredit`).                                                                                               |
+| GET    | `/pending-sites/mine`                  | Bearer | The caller's own submissions and their status (includes `imageUrl`/`imageCredit`).                                                                                                                                                              |
+| GET    | `/pending-sites/admin`                 | Admin  | Moderation queue of pending submissions (full rows, including `history`/`imageCredit`).                                                                                                                                                         |
+| POST   | `/pending-sites/admin/:siteId/approve` | Admin  | Approve — migrates the submission into a production `tour_sites` row (normalizes the category, derives the transit profile from the region, preserves album tags, carries `history`/`imageCredit` through) and notifies the submitter by email. |
+| POST   | `/pending-sites/admin/:siteId/reject`  | Admin  | Reject with a reason (body: `reason`) — the submitter is notified by email.                                                                                                                                                                     |
 
 ---
 
 ## Itinerary Generation
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/itinerary/sites` | Public | List all Ghana tour sites (for the site picker) — full rows including `history`, `imageUrl`, `imageCredit`; every seeded site has a distinct image. |
-| GET | `/itinerary/sites/:siteId/mobility` | Public | Mobility options for one site (§2): ride-hailing availability by transit profile, STC/VIP intercity coaches, trotro corridors, nearest airport, verified car rentals. Query: `transportType` (optional) prefers a car-rental category. |
-| POST | `/itinerary/request` | Bearer | Create a custom tour request (site + preferences; `casualDatingInterest` opts into dating recommendations and requires KYC). |
-| GET | `/itinerary/my-itineraries` | Bearer | List the user's generated itineraries. Provider catalogues and dating selections load once per request, with bounded DB concurrency. |
-| GET | `/itinerary/requests` | Bearer | List the user's tour requests, newest first. Query: `page` (default 1), `limit` (default 50, max 100). `selectedSites[].tourSite` omits long-form `history`. |
-| GET | `/itinerary/:tourRequestId` | Bearer | Fetch a generated itinerary (only after payment; includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected). |
-| POST | `/itinerary/:tourRequestId/payment` | Bearer | Initiate Hubtel payment for a tour request; returns top-level `checkoutUrl`. |
-| POST | `/itinerary/payment-callback` | Hubtel | Hubtel callback; marks the request paid. |
-| POST | `/itinerary/:tourRequestId/dating-selections` | Bearer | Select recommended dating profiles to merge into the itinerary (KYC-gated). |
-| GET | `/itinerary/:tourRequestId/dating-selections` | Bearer | List dating profiles merged into a tour's itinerary. |
+| Method | Endpoint                                      | Auth   | What it does                                                                                                                                                                                                                           |
+| ------ | --------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/itinerary/sites`                            | Public | List all Ghana tour sites (for the site picker) — full rows including `history`, `imageUrl`, `imageCredit`; every seeded site has a distinct image.                                                                                    |
+| GET    | `/itinerary/sites/:siteId/mobility`           | Public | Mobility options for one site (§2): ride-hailing availability by transit profile, STC/VIP intercity coaches, trotro corridors, nearest airport, verified car rentals. Query: `transportType` (optional) prefers a car-rental category. |
+| POST   | `/itinerary/request`                          | Bearer | Create a custom tour request (site + preferences; `casualDatingInterest` opts into dating recommendations and requires KYC).                                                                                                           |
+| GET    | `/itinerary/my-itineraries`                   | Bearer | List the user's generated itineraries. Provider catalogues and dating selections load once per request, with bounded DB concurrency.                                                                                                   |
+| GET    | `/itinerary/requests`                         | Bearer | List the user's tour requests, newest first. Query: `page` (default 1), `limit` (default 50, max 100). `selectedSites[].tourSite` omits long-form `history`.                                                                           |
+| GET    | `/itinerary/:tourRequestId`                   | Bearer | Fetch a generated itinerary (only after payment; includes `datingSelections` + per-day `socialBlocks` when dating profiles are selected).                                                                                              |
+| POST   | `/itinerary/:tourRequestId/payment`           | Bearer | Initiate Hubtel payment for a tour request; returns top-level `checkoutUrl`.                                                                                                                                                           |
+| POST   | `/itinerary/payment-callback`                 | Hubtel | Hubtel callback; marks the request paid.                                                                                                                                                                                               |
+| POST   | `/itinerary/:tourRequestId/dating-selections` | Bearer | Select recommended dating profiles to merge into the itinerary (KYC-gated).                                                                                                                                                            |
+| GET    | `/itinerary/:tourRequestId/dating-selections` | Bearer | List dating profiles merged into a tour's itinerary.                                                                                                                                                                                   |
 
 ### POST /itinerary/request
 
@@ -448,14 +476,14 @@ suggestions collected across every site (`kind: "public_transport"`).
 
 ## Visa-on-Arrival
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/visa-requests` | Bearer | Create a visa request with passport data. |
-| GET | `/visa-requests` | Bearer | List the user's visa requests. |
-| GET | `/visa-requests/:requestId/status` | Bearer | Get one request's status. |
-| POST | `/visa-requests/:requestId/payment` | Bearer | Initiate payment (STANDARD or EXPEDITED). |
-| POST | `/visa-requests/payment-callback` | Hubtel | Hubtel callback; marks visa request paid. |
-| GET | `/visa-requests/pricing/:visaType` | Public | Pricing breakdown for `STANDARD` or `EXPEDITED`. |
+| Method | Endpoint                            | Auth   | What it does                                     |
+| ------ | ----------------------------------- | ------ | ------------------------------------------------ |
+| POST   | `/visa-requests`                    | Bearer | Create a visa request with passport data.        |
+| GET    | `/visa-requests`                    | Bearer | List the user's visa requests.                   |
+| GET    | `/visa-requests/:requestId/status`  | Bearer | Get one request's status.                        |
+| POST   | `/visa-requests/:requestId/payment` | Bearer | Initiate payment (STANDARD or EXPEDITED).        |
+| POST   | `/visa-requests/payment-callback`   | Hubtel | Hubtel callback; marks visa request paid.        |
+| GET    | `/visa-requests/pricing/:visaType`  | Public | Pricing breakdown for `STANDARD` or `EXPEDITED`. |
 
 ### POST /visa-requests
 
@@ -480,19 +508,19 @@ Image fields should be URLs from `POST /upload`.
 
 ## Payments
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/payment/initialize` | Bearer | Initiate a generic Hubtel payment; returns a reference. |
-| GET | `/payment/verify/:reference` | Bearer | Verify a payment by reference and update its record. |
-| GET | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status via Hubtel's status API. |
-| GET | `/payment/processing` | Public | Serves the "processing…" HTML page. |
-| GET | `/payment/p.js` | Public | Serves the payment redirect script. |
+| Method | Endpoint                                  | Auth   | What it does                                            |
+| ------ | ----------------------------------------- | ------ | ------------------------------------------------------- |
+| POST   | `/payment/initialize`                     | Bearer | Initiate a generic Hubtel payment; returns a reference. |
+| GET    | `/payment/verify/:reference`              | Bearer | Verify a payment by reference and update its record.    |
+| GET    | `/payment/transaction-status/:posSalesId` | Bearer | Check transaction status via Hubtel's status API.       |
+| GET    | `/payment/processing`                     | Public | Serves the "processing…" HTML page.                     |
+| GET    | `/payment/p.js`                           | Public | Serves the payment redirect script.                     |
 
 ### POST /payment/initialize
 
 ```json
 {
-  "totalAmount": 150.00,
+  "totalAmount": 150.0,
   "description": "Payment for visa application",
   "returnUrl": "https://example.com/success",
   "callbackUrl": "https://example.com/callback",
@@ -511,9 +539,9 @@ created.
 
 ## Providers
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/providers/nearby-hotels` | Bearer | Find hotels near a tour site (§1 tiered lookup). |
+| Method | Endpoint                   | Auth   | What it does                                     |
+| ------ | -------------------------- | ------ | ------------------------------------------------ |
+| GET    | `/providers/nearby-hotels` | Bearer | Find hotels near a tour site (§1 tiered lookup). |
 
 Query: `tourSiteId` (required), `radiusKm` (optional; when omitted the primary tier is
 the whole verified catalogue sorted by distance), `propertyType`
@@ -528,18 +556,23 @@ external Google Places fallback is injected with `source: "external"` and the ta
 
 ## Membership Plans & Tiers
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/membership/plans` | Public | List active plans with pricing, intervals, features. |
-| POST | `/membership/subscribe` | Bearer | Subscribe to a plan (free = instant, paid = Hubtel checkout). |
-| GET | `/membership/my-subscription` | Bearer | Current user's subscription + plan + member code, plus `waiveServiceFees` when an admin granted lifetime free access. |
-| POST | `/membership/support` | Bearer | Open a priority support ticket (paid tiers only). |
-| POST | `/membership/payment-callback` | Hubtel | Hubtel callback; activates the subscription. |
+| Method | Endpoint                       | Auth   | What it does                                                                                                          |
+| ------ | ------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/membership/plans`            | Public | List active plans with pricing, intervals, features.                                                                  |
+| POST   | `/membership/subscribe`        | Bearer | Subscribe to a plan (free = instant, paid = Hubtel checkout).                                                         |
+| GET    | `/membership/my-subscription`  | Bearer | Current user's subscription + plan + member code, plus `waiveServiceFees` when an admin granted lifetime free access. |
+| POST   | `/membership/support`          | Bearer | Open a priority support ticket (paid tiers only).                                                                     |
+| POST   | `/membership/payment-callback` | Hubtel | Hubtel callback; activates the subscription.                                                                          |
 
 ### POST /membership/subscribe
 
 ```json
-{ "planId": "uuid", "returnUrl": "https://...", "callbackUrl": "https://...", "cancellationUrl": "https://..." }
+{
+  "planId": "uuid",
+  "returnUrl": "https://...",
+  "callbackUrl": "https://...",
+  "cancellationUrl": "https://..."
+}
 ```
 
 iOS clients must identify themselves with `X-Client-Platform: ios`; a body
@@ -582,25 +615,25 @@ app never hardcodes the channel. Every action is logged server-side as an
 analytics event so you can measure the funnel (card view → subscribe intent →
 unlock).
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/community/videos` | Bearer | List published cards (`?page=&limit=`), gated as a page by the single decision in `meta.access`. Apply it to every card; never re-decide per card. |
-| GET | `/community/videos/:videoId` | Bearer | Single card plus the same `access` snapshot every other surface returns. |
-| GET | `/community/my-unlocks` | Bearer | The current `access` decision plus per-video unlock history (analytics only) — call on app launch. |
-| POST | `/community/videos/:videoId/interact` | Bearer | Log one analytics event: `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. `SUBSCRIBE_INTENT` is still accepted for older clients, but new clients should use [`/subscribe-intent`](#post-communityvideovidsubscribe-intent) — which logs it as a side effect — and not send it here, or the conversion-rate denominator is double-counted. |
-| POST | `/community/videos/:videoId/subscribe-intent` | Bearer | The locked card's subscribe button, in one call: logs `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }`. |
-| POST | `/community/videos/:videoId/unlock` | Bearer | Confirm and report the decision; grants nothing by itself. `403 SUBSCRIPTION_REQUIRED` with a `reason` when there is no positive verdict. |
-| GET | `/community/youtube/start/:videoId` | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }`. Superseded by `subscribe-intent` for the tap — kept for re-running the flow without recording a new intent. |
-| GET | `/community/youtube/callback` | Public | Google redirect target: checks the subscription, stores the verdict with a lease, redirects to the app deep link. |
-| GET | `/community/youtube/status/:videoId` | Bearer | The current `access` decision, re-checking if the lease has lapsed. |
-| GET | `/community/videos/:videoId/analytics` | Admin | Interaction counts + conversion rate, plus the YouTube counters the feed sorts use. |
-| POST | `/community/admin/videos` | Admin | Create a video card. |
-| PUT | `/community/admin/videos/:videoId` | Admin | Update title, description, URLs, preview bounds, `isPublished`. |
-| DELETE | `/community/admin/videos/:videoId` | Admin | Soft-delete (sets `isPublished = false`). |
-| POST | `/community/admin/sync-youtube` | Admin | Pull the channel's latest uploads from the YouTube Data API, add missing cards, and refresh the view/like counters on existing ones. |
-| GET | `/community/admin/youtube-grants` | Admin | List channel grants with a table-wide health summary. Never returns a refresh token. |
-| POST | `/community/admin/youtube-grants/:userId/revoke` | Admin | Close a grant without consulting YouTube (reason `MANUAL`). |
-| POST | `/community/admin/youtube-grants/re-encrypt` | Admin | Re-seal any refresh token still stored in the clear. Idempotent. |
+| Method | Endpoint                                         | Auth   | What it does                                                                                                                                                                                                                                                                                                                            |
+| ------ | ------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/community/videos`                              | Bearer | List published cards (`?page=&limit=`), gated as a page by the single decision in `meta.access`. Apply it to every card; never re-decide per card.                                                                                                                                                                                      |
+| GET    | `/community/videos/:videoId`                     | Bearer | Single card plus the same `access` snapshot every other surface returns.                                                                                                                                                                                                                                                                |
+| GET    | `/community/my-unlocks`                          | Bearer | The current `access` decision plus per-video unlock history (analytics only) — call on app launch.                                                                                                                                                                                                                                      |
+| POST   | `/community/videos/:videoId/interact`            | Bearer | Log one analytics event: `PREVIEW_CLIP`, `WATCH_FULL_VIDEO`, `UNLOCK`. `SUBSCRIBE_INTENT` is still accepted for older clients, but new clients should use [`/subscribe-intent`](#post-communityvideovidsubscribe-intent) — which logs it as a side effect — and not send it here, or the conversion-rate denominator is double-counted. |
+| POST   | `/community/videos/:videoId/subscribe-intent`    | Bearer | The locked card's subscribe button, in one call: logs `SUBSCRIBE_INTENT` and returns `{ videoId, authUrl, channel }`.                                                                                                                                                                                                                   |
+| POST   | `/community/videos/:videoId/unlock`              | Bearer | Confirm and report the decision; grants nothing by itself. `403 SUBSCRIPTION_REQUIRED` with a `reason` when there is no positive verdict.                                                                                                                                                                                               |
+| GET    | `/community/youtube/start/:videoId`              | Bearer | Begin OAuth verification; returns `{ authUrl, expiresIn, channel }`. Superseded by `subscribe-intent` for the tap — kept for re-running the flow without recording a new intent.                                                                                                                                                        |
+| GET    | `/community/youtube/callback`                    | Public | Google redirect target: checks the subscription, stores the verdict with a lease, redirects to the app deep link.                                                                                                                                                                                                                       |
+| GET    | `/community/youtube/status/:videoId`             | Bearer | The current `access` decision, re-checking if the lease has lapsed.                                                                                                                                                                                                                                                                     |
+| GET    | `/community/videos/:videoId/analytics`           | Admin  | Interaction counts + conversion rate, plus the YouTube counters the feed sorts use.                                                                                                                                                                                                                                                     |
+| POST   | `/community/admin/videos`                        | Admin  | Create a video card.                                                                                                                                                                                                                                                                                                                    |
+| PUT    | `/community/admin/videos/:videoId`               | Admin  | Update title, description, URLs, preview bounds, `isPublished`.                                                                                                                                                                                                                                                                         |
+| DELETE | `/community/admin/videos/:videoId`               | Admin  | Soft-delete (sets `isPublished = false`).                                                                                                                                                                                                                                                                                               |
+| POST   | `/community/admin/sync-youtube`                  | Admin  | Pull the channel's latest uploads from the YouTube Data API, add missing cards, and refresh the view/like counters on existing ones.                                                                                                                                                                                                    |
+| GET    | `/community/admin/youtube-grants`                | Admin  | List channel grants with a table-wide health summary. Never returns a refresh token.                                                                                                                                                                                                                                                    |
+| POST   | `/community/admin/youtube-grants/:userId/revoke` | Admin  | Close a grant without consulting YouTube (reason `MANUAL`).                                                                                                                                                                                                                                                                             |
+| POST   | `/community/admin/youtube-grants/re-encrypt`     | Admin  | Re-seal any refresh token still stored in the clear. Idempotent.                                                                                                                                                                                                                                                                        |
 
 ### POST /community/admin/sync-youtube (Admin)
 
@@ -672,11 +705,11 @@ YouTube video id directly (`youtubeVideoId`).
 
 **Query params**
 
-| Param | Values | Default | Notes |
-|-------|--------|---------|-------|
-| `page` | integer ≥ 1 | `1` | |
-| `limit` | 1–50 | `20` | |
-| `sort` | `newest`, `most_watched`, `most_liked` | `newest` | Case-insensitive. An unrecognised value falls back to `newest` rather than erroring; the order actually applied is echoed in `meta.sort` |
+| Param   | Values                                 | Default  | Notes                                                                                                                                    |
+| ------- | -------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `page`  | integer ≥ 1                            | `1`      |                                                                                                                                          |
+| `limit` | 1–50                                   | `20`     |                                                                                                                                          |
+| `sort`  | `newest`, `most_watched`, `most_liked` | `newest` | Case-insensitive. An unrecognised value falls back to `newest` rather than erroring; the order actually applied is echoed in `meta.sort` |
 
 A **locked** card:
 
@@ -735,7 +768,7 @@ derived from `youtubeVideoId` on demand and never stored.
 Use `watchAppUrl` for the "Watch Full Video on YouTube" call-to-action and fall
 back to `watchWebUrl` when the deep link cannot be opened (no YouTube app
 installed). Do not assemble either from `youtubeVideoId` — the same rule as
-`channel` below. `watchUrl` is the *embed* address for the full video, for an
+`channel` below. `watchUrl` is the _embed_ address for the full video, for an
 in-app web player; it is not a YouTube-app or mobile-site destination.
 
 Non-nullable string fields (`title`, `description`, `thumbnailUrl`, `teaserUrl`)
@@ -749,11 +782,11 @@ is the only nullable field (`null` until unlocked). Timestamps serialize as ISO-
 view and like counts, which lets the app offer "Most Liked" / "Most Watched" tabs
 alongside the default chronological feed.
 
-| Sort | Ordering |
-|------|----------|
-| `newest` (default) | `publishedAt` desc |
-| `most_watched` | `viewCount` desc, then `publishedAt` desc |
-| `most_liked` | `likeCount` desc, then `publishedAt` desc |
+| Sort               | Ordering                                  |
+| ------------------ | ----------------------------------------- |
+| `newest` (default) | `publishedAt` desc                        |
+| `most_watched`     | `viewCount` desc, then `publishedAt` desc |
+| `most_liked`       | `likeCount` desc, then `publishedAt` desc |
 
 The counts come from the channel sync (`POST /community/admin/sync-youtube`), not
 from this server's own interaction log — those rows only see activity inside this
@@ -785,7 +818,7 @@ present and authoritative, so a client can render from the cards alone.
 ```json
 {
   "success": true,
-  "data": [ /* …cards… */ ],
+  "data": [/* …cards… */],
   "pagination": { "total": 12, "page": 1, "limit": 20, "totalPages": 1 },
   "meta": {
     "hasChannelAccess": true,
@@ -808,7 +841,7 @@ event for an unsubscribe, so the grant is re-checked two ways (see
 
 - **On read.** The first feed / card / `my-unlocks` / `status` / `unlock` call
   after the lease lapses (`COMMUNITY_ACCESS_LEASE_SECONDS`, default 60s)
-  re-checks live, and *that response* is already correct. A subscriber who
+  re-checks live, and _that response_ is already correct. A subscriber who
   cancelled is locked within a lease's worth of their next read.
 - **Login.** A session boundary forces a check even when the lease is still live,
   so signing in never presents yesterday's verdict.
@@ -831,12 +864,12 @@ client's subscribe button pointing at a different channel than the one the
 server verifies against, and users get told they are not subscribed after
 subscribing.
 
-| Field | Notes |
-|-------|-------|
-| `channelId` | Stable `UC…` id, or `null` |
-| `handle` | Normalised to include the leading `@`, or `null` |
-| `subscribeUrl` | Web URL for the channel page. Prefers the handle (survives the channel being recreated under a new id), falls back to `/channel/UC…` |
-| `appUrl` | `vnd.youtube://channel/UC…` for the native app. **`null` when only a handle is configured** — the scheme has no handle form, so fall back to `subscribeUrl` |
+| Field          | Notes                                                                                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `channelId`    | Stable `UC…` id, or `null`                                                                                                                                  |
+| `handle`       | Normalised to include the leading `@`, or `null`                                                                                                            |
+| `subscribeUrl` | Web URL for the channel page. Prefers the handle (survives the channel being recreated under a new id), falls back to `/channel/UC…`                        |
+| `appUrl`       | `vnd.youtube://channel/UC…` for the native app. **`null` when only a handle is configured** — the scheme has no handle form, so fall back to `subscribeUrl` |
 
 All four are `null` when neither env var is set, so the app should degrade
 gracefully rather than assume a link exists.
@@ -852,9 +885,9 @@ Present only on unlocked cards, and the destination for the end-of-preview
 "Watch Full Video on YouTube" call-to-action. Resolved server-side for the same
 reason as `channel`: the app should not be assembling YouTube URL schemes itself.
 
-| Field | Notes |
-|-------|-------|
-| `watchAppUrl` | `vnd.youtube://watch?v=<id>` deep link — opens the native app on the full video |
+| Field         | Notes                                                                              |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `watchAppUrl` | `vnd.youtube://watch?v=<id>` deep link — opens the native app on the full video    |
 | `watchWebUrl` | `https://www.youtube.com/watch?v=<id>` — fallback for a device with no YouTube app |
 
 Both are always present together and never `null` on an unlocked card. Open
@@ -862,7 +895,7 @@ Both are always present together and never `null` on an unlocked card. Open
 opened — on some platforms a `vnd.youtube://` URL aimed at a missing app fails
 silently rather than erroring.
 
-`watchUrl` is a third, separate field: the *embed* address
+`watchUrl` is a third, separate field: the _embed_ address
 (`https://www.youtube.com/embed/<id>`), for an in-app web player. It is not a
 substitute for either link above.
 
@@ -946,10 +979,10 @@ channel subscribe links.
 `videoId` in the response is the canonical internal card id, even when the
 request passed a YouTube video id.
 
-| Field | Notes |
-|-------|-------|
+| Field     | Notes                                                                                                                                                 |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `authUrl` | Open in a browser to let the user grant read-only YouTube access. **`null`** when `YOUTUBE_OAUTH_CLIENT_ID` / `YOUTUBE_OAUTH_CLIENT_SECRET` are unset |
-| `channel` | Same object as on every feed card. Send the user to `appUrl` (falling back to `subscribeUrl`) so they can subscribe |
+| `channel` | Same object as on every feed card. Send the user to `appUrl` (falling back to `subscribeUrl`) so they can subscribe                                   |
 
 **`authUrl` is null, not a 503.** `GET /community/youtube/start/:videoId` returns
 `503` without OAuth because the authorization URL is the only thing it produces.
@@ -968,7 +1001,7 @@ make both, and the analytics half was the one that got dropped.
 
 That failure is invisible. A missing `SUBSCRIBE_INTENT` shrinks the denominator
 that `conversionRate` is computed against (`totalUnlocks / SUBSCRIBE_INTENT`), so
-the funnel reports a *better* number than it earned — the metric that exists to
+the funnel reports a _better_ number than it earned — the metric that exists to
 tell you whether the gate is working is the one most likely to be quietly wrong.
 Folding the event into the endpoint the app already has to call makes it
 un-skippable.
@@ -1048,7 +1081,7 @@ quota unit per check.
 
 Only a definite negative is treated as one. A timeout, a `429` or a `5xx` is
 transient and never becomes an unsubscribe — that is what stops a Google outage
-from locking out paying subscribers. Failures are cached only as *failures*, and
+from locking out paying subscribers. Failures are cached only as _failures_, and
 only for `COMMUNITY_ACTIVE_RECHECK_SECONDS`, so they do not cost a token request
 per read.
 
@@ -1126,7 +1159,12 @@ Funnel metrics for one card. Conversion rate = `totalUnlocks / SUBSCRIBE_INTENT`
     "videoId": "uuid",
     "title": "Two-line bold title",
     "youtubeVideoId": "dQw4w9WgXcQ",
-    "interactions": { "SUBSCRIBE_INTENT": 40, "PREVIEW_CLIP": 300, "WATCH_FULL_VIDEO": 22, "UNLOCK": 18 },
+    "interactions": {
+      "SUBSCRIBE_INTENT": 40,
+      "PREVIEW_CLIP": 300,
+      "WATCH_FULL_VIDEO": 22,
+      "UNLOCK": 18
+    },
     "totalUnlocks": 18,
     "youtube": {
       "viewCount": 12480,
@@ -1269,28 +1307,28 @@ exists so the backfill does not need shell access to the database. Idempotent.
 
 ## Dating
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/dating/profile` | Bearer | Get own dating profile + discovery preferences. |
-| POST | `/dating/profile/init` | Bearer | Initialize own dating profile (idempotent; accepts the full creation payload). |
-| PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals) + account fields. |
-| GET | `/dating/profile/status` | Bearer | Profile existence + completion status (bypass onboarding for returning users). |
-| GET | `/dating/profile/:userId` | Bearer | View another user's public profile (blocked/same-gender users excluded → 403). |
-| GET | `/dating/profile/search?name=` | Bearer | Find an opposite-gender public dating profile by name (returns OG metadata). |
-| GET | `/dating/profile/suggestions?name=` | Bearer | Typeahead suggestions limited to opposite-gender users. |
-| GET | `/dating/profile/share` | Bearer | Generate a shareable profile link with primary image. |
-| GET | `/dating/preferences` | Bearer | Get own discovery preferences. |
-| PUT | `/dating/preferences` | Bearer | Set discovery preferences. |
-| PUT | `/dating/location` | Bearer | Refresh dating coordinates for proximity alerts. |
-| GET | `/dating/contacts/status` | Bearer | Contact-sync consent + last sync/match counts. |
-| POST | `/dating/contacts/sync` | Bearer | Sync phone contacts (`consent: true` on first call); returns public matches. |
-| GET | `/dating/contacts/matches` | Bearer | List opposite-gender contacts on the platform (dating fields where present). |
-| DELETE | `/dating/contacts` | Bearer | Revoke contact consent and delete derived matches. |
-| POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |
-| GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window; `?contactsOnly=true` limits results to synced contacts. |
-| GET | `/dating/matches` | Bearer | List active matches. |
-| GET | `/dating/likes-received` | Bearer | List users who liked you. |
-| DELETE | `/dating/matches/:matchId` | Bearer | Unmatch (soft-remove). |
+| Method | Endpoint                            | Auth   | What it does                                                                                                                                                                                                              |
+| ------ | ----------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/dating/profile`                   | Bearer | Get own dating profile + discovery preferences.                                                                                                                                                                           |
+| POST   | `/dating/profile/init`              | Bearer | Initialize own dating profile (idempotent; accepts the full creation payload).                                                                                                                                            |
+| PATCH  | `/dating/profile`                   | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals) + account fields.                                                                                                 |
+| GET    | `/dating/profile/status`            | Bearer | Profile existence + completion status (bypass onboarding for returning users).                                                                                                                                            |
+| GET    | `/dating/profile/:userId`           | Bearer | View another user's public profile (blocked/same-gender users excluded → 403).                                                                                                                                            |
+| GET    | `/dating/profile/search?name=`      | Bearer | Find an opposite-gender public dating profile by name (returns OG metadata).                                                                                                                                              |
+| GET    | `/dating/profile/suggestions?name=` | Bearer | Typeahead suggestions limited to opposite-gender users.                                                                                                                                                                   |
+| GET    | `/dating/profile/share`             | Bearer | Generate a shareable profile link with primary image.                                                                                                                                                                     |
+| GET    | `/dating/preferences`               | Bearer | Get own discovery preferences.                                                                                                                                                                                            |
+| PUT    | `/dating/preferences`               | Bearer | Set discovery preferences.                                                                                                                                                                                                |
+| PUT    | `/dating/location`                  | Bearer | Refresh dating coordinates for proximity alerts.                                                                                                                                                                          |
+| GET    | `/dating/contacts/status`           | Bearer | Contact-sync consent + last sync/match counts.                                                                                                                                                                            |
+| POST   | `/dating/contacts/sync`             | Bearer | Sync phone contacts (`consent: true` on first call); returns public matches.                                                                                                                                              |
+| GET    | `/dating/contacts/matches`          | Bearer | List opposite-gender contacts on the platform (dating fields where present).                                                                                                                                              |
+| DELETE | `/dating/contacts`                  | Bearer | Revoke contact consent and delete derived matches.                                                                                                                                                                        |
+| POST   | `/dating/swipe`                     | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation.                                                                                                                                               |
+| GET    | `/dating/recommendations`           | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window; `?contactsOnly=true` limits results to synced contacts. |
+| GET    | `/dating/matches`                   | Bearer | List active matches.                                                                                                                                                                                                      |
+| GET    | `/dating/likes-received`            | Bearer | List users who liked you.                                                                                                                                                                                                 |
+| DELETE | `/dating/matches/:matchId`          | Bearer | Unmatch (soft-remove).                                                                                                                                                                                                    |
 
 ### POST /dating/swipe
 
@@ -1391,11 +1429,10 @@ has never been granted and `consent` is not `true`.
 ### GET /dating/contacts/matches
 
 Refreshes matches from the stored phone lookup hashes, then returns persisted
-contact matches (`matchedCount`, `banner`, `matches[]`).
-For dating compatibility, matches cover opposite-gender active users only,
-including those without a dating profile; blocks are excluded and
-dating-specific fields may be empty. General `/contacts/*` endpoints still
-cover all active accounts.
+contact matches (`matchedCount`, `banner`, `matches[]`). Dating responses cover
+opposite-gender active accounts only, including users without a dating profile;
+blocks are excluded and dating-specific fields may be empty. General
+`/contacts/*` still covers all active accounts regardless of gender.
 
 ### GET /dating/contacts/status
 
@@ -1430,7 +1467,14 @@ the profile (with discovery preferences) when present. Returning users who alrea
 have a profile can use this to skip the initial profile creation/skip screen:
 
 ```json
-{ "success": true, "data": { "hasProfile": true, "profileStatus": "COMPLETE", "profile": { "id": "…", "headline": "…", "photos": ["…"] } } }
+{
+  "success": true,
+  "data": {
+    "hasProfile": true,
+    "profileStatus": "COMPLETE",
+    "profile": { "id": "…", "headline": "…", "photos": ["…"] }
+  }
+}
 ```
 
 ### GET /dating/profile
@@ -1444,21 +1488,22 @@ can show the name and compute age from `dateOfBirth`.
 > discovery and for swipes, likes/matches, direct profile lookup/search,
 > suggestions, `/dating/contacts/*`, tour dating selections, and proximity
 > alerts. It overrides any `genderPreference` saved via `PUT /dating/preferences`.
-> `OTHER`, `NON_BINARY`, `PREFER_NOT_TO_SAY`, `null`, and unknown genders get an
-> empty queue. Incompatible swipe targets return `403`; protected profile and
-> like/match/contact views are hidden.
+> General `/contacts/*` is exempt so “People You May Know” shows every matched
+> contact. `OTHER`, `NON_BINARY`, `PREFER_NOT_TO_SAY`, `null`, and unknown genders
+> get an empty dating queue. Incompatible swipe targets return `403`; protected
+> profile and like/match views are hidden.
 
 ---
 
 ## Devices
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/devices/register` | Bearer | Register or update a device for push notifications (optional E2E `publicKey`/`keyVersion`). |
-| GET | `/devices/users/:userId/encryption-keys` | Bearer | List a user's device public keys for E2E key agreement. |
-| DELETE | `/devices/:deviceId` | Bearer | Unregister a device (own device only). |
-| GET | `/devices/notifications/preferences` | Bearer | Get the user's notification preferences. |
-| PATCH | `/devices/notifications/preferences` | Bearer | Update the user's notification preferences. |
+| Method | Endpoint                                 | Auth   | What it does                                                                                |
+| ------ | ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------- |
+| POST   | `/devices/register`                      | Bearer | Register or update a device for push notifications (optional E2E `publicKey`/`keyVersion`). |
+| GET    | `/devices/users/:userId/encryption-keys` | Bearer | List a user's device public keys for E2E key agreement.                                     |
+| DELETE | `/devices/:deviceId`                     | Bearer | Unregister a device (own device only).                                                      |
+| GET    | `/devices/notifications/preferences`     | Bearer | Get the user's notification preferences.                                                    |
+| PATCH  | `/devices/notifications/preferences`     | Bearer | Update the user's notification preferences.                                                 |
 
 ### POST /devices/register
 
@@ -1505,22 +1550,28 @@ notifications (`NEW_MESSAGE`). `200` → `{ success, data: { messagesEnabled } }
 
 ## Messages & Safety
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/messages` | Bearer | Send a text or media message (optional E2E fields `ciphertext`, `nonce`, `aad`, `encryptionVersion`). |
-| POST | `/messages/voice-note` | Bearer | Upload + send a voice note (multipart `audio`, 15 MB max). |
-| GET | `/messages/matches` | Bearer | Active matches ("New Matches" carousel). |
-| GET | `/messages/conversations` | Bearer | Conversations with unread counts, partner profiles, online status. |
-| GET | `/messages/conversations/:conversationId` | Bearer | Messages in a conversation (marks unread as read). |
-| PATCH | `/messages/:messageId/read` | Bearer | Mark one message as read. |
-| POST | `/messages/block` | Bearer | Block a user (blocks messages + calls both ways). |
-| DELETE | `/messages/block/:blockedId` | Bearer | Unblock a user. |
-| POST | `/messages/report` | Bearer | Report a user. |
+| Method | Endpoint                                  | Auth   | What it does                                                                                          |
+| ------ | ----------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------- |
+| POST   | `/messages`                               | Bearer | Send a text or media message (optional E2E fields `ciphertext`, `nonce`, `aad`, `encryptionVersion`). |
+| POST   | `/messages/voice-note`                    | Bearer | Upload + send a voice note (multipart `audio`, 15 MB max).                                            |
+| GET    | `/messages/matches`                       | Bearer | Active matches ("New Matches" carousel).                                                              |
+| GET    | `/messages/conversations`                 | Bearer | Conversations with unread counts, partner profiles, online status.                                    |
+| GET    | `/messages/conversations/:conversationId` | Bearer | Messages in a conversation (marks unread as read).                                                    |
+| PATCH  | `/messages/:messageId/read`               | Bearer | Mark one message as read.                                                                             |
+| POST   | `/messages/block`                         | Bearer | Block a user (blocks messages + calls both ways).                                                     |
+| DELETE | `/messages/block/:blockedId`              | Bearer | Unblock a user.                                                                                       |
+| POST   | `/messages/report`                        | Bearer | Report a user.                                                                                        |
 
 ### POST /messages
 
 ```json
-{ "receiverId": "uuid", "content": "Hi there", "type": "TEXT", "mediaUrl": "https://...", "mediaDuration": 12 }
+{
+  "receiverId": "uuid",
+  "content": "Hi there",
+  "type": "TEXT",
+  "mediaUrl": "https://...",
+  "mediaDuration": 12
+}
 ```
 
 - `type` ∈ `TEXT | VOICE_NOTE | IMAGE | VIDEO`.
@@ -1601,10 +1652,10 @@ delivery, and auto-disable + clear tokens the provider rejects
 
 ## Calls
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/calls/history` | Bearer | Last 50 incoming/outgoing call logs. |
-| POST | `/calls/token` | Bearer | Generate a LiveKit AccessToken for a call room + `serviceUrl` (valid 1 hour). |
+| Method | Endpoint         | Auth   | What it does                                                                  |
+| ------ | ---------------- | ------ | ----------------------------------------------------------------------------- |
+| GET    | `/calls/history` | Bearer | Last 50 incoming/outgoing call logs.                                          |
+| POST   | `/calls/token`   | Bearer | Generate a LiveKit AccessToken for a call room + `serviceUrl` (valid 1 hour). |
 
 ### POST /calls/token
 
@@ -1620,14 +1671,14 @@ When LiveKit is configured (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRE
 
 ## Admin — User Management
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/admin/users` | Admin | List all users. |
-| PATCH | `/admin/users/:userId/promote` | Admin | Promote a user to admin. |
-| PATCH | `/admin/users/:userId/demote` | Admin | Demote an admin to user. |
-| PATCH | `/admin/users/:userId/suspend` | Admin | Suspend an account. |
-| PATCH | `/admin/users/:userId/reactivate` | Admin | Reactivate a suspended account. |
-| DELETE | `/admin/users/:userId` | Admin | Permanently delete a user. |
+| Method | Endpoint                          | Auth  | What it does                    |
+| ------ | --------------------------------- | ----- | ------------------------------- |
+| GET    | `/admin/users`                    | Admin | List all users.                 |
+| PATCH  | `/admin/users/:userId/promote`    | Admin | Promote a user to admin.        |
+| PATCH  | `/admin/users/:userId/demote`     | Admin | Demote an admin to user.        |
+| PATCH  | `/admin/users/:userId/suspend`    | Admin | Suspend an account.             |
+| PATCH  | `/admin/users/:userId/reactivate` | Admin | Reactivate a suspended account. |
+| DELETE | `/admin/users/:userId`            | Admin | Permanently delete a user.      |
 
 All are idempotent-safe: each returns `400` if the target is already in that state and `404` if the user doesn't exist.
 
@@ -1635,13 +1686,13 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 
 ## Admin — Profile Verification
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/admin/profile-verifications` | Admin | List all verifications with per-section status and image URLs. |
-| PATCH | `/admin/profile-verifications/:id/bio-data` | Admin | Approve/reject bio data. |
-| PATCH | `/admin/profile-verifications/:id/face` | Admin | Approve/reject the face scan. |
-| PATCH | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents (Passport / Ghana Card). |
-| POST | `/admin/profile-verifications/:id/verify` | Admin | Approve every section at once. |
+| Method | Endpoint                                     | Auth  | What it does                                                   |
+| ------ | -------------------------------------------- | ----- | -------------------------------------------------------------- |
+| GET    | `/admin/profile-verifications`               | Admin | List all verifications with per-section status and image URLs. |
+| PATCH  | `/admin/profile-verifications/:id/bio-data`  | Admin | Approve/reject bio data.                                       |
+| PATCH  | `/admin/profile-verifications/:id/face`      | Admin | Approve/reject the face scan.                                  |
+| PATCH  | `/admin/profile-verifications/:id/documents` | Admin | Approve/reject documents (Passport / Ghana Card).              |
+| POST   | `/admin/profile-verifications/:id/verify`    | Admin | Approve every section at once.                                 |
 
 ### PATCH .../bio-data | .../face | .../documents
 
@@ -1657,10 +1708,10 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 
 ## Admin — Visa
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/admin/visa-requests/paid` | Admin | Paid visa requests ready for processing. |
-| POST | `/admin/visa-requests/approve` | Admin | Approve a visa request. |
+| Method | Endpoint                       | Auth  | What it does                             |
+| ------ | ------------------------------ | ----- | ---------------------------------------- |
+| GET    | `/admin/visa-requests/paid`    | Admin | Paid visa requests ready for processing. |
+| POST   | `/admin/visa-requests/approve` | Admin | Approve a visa request.                  |
 
 ```json
 // POST /admin/visa-requests/approve
@@ -1671,18 +1722,18 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 
 ## Admin — Moderation
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/admin/reports` | Admin | List user reports (`?status=`, `?page=`, `?limit=`). |
-| PATCH | `/admin/reports/:reportId` | Admin | Set a report's status + optional note. |
-| POST | `/admin/reports/:reportId/suspend` | Admin | Suspend the reported user and resolve the report. |
-| POST | `/tour-sites/admin` | Admin | Add a live tour site (`tours.edit`); same fields as a pending submission, `description` required. |
-| GET | `/pending-sites/admin` | Admin | Queue of user-submitted tour sites (§3). |
-| POST | `/pending-sites/admin/:siteId/approve` | Admin | Approve a submission into a production tour site. |
-| POST | `/pending-sites/admin/:siteId/reject` | Admin | Reject a submission with a reason (notifies the submitter). |
-| GET | `/tour-sites/admin/photos` | Admin | Community experience moderation queue (§4); defaults to `PENDING`. |
-| POST | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve an experience — it becomes visible on the site. |
-| POST | `/tour-sites/admin/photos/:photoId/reject` | Admin | Reject an experience (body: `rejectReason`). |
+| Method | Endpoint                                    | Auth  | What it does                                                                                      |
+| ------ | ------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/reports`                            | Admin | List user reports (`?status=`, `?page=`, `?limit=`).                                              |
+| PATCH  | `/admin/reports/:reportId`                  | Admin | Set a report's status + optional note.                                                            |
+| POST   | `/admin/reports/:reportId/suspend`          | Admin | Suspend the reported user and resolve the report.                                                 |
+| POST   | `/tour-sites/admin`                         | Admin | Add a live tour site (`tours.edit`); same fields as a pending submission, `description` required. |
+| GET    | `/pending-sites/admin`                      | Admin | Queue of user-submitted tour sites (§3).                                                          |
+| POST   | `/pending-sites/admin/:siteId/approve`      | Admin | Approve a submission into a production tour site.                                                 |
+| POST   | `/pending-sites/admin/:siteId/reject`       | Admin | Reject a submission with a reason (notifies the submitter).                                       |
+| GET    | `/tour-sites/admin/photos`                  | Admin | Community experience moderation queue (§4); defaults to `PENDING`.                                |
+| POST   | `/tour-sites/admin/photos/:photoId/approve` | Admin | Approve an experience — it becomes visible on the site.                                           |
+| POST   | `/tour-sites/admin/photos/:photoId/reject`  | Admin | Reject an experience (body: `rejectReason`).                                                      |
 
 ### PATCH /admin/reports/:reportId
 
@@ -1696,11 +1747,11 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 
 ## System
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/health` | Public | Uptime + timestamp. |
-| GET | `/api-docs` | Public | Swagger UI. |
-| GET | `/` | Public | API name/version + links. |
+| Method | Endpoint    | Auth   | What it does              |
+| ------ | ----------- | ------ | ------------------------- |
+| GET    | `/health`   | Public | Uptime + timestamp.       |
+| GET    | `/api-docs` | Public | Swagger UI.               |
+| GET    | `/`         | Public | API name/version + links. |
 
 ---
 
@@ -1723,56 +1774,58 @@ Graph / Twitter metadata for rich previews and attempts to open the app via the
 configured deep-link scheme, falling back to the Play Store / App Store URLs
 configured in the environment.
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| GET | `/share/profile/:id` | Public | Preview page for a user profile. |
-| GET | `/share/event/:id` | Public | Preview page for a group event (tour package). |
-| GET | `/share/post/:id` | Public | Preview page for a community post (video card). |
-| GET | `/share/app` | Public | Preview page for an app invite; `?inviter=Name` sets the inviter. |
-| POST | `/share/links` | Bearer | Generate a share URL + title + image for a given `{ type, id }` (`type` may be `profile`, `event`, `post`, or `app`). Also returns `token`, `deepLink`, `deferredDeepLink`, and `storeUrl` for smart/deferred deep linking. |
-| POST | `/share/smart-links` | Bearer | Alias of `/share/links`. |
-| GET/POST | `/share/resolve` | Public | Resolve a deferred deep-link token (`?token=` or `{ token }`) to its `{ type, id }` target. |
-| GET | `/share/resolve/:token` | Public | Resolve a deferred deep-link token to its target. |
+| Method   | Endpoint                | Auth   | What it does                                                                                                                                                                                                                |
+| -------- | ----------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/share/profile/:id`    | Public | Preview page for a user profile.                                                                                                                                                                                            |
+| GET      | `/share/event/:id`      | Public | Preview page for a group event (tour package).                                                                                                                                                                              |
+| GET      | `/share/post/:id`       | Public | Preview page for a community post (video card).                                                                                                                                                                             |
+| GET      | `/share/app`            | Public | Preview page for an app invite; `?inviter=Name` sets the inviter.                                                                                                                                                           |
+| POST     | `/share/links`          | Bearer | Generate a share URL + title + image for a given `{ type, id }` (`type` may be `profile`, `event`, `post`, or `app`). Also returns `token`, `deepLink`, `deferredDeepLink`, and `storeUrl` for smart/deferred deep linking. |
+| POST     | `/share/smart-links`    | Bearer | Alias of `/share/links`.                                                                                                                                                                                                    |
+| GET/POST | `/share/resolve`        | Public | Resolve a deferred deep-link token (`?token=` or `{ token }`) to its `{ type, id }` target.                                                                                                                                 |
+| GET      | `/share/resolve/:token` | Public | Resolve a deferred deep-link token to its target.                                                                                                                                                                           |
 
 ### Smart Deep Links
 
 Device-aware smart link creation and resolution for contextual onboarding.
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/deep-links/links` | Bearer | Create a smart link (`{ type, id }`); returns `token`, `shareUrl`, `deepLink`, `deferredDeepLink`, `storeUrl`, `target`. |
-| GET/POST | `/deep-links/resolve` | Public | Resolve a token (`?token=` or `{ token }`) to its target. |
-| GET | `/deep-links/resolve/:token` | Public | Resolve a token to its target. |
-| POST | `/deep-links/claim` | Public | Alias of resolve (install-lifecycle claim). |
-| GET | `/deep-links/go/:type/:id` | Public | Device-aware redirect page that tries the deep link then falls back to the store. |
+| Method   | Endpoint                     | Auth   | What it does                                                                                                             |
+| -------- | ---------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| POST     | `/deep-links/links`          | Bearer | Create a smart link (`{ type, id }`); returns `token`, `shareUrl`, `deepLink`, `deferredDeepLink`, `storeUrl`, `target`. |
+| GET/POST | `/deep-links/resolve`        | Public | Resolve a token (`?token=` or `{ token }`) to its target.                                                                |
+| GET      | `/deep-links/resolve/:token` | Public | Resolve a token to its target.                                                                                           |
+| POST     | `/deep-links/claim`          | Public | Alias of resolve (install-lifecycle claim).                                                                              |
+| GET      | `/deep-links/go/:type/:id`   | Public | Device-aware redirect page that tries the deep link then falls back to the store.                                        |
 
 ### Contact Book & Social Graph Matching
 
 Securely match a user's hashed device contacts against existing users.
 
-- General `/contacts/*` matches cover **all active accounts**, not just users
-  with dating profiles. `/dating/contacts/*` is opposite-gender only. Check
-  `hasDatingProfile` to decide whether to show dating-specific UI.
+- General `/contacts/*` covers **all active accounts**, regardless of gender.
+  `/dating/contacts/*` applies the opposite-gender dating rule to its responses;
+  every match is still persisted so the general contact book stays complete.
+  Check `hasDatingProfile` to decide whether to show dating-specific UI.
 - Phone numbers are compared across local (`0244000000`), E.164 (`+233244000000`),
   country-code-only, raw formatted (`+233 24 400 0000`), national-suffix and
   pre-hashed forms, so formatting differences no longer hide matches.
 - Contacts may include an `email`; this lets social/Apple/Google sign-ups (which
   have no phone hash) be discovered. Raw emails/phones are never persisted;
   SHA-256 phone lookup hashes are stored so suggestions refresh for new users.
+  If that column is not deployed yet, sync still succeeds without it.
 - `contactsOnAppCount` / `appUserCount` / `matchedContactsCount` explicitly report
   how many synced contacts are already using the app.
 - `unmatchedCount` + the `invite` link let the client offer "Invite to Diaspora
   Sync" for contacts who are not on the platform yet.
 
-| Method | Endpoint | Auth | What it does |
-|--------|----------|------|--------------|
-| POST | `/contacts/sync` | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); matches every active account regardless of dating profile and returns `matchedCount`, `contactsOnAppCount`, `appUserCount`, `matchedContactsCount`, `unmatchedCount`, `matches`, `totalContacts`, `banner`, and an `invite` link. |
-| POST | `/contacts/match` | Bearer | Alias of `/contacts/sync`. |
-| GET | `/contacts/matches` | Bearer | Persisted contact matches across the whole app + banner + invite link. |
-| GET | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches` ("people you may know"). |
-| GET | `/contacts/invite-link` | Bearer | Shareable app invite link for contacts not yet on the platform. |
-| GET | `/contacts/invite` | Bearer | Alias of `/contacts/invite-link`. |
-| DELETE | `/contacts/matches` | Bearer | Clear persisted contact matches and revoke sync consent. |
+| Method | Endpoint                | Auth   | What it does                                                                                                                                                                                                                                                                                          |
+| ------ | ----------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/contacts/sync`        | Bearer | Sync hashed contacts (`contacts`/`phoneNumbers`/`phones`/`hashes`); matches every active account regardless of dating profile and returns `matchedCount`, `contactsOnAppCount`, `appUserCount`, `matchedContactsCount`, `unmatchedCount`, `matches`, `totalContacts`, `banner`, and an `invite` link. |
+| POST   | `/contacts/match`       | Bearer | Alias of `/contacts/sync`.                                                                                                                                                                                                                                                                            |
+| GET    | `/contacts/matches`     | Bearer | Persisted contact matches across the whole app + banner + invite link.                                                                                                                                                                                                                                |
+| GET    | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches` ("people you may know").                                                                                                                                                                                                                                                 |
+| GET    | `/contacts/invite-link` | Bearer | Shareable app invite link for contacts not yet on the platform.                                                                                                                                                                                                                                       |
+| GET    | `/contacts/invite`      | Bearer | Alias of `/contacts/invite-link`.                                                                                                                                                                                                                                                                     |
+| DELETE | `/contacts/matches`     | Bearer | Clear persisted contact matches and revoke sync consent.                                                                                                                                                                                                                                              |
 
 ### Environment
 

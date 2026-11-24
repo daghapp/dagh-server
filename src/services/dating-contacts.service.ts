@@ -4,6 +4,7 @@ import {
   buildInviteLink,
   contactUserSelect,
   findContactUsers,
+  getContactSyncConsent,
   persistContactMatches,
   refreshContactMatches,
   type ContactInput,
@@ -28,8 +29,6 @@ export interface DatingContactSyncResult {
   invite: Awaited<ReturnType<typeof buildInviteLink>>;
 }
 
-const datingContactUserSelect = { ...contactUserSelect, gender: true } as const;
-
 function toPublicMatch(user: ContactUser): DatingContactMatch {
   return {
     userId: user.id,
@@ -47,8 +46,9 @@ function toPublicMatch(user: ContactUser): DatingContactMatch {
 
 /**
  * Match hashed phone numbers against active platform accounts (dating profile or
- * not) and persist the public matches. Raw contact values are hashed in memory
- * and never written to the database.
+ * not) and persist every match. Raw contact values are hashed in memory and
+ * never written to the database. Dating responses show only opposite-gender
+ * contacts; the general contact book remains unfiltered.
  *
  * The caller must have an active contact-sync consent on record (or pass
  * `consent: true` on the first sync).
@@ -60,9 +60,7 @@ export async function syncDatingContacts(
 ): Promise<DatingContactSyncResult> {
   let existingGranted = false;
   try {
-    const existingConsent = await prisma.contactSyncConsent.findUnique({
-      where: { userId },
-    });
+    const existingConsent = await getContactSyncConsent(userId);
     existingGranted = existingConsent?.granted === true;
   } catch {
     // consent table may be unavailable before migration; require explicit consent this call
@@ -74,6 +72,11 @@ export async function syncDatingContacts(
   }
 
   const { users, totalContacts, lookupHashes } = await findContactUsers(userId, contacts);
+
+  if (totalContacts > 0) {
+    await persistContactMatches(userId, users, totalContacts, lookupHashes);
+  }
+
   const viewer = await prisma.user.findUnique({
     where: { id: userId },
     select: { gender: true },
@@ -81,7 +84,7 @@ export async function syncDatingContacts(
   const genderRows =
     users.length > 0
       ? await prisma.user.findMany({
-          where: { id: { in: users.map((u) => u.id) } },
+          where: { id: { in: users.map((user) => user.id) } },
           select: { id: true, gender: true },
         })
       : [];
@@ -89,11 +92,6 @@ export async function syncDatingContacts(
     genderRows.filter((row) => canDatingInteract(viewer?.gender, row.gender)).map((row) => row.id),
   );
   const compatibleUsers = users.filter((user) => compatibleIds.has(user.id));
-
-  if (totalContacts > 0) {
-    await persistContactMatches(userId, compatibleUsers, totalContacts, lookupHashes);
-  }
-
   const publicMatches = compatibleUsers.map(toPublicMatch);
   const unmatchedCount = Math.max(totalContacts - publicMatches.length, 0);
   const firstName = publicMatches[0]?.fullName || "someone";
@@ -146,7 +144,7 @@ export async function getDatingContactMatches(userId: string): Promise<DatingCon
         },
       },
       orderBy: { createdAt: "desc" },
-      select: { matchedUser: { select: datingContactUserSelect } },
+      select: { matchedUser: { select: contactUserSelect } },
       take: 2000,
     });
 
@@ -188,7 +186,7 @@ export async function getContactSyncStatus(userId: string): Promise<{
 }> {
   try {
     const [consent, matchedCount] = await Promise.all([
-      prisma.contactSyncConsent.findUnique({ where: { userId } }),
+      getContactSyncConsent(userId),
       prisma.contactMatch.count({ where: { userId } }),
     ]);
 

@@ -4,13 +4,13 @@ Status of the five rejection risks raised for the iOS build, mapped to this
 backend repo. Each finding has an owner, the exact server-side change (if any),
 what still has to happen in the app, and an acceptance check.
 
-| # | Finding | Guideline | Backend | App | Blocking? |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Memberships sold through external Hubtel checkout | 3.1.1 (3.1.3(e) for tours/visa) | **Done** — iOS paid-tier gate | Hide/redirect iOS purchase or add StoreKit | Yes |
-| 2 | Apple Sign In returns 503 | 4.8 | **Done** — inline `.p8` support; config still required | Keep Apple button visible | Yes, until env set |
-| 3 | OAuth-only users cannot delete account | 5.1.1(v) | **Already compliant** | Expose in-app delete | No |
-| 4 | 1024×1024 marketing icon has transparency | 2.3.1 / ASC validation | N/A (no assets in repo) | Re-export opaque PNG | Yes |
-| 5 | Render free-tier cold starts during review | Review reliability (F-025) | **Mitigated** — health check + keep-alive | None | Yes, until warmed |
+| #   | Finding                                           | Guideline                       | Backend                                                | App                                        | Blocking?          |
+| --- | ------------------------------------------------- | ------------------------------- | ------------------------------------------------------ | ------------------------------------------ | ------------------ |
+| 1   | Memberships sold through external Hubtel checkout | 3.1.1 (3.1.3(e) for tours/visa) | **Done** — iOS paid-tier gate                          | Hide/redirect iOS purchase or add StoreKit | Yes                |
+| 2   | Apple Sign In returns 503                         | 4.8                             | **Done** — inline `.p8` support; config still required | Keep Apple button visible                  | Yes, until env set |
+| 3   | OAuth-only users cannot delete account            | 5.1.1(v)                        | **Already compliant**                                  | Expose in-app delete                       | No                 |
+| 4   | 1024×1024 marketing icon has transparency         | 2.3.1 / ASC validation          | N/A (no assets in repo)                                | Re-export opaque PNG                       | Yes                |
+| 5   | Render free-tier cold starts during review        | Review reliability (F-025)      | **Mitigated** — health check + keep-alive              | None                                       | Yes, until warmed  |
 
 ---
 
@@ -99,13 +99,19 @@ checkout — the gate is server-side, so a stale client will simply show an erro
 
 ## 2. Guideline 4.8 — Sign in with Apple
 
-The backend already implements the full Apple OAuth round-trip. `/auth/apple`
-returning 503 is the intended guard when credentials are missing, not a code
-defect. Google/Facebook cannot remain without Apple under 4.8.
+The backend implements the full Apple OAuth round-trip. `/auth/apple` returning
+503 is the intended guard when credentials are missing, not a code defect.
+Google/Facebook cannot remain without Apple under 4.8.
 
 ### Backend change (implemented)
 
-The private key may now be supplied either way:
+`GET /auth/apple` now redirects to Apple with the backend HTTPS callback
+(`redirect_uri=https://dagh-server-fo64.onrender.com/auth/apple/callback`) and
+`response_mode=form_post`. The app deep link is never sent to Apple. The POST
+callback validates signed stateless state, exchanges the code, verifies the
+`id_token` against Apple's JWKS, and returns tokens in the app URL fragment.
+
+The private key may be supplied either way:
 
 ```bash
 # Render-friendly: paste the .p8, newlines as \n
@@ -125,7 +131,8 @@ later at the callback. See `src/config/apple.ts`.
 - [ ] `APPLE_TEAM_ID` — 10-character Team ID.
 - [ ] `APPLE_KEY_ID` — 10-character Key ID from the `.p8` filename.
 - [ ] `APPLE_PRIVATE_KEY` **or** a valid `APPLE_PRIVATE_KEY_PATH`.
-- [ ] `APPLE_CALLBACK_URL=https://<host>/auth/apple/callback`.
+- [ ] `APPLE_CALLBACK_URL=https://<host>/auth/apple/callback` (HTTPS only; non-HTTPS values fall back to the Render callback).
+- [ ] `APP_OAUTH_REDIRECTS=diasporansync:///oauth`.
 - [ ] Services ID has Sign in with Apple enabled and the callback URL saved
       (Apple requires re-entering the URL on first save).
 - [ ] App's Apple button stays visible; removing it while Google/Facebook exist
@@ -135,12 +142,13 @@ later at the callback. See `src/config/apple.ts`.
 
 ```bash
 curl -si "$API_URL/auth/apple?redirect=diasporansync:///oauth" | head -20
-# Expect 302 to appleid.apple.com and a state= parameter.
+# Expect 302 to appleid.apple.com with redirect_uri=https://dagh-server-fo64.onrender.com/auth/apple/callback
+# and response_mode=form_post plus state= and nonce= parameters.
 # 503 means configuration is still incomplete.
 ```
 
 Then complete a real device login and confirm the app receives
-`diasporansync:///oauth?accessToken=...&provider=apple`.
+`diasporansync:///oauth#accessToken=...&refreshToken=...&provider=apple`.
 
 ---
 
@@ -225,14 +233,18 @@ a time-critical review.
 ## Test coverage added
 
 ```bash
-npx vitest run tests/ios-purchase-gate.test.ts tests/apple-signin-config.test.ts
+npx vitest run tests/ios-purchase-gate.test.ts tests/apple-signin-config.test.ts tests/apple-oauth-state.test.ts tests/apple-oauth-service.test.ts
 npm run lint
 npx tsc --noEmit
 ```
 
 - `tests/ios-purchase-gate.test.ts` — platform detection and the 3.1.1 policy.
-- `tests/apple-signin-config.test.ts` — inline key, path key, and missing-key
-  behavior.
+- `tests/apple-signin-config.test.ts` — inline key, path key, missing-key, and
+  HTTPS callback fallback behavior.
+- `tests/apple-oauth-state.test.ts` — signed stateless state, allowlisted app
+  redirects, and fragment callback URLs.
+- `tests/apple-oauth-service.test.ts` — authorize URL sends the backend HTTPS
+  callback and `form_post`.
 - `tests/apple-identity.test.ts` — Apple `sub` lookup, email linking, conflict
   and missing-email refusal.
 - `tests/apple-token.test.ts` — encrypted token storage and revocation call.
