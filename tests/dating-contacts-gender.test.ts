@@ -10,6 +10,13 @@ const prismaMock = {
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
 
 const contactsMock = {
+  chunkValues: <T>(values: T[], size = 250): T[][] => {
+    const chunks: T[][] = [];
+    for (let index = 0; index < values.length; index += size) {
+      chunks.push(values.slice(index, index + size));
+    }
+    return chunks;
+  },
   buildInviteLink: vi.fn(async () => ({ token: "invite-token" })),
   findContactUsers: vi.fn(),
   getContactSyncConsent: vi.fn(async () => ({ granted: true })),

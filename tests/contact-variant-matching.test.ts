@@ -59,6 +59,7 @@ describe("pre-hashed contact matching", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prismaMock.userBlock.findMany.mockResolvedValue([]);
+    prismaMock.contactMatch.findMany.mockResolvedValue([]);
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof prismaMock) => unknown) =>
       cb(prismaMock),
     );
@@ -92,6 +93,34 @@ describe("pre-hashed contact matching", () => {
         { phoneHashVariants: { some: { hash: { in: expect.arrayContaining([localHash]) } } } },
       ]),
     );
+  });
+
+  it("chunks large hash lookups to stay below Prisma bind-parameter limits", async () => {
+    const contacts = Array.from({ length: 325 }, (_, index) =>
+      index.toString(16).padStart(64, "0"),
+    );
+    prismaMock.user.findMany.mockResolvedValue([]);
+
+    await findContactUsers("caller", contacts);
+
+    const hashQueries = prismaMock.user.findMany.mock.calls.filter(([args]) =>
+      args.where.OR?.some(
+        (clause: { phoneNumberHash?: { in?: string[] } }) => clause.phoneNumberHash?.in,
+      ),
+    );
+    expect(hashQueries.length).toBeGreaterThan(1);
+    for (const [args] of hashQueries) {
+      for (const rawClause of args.where.OR) {
+        const clause = rawClause as {
+          phoneNumberHash?: { in?: string[] };
+          phoneHash?: { in?: string[] };
+          phoneHashVariants?: { some?: { hash?: { in?: string[] } } };
+        };
+        expect(clause.phoneNumberHash?.in?.length ?? 0).toBeLessThanOrEqual(250);
+        expect(clause.phoneHash?.in?.length ?? 0).toBeLessThanOrEqual(250);
+        expect(clause.phoneHashVariants?.some?.hash?.in?.length ?? 0).toBeLessThanOrEqual(250);
+      }
+    }
   });
 
   it("excludes deleted and restricted accounts from contact matches", async () => {

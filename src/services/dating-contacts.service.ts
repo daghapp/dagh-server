@@ -2,6 +2,7 @@ import { prisma } from "../config/index.js";
 import { canDatingInteract, oppositeGenderPreference } from "../helpers/dating-gender.js";
 import {
   buildInviteLink,
+  chunkValues,
   contactUserSelect,
   findContactUsers,
   getContactSyncConsent,
@@ -83,13 +84,14 @@ export async function syncDatingContacts(
     where: { id: userId },
     select: { gender: true },
   });
-  const genderRows =
-    users.length > 0
-      ? await prisma.user.findMany({
-          where: { id: { in: users.map((user) => user.id) } },
-          select: { id: true, gender: true },
-        })
-      : [];
+  const genderRows: Array<{ id: string; gender: string | null }> = [];
+  for (const chunk of chunkValues(users.map((user) => user.id))) {
+    const rows = await prisma.user.findMany({
+      where: { id: { in: chunk } },
+      select: { id: true, gender: true },
+    });
+    genderRows.push(...rows);
+  }
   const compatibleIds = new Set(
     genderRows.filter((row) => canDatingInteract(viewer?.gender, row.gender)).map((row) => row.id),
   );

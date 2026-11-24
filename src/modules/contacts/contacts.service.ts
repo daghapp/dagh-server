@@ -81,6 +81,17 @@ function isMissingLookupHashesColumn(error: unknown): boolean {
   return code === "P2022" && modelName === "ContactSyncConsent";
 }
 
+export const CONTACT_QUERY_CHUNK_SIZE = 250;
+
+export function chunkValues<T>(values: readonly T[], size = CONTACT_QUERY_CHUNK_SIZE): T[][] {
+  if (size < 1) return values.length > 0 ? [[...values]] : [];
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push([...values.slice(index, index + size)]);
+  }
+  return chunks;
+}
+
 export interface LegacyContactConsentValues {
   granted: boolean;
   grantedAt: Date | null;
@@ -332,16 +343,22 @@ export function lookupContactHashes(contacts: Array<ContactInput | string>): str
 
 async function blockedUserIds(userId: string, candidateIds: string[]): Promise<Set<string>> {
   if (candidateIds.length === 0) return new Set();
-  const blocks = await prisma.userBlock.findMany({
-    where: {
-      OR: [
-        { blockerId: userId, blockedId: { in: candidateIds } },
-        { blockerId: { in: candidateIds }, blockedId: userId },
-      ],
-    },
-    select: { blockerId: true, blockedId: true },
-  });
-  return new Set(blocks.map((b) => (b.blockerId === userId ? b.blockedId : b.blockerId)));
+  const blocked = new Set<string>();
+  for (const chunk of chunkValues(candidateIds)) {
+    const blocks = await prisma.userBlock.findMany({
+      where: {
+        OR: [
+          { blockerId: userId, blockedId: { in: chunk } },
+          { blockerId: { in: chunk }, blockedId: userId },
+        ],
+      },
+      select: { blockerId: true, blockedId: true },
+    });
+    for (const block of blocks) {
+      blocked.add(block.blockerId === userId ? block.blockedId : block.blockerId);
+    }
+  }
+  return blocked;
 }
 
 /**
@@ -393,43 +410,52 @@ export async function findContactUsers(
     ]),
   );
 
-  const buildOr = (includeVariants: boolean): Prisma.UserWhereInput[] => {
-    const clauses: Prisma.UserWhereInput[] = [];
-    if (lookupHashes.length > 0) {
-      clauses.push({ phoneNumberHash: { in: lookupHashes } }, { phoneHash: { in: lookupHashes } });
-      if (includeVariants) {
-        // Pre-hashed contacts cannot be expanded by the server; the variants table
-        // stores every plausible form for each user so these still match.
-        clauses.push({ phoneHashVariants: { some: { hash: { in: lookupHashes } } } });
+  const hashChunks = chunkValues(lookupHashes);
+  const phoneChunks = chunkValues(phoneStringCandidates);
+  const emailChunks = chunkValues(emails);
+  const batchCount = Math.max(hashChunks.length, phoneChunks.length, emailChunks.length, 1);
+  const usersById = new Map<string, ContactUser>();
+  let variantsAvailable = true;
+
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+    const hashes = hashChunks[batchIndex] ?? [];
+    const phones = phoneChunks[batchIndex] ?? [];
+    const batchEmails = emailChunks[batchIndex] ?? [];
+    const or: Prisma.UserWhereInput[] = [];
+
+    if (hashes.length > 0) {
+      or.push({ phoneNumberHash: { in: hashes } }, { phoneHash: { in: hashes } });
+      if (variantsAvailable) {
+        or.push({ phoneHashVariants: { some: { hash: { in: hashes } } } });
       }
     }
-    if (phoneStringCandidates.length > 0) {
-      // Fallback for accounts missing/corrupt hashes: compare stored phone strings.
-      clauses.push({ phoneNumber: { in: phoneStringCandidates } });
-      clauses.push({ profile: { is: { phoneNumber: { in: phoneStringCandidates } } } });
+    if (phones.length > 0) {
+      or.push({ phoneNumber: { in: phones } });
+      or.push({ profile: { is: { phoneNumber: { in: phones } } } });
     }
-    if (emails.length > 0) {
-      clauses.push({ email: { in: emails, mode: "insensitive" } });
+    if (batchEmails.length > 0) {
+      or.push({ email: { in: batchEmails, mode: "insensitive" } });
     }
-    return clauses;
-  };
+    if (or.length === 0) continue;
 
-  let users: ContactUser[];
-  try {
-    users = await prisma.user.findMany({
-      where: { ...baseWhere, OR: buildOr(true) },
-      select: contactUserSelect,
-    });
-  } catch (error) {
-    // Variants table may be unavailable before migration; fall back to hash columns.
-    console.warn("[contacts] variant lookup failed, retrying without variants", error);
-    const fallbackOr = buildOr(false);
-    if (fallbackOr.length === 0) return { users: [], totalContacts, lookupHashes };
-    users = await prisma.user.findMany({
-      where: { ...baseWhere, OR: fallbackOr },
-      select: contactUserSelect,
-    });
+    try {
+      const found = await prisma.user.findMany({
+        where: { ...baseWhere, OR: or },
+        select: contactUserSelect,
+      });
+      for (const user of found) usersById.set(user.id, user);
+    } catch (error) {
+      if (variantsAvailable && hashes.length > 0) {
+        variantsAvailable = false;
+        console.warn("[contacts] variant lookup failed, retrying without variants", error);
+        batchIndex -= 1;
+        continue;
+      }
+      throw error;
+    }
   }
+
+  const users = [...usersById.values()];
 
   // Last-resort fallback for environments where hash columns/variants are not yet
   // populated (migration/backfill pending): compare computed hashes against stored
@@ -441,7 +467,7 @@ export async function findContactUsers(
       const candidates: ContactUser[] = await prisma.user.findMany({
         where: {
           ...baseWhere,
-          id: foundIds.size > 0 ? { notIn: [...foundIds, userId] } : { not: userId },
+          id: { not: userId },
           OR: [{ phoneNumber: { not: null } }, { profile: { is: { phoneNumber: { not: null } } } }],
         },
         select: contactUserSelect,
@@ -524,17 +550,24 @@ export async function persistContactMatches(
         });
       }
 
-      await tx.contactMatch.deleteMany({
-        where: {
-          userId,
-          ...(matchedIds.length > 0 ? { matchedUserId: { notIn: matchedIds } } : {}),
-        },
+      const existingMatches = await tx.contactMatch.findMany({
+        where: { userId },
+        select: { matchedUserId: true },
       });
+      const matchedIdSet = new Set(matchedIds);
+      const staleIds = existingMatches
+        .map((match) => match.matchedUserId)
+        .filter((matchedUserId) => !matchedIdSet.has(matchedUserId));
+      for (const chunk of chunkValues(staleIds)) {
+        await tx.contactMatch.deleteMany({
+          where: { userId, matchedUserId: { in: chunk } },
+        });
+      }
 
-      if (matchedUsers.length > 0) {
+      for (const chunk of chunkValues(matchedUsers)) {
         const ts = new Date();
         await tx.contactMatch.createMany({
-          data: matchedUsers.map((u) => ({
+          data: chunk.map((u) => ({
             id: crypto.randomUUID(),
             userId,
             matchedUserId: u.id,
@@ -557,18 +590,20 @@ export async function mergeContactMatches(
   matchedUsers: Array<Pick<ContactUser, "id" | "phoneNumberHash" | "phoneHash">>,
 ): Promise<void> {
   if (matchedUsers.length === 0) return;
-  const ts = new Date();
-  await prisma.contactMatch.createMany({
-    data: matchedUsers.map((u) => ({
-      id: crypto.randomUUID(),
-      userId,
-      matchedUserId: u.id,
-      phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
-      createdAt: ts,
-      updatedAt: ts,
-    })),
-    skipDuplicates: true,
-  });
+  for (const chunk of chunkValues(matchedUsers)) {
+    const ts = new Date();
+    await prisma.contactMatch.createMany({
+      data: chunk.map((u) => ({
+        id: crypto.randomUUID(),
+        userId,
+        matchedUserId: u.id,
+        phoneHash: u.phoneNumberHash ?? u.phoneHash ?? "",
+        createdAt: ts,
+        updatedAt: ts,
+      })),
+      skipDuplicates: true,
+    });
+  }
 }
 
 export async function refreshContactMatches(userId: string): Promise<void> {
