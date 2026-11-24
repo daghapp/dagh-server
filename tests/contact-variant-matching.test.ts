@@ -16,6 +16,7 @@ const prismaMock = {
   contactMatch: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
   userDevice: { findMany: vi.fn() },
   $transaction: vi.fn(),
+  $executeRaw: vi.fn(async (_sql: TemplateStringsArray, ..._values: unknown[]) => 1),
 };
 
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
@@ -145,9 +146,9 @@ describe("pre-hashed contact matching", () => {
     const result = await matchContacts("caller", ["0244000000"]);
 
     expect(result.matchedCount).toBe(1);
-    const consentArgs = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
-    expect(consentArgs.create.lookupHashes).toBeUndefined();
-    expect(consentArgs.update.lookupHashes).toBeUndefined();
+    expect(prismaMock.contactSyncConsent.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).toHaveBeenCalled();
+    expect(prismaMock.$executeRaw.mock.calls[0][0].join("")).not.toContain("lookupHashes");
   });
 
   it("still syncs when Prisma hides the missing column name in P2022", async () => {
@@ -163,9 +164,9 @@ describe("pre-hashed contact matching", () => {
     const result = await matchContacts("caller", ["0244000000"]);
 
     expect(result.matchedCount).toBe(1);
-    const consentArgs = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
-    expect(consentArgs.create.lookupHashes).toBeUndefined();
-    expect(consentArgs.update.lookupHashes).toBeUndefined();
+    expect(prismaMock.contactSyncConsent.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).toHaveBeenCalled();
+    expect(prismaMock.$executeRaw.mock.calls[0][0].join("")).not.toContain("lookupHashes");
   });
 
   it("refreshes newly joined matches from stored lookup hashes", async () => {

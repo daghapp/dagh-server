@@ -8,6 +8,7 @@ import {
   getContactSyncConsentWithCapabilities,
   persistContactMatches,
   refreshContactMatches,
+  upsertContactConsentWithoutHashes,
   type ContactInput,
   type ContactUser,
 } from "../modules/contacts/contacts.service.js";
@@ -226,18 +227,29 @@ export async function getContactSyncStatus(userId: string): Promise<{
 
 /** Revoke contact access and delete every derived match. */
 export async function revokeDatingContactConsent(userId: string): Promise<void> {
-  const { supportsLookupHashes } = await getContactSyncConsentWithCapabilities(userId);
+  const { consent, supportsLookupHashes } = await getContactSyncConsentWithCapabilities(userId);
+  const now = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.contactMatch.deleteMany({ where: { userId } });
-    await tx.contactSyncConsent.upsert({
-      where: { userId },
-      create: { userId, granted: false, revokedAt: new Date() },
-      update: {
+    if (supportsLookupHashes) {
+      await tx.contactSyncConsent.upsert({
+        where: { userId },
+        create: { userId, granted: false, revokedAt: now, lookupHashes: [] },
+        update: {
+          granted: false,
+          revokedAt: now,
+          contactCount: 0,
+          lookupHashes: [],
+        },
+      });
+    } else {
+      await upsertContactConsentWithoutHashes(tx, userId, {
         granted: false,
-        revokedAt: new Date(),
+        grantedAt: consent?.grantedAt ?? null,
+        revokedAt: now,
+        lastSyncedAt: consent?.lastSyncedAt ?? null,
         contactCount: 0,
-        ...(supportsLookupHashes ? { lookupHashes: [] } : {}),
-      },
-    });
+      });
+    }
   });
 }

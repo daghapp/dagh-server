@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { Prisma } from "../../../generated/prisma/client.js";
+import { Prisma, type PrismaClient } from "../../../generated/prisma/client.js";
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
 import { prisma } from "../../config/index.js";
 import {
@@ -75,13 +75,43 @@ const consentSelectWithoutHashes = {
 function isMissingLookupHashesColumn(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   if (/lookuphash(es)?|lookup_hash(es)?/i.test(message)) return true;
-
-  // Prisma 7 redacts the column name in P2022 as `(not available)`, so the
-  // message alone cannot identify the missing lookupHashes column.
   if (typeof error !== "object" || error === null) return false;
   const code = (error as { code?: unknown }).code;
   const modelName = (error as { meta?: { modelName?: unknown } }).meta?.modelName;
   return code === "P2022" && modelName === "ContactSyncConsent";
+}
+
+export interface LegacyContactConsentValues {
+  granted: boolean;
+  grantedAt: Date | null;
+  revokedAt: Date | null;
+  lastSyncedAt: Date | null;
+  contactCount: number;
+}
+
+export async function upsertContactConsentWithoutHashes(
+  tx: Pick<PrismaClient, "$executeRaw">,
+  userId: string,
+  values: LegacyContactConsentValues,
+): Promise<void> {
+  const now = new Date();
+  await tx.$executeRaw`
+    INSERT INTO "contact_sync_consents" (
+      "id", "userId", "granted", "grantedAt", "revokedAt", "lastSyncedAt",
+      "contactCount", "createdAt", "updatedAt"
+    )
+    VALUES (
+      ${crypto.randomUUID()}, ${userId}, ${values.granted}, ${values.grantedAt},
+      ${values.revokedAt}, ${values.lastSyncedAt}, ${values.contactCount}, ${now}, ${now}
+    )
+    ON CONFLICT ("userId") DO UPDATE SET
+      "granted" = EXCLUDED."granted",
+      "grantedAt" = EXCLUDED."grantedAt",
+      "revokedAt" = EXCLUDED."revokedAt",
+      "lastSyncedAt" = EXCLUDED."lastSyncedAt",
+      "contactCount" = EXCLUDED."contactCount",
+      "updatedAt" = EXCLUDED."updatedAt"
+  `;
 }
 
 export async function getContactSyncConsentWithCapabilities(
@@ -464,25 +494,35 @@ export async function persistContactMatches(
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.contactSyncConsent.upsert({
-        where: { userId },
-        create: {
-          userId,
-          granted: true,
-          grantedAt: now,
-          lastSyncedAt: now,
-          contactCount: totalContacts,
-          ...(supportsLookupHashes ? { lookupHashes } : {}),
-        },
-        update: {
+      if (supportsLookupHashes) {
+        await tx.contactSyncConsent.upsert({
+          where: { userId },
+          create: {
+            userId,
+            granted: true,
+            grantedAt: now,
+            lastSyncedAt: now,
+            contactCount: totalContacts,
+            lookupHashes,
+          },
+          update: {
+            granted: true,
+            grantedAt: existing?.grantedAt ?? now,
+            revokedAt: null,
+            lastSyncedAt: now,
+            contactCount: totalContacts,
+            lookupHashes,
+          },
+        });
+      } else {
+        await upsertContactConsentWithoutHashes(tx, userId, {
           granted: true,
           grantedAt: existing?.grantedAt ?? now,
           revokedAt: null,
           lastSyncedAt: now,
           contactCount: totalContacts,
-          ...(supportsLookupHashes ? { lookupHashes } : {}),
-        },
-      });
+        });
+      }
 
       await tx.contactMatch.deleteMany({
         where: {
@@ -716,19 +756,30 @@ export async function getContactMatchSummary(userId: string): Promise<{
 }
 
 export async function clearContactMatches(userId: string): Promise<void> {
-  const { supportsLookupHashes } = await getContactSyncConsentWithCapabilities(userId);
+  const { consent, supportsLookupHashes } = await getContactSyncConsentWithCapabilities(userId);
+  const now = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.contactMatch.deleteMany({ where: { userId } });
-    await tx.contactSyncConsent.upsert({
-      where: { userId },
-      create: { userId, granted: false, revokedAt: new Date() },
-      update: {
+    if (supportsLookupHashes) {
+      await tx.contactSyncConsent.upsert({
+        where: { userId },
+        create: { userId, granted: false, revokedAt: now, lookupHashes: [] },
+        update: {
+          granted: false,
+          revokedAt: now,
+          contactCount: 0,
+          lookupHashes: [],
+        },
+      });
+    } else {
+      await upsertContactConsentWithoutHashes(tx, userId, {
         granted: false,
-        revokedAt: new Date(),
+        grantedAt: consent?.grantedAt ?? null,
+        revokedAt: now,
+        lastSyncedAt: consent?.lastSyncedAt ?? null,
         contactCount: 0,
-        ...(supportsLookupHashes ? { lookupHashes: [] } : {}),
-      },
-    });
+      });
+    }
   });
 }
 

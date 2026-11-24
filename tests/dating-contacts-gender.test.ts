@@ -13,12 +13,30 @@ const contactsMock = {
   buildInviteLink: vi.fn(async () => ({ token: "invite-token" })),
   findContactUsers: vi.fn(),
   getContactSyncConsent: vi.fn(async () => ({ granted: true })),
-  getContactSyncConsentWithCapabilities: vi.fn(async () => ({
-    consent: { granted: true, lookupHashes: ["hash-1"] },
-    supportsLookupHashes: true,
-  })),
+  getContactSyncConsentWithCapabilities: vi.fn(
+    async (): Promise<{
+      consent: {
+        granted: boolean;
+        grantedAt: Date | null;
+        lastSyncedAt: Date | null;
+        contactCount: number;
+        lookupHashes: string[];
+      } | null;
+      supportsLookupHashes: boolean;
+    }> => ({
+      consent: {
+        granted: true,
+        grantedAt: null,
+        lastSyncedAt: null,
+        contactCount: 1,
+        lookupHashes: ["hash-1"],
+      },
+      supportsLookupHashes: true,
+    }),
+  ),
   persistContactMatches: vi.fn(async () => undefined),
   refreshContactMatches: vi.fn(async () => undefined),
+  upsertContactConsentWithoutHashes: vi.fn(async () => undefined),
 };
 
 vi.mock("../src/modules/contacts/contacts.service.js", () => ({
@@ -133,5 +151,27 @@ describe("dating contacts enforce the opposite-gender rule", () => {
     const args = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
     expect(args.update.lookupHashes).toEqual([]);
     expect(args.update.contactCount).toBe(0);
+  });
+
+  it("revokes consent on the legacy schema without touching lookup hashes", async () => {
+    contactsMock.getContactSyncConsentWithCapabilities.mockResolvedValueOnce({
+      consent: {
+        granted: true,
+        grantedAt: new Date("2026-01-01T00:00:00.000Z"),
+        lastSyncedAt: new Date("2026-01-02T00:00:00.000Z"),
+        contactCount: 4,
+        lookupHashes: [],
+      },
+      supportsLookupHashes: false,
+    });
+
+    await revokeDatingContactConsent("caller");
+
+    expect(contactsMock.upsertContactConsentWithoutHashes).toHaveBeenCalledWith(
+      prismaMock,
+      "caller",
+      expect.objectContaining({ granted: false, contactCount: 0 }),
+    );
+    expect(prismaMock.contactSyncConsent.upsert).not.toHaveBeenCalled();
   });
 });
