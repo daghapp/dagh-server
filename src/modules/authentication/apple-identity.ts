@@ -80,9 +80,7 @@ export async function resolveAppleUser(identity: AppleIdentity): Promise<User> {
             : {}),
           // The provider verified this email, so a password signup that never
           // completed its OTP no longer needs admin approval.
-          ...(byEmail.accountStatus === "PENDING_VERIFICATION"
-            ? { accountStatus: "ACTIVE" }
-            : {}),
+          ...(byEmail.accountStatus === "PENDING_VERIFICATION" ? { accountStatus: "ACTIVE" } : {}),
         },
       });
     }

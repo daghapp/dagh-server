@@ -65,8 +65,7 @@ function setUpUser(accountStatus: string) {
   const user = userFixture(accountStatus);
   prismaMock.user.findUnique.mockResolvedValue(user);
   prismaMock.user.update.mockImplementation(
-    ({ data }: { data: Record<string, unknown> }) =>
-      Promise.resolve({ ...user, ...data }) as never,
+    ({ data }: { data: Record<string, unknown> }) => Promise.resolve({ ...user, ...data }) as never,
   );
   return user;
 }
@@ -138,7 +137,10 @@ describe("admin user approval", () => {
     setUpUser("PENDING_VERIFICATION");
     const res = mockRes();
 
-    await controller.rejectUser(mockReq({ reason: "Duplicate account" }), res as unknown as Response);
+    await controller.rejectUser(
+      mockReq({ reason: "Duplicate account" }),
+      res as unknown as Response,
+    );
 
     expect(res.statusCode).toBe(200);
     expect(res.body?.data?.accountStatus).toBe("TERMINATED");
@@ -157,7 +159,10 @@ describe("admin user approval", () => {
     setUpUser("TERMINATED");
     const res = mockRes();
 
-    await controller.rejectUser(mockReq({ reason: "Duplicate account" }), res as unknown as Response);
+    await controller.rejectUser(
+      mockReq({ reason: "Duplicate account" }),
+      res as unknown as Response,
+    );
 
     expect(res.statusCode).toBe(200);
     expect(res.body?.message).toBe("User already rejected");
