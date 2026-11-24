@@ -1322,8 +1322,8 @@ exists so the backfill does not need shell access to the database. Idempotent.
 | PUT    | `/dating/location`                  | Bearer | Refresh dating coordinates for proximity alerts.                                                                                                                                                                          |
 | GET    | `/dating/contacts/status`           | Bearer | Contact-sync consent + last sync/match counts.                                                                                                                                                                            |
 | POST   | `/dating/contacts/sync`             | Bearer | Sync phone contacts (`consent: true` on first call); returns public matches.                                                                                                                                              |
-| GET    | `/dating/contacts/matches`          | Bearer | List opposite-gender contacts on the platform (dating fields where present).                                                                                                                                              |
-| DELETE | `/dating/contacts`                  | Bearer | Revoke contact consent and delete derived matches.                                                                                                                                                                        |
+| GET    | `/dating/contacts/matches`          | Bearer | List opposite-gender contacts on the platform (dating fields where present); `?allGenders=true` / `?scope=people` returns the unfiltered “People You May Know” list.                                                      |
+| DELETE | `/dating/contacts`                  | Bearer | Revoke contact consent, delete derived matches, and clear stored lookup hashes.                                                                                                                                           |
 | POST   | `/dating/swipe`                     | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation.                                                                                                                                               |
 | GET    | `/dating/recommendations`           | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window; `?contactsOnly=true` limits results to synced contacts. |
 | GET    | `/dating/matches`                   | Bearer | List active matches.                                                                                                                                                                                                      |
@@ -1429,10 +1429,13 @@ has never been granted and `consent` is not `true`.
 ### GET /dating/contacts/matches
 
 Refreshes matches from the stored phone lookup hashes, then returns persisted
-contact matches (`matchedCount`, `banner`, `matches[]`). Dating responses cover
-opposite-gender active accounts only, including users without a dating profile;
-blocks are excluded and dating-specific fields may be empty. General
-`/contacts/*` still covers all active accounts regardless of gender.
+contact matches (`matchedCount`, `banner`, `matches[]`, `invite`). Dating
+responses cover opposite-gender active accounts only, including users without a
+dating profile; blocks are excluded and dating-specific fields may be empty.
+General `/contacts/*` still covers all active accounts regardless of gender.
+Pass `?allGenders=true` (or `?scope=people`) to use the unfiltered “People You
+May Know” list through this endpoint. Invite generation is best-effort, so
+`invite` may be `null` without failing the request.
 
 ### GET /dating/contacts/status
 
@@ -1440,8 +1443,8 @@ Returns `{ granted, grantedAt, lastSyncedAt, contactCount, matchedCount }`.
 
 ### DELETE /dating/contacts
 
-Deletes the consent record and all contact-derived matches. Returns
-`{ granted: false }`.
+Clears the consent record, all contact-derived matches, and stored lookup
+hashes. Returns `{ granted: false }`.
 
 ### Contact fields in recommendations
 
@@ -1825,7 +1828,7 @@ Securely match a user's hashed device contacts against existing users.
 | GET    | `/contacts/suggestions` | Bearer | Alias of `/contacts/matches` ("people you may know").                                                                                                                                                                                                                                                 |
 | GET    | `/contacts/invite-link` | Bearer | Shareable app invite link for contacts not yet on the platform.                                                                                                                                                                                                                                       |
 | GET    | `/contacts/invite`      | Bearer | Alias of `/contacts/invite-link`.                                                                                                                                                                                                                                                                     |
-| DELETE | `/contacts/matches`     | Bearer | Clear persisted contact matches and revoke sync consent.                                                                                                                                                                                                                                              |
+| DELETE | `/contacts/matches`     | Bearer | Clear persisted contact matches, revoke sync consent, and clear stored lookup hashes.                                                                                                                                                                                                                 |
 
 ### Environment
 

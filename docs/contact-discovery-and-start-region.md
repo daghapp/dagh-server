@@ -136,12 +136,15 @@ Valid values are the Ghana regions in `GHANA_REGIONS`
   matches that cannot be read later. If the `lookupHashes` column has not been
   deployed yet, sync falls back to writing consent without it rather than
   returning “could not sync contact”; the next sync after migration stores the
-  hashes.
+  hashes. Deployed databases must run `npx prisma migrate deploy` (including
+  `20261124120000_contact_lookup_hashes`) for durable matches and refresh.
 - `GET /contacts/matches` refreshes matches from stored `lookupHashes`, so users
   who join after the original sync appear without another client sync.
-- `GET /contacts/matches` returns `[]` until a consent row exists, so existing
-  users must re-sync once after this release.
-- `DELETE /contacts/matches` removes derived matches and revokes consent.
+- `GET /contacts/matches` returns persisted matches whenever rows exist; a
+  consent row is not required for the read. Existing users who synced before
+  persistence was added should re-sync once to populate their matches.
+- `DELETE /contacts/matches` removes derived matches, revokes consent, and
+  clears stored lookup hashes.
 - `DELETE /dating/contacts` does the same (shared consent/matches).
 
 ### 2.4 Endpoints
@@ -223,14 +226,17 @@ The same matching engine powers the dating contact endpoints. General
 `/contacts/*` is “People You May Know” and includes **all active accounts**,
 regardless of gender. `/dating/contacts/*` persists every match but shows only
 **opposite-gender active accounts** in dating responses, consistent with the
-rest of the dating module.
+rest of the dating module. Clients that already use the dating contact endpoint
+for “People You May Know” can pass `allGenders=true` (or `scope=people`) to get
+the unfiltered list without losing the dating default.
 
-| Method | Endpoint                   | What it does                                                      |
-| ------ | -------------------------- | ----------------------------------------------------------------- |
-| POST   | `/dating/contacts/sync`    | Same matching/persistence; requires `consent: true` on first sync |
-| GET    | `/dating/contacts/matches` | Persisted matches + banner + invite                               |
-| GET    | `/dating/contacts/status`  | Consent, last sync, contact/match counts                          |
-| DELETE | `/dating/contacts`         | Revoke consent and delete matches                                 |
+| Method | Endpoint                                   | What it does                                                      |
+| ------ | ------------------------------------------ | ----------------------------------------------------------------- |
+| POST   | `/dating/contacts/sync`                    | Same matching/persistence; requires `consent: true` on first sync |
+| GET    | `/dating/contacts/matches`                 | Opposite-gender matches + banner + invite                         |
+| GET    | `/dating/contacts/matches?allGenders=true` | Unfiltered “People You May Know” list                             |
+| GET    | `/dating/contacts/status`                  | Consent, last sync, contact/match counts                          |
+| DELETE | `/dating/contacts`                         | Revoke consent, delete matches, and clear stored lookup hashes    |
 
 Dating match shape:
 
@@ -249,7 +255,9 @@ When the matched account has no dating profile, `headline` is `null`,
 `photos` is `[]`, and `hasDatingProfile` is `false`. The client should use that
 flag to decide whether to render dating-specific UI.
 
-`POST /dating/contacts/sync` also returns `unmatchedCount` and `invite`.
+`POST /dating/contacts/sync` also returns `unmatchedCount` and `invite`. Invite
+generation is best-effort: if deep-link configuration is missing, `invite` is
+`null` and the match list is still returned.
 
 ### 2.5 Inviting contacts who are not on the app
 

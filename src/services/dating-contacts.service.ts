@@ -5,6 +5,7 @@ import {
   contactUserSelect,
   findContactUsers,
   getContactSyncConsent,
+  getContactSyncConsentWithCapabilities,
   persistContactMatches,
   refreshContactMatches,
   type ContactInput,
@@ -26,7 +27,7 @@ export interface DatingContactSyncResult {
   unmatchedCount: number;
   matches: DatingContactMatch[];
   banner: string;
-  invite: Awaited<ReturnType<typeof buildInviteLink>>;
+  invite: Awaited<ReturnType<typeof buildInviteLink>> | null;
 }
 
 function toPublicMatch(user: ContactUser): DatingContactMatch {
@@ -102,37 +103,52 @@ export async function syncDatingContacts(
         ? `1 person in your contact list (${firstName}) is on Diaspora Sync. Tap to connect.`
         : `${publicMatches.length} people in your contact list (including ${firstName}) are on Diaspora Sync. Tap to connect.`;
 
+  let invite: Awaited<ReturnType<typeof buildInviteLink>> | null = null;
+  try {
+    invite = await buildInviteLink(userId);
+  } catch (error) {
+    console.warn("[dating.contacts] failed to build invite link", { userId, error });
+  }
+
   return {
     matchedCount: publicMatches.length,
     totalContacts,
     unmatchedCount,
     matches: publicMatches,
     banner,
-    invite: await buildInviteLink(userId),
+    invite,
   };
 }
 
 /** Persisted contact matches, including contacts without a dating profile. */
-export async function getDatingContactMatches(userId: string): Promise<DatingContactMatch[]> {
+export async function getDatingContactMatches(
+  userId: string,
+  options: { allGenders?: boolean } = {},
+): Promise<DatingContactMatch[]> {
   try {
     await refreshContactMatches(userId);
   } catch (error) {
     console.warn("[dating.contacts] failed to refresh contact matches", { userId, error });
   }
 
+  const includeAllGenders = options.allGenders === true;
+
   try {
-    const viewer = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { gender: true },
-    });
-    const allowedGenders = oppositeGenderPreference(viewer?.gender);
-    if (allowedGenders.length === 0) return [];
+    let allowedGenders: ReturnType<typeof oppositeGenderPreference> | undefined;
+    if (!includeAllGenders) {
+      const viewer = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { gender: true },
+      });
+      allowedGenders = oppositeGenderPreference(viewer?.gender);
+      if (allowedGenders.length === 0) return [];
+    }
 
     const rows = await prisma.contactMatch.findMany({
       where: {
         userId,
         matchedUser: {
-          gender: { in: allowedGenders },
+          ...(allowedGenders ? { gender: { in: allowedGenders } } : {}),
           isDeleted: false,
           accountStatus: {
             notIn: ["SUSPENDED" as const, "TERMINATED" as const, "DEACTIVATED" as const] as (
@@ -210,12 +226,18 @@ export async function getContactSyncStatus(userId: string): Promise<{
 
 /** Revoke contact access and delete every derived match. */
 export async function revokeDatingContactConsent(userId: string): Promise<void> {
+  const { supportsLookupHashes } = await getContactSyncConsentWithCapabilities(userId);
   await prisma.$transaction(async (tx) => {
     await tx.contactMatch.deleteMany({ where: { userId } });
     await tx.contactSyncConsent.upsert({
       where: { userId },
       create: { userId, granted: false, revokedAt: new Date() },
-      update: { granted: false, revokedAt: new Date(), contactCount: 0 },
+      update: {
+        granted: false,
+        revokedAt: new Date(),
+        contactCount: 0,
+        ...(supportsLookupHashes ? { lookupHashes: [] } : {}),
+      },
     });
   });
 }

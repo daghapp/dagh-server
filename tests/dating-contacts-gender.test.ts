@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = {
   user: { findUnique: vi.fn(), findMany: vi.fn() },
-  contactMatch: { findMany: vi.fn(), count: vi.fn() },
+  contactMatch: { findMany: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
+  contactSyncConsent: { upsert: vi.fn() },
+  $transaction: vi.fn(),
 };
 
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
@@ -11,6 +13,10 @@ const contactsMock = {
   buildInviteLink: vi.fn(async () => ({ token: "invite-token" })),
   findContactUsers: vi.fn(),
   getContactSyncConsent: vi.fn(async () => ({ granted: true })),
+  getContactSyncConsentWithCapabilities: vi.fn(async () => ({
+    consent: { granted: true, lookupHashes: ["hash-1"] },
+    supportsLookupHashes: true,
+  })),
   persistContactMatches: vi.fn(async () => undefined),
   refreshContactMatches: vi.fn(async () => undefined),
 };
@@ -20,7 +26,7 @@ vi.mock("../src/modules/contacts/contacts.service.js", () => ({
   contactUserSelect: { id: true },
 }));
 
-const { syncDatingContacts, getDatingContactMatches } =
+const { syncDatingContacts, getDatingContactMatches, revokeDatingContactConsent } =
   await import("../src/services/dating-contacts.service.js");
 
 function contact(id: string, fullName: string) {
@@ -43,6 +49,9 @@ const FEMALE_CONTACT = contact("female-user", "Female Contact");
 describe("dating contacts enforce the opposite-gender rule", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof prismaMock) => unknown) =>
+      cb(prismaMock),
+    );
     contactsMock.getContactSyncConsent.mockResolvedValue({ granted: true });
     contactsMock.findContactUsers.mockResolvedValue({
       users: [MALE_CONTACT, FEMALE_CONTACT],
@@ -93,5 +102,36 @@ describe("dating contacts enforce the opposite-gender rule", () => {
 
     await expect(getDatingContactMatches("caller")).resolves.toEqual([]);
     expect(prismaMock.contactMatch.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns every matched gender for People You May Know", async () => {
+    prismaMock.contactMatch.findMany.mockResolvedValue([
+      { matchedUser: MALE_CONTACT },
+      { matchedUser: FEMALE_CONTACT },
+    ]);
+
+    const matches = await getDatingContactMatches("caller", { allGenders: true });
+
+    expect(matches.map((match) => match.userId)).toEqual(["male-user", "female-user"]);
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    const args = prismaMock.contactMatch.findMany.mock.calls[0][0];
+    expect(args.where.matchedUser.gender).toBeUndefined();
+  });
+
+  it("does not fail sync when the invite link cannot be built", async () => {
+    contactsMock.buildInviteLink.mockRejectedValueOnce(new Error("no deep link secret"));
+
+    const result = await syncDatingContacts("caller", ["0244000000"], true);
+
+    expect(result.matches.map((match) => match.userId)).toEqual(["female-user"]);
+    expect(result.invite).toBeNull();
+  });
+
+  it("clears stored lookup hashes when dating contact consent is revoked", async () => {
+    await revokeDatingContactConsent("caller");
+
+    const args = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
+    expect(args.update.lookupHashes).toEqual([]);
+    expect(args.update.contactCount).toBe(0);
   });
 });

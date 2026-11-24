@@ -59,14 +59,14 @@ async function main() {
     "POST",
     "/dating/contacts/sync",
     { contacts: TEST_CONTACTS, consent: true },
-    accessToken
+    accessToken,
   );
   if (syncRes.status !== 200) {
     console.error("  ✗ Contact sync failed:", syncRes.data);
     process.exit(1);
   }
   console.log("  ✓ Contacts synced");
-  console.log(`    Contact count: ${syncRes.data.contactCount ?? "N/A"}\n`);
+  console.log(`    Contact count: ${syncRes.data.totalContacts ?? "N/A"}\n`);
 
   // ── Step 3: Get contact matches ───────────────────────────────────
   console.log("[3/5] Fetching contact matches...");
@@ -79,7 +79,7 @@ async function main() {
   console.log(`  ✓ ${matchedCount} contact(s) on the platform (${totalContacts} total contacts)`);
   console.log(`    Banner: "${banner}"`);
   matches.forEach((m: any) => {
-    console.log(`    - ${m.name} (${m.phoneNumber}) dating=${m.hasDatingProfile}`);
+    console.log(`    - ${m.fullName} dating=${m.hasDatingProfile}`);
   });
   console.log("");
 
@@ -89,7 +89,7 @@ async function main() {
     "GET",
     "/dating/recommendations?limit=10&offset=0",
     undefined,
-    accessToken
+    accessToken,
   );
   if (recRes.status === 403) {
     console.log("  ⚠ 403 — KYC verification required for dating discovery.");
@@ -113,7 +113,7 @@ async function main() {
     "GET",
     "/dating/recommendations?contactsOnly=true&limit=10",
     undefined,
-    accessToken
+    accessToken,
   );
   if (contactOnlyRes.status === 403) {
     console.log("  ⚠ 403 — KYC required for contact-only discovery.");

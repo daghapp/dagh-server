@@ -111,18 +111,21 @@ Google sign-ups that have no phone hash.
 > Dating contact responses include only **opposite-gender active accounts**, not
 > just users with a dating profile. Every matched contact is persisted, but male
 > viewers see only female contacts and female viewers see only male contacts in
-> dating endpoints. General `/contacts/*` remains unfiltered. Dating-specific
-> fields (`headline`, `photos`) are `null`/empty when the matched user has no
-> dating profile; check `hasDatingProfile`. Blocked contacts are excluded.
-> Responses also include `unmatchedCount` and an `invite` object so unmatched
-> contacts can be invited to join.
+> dating endpoints. General `/contacts/*` remains unfiltered, and
+> `/dating/contacts/matches?allGenders=true` (or `?scope=people`) returns the
+> same unfiltered list through the dating endpoint. Dating-specific fields
+> (`headline`, `photos`) are `null`/empty when the matched user has no dating
+> profile; check `hasDatingProfile`. Blocked contacts are excluded. Responses
+> also include `unmatchedCount` and a best-effort `invite` object (may be
+> `null`) so unmatched contacts can be invited to join.
 
 ### 1.3 List contact matches
 
 `GET /dating/contacts/matches`
 
 Returns the persisted matches (same `DatingContactMatch` shape as above) plus
-`matchedCount` and a display-ready `banner`.
+`matchedCount`, a display-ready `banner`, and `invite`. Add `?allGenders=true`
+(or `?scope=people`) for the unfiltered “People You May Know” list.
 
 ```json
 {
@@ -149,7 +152,8 @@ Use this for a **"From your contacts"** horizontal row or a dedicated screen.
 
 `DELETE /dating/contacts`
 
-Deletes the consent record and every match derived from the contact book.
+Clears the consent record, every match derived from the contact book, and the
+stored lookup hashes so a later revoke cannot silently rediscover them.
 
 ```json
 { "success": true, "data": { "granted": false }, "message": "Contact access revoked" }
@@ -276,6 +280,8 @@ consent-aware recommendations.
 - [ ] Re-sync when the user taps "Refresh contacts" (manual is enough; avoid
       syncing on every app launch).
 - [ ] Show a "From your contacts" row using `/dating/contacts/matches`.
+- [ ] For a People You May Know screen, use `/contacts/suggestions` or
+      `/dating/contacts/matches?allGenders=true` instead of the filtered default.
 - [ ] Render `familiar` / `isContactMatch` badges from recommendations.
 - [ ] Add a "Remove imported contacts" action calling `DELETE /dating/contacts`.
 - [ ] Refresh `/dating/location` while the Dating tab is active.
@@ -291,8 +297,9 @@ consent-aware recommendations.
 | -------- | ------------------------------------------- | -------------------------------------------- |
 | `GET`    | `/dating/contacts/status`                   | Consent + last sync/match counts             |
 | `POST`   | `/dating/contacts/sync`                     | Upload contacts and persist matches          |
-| `GET`    | `/dating/contacts/matches`                  | List familiar users                          |
-| `DELETE` | `/dating/contacts`                          | Revoke consent and delete matches            |
+| `GET`    | `/dating/contacts/matches`                  | List familiar users (opposite gender)        |
+| `GET`    | `/dating/contacts/matches?allGenders=true`  | Unfiltered “People You May Know” list        |
+| `DELETE` | `/dating/contacts`                          | Revoke consent, matches, and lookup hashes   |
 | `PUT`    | `/dating/location`                          | Refresh dating location for proximity alerts |
 | `GET`    | `/dating/recommendations?contactsOnly=true` | Only familiar candidates                     |
 

@@ -55,10 +55,14 @@ export const syncContactsForDating = async (req: Request, res: Response) => {
 export const getContactsForDating = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const [matches, invite] = await Promise.all([
-      getDatingContactMatches(userId),
-      buildInviteLink(userId),
-    ]);
+    const allGenders = req.query.allGenders === "true" || req.query.scope === "people";
+    const matches = await getDatingContactMatches(userId, { allGenders });
+    let invite: Awaited<ReturnType<typeof buildInviteLink>> | null = null;
+    try {
+      invite = await buildInviteLink(userId);
+    } catch (error) {
+      console.warn("[dating.contacts.matches] failed to build invite link", error);
+    }
     const banner =
       matches.length === 0
         ? "No contacts found on Diaspora Sync yet. Invite them to join."

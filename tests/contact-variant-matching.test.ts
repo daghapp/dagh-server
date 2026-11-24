@@ -103,6 +103,16 @@ describe("pre-hashed contact matching", () => {
     });
   });
 
+  it("does not apply a gender filter to general People You May Know matches", async () => {
+    prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
+
+    const result = await matchContacts("caller", ["0244000000"]);
+
+    expect(result.matches).toHaveLength(1);
+    const where = prismaMock.user.findMany.mock.calls[0][0].where;
+    expect(where.gender).toBeUndefined();
+  });
+
   it("returns explicit counts for contacts who use the app", async () => {
     prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
     const result = await matchContacts("caller", ["0244000000"]);

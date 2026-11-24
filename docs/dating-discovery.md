@@ -73,19 +73,22 @@ Users can opt in to compare their contacts against **active accounts**, not only
 users with a dating profile. The matching engine persists every match, but
 `/dating/contacts/*` responses apply the dating opposite-gender rule: male
 viewers see only female contacts and female viewers see only male contacts.
-General `/contacts/*` (“People You May Know”) remains unfiltered. Phone numbers
-are matched across local/E.164 and national-suffix formats, and contacts may
-include an optional email (useful for social sign-ups with no phone hash). Only
-SHA-256 phone lookup hashes are stored; raw contacts are never persisted.
-Responses include `hasDatingProfile`, `unmatchedCount`, and an `invite` link for
-people who are not on the platform yet.
+General `/contacts/*` (“People You May Know”) remains unfiltered. Clients using
+the dating endpoint for that surface can pass `allGenders=true` (or
+`scope=people`) to bypass the dating filter. Phone numbers are matched across
+local/E.164 and national-suffix formats, and contacts may include an optional
+email (useful for social sign-ups with no phone hash). Only SHA-256 phone lookup
+hashes are stored; raw contacts are never persisted. Responses include
+`hasDatingProfile`, `unmatchedCount`, and a best-effort `invite` link (may be
+`null`) for people who are not on the platform yet.
 
-| Method   | Endpoint                   | Purpose                                           |
-| -------- | -------------------------- | ------------------------------------------------- |
-| `GET`    | `/dating/contacts/status`  | Consent state + last sync/match counts            |
-| `POST`   | `/dating/contacts/sync`    | Sync contacts (`consent: true` on first call)     |
-| `GET`    | `/dating/contacts/matches` | List familiar users (dating fields where present) |
-| `DELETE` | `/dating/contacts`         | Revoke consent and delete derived matches         |
+| Method   | Endpoint                                   | Purpose                                           |
+| -------- | ------------------------------------------ | ------------------------------------------------- |
+| `GET`    | `/dating/contacts/status`                  | Consent state + last sync/match counts            |
+| `POST`   | `/dating/contacts/sync`                    | Sync contacts (`consent: true` on first call)     |
+| `GET`    | `/dating/contacts/matches`                 | List familiar users (dating fields where present) |
+| `GET`    | `/dating/contacts/matches?allGenders=true` | Unfiltered “People You May Know” list             |
+| `DELETE` | `/dating/contacts`                         | Revoke consent, delete matches, and clear hashes  |
 
 Candidates from the contact book are marked with `isContactMatch` (and the
 `familiar` alias) in `GET /dating/recommendations`, ranked with the +15 bonus, and

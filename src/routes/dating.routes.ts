@@ -500,10 +500,25 @@ router.post("/contacts/sync", validate(datingContactSyncSchema), syncContactsFor
  * /dating/contacts/matches:
  *   get:
  *     summary: List contacts who are on the platform
- *     description: Includes opposite-gender active accounts; dating fields are null when the user has no dating profile.
+ *     description: |
+ *       Includes opposite-gender active accounts by default; dating fields are null
+ *       when the user has no dating profile. Pass `allGenders=true` (or
+ *       `scope=people`) for the unfiltered “People You May Know” list.
  *     tags: [Dating]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: allGenders
+ *         schema:
+ *           type: boolean
+ *         description: Return every matched account regardless of gender.
+ *       - in: query
+ *         name: scope
+ *         schema:
+ *           type: string
+ *           enum: [people]
+ *         description: Alias for allGenders=true.
  *     responses:
  *       200:
  *         description: Contact matches
