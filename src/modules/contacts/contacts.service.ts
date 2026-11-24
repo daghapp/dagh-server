@@ -74,7 +74,14 @@ const consentSelectWithoutHashes = {
 
 function isMissingLookupHashesColumn(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /lookuphash(es)?|lookup_hash(es)?/i.test(message);
+  if (/lookuphash(es)?|lookup_hash(es)?/i.test(message)) return true;
+
+  // Prisma 7 redacts the column name in P2022 as `(not available)`, so the
+  // message alone cannot identify the missing lookupHashes column.
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  const modelName = (error as { meta?: { modelName?: unknown } }).meta?.modelName;
+  return code === "P2022" && modelName === "ContactSyncConsent";
 }
 
 export async function getContactSyncConsentWithCapabilities(

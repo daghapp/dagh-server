@@ -150,6 +150,24 @@ describe("pre-hashed contact matching", () => {
     expect(consentArgs.update.lookupHashes).toBeUndefined();
   });
 
+  it("still syncs when Prisma hides the missing column name in P2022", async () => {
+    prismaMock.user.findMany.mockResolvedValue([MATCHED_USER]);
+    prismaMock.contactSyncConsent.findUnique
+      .mockRejectedValueOnce({
+        code: "P2022",
+        meta: { modelName: "ContactSyncConsent" },
+        message: "The column `(not available)` does not exist in the current database.",
+      })
+      .mockResolvedValueOnce({ granted: true, contactCount: 1 });
+
+    const result = await matchContacts("caller", ["0244000000"]);
+
+    expect(result.matchedCount).toBe(1);
+    const consentArgs = prismaMock.contactSyncConsent.upsert.mock.calls[0][0];
+    expect(consentArgs.create.lookupHashes).toBeUndefined();
+    expect(consentArgs.update.lookupHashes).toBeUndefined();
+  });
+
   it("refreshes newly joined matches from stored lookup hashes", async () => {
     prismaMock.contactSyncConsent.findUnique.mockResolvedValue({
       granted: true,
