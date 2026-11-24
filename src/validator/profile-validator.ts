@@ -1,6 +1,7 @@
 // User Profile Validator Schema
 
 import { z } from "zod";
+import { genderSchema } from "./genderValidation.js";
 
 export const profileSchema = z.object({
   userId: z.string().uuid({ message: "Invalid user ID format" }),
@@ -17,7 +18,7 @@ export const profileSchema = z.object({
     .min(2, { message: "Last name must be at least 2 characters long" })
     .optional(),
   dateOfBirth: z.coerce.date({ message: "Invalid date format" }).optional(),
-  gender: z.enum(["MALE", "FEMALE", "OTHER"], { message: "Invalid gender value" }).optional(),
+  gender: genderSchema.optional(),
   nationality: z
     .string()
     .min(2, { message: "Nationality must be at least 2 characters long" })
@@ -55,7 +56,7 @@ export const updateProfileSchema = z.object({
     .min(2, { message: "Last name must be at least 2 characters long" })
     .optional(),
   dateOfBirth: z.coerce.date({ message: "Invalid date format" }).optional(),
-  gender: z.enum(["MALE", "FEMALE", "OTHER"], { message: "Invalid gender value" }).optional(),
+  gender: genderSchema.optional(),
   nationality: z
     .string()
     .min(2, { message: "Nationality must be at least 2 characters long" })

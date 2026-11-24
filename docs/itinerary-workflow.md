@@ -793,7 +793,8 @@ never land on arrival/departure days).
 ```
 
 Get candidates from `GET /dating/recommendations?tourRequestId=<uuid>`; they
-are filtered by the trip's geofence and schedule overlap.
+are filtered by the trip's geofence, schedule overlap, and the opposite-gender
+compliance rule.
 
 **Response `200`:**
 

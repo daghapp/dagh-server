@@ -160,6 +160,7 @@ describe("getDiscoveryCandidates — intent filter", () => {
     await getDiscoveryCandidates("viewer");
 
     const where = prismaMock.user.findMany.mock.calls[0][0].where;
+    expect(where.gender).toEqual({ in: ["FEMALE"] });
     const intentClause = where.AND.find(
       (clause: { datingProfile?: { OR?: Array<{ lookingFor?: string | null }> } }) =>
         clause.datingProfile?.OR?.some((candidate) => candidate.lookingFor === "LONG_TERM_PARTNER"),
@@ -170,5 +171,30 @@ describe("getDiscoveryCandidates — intent filter", () => {
       { lookingFor: "LONG_TERM_PARTNER" },
       { lookingFor: null },
     ]);
+  });
+});
+
+describe("getDiscoveryCandidates — gender compliance", () => {
+  it.each(["OTHER", null, "UNKNOWN", "BOGUS"])(
+    "returns nobody when the viewer gender is %s",
+    async (gender) => {
+      prismaMock.user.findUnique.mockResolvedValue({ gender });
+
+      const result = await getDiscoveryCandidates("viewer");
+
+      expect(result).toEqual({ candidates: [], total: 0 });
+      expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it("normalizes the viewer gender before building the query", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ gender: " woman " });
+    prismaMock.user.findMany.mockResolvedValue([
+      { ...makeUser("candidate"), gender: "MALE" } as UserRow,
+    ]);
+
+    await getDiscoveryCandidates("viewer");
+
+    expect(prismaMock.user.findMany.mock.calls[0][0].where.gender).toEqual({ in: ["MALE"] });
   });
 });

@@ -108,11 +108,13 @@ Google sign-ups that have no phone hash.
 | `403` | `consent` was not `true` and no previous consent exists |
 | `500` | Unexpected server error |
 
-> Matches include every **active account** on the platform, not just users with a
-> dating profile. Dating-specific fields (`headline`, `photos`) are `null`/empty
-> when the matched user has no dating profile; check `hasDatingProfile`. Contacts
-> who are blocked are excluded. Responses also include `unmatchedCount` and an
-> `invite` object so unmatched contacts can be invited to join.
+> Dating matches include only **opposite-gender active accounts**, not just users
+> with a dating profile. Same-gender contacts are hidden from dating responses.
+> Dating-specific fields (`headline`, `photos`) are `null`/empty when the matched
+> user has no dating profile; check `hasDatingProfile`. Contacts who are blocked
+> are excluded. Responses also include `unmatchedCount` and an `invite` object so
+> unmatched contacts can be invited to join. General `/contacts/*` endpoints are
+> unaffected and still cover all active accounts.
 
 ### 1.3 List contact matches
 
@@ -183,7 +185,8 @@ normal pagination fields. If the user has not synced contacts, the result is an
 empty array — prompt them to sync first.
 
 The endpoint remains KYC-gated and still applies the legal opposite-gender
-filter, blocks, passes, and hidden-profile rules.
+filter, blocks, passes, and hidden-profile rules. Same-gender contacts are
+excluded even when `?contactsOnly=true` is used.
 
 ---
 
@@ -197,8 +200,8 @@ filter, blocks, passes, and hidden-profile rules.
 - If two eligible dating users are within range, each receives at most **one
   non-identifying push per 24 hours**.
 - Range is the smaller of **10 km** and each user's `maxDistanceKm`.
-- Blocked users, users of the same gender, and users without a recent location
-  are skipped.
+- Blocked users, users who are not opposite gender on both sides, and users
+  without a recent location are skipped.
 - Locations older than **12 hours** are ignored, so the app should refresh the
   location while the Dating tab is in use (for example, on open and after
   significant movement).
@@ -258,7 +261,7 @@ consent-aware recommendations.
 | Alert radius | `min(10 km, user's maxDistanceKm)` |
 | Per-user frequency | 1 alert / 24 hours |
 | Location freshness | 12 hours |
-| Gender | Opposite gender only (legal compliance) |
+| Gender | Opposite gender only on both sides (legal compliance) |
 | Blocks | Always excluded |
 | Dating profile | Required |
 | Push provider | Expo push token registered via `POST /devices/register` |

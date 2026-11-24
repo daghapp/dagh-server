@@ -1,4 +1,5 @@
 import { prisma } from "../config/index.js";
+import { canDatingInteract, oppositeGenderPreference } from "../helpers/dating-gender.js";
 import {
   buildInviteLink,
   contactUserSelect,
@@ -25,6 +26,8 @@ export interface DatingContactSyncResult {
   banner: string;
   invite: Awaited<ReturnType<typeof buildInviteLink>>;
 }
+
+const datingContactUserSelect = { ...contactUserSelect, gender: true } as const;
 
 function toPublicMatch(user: ContactUser): DatingContactMatch {
   return {
@@ -70,11 +73,27 @@ export async function syncDatingContacts(
   }
 
   const { users, totalContacts } = await findContactUsers(userId, contacts);
+  const viewer = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { gender: true },
+  });
+  const genderRows =
+    users.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: users.map((u) => u.id) } },
+          select: { id: true, gender: true },
+        })
+      : [];
+  const compatibleIds = new Set(
+    genderRows.filter((row) => canDatingInteract(viewer?.gender, row.gender)).map((row) => row.id),
+  );
+  const compatibleUsers = users.filter((user) => compatibleIds.has(user.id));
+
   if (totalContacts > 0) {
-    await persistContactMatches(userId, users, totalContacts);
+    await persistContactMatches(userId, compatibleUsers, totalContacts);
   }
 
-  const publicMatches = users.map(toPublicMatch);
+  const publicMatches = compatibleUsers.map(toPublicMatch);
   const unmatchedCount = Math.max(totalContacts - publicMatches.length, 0);
   const firstName = publicMatches[0]?.fullName || "someone";
   const banner =
@@ -97,10 +116,18 @@ export async function syncDatingContacts(
 /** Persisted contact matches, including contacts without a dating profile. */
 export async function getDatingContactMatches(userId: string): Promise<DatingContactMatch[]> {
   try {
+    const viewer = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { gender: true },
+    });
+    const allowedGenders = oppositeGenderPreference(viewer?.gender);
+    if (allowedGenders.length === 0) return [];
+
     const rows = await prisma.contactMatch.findMany({
       where: {
         userId,
         matchedUser: {
+          gender: { in: allowedGenders },
           isDeleted: false,
           accountStatus: {
             notIn: ["SUSPENDED" as const, "TERMINATED" as const, "DEACTIVATED" as const] as (
@@ -112,7 +139,7 @@ export async function getDatingContactMatches(userId: string): Promise<DatingCon
         },
       },
       orderBy: { createdAt: "desc" },
-      select: { matchedUser: { select: contactUserSelect } },
+      select: { matchedUser: { select: datingContactUserSelect } },
       take: 2000,
     });
 

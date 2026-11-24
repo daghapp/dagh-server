@@ -127,7 +127,7 @@ router.get("/profile", getMyDatingProfile);
  *                 type: string
  *               gender:
  *                 type: string
- *                 enum: [MALE, FEMALE, OTHER]
+ *                 enum: [MALE, FEMALE, OTHER, NON_BINARY, PREFER_NOT_TO_SAY]
  *               dateOfBirth:
  *                 type: string
  *                 format: date
@@ -217,7 +217,7 @@ router.post("/profile/init", validate(datingProfileSchema), initDatingProfile);
  *                 description: Account - full name (saved on the user's account)
  *               gender:
  *                 type: string
- *                 enum: [MALE, FEMALE, OTHER]
+ *                 enum: [MALE, FEMALE, OTHER, NON_BINARY, PREFER_NOT_TO_SAY]
  *                 description: Account - gender (saved on the user's account)
  *               dateOfBirth:
  *                 type: string
@@ -359,9 +359,10 @@ router.get("/preferences", getDiscoveryPreference);
  *                 enum: [LONG_TERM_PARTNER, SHORT_TERM, FRIENDSHIP, NOT_SURE]
  *               genderPreference:
  *                 type: array
+ *                 description: Stored but ignored by the server-side opposite-gender rule
  *                 items:
  *                   type: string
- *                   enum: [MALE, FEMALE, OTHER]
+ *                   enum: [MALE, FEMALE, OTHER, NON_BINARY, PREFER_NOT_TO_SAY]
  *               minAge:
  *                 type: integer
  *                 minimum: 18

@@ -1,7 +1,7 @@
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
 import { prisma } from "../config/index.js";
-import { haversineKm, oppositeGenderPreference } from "./matching.service.js";
-import type { Gender } from "../../generated/prisma/enums.js";
+import { haversineKm } from "./matching.service.js";
+import { canDatingInteract } from "../helpers/dating-gender.js";
 
 const expo = new Expo();
 
@@ -123,19 +123,11 @@ export async function sendDatingProximityAlerts(): Promise<number> {
   const pairs: ProximityPair[] = [];
   for (let i = 0; i < candidates.length; i++) {
     const a = candidates[i];
-    const aGenders = oppositeGenderPreference(a.gender);
     const aRadius = Math.min(PROXIMITY_ALERT_RADIUS_KM, a.maxDistanceKm);
 
     for (let j = i + 1; j < candidates.length; j++) {
       const b = candidates[j];
-      const bGenders = oppositeGenderPreference(b.gender);
-      // Legal compliance: only surface the opposite gender for both sides.
-      if (
-        !b.gender ||
-        !a.gender ||
-        !aGenders.includes(b.gender as Gender) ||
-        !bGenders.includes(a.gender as Gender)
-      ) {
+      if (!canDatingInteract(a.gender, b.gender) || !canDatingInteract(b.gender, a.gender)) {
         continue;
       }
 

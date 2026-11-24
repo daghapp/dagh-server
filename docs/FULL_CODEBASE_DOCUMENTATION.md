@@ -143,7 +143,7 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 {
   "fullName": "string (min 2 chars)",
   "phoneNumber": "string (E.164 format, e.g. +233XXXXXXXXX)",
-  "gender": "MALE | FEMALE | OTHER",
+  "gender": "MALE | FEMALE | OTHER | NON_BINARY | PREFER_NOT_TO_SAY",
   "dateOfBirth": "ISO date string",
   "email": "valid email",
   "ethnicity": "string (optional)",
@@ -274,8 +274,9 @@ All dating swipes:     rateLimiter (200 swipes / 15 min per IP)
 | PATCH  | `/dating/profile`            | Yes  | Update dating profile                            |
 | DELETE | `/dating/profile/deactivate` | Yes  | Deactivate (soft-delete) dating profile          |
 | GET    | `/dating/profile/status`     | Yes  | Check profile existence + completeness           |
-| GET    | `/dating/profile/:userId`    | Yes  | View another user's dating profile (block-aware) |
-| GET    | `/dating/profile/search`     | Yes  | Find a dating profile by name (OG metadata)  |
+| GET    | `/dating/profile/:userId`    | Yes  | View another user's dating profile (block/same-gender aware) |
+| GET    | `/dating/profile/search`     | Yes  | Find an opposite-gender profile by name (OG metadata)  |
+| GET    | `/dating/profile/suggestions` | Yes  | Opposite-gender typeahead suggestions                   |
 | GET    | `/dating/profile/share`      | Yes  | Generate a shareable profile link                |
 | GET    | `/dating/preferences`        | Yes  | Get discovery preferences                        |
 | PUT    | `/dating/preferences`        | Yes  | Create/update discovery preferences              |
@@ -299,7 +300,7 @@ languages (max 20 strings), religion, hometown
 **Account-level fields (saved on User model):**
 
 ```
-fullName, gender (MALE | FEMALE | OTHER), dateOfBirth (must be 18+), ethnicity
+fullName, gender (MALE | FEMALE | OTHER | NON_BINARY | PREFER_NOT_TO_SAY), dateOfBirth (must be 18+), ethnicity
 ```
 
 ### Discovery Preferences
@@ -307,7 +308,7 @@ fullName, gender (MALE | FEMALE | OTHER), dateOfBirth (must be 18+), ethnicity
 ```json
 {
   "lookingFor": "LONG_TERM_PARTNER | SHORT_TERM | FRIENDSHIP | NOT_SURE",
-  "genderPreference": ["MALE", "FEMALE", "OTHER"],
+  "genderPreference": ["MALE", "FEMALE", "OTHER", "NON_BINARY", "PREFER_NOT_TO_SAY"],
   "minAge": 18-99,
   "maxAge": 18-99,
   "maxDistanceKm": 1-20000,
@@ -329,11 +330,14 @@ Score = (Interest overlap × 40) + (Age proximity × 30) + (Profile completeness
 
 **Tier boosts:** FREE=1.0, SILVER=1.25, GOLD=1.3, ELITE=1.4
 
-> **Opposite-gender discovery (legal compliance):** `getDiscoveryCandidates`
-> always filters recommendations to the opposite of the viewer's own gender
-> (`oppositeGenderPreference`: MALE → FEMALE, FEMALE → MALE, OTHER/unknown → none).
-> This is enforced in the matching engine and overrides any `genderPreference`
-> saved via `PUT /dating/preferences`.
+> **Opposite-gender rule (legal compliance):** `getDiscoveryCandidates` maps
+> MALE → FEMALE and FEMALE → MALE; `OTHER`, `NON_BINARY`, `PREFER_NOT_TO_SAY`,
+> `null`, and unknown genders return no candidates. The shared helper in
+> `src/helpers/dating-gender.ts` applies the same rule to swipes/likes/matches,
+> profile lookup/search, suggestions, dating contacts, tour dating selections,
+> and proximity alerts. `genderPreference` is stored but ignored. Stored genders
+> are normalized on write, and migration `20261124000000_normalize_user_gender`
+> cleans legacy rows plus adds a database `CHECK` constraint.
 
 ### Super-Like Daily Limits
 

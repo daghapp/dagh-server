@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { genderSchema } from "./genderValidation.js";
 
 /** Shared strong-password rule: 8+ chars with upper, lower, number, special. */
 export const strongPassword = z
@@ -19,7 +20,7 @@ export const loginSchema = z.object({
 export const registrationSchema = z.object({
   fullName: z.string().min(2, { message: "Full name must be at least 2 characters long" }),
   phoneNumber: z.string().e164("Phone number must be in E.164 format"),
-  gender: z.string().toUpperCase(),
+  gender: genderSchema,
   dateOfBirth: z.iso.date({ message: "Invalid date of birth" }),
   email: z.string().email({ message: "Invalid email address" }),
   ethnicity: z.string().optional(),

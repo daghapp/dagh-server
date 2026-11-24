@@ -56,19 +56,20 @@ describe("Super-like daily limit under free mode", () => {
     // must exist for the FREE-limit-vs-top-tier assertion to mean anything.
     await ensurePlans(["FREE", "BASIC", "GOLD_INVESTOR", "ELITE_AMBASSADOR"]);
 
-    const mkUser = async (label: string) => {
+    const mkUser = async (label: string, gender: "MALE" | "FEMALE") => {
       const user = await prisma.user.create({
         data: {
           email: `superlike-${label}-${stamp}@example.com`,
           fullName: `Super Like ${label}`,
           accountType: AccountType.USER,
           authProvider: AuthProvider.EMAIL,
+          gender,
         },
       });
       return user.id;
     };
 
-    swiperId = await mkUser("swiper");
+    swiperId = await mkUser("swiper", "MALE");
     await prisma.userProfile.create({
       data: {
         userId: swiperId,
@@ -85,7 +86,7 @@ describe("Super-like daily limit under free mode", () => {
       },
     });
     for (let i = 0; i < 2; i++) {
-      const id = await mkUser(`target${i}`);
+      const id = await mkUser(`target${i}`, "FEMALE");
       await prisma.datingProfile.create({ data: { userId: id, photos: [], interests: [] } });
       targetIds.push(id);
     }

@@ -61,7 +61,7 @@ router.post("/init", protectedRoute, async (req, res) => initProfile(req, res));
  *                 minLength: 2
  *               gender:
  *                 type: string
- *                 enum: [MALE, FEMALE, OTHER]
+ *                 enum: [MALE, FEMALE, OTHER, NON_BINARY, PREFER_NOT_TO_SAY]
  *               dateOfBirth:
  *                 type: string
  *                 format: date

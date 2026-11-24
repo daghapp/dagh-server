@@ -645,9 +645,9 @@ a worker delivers the push in the background:
 | POST   | `/dating/profile/init`                | Bearer | Initialize your dating profile (accepts the full creation payload)                                                                                          |
 | PATCH  | `/dating/profile`                     | Bearer | Update profile settings (basic info, education & career, cultural background, interests, goals, photos) + account fields                                    |
 | GET    | `/dating/profile/status`              | Bearer | Profile existence + completion status (skip onboarding for returning users)                                                                                 |
-| GET    | `/dating/profile/:userId`             | Bearer | View another user's public dating profile (blocked users excluded)                                                                                          |
+| GET    | `/dating/profile/:userId`             | Bearer | View another user's public dating profile (blocked and same-gender users excluded)                                                                          |
 | GET    | `/dating/preferences`                 | Bearer | Get your discovery preferences                                                                                                                              |
-| PUT    | `/dating/preferences`                 | Bearer | Set discovery preferences (age/gender/distance filters, visibility)                                                                                         |
+| PUT    | `/dating/preferences`                 | Bearer | Set discovery preferences (age/distance/visibility; `genderPreference` is accepted but ignored by the compliance rule)                                      |
 | GET    | `/dating/recommendations`             | Bearer | Ranked discovery candidates with `relationshipStatus` and `canSendInterest` (KYC-gated; `?tourRequestId=` restricts to a tour's geofence + schedule window) |
 | POST   | `/dating/swipe`                       | Bearer | Swipe LIKE / SUPER_LIKE / PASS. Mutual LIKE creates a match + conversation.                                                                                 |
 | GET    | `/dating/matches`                     | Bearer | List
@@ -752,11 +752,13 @@ Swipe endpoints are rate-limited (200 swipes / 15 min per IP) to prevent abuse.
 Dating discovery and profile selection are gated behind full KYC verification (see
 [Tour-to-dating integration](#itinerary-generation)).
 
-> **Opposite-gender discovery (legal compliance):** dating recommendations are
-> **always** filtered to the opposite of the viewer's own gender — MALE viewers
-> see only FEMALE profiles and FEMALE viewers see only MALE profiles. This is
-> enforced in the matching engine and overrides any `genderPreference` a user
-> has saved. `OTHER`-gender viewers are shown an empty discovery queue.
+> **Opposite-gender rule (legal compliance):** MALE viewers see only FEMALE
+> profiles and FEMALE viewers see only MALE profiles across recommendations,
+> swipes/likes/matches, profile lookup/search, dating contacts, tour dating
+> selections, and proximity alerts. `genderPreference` is accepted but ignored.
+> Users with `OTHER`, `NON_BINARY`, `PREFER_NOT_TO_SAY`, `null`, or an unknown
+> gender see no dating candidates. Stored genders are normalized on write; the
+> migration cleans legacy values and adds a database `CHECK` constraint.
 
 ### Calls
 

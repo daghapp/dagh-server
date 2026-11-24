@@ -4,6 +4,8 @@ import {
   haversineKm,
   resolveTierBoost,
   scoreCandidate,
+  canDatingInteract,
+  normalizeGender,
   oppositeGenderPreference,
 } from "../src/services/matching.service.js";
 import type { MatchCandidate } from "../src/services/matching.service.js";
@@ -118,7 +120,7 @@ describe("scoreCandidate", () => {
   });
 });
 
-describe("oppositeGenderPreference", () => {
+describe("gender helpers", () => {
   it("MALE viewers see only FEMALE", () => {
     expect(oppositeGenderPreference("MALE")).toEqual(["FEMALE"]);
   });
@@ -131,5 +133,26 @@ describe("oppositeGenderPreference", () => {
     expect(oppositeGenderPreference("OTHER")).toEqual([]);
     expect(oppositeGenderPreference(null)).toEqual([]);
     expect(oppositeGenderPreference(undefined)).toEqual([]);
+  });
+
+  it("normalizes case, whitespace, separators, and legacy values", () => {
+    expect(normalizeGender(" male ")).toBe("MALE");
+    expect(normalizeGender("WOMAN")).toBe("FEMALE");
+    expect(normalizeGender("non-binary")).toBe("NON_BINARY");
+    expect(normalizeGender("PREFER NOT TO SAY")).toBe("PREFER_NOT_TO_SAY");
+    expect(normalizeGender("UNKNOWN")).toBeNull();
+  });
+
+  it("resolves the opposite gender after normalization", () => {
+    expect(oppositeGenderPreference(" male ")).toEqual(["FEMALE"]);
+    expect(oppositeGenderPreference("WOMAN")).toEqual(["MALE"]);
+  });
+
+  it("allows only normalized opposite-gender pairs", () => {
+    expect(canDatingInteract("MALE", "FEMALE")).toBe(true);
+    expect(canDatingInteract("female", "man")).toBe(true);
+    expect(canDatingInteract("MALE", "MALE")).toBe(false);
+    expect(canDatingInteract("MALE", "OTHER")).toBe(false);
+    expect(canDatingInteract(null, "FEMALE")).toBe(false);
   });
 });

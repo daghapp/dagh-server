@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { genderSchema } from "./genderValidation.js";
 
 export const profileSettingsSchema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters long").max(120).optional(),
-  gender: z.enum(["MALE", "FEMALE", "OTHER"], { message: "Invalid gender value" }).optional(),
+  gender: genderSchema.optional(),
   dateOfBirth: z.coerce
     .date({ message: "Invalid date of birth" })
     .refine((date) => date.getTime() < Date.now(), {

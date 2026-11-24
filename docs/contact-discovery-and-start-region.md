@@ -210,8 +210,10 @@ app”. `totalContacts` comes from the last successful sync.
 
 #### Dating contact book
 
-The same matching engine powers the dating contact endpoints. They now include
-**all active accounts**, not just dating profiles.
+The same matching engine powers the dating contact endpoints. They include
+**opposite-gender active accounts**, not just dating profiles. Same-gender
+contacts are hidden from `/dating/contacts/*`; general `/contacts/*` endpoints
+still cover all active accounts.
 
 | Method | Endpoint                   | What it does                                                      |
 | ------ | -------------------------- | ----------------------------------------------------------------- |
@@ -281,7 +283,7 @@ requires `API_URL` or `RENDER_EXTERNAL_URL` to be configured for absolute URLs.
 | `src/modules/contacts/contacts.service.ts`                     | Lookup candidates, email matching, persistence, invite builder, DB-backed matches |
 | `src/modules/contacts/contacts.controller.ts`                  | Async matches/clear, invite handler, invite in sync responses                     |
 | `src/routes/contacts.routes.ts`                                | Added `/invite-link` and `/invite`                                                |
-| `src/services/dating-contacts.service.ts`                      | Uses shared matching; all active accounts; dating fields optional                 |
+| `src/services/dating-contacts.service.ts`                      | Uses shared matching; opposite-gender active accounts; dating fields optional     |
 | `src/modules/dating/dating-contacts.controller.ts`             | Includes invite in matches response                                               |
 | `src/validator/datingValidation.ts`                            | Contact entries accept `email`                                                    |
 | `src/config/swagger-schemas.ts`, `src/routes/dating.routes.ts` | Schema/docs updated                                                               |

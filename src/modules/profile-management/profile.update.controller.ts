@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
+import { normalizeGender } from "../../helpers/dating-gender.js";
 import type { Ethnicity } from "../../../generated/prisma/enums.js";
 import { indexDatingProfile } from "../../services/dating-search.service.js";
 
@@ -26,7 +27,7 @@ export async function updateOwnProfile(req: Request, res: Response) {
       where: { id: userId },
       data: {
         fullName: fullName ?? undefined,
-        gender: gender ?? undefined,
+        gender: normalizeGender(gender) ?? undefined,
         dateOfBirth: dateOfBirth ?? undefined,
         ethnicity: ethnicity ?? undefined,
       },

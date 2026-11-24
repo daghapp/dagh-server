@@ -182,12 +182,12 @@ Authorization: Bearer <token>
 
 **Response (400):** Name is required or empty
 **Response (404):** User not found or profile not created
-**Response (403):** Cannot view this profile (blocked)
+**Response (403):** Cannot view this profile (blocked or same gender)
 
 **Implementation:**
 - Searches OpenSearch (`fullName`, `username`, `headline`, `about`) with fuzziness
 - Falls back to `fullName`/`username` `contains` in Postgres when search is off
-- Includes block check (bidirectional)
+- Includes block check (bidirectional) and opposite-gender filter
 - Returns full dating profile with user info
 - Includes OG metadata for social sharing
 
@@ -200,8 +200,8 @@ Authorization: Bearer <token>
 **Endpoint:** `GET /dating/profile/suggestions?name={name}`
 
 **Description:** Lightweight typeahead suggestions. Returns up to 10 matching
-users (`id`, `fullName`, `username`, `profileImageUrl`). Uses the same
-OpenSearch query with a Postgres fallback.
+opposite-gender users (`id`, `fullName`, `username`, `profileImageUrl`). Uses the
+same OpenSearch query with a Postgres fallback.
 
 **Controller:** `src/modules/dating/dating.controller.ts` → `getDatingProfileSuggestions`
 
@@ -430,7 +430,7 @@ GET /dating/recommendations
   ├── 2. Travel context (optional, from tourRequestId)
   │
   ├── 3. getDiscoveryCandidates(userId, filters, travel)
-  │       └── Applies: gender preference, age range, distance, location, global discovery
+  │       └── Applies: hard opposite-gender rule, age range, distance, location, global discovery
   │       └── Excludes: self, PASS swipes, blocked users, hidden profiles
   │
   ├── 4. Enrich candidates with:
@@ -457,6 +457,24 @@ GET /dating/profile/share
   └── Frontend appends username to shareUrl
   └── Social media crawls URL → renders OG tags → shows primary image in preview
 ```
+
+---
+
+## 11. Gender compliance hardening
+
+- `src/helpers/dating-gender.ts` is the single source of truth for gender
+  normalization and opposite-gender compatibility.
+- Discovery fails closed: an empty compatibility list returns zero candidates,
+  and the Prisma query always includes `gender IN (<opposite gender>)`.
+- The same compatibility helper now guards swipes, likes received/sent, matches,
+  relationship status, direct profile lookup, name search/suggestions, dating
+  contacts, tour dating selections, and proximity alerts.
+- Write validators normalize `woman`/`man`/case/whitespace/separator variants and
+  reject unknown gender values. Migration
+  `20261124000000_normalize_user_gender` cleans legacy rows and adds a database
+  `CHECK` constraint.
+- `genderPreference` remains accepted by `PUT /dating/preferences` for client
+  storage but is ignored by the server compliance rule.
 
 ---
 

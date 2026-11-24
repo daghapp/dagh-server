@@ -17,6 +17,12 @@ describe("profileSettingsSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("normalizes legacy gender values", () => {
+    const result = profileSettingsSchema.safeParse({ gender: "man" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.gender).toBe("MALE");
+  });
+
   it("rejects an invalid gender", () => {
     const result = profileSettingsSchema.safeParse({ gender: "UNKNOWN" });
     expect(result.success).toBe(false);

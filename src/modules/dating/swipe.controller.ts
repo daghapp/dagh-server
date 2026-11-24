@@ -4,6 +4,7 @@ import { prisma } from "../../config/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { isUserBlocked } from "../../helpers/safety.js";
 import { getEffectiveAccess } from "../../helpers/membership.js";
+import { canDatingInteract, oppositeGenderPreference } from "../../helpers/dating-gender.js";
 import {
   getDiscoveryCandidates,
   resolveTourTravelContext,
@@ -111,13 +112,27 @@ export const recordSwipe = async (req: Request, res: Response) => {
       return fail(res, 403, "Cannot swipe on this user");
     }
 
-    const target = await prisma.user.findUnique({
-      where: { id: targetId },
-      select: { id: true, datingProfile: { select: { id: true } } },
-    });
+    const [viewer, target] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: swiperId },
+        select: { gender: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: targetId },
+        select: {
+          id: true,
+          gender: true,
+          datingProfile: { select: { id: true } },
+        },
+      }),
+    ]);
 
     if (!target || !target.datingProfile) {
       return fail(res, 404, "Target user has no dating profile");
+    }
+
+    if (!viewer || !canDatingInteract(viewer.gender, target.gender)) {
+      return fail(res, 403, "You can only interact with profiles of the opposite gender");
     }
 
     const existing = await prisma.userSwipe.findUnique({
@@ -442,9 +457,21 @@ export const getMyMatches = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
+    const viewer = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { gender: true },
+    });
+    const allowedGenders = oppositeGenderPreference(viewer?.gender);
+    if (allowedGenders.length === 0) {
+      return ok(res, []);
+    }
+
     const matches = await prisma.userMatch.findMany({
       where: {
-        OR: [{ userId }, { matchedId: userId }],
+        OR: [
+          { userId, matched: { is: { gender: { in: allowedGenders } } } },
+          { matchedId: userId, user: { is: { gender: { in: allowedGenders } } } },
+        ],
         status: "MATCHED",
       },
       include: matchUserInclude,
@@ -486,10 +513,20 @@ export const getLikesReceived = async (req: Request, res: Response) => {
     const access = await getEffectiveAccess(userId);
     const isPaidTier = access.tierCode !== "FREE";
 
+    const viewer = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { gender: true },
+    });
+    const allowedGenders = oppositeGenderPreference(viewer?.gender);
+    if (allowedGenders.length === 0) {
+      return ok(res, { count: 0, profiles: [] });
+    }
+
     const likes = await prisma.userSwipe.findMany({
       where: {
         targetId: userId,
         direction: { in: ["LIKE", "SUPER_LIKE"] },
+        swiper: { is: { gender: { in: allowedGenders } } },
       },
       select: isPaidTier
         ? {
@@ -575,10 +612,20 @@ export const getLikesSent = async (req: Request, res: Response) => {
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50) : 20;
     const cursor = req.query.cursor as string | undefined;
 
+    const viewer = await prisma.user.findUnique({
+      where: { id: swiperId },
+      select: { gender: true },
+    });
+    const allowedGenders = oppositeGenderPreference(viewer?.gender);
+    if (allowedGenders.length === 0) {
+      return ok(res, { items: [], nextCursor: null }, "Sent interests retrieved successfully.");
+    }
+
     const items = await prisma.userSwipe.findMany({
       where: {
         swiperId,
         direction: { in: ["LIKE", "SUPER_LIKE"] },
+        target: { is: { gender: { in: allowedGenders } } },
       },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -658,6 +705,19 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
       return ok(res, {
         userId: targetId,
         relationshipStatus: "BLOCKED",
+        canSendInterest: false,
+      });
+    }
+
+    const [viewer, target] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { gender: true } }),
+      prisma.user.findUnique({ where: { id: targetId }, select: { gender: true } }),
+    ]);
+
+    if (!viewer || !target || !canDatingInteract(viewer.gender, target.gender)) {
+      return ok(res, {
+        userId: targetId,
+        relationshipStatus: "NONE",
         canSendInterest: false,
       });
     }

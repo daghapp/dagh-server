@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { genderPreferenceSchema, genderSchema } from "./genderValidation.js";
 
 export const datingProfileSchema = z.object({
   headline: z.string().max(80, "Headline must not exceed 80 characters").optional(),
@@ -30,7 +31,7 @@ export const datingProfileSchema = z.object({
 
   // --- Account-level fields (set on the User, sourced from the profile creation forms) ---
   fullName: z.string().min(2, "Full name must be at least 2 characters long").max(120).optional(),
-  gender: z.enum(["MALE", "FEMALE", "OTHER"], { message: "Invalid gender value" }).optional(),
+  gender: genderSchema.optional(),
   dateOfBirth: z.coerce
     .date({ message: "Invalid date of birth" })
     .refine((date) => date.getTime() < Date.now(), {
@@ -74,7 +75,7 @@ export type DatingProfileInput = z.infer<typeof datingProfileSchema>;
 
 export const discoveryPreferenceSchema = z.object({
   lookingFor: z.enum(["LONG_TERM_PARTNER", "SHORT_TERM", "FRIENDSHIP", "NOT_SURE"]).optional(),
-  genderPreference: z.array(z.enum(["MALE", "FEMALE", "OTHER"])).optional(),
+  genderPreference: genderPreferenceSchema.optional(),
   minAge: z.number().int().min(18).max(99).optional(),
   maxAge: z.number().int().min(18).max(99).optional(),
   maxDistanceKm: z.number().int().min(1).max(20000).optional(),

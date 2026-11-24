@@ -7,12 +7,27 @@ module (`src/services/matching.service.ts`, `src/modules/dating/*`).
 
 - Discovery is **global by default**: all active, non-blocked dating profiles are
   candidates regardless of country. There is no country/IP restriction.
-- Candidate pool is filtered only by gender (opposite of viewer, compliance rule),
+- Candidate pool is filtered by the hard opposite-gender rule (compliance),
   age range, and hidden/blocked/passed users.
 - In global mode, distance never restricts the candidate pool. In nearby mode
   (`globalDiscovery = false` with a saved location), candidates without
   coordinates or farther than `maxDistanceKm` are excluded from the pool;
   distance still influences ranking for those retained.
+
+## Gender compliance
+
+- `MALE` viewers see only `FEMALE` profiles; `FEMALE` viewers see only `MALE`
+  profiles. The rule applies to `/dating/recommendations`, swipes/likes/matches,
+  direct profile lookup/search/suggestions, `/dating/contacts/*`, tour dating
+  selections, and proximity alerts.
+- `genderPreference` is stored but ignored by the server. `OTHER`, `NON_BINARY`,
+  `PREFER_NOT_TO_SAY`, `null`, and unknown genders produce an empty discovery
+  queue and cannot interact with dating profiles.
+- Stored genders are normalized on write (`woman` → `FEMALE`, `male ` → `MALE`);
+  unknown values are rejected. Migration `20261124000000_normalize_user_gender`
+  cleans legacy rows and adds a database `CHECK` constraint.
+- The candidate query always includes `gender IN (<opposite gender>)`; an empty
+  compatibility list returns zero candidates immediately.
 
 ## User preference (`DiscoveryPreference`)
 
@@ -54,12 +69,14 @@ availability; proximity/geofence adds score.
 
 ## Contact discovery
 
-Users can opt in to compare their contacts against **all active accounts**, not
-only users with a dating profile. Phone numbers are matched across local/E.164
-formats, and contacts may include an optional email (useful for social sign-ups
-with no phone hash). Only SHA-256 phone hashes are stored; raw contacts are never
-persisted. Responses include `hasDatingProfile`, `unmatchedCount`, and an
-`invite` link for people who are not on the platform yet.
+Users can opt in to compare their contacts against **opposite-gender active
+accounts** for the dating endpoints, not only users with a dating profile. Phone
+numbers are matched across local/E.164 formats, and contacts may include an
+optional email (useful for social sign-ups with no phone hash). Only SHA-256
+phone hashes are stored; raw contacts are never persisted. Responses include
+`hasDatingProfile`, `unmatchedCount`, and an `invite` link for people who are not
+on the platform yet. The general `/contacts/*` endpoints still cover all active
+accounts.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -82,8 +99,8 @@ Change notes (format variants, app-wide matching, invites):
 
 `PUT /dating/location` refreshes the stored dating coordinates without changing
 other preferences. A worker runs every 30 minutes and compares locations
-refreshed within the last 12 hours. Eligible users (opposite gender, not
-blocked, within `min(10 km, maxDistanceKm)`) receive a non-identifying
+refreshed within the last 12 hours. Eligible users (opposite gender on both
+sides, not blocked, within `min(10 km, maxDistanceKm)`) receive a non-identifying
 `DATING_NEARBY` push at most once per 24 hours. The payload contains only the
 rounded distance and a suggested route; it never identifies the nearby user.
 

@@ -2,6 +2,11 @@ import { prisma } from "../config/index.js";
 import { VerificationStatus, type Gender, type LookingFor } from "../../generated/prisma/enums.js";
 import { haversineDistance, maxPairwiseDistance } from "../helpers/haversine.js";
 import {
+  canDatingInteract,
+  normalizeGender,
+  oppositeGenderPreference,
+} from "../helpers/dating-gender.js";
+import {
   TIER_VALUE,
   applyFreeMode,
   getFreeModeTierCode,
@@ -67,18 +72,7 @@ export interface TravelContext {
 
 const DEFAULT_GEOFENCE_RADIUS_KM = 50;
 
-/**
- * The legally-allowed discovery gender is the OPPOSITE of the viewer's own
- * gender (MALE viewers see FEMALE profiles, FEMALE viewers see MALE profiles).
- * OTHER-gender viewers have no legally-allowed opposite, so they see nobody.
- * This is a hard compliance rule that overrides any user-configured
- * genderPreference.
- */
-export function oppositeGenderPreference(myGender: string | null | undefined): Gender[] {
-  if (myGender === "MALE") return ["FEMALE"];
-  if (myGender === "FEMALE") return ["MALE"];
-  return [];
-}
+export { canDatingInteract, normalizeGender, oppositeGenderPreference };
 
 export async function resolveTourTravelContext(
   tourRequestId: string,
@@ -344,6 +338,10 @@ export async function getDiscoveryCandidates(
   const { limit = 20, offset = 0, travel = null, contactsOnly = false } = options;
   const { filters, myInterests } = await loadMyFilters(userId);
 
+  if (filters.genderPreference.length === 0) {
+    return { candidates: [], total: 0 };
+  }
+
   const [swipes, blocks, contactUserIds] = await Promise.all([
     prisma.userSwipe.findMany({
       where: { swiperId: userId, direction: "PASS" },
@@ -395,7 +393,7 @@ export async function getDiscoveryCandidates(
       ...(contactsOnly ? { in: [...contactUserIds] } : {}),
     },
     accountStatus: "ACTIVE" as const,
-    ...(filters.genderPreference.length > 0 ? { gender: { in: filters.genderPreference } } : {}),
+    gender: { in: filters.genderPreference },
     ...ageFilter,
     AND: [
       { datingProfile: { isNot: null } },
@@ -499,89 +497,94 @@ export async function getDiscoveryCandidates(
   // pool, and a per-candidate lookup would be an N+1 against every candidate.
   const freeModeTier = await getFreeModeTierCode();
 
-  const ranked = users.map((u) => {
-    const profile = u.datingProfile!;
-    const age = calculateAge(u.dateOfBirth);
+  const ranked = users
+    .map((u) => {
+      const candidateGender = normalizeGender(u.gender);
+      if (!candidateGender || !filters.genderPreference.includes(candidateGender)) return null;
 
-    // Candidate proximity to the trip geofence (when a travel context is given).
-    let travelDistanceKm: number | null = null;
-    let withinGeofence = false;
-    if (
-      travel &&
-      profile.travelLocationLat != null &&
-      profile.travelLocationLng != null &&
-      travel.centerLat != null
-    ) {
-      travelDistanceKm = haversineDistance(
-        { latitude: travel.centerLat, longitude: travel.centerLng },
-        { latitude: profile.travelLocationLat, longitude: profile.travelLocationLng },
-      );
-      withinGeofence = travelDistanceKm <= travel.radiusKm;
-    }
+      const profile = u.datingProfile!;
+      const age = calculateAge(u.dateOfBirth);
 
-    // Schedule overlap with the trip window.
-    const scheduleOverlapDays = travel
-      ? dateRangeOverlapDays(profile.availableFrom, profile.availableTo, travel.start, travel.end)
-      : 0;
-    const overlaps = travel
-      ? schedulesOverlap(profile.availableFrom, profile.availableTo, travel.start, travel.end)
-      : true;
+      // Candidate proximity to the trip geofence (when a travel context is given).
+      let travelDistanceKm: number | null = null;
+      let withinGeofence = false;
+      if (
+        travel &&
+        profile.travelLocationLat != null &&
+        profile.travelLocationLng != null &&
+        travel.centerLat != null
+      ) {
+        travelDistanceKm = haversineDistance(
+          { latitude: travel.centerLat, longitude: travel.centerLng },
+          { latitude: profile.travelLocationLat, longitude: profile.travelLocationLng },
+        );
+        withinGeofence = travelDistanceKm <= travel.radiusKm;
+      }
 
-    // Static distance is only meaningful in nearby mode. Travel mode keeps
-    // using the trip geofence distance, which is computed above.
-    const nearby = !travel && isNearbyDiscovery(filters);
-    const staticDistanceKm = nearby
-      ? distanceFromViewer(
-          filters,
-          profile.discoveryPreference?.locationLat,
-          profile.discoveryPreference?.locationLng,
-        )
-      : null;
-    const distanceKm = travel ? travelDistanceKm : staticDistanceKm;
+      // Schedule overlap with the trip window.
+      const scheduleOverlapDays = travel
+        ? dateRangeOverlapDays(profile.availableFrom, profile.availableTo, travel.start, travel.end)
+        : 0;
+      const overlaps = travel
+        ? schedulesOverlap(profile.availableFrom, profile.availableTo, travel.start, travel.end)
+        : true;
 
-    // Nearby discovery is opt-in: when enabled, candidates without coordinates
-    // cannot be shown as nearby and candidates beyond the radius are excluded.
-    const withinRange = !nearby || (distanceKm !== null && distanceKm <= filters.maxDistanceKm);
+      // Static distance is only meaningful in nearby mode. Travel mode keeps
+      // using the trip geofence distance, which is computed above.
+      const nearby = !travel && isNearbyDiscovery(filters);
+      const staticDistanceKm = nearby
+        ? distanceFromViewer(
+            filters,
+            profile.discoveryPreference?.locationLat,
+            profile.discoveryPreference?.locationLng,
+          )
+        : null;
+      const distanceKm = travel ? travelDistanceKm : staticDistanceKm;
 
-    const baseCandidate: MatchCandidate = {
-      userId: u.id,
-      fullName: u.fullName,
-      headline: profile.headline,
-      about: profile.about,
-      photos: profile.photos,
-      heightCm: profile.heightCm,
-      interests: profile.interests,
-      lookingFor: profile.lookingFor,
-      age,
-      gender: u.gender,
-      // In global discovery distance is not computed; nearby mode uses the
-      // saved locations, while travel mode supplies the geofence distance.
-      distanceKm,
-      interestsOverlap: profile.interests.filter((i) => myInterests.includes(i)).length,
-      score: 0,
-      // Rank by the perks tier, so a comp granted without includePaidPerks
-      // resolves to FREE and does not outrank a paying member. Free mode lifts
-      // the whole pool, which is why it is applied here rather than inside
-      // resolveEffectiveAccess.
-      tierBoost: resolveTierBoost(
-        applyFreeMode(
-          resolveEffectiveAccess({ subscription: u.subscription, grants: u.accessGrants, now }),
-          freeModeTier,
-        ).perksTierCode,
-      ),
-      profileImage: u.profile?.bio_profile_image_url ?? null,
-      isContactMatch: contactUserIds.has(u.id),
-      scheduleOverlapDays,
-      withinGeofence,
-      availableFrom: profile.availableFrom,
-      availableTo: profile.availableTo,
-      travelDistanceKm,
-    };
+      // Nearby discovery is opt-in: when enabled, candidates without coordinates
+      // cannot be shown as nearby and candidates beyond the radius are excluded.
+      const withinRange = !nearby || (distanceKm !== null && distanceKm <= filters.maxDistanceKm);
 
-    baseCandidate.score = scoreCandidate(baseCandidate, filters, myInterests, travel);
+      const baseCandidate: MatchCandidate = {
+        userId: u.id,
+        fullName: u.fullName,
+        headline: profile.headline,
+        about: profile.about,
+        photos: profile.photos,
+        heightCm: profile.heightCm,
+        interests: profile.interests,
+        lookingFor: profile.lookingFor,
+        age,
+        gender: u.gender,
+        // In global discovery distance is not computed; nearby mode uses the
+        // saved locations, while travel mode supplies the geofence distance.
+        distanceKm,
+        interestsOverlap: profile.interests.filter((i) => myInterests.includes(i)).length,
+        score: 0,
+        // Rank by the perks tier, so a comp granted without includePaidPerks
+        // resolves to FREE and does not outrank a paying member. Free mode lifts
+        // the whole pool, which is why it is applied here rather than inside
+        // resolveEffectiveAccess.
+        tierBoost: resolveTierBoost(
+          applyFreeMode(
+            resolveEffectiveAccess({ subscription: u.subscription, grants: u.accessGrants, now }),
+            freeModeTier,
+          ).perksTierCode,
+        ),
+        profileImage: u.profile?.bio_profile_image_url ?? null,
+        isContactMatch: contactUserIds.has(u.id),
+        scheduleOverlapDays,
+        withinGeofence,
+        availableFrom: profile.availableFrom,
+        availableTo: profile.availableTo,
+        travelDistanceKm,
+      };
 
-    return { baseCandidate, overlaps, withinRange };
-  });
+      baseCandidate.score = scoreCandidate(baseCandidate, filters, myInterests, travel);
+
+      return { baseCandidate, overlaps, withinRange };
+    })
+    .filter((row) => row !== null);
 
   // Travel mode keeps only schedule-overlapping candidates; nearby mode keeps
   // only candidates inside the radius (unknown coordinates are excluded).

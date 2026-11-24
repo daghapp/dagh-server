@@ -3,15 +3,20 @@ import { prisma } from "../../config/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { resolveDatingProfileStatus } from "../../helpers/dating-profile-status.js";
 import {
+  canDatingInteract,
+  normalizeGender,
+  oppositeGenderPreference,
+} from "../../helpers/dating-gender.js";
+import {
   indexDatingProfile,
   removeDatingProfileFromIndex,
   searchDatingProfiles,
 } from "../../services/dating-search.service.js";
-import type { Ethnicity } from "../../../generated/prisma/enums.js";
+import type { Ethnicity, Gender } from "../../../generated/prisma/enums.js";
 
 type AccountProfileData = {
   fullName?: string;
-  gender?: string;
+  gender?: Gender;
   dateOfBirth?: Date;
   ethnicity?: Ethnicity;
 };
@@ -19,7 +24,10 @@ type AccountProfileData = {
 function buildAccountProfileData(body: Record<string, unknown>): AccountProfileData {
   const data: AccountProfileData = {};
   if (typeof body.fullName === "string") data.fullName = body.fullName;
-  if (typeof body.gender === "string") data.gender = body.gender;
+  if (typeof body.gender === "string") {
+    const gender = normalizeGender(body.gender);
+    if (gender) data.gender = gender;
+  }
   if (body.dateOfBirth !== undefined) data.dateOfBirth = new Date(body.dateOfBirth as string);
   if (typeof body.ethnicity === "string") data.ethnicity = body.ethnicity as Ethnicity;
   return data;
@@ -203,14 +211,20 @@ export const getDatingProfileById = async (req: Request, res: Response) => {
       return fail(res, 400, "Use the profile endpoint to view your own profile.");
     }
 
-    const block = await prisma.userBlock.findFirst({
-      where: {
-        OR: [
-          { blockerId: viewerId, blockedId: targetUserId },
-          { blockerId: targetUserId, blockedId: viewerId },
-        ],
-      },
-    });
+    const [block, viewer] = await Promise.all([
+      prisma.userBlock.findFirst({
+        where: {
+          OR: [
+            { blockerId: viewerId, blockedId: targetUserId },
+            { blockerId: targetUserId, blockedId: viewerId },
+          ],
+        },
+      }),
+      prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { gender: true },
+      }),
+    ]);
 
     if (block) {
       return fail(res, 403, "Cannot view this profile.");
@@ -223,6 +237,10 @@ export const getDatingProfileById = async (req: Request, res: Response) => {
 
     if (!profile) {
       return fail(res, 404, "Profile not found or not created yet.");
+    }
+
+    if (!viewer || !canDatingInteract(viewer.gender, profile.user.gender)) {
+      return fail(res, 403, "Cannot view this profile.");
     }
 
     return ok(res, profile);
@@ -416,10 +434,20 @@ export const getDatingProfileByName = async (req: Request, res: Response) => {
       return fail(res, 400, "Name is required");
     }
 
+    const viewer = await prisma.user.findUnique({
+      where: { id: viewerId },
+      select: { gender: true },
+    });
+    const allowedGenders = oppositeGenderPreference(viewer?.gender);
+    if (allowedGenders.length === 0) {
+      return fail(res, 404, "User not found");
+    }
+
     const select = {
       id: true,
       fullName: true,
       username: true,
+      gender: true,
       profileImageUrl: true,
       profile: { select: { bio_profile_image_url: true, profileUrl: true } },
     } as const;
@@ -429,6 +457,7 @@ export const getDatingProfileByName = async (req: Request, res: Response) => {
       id: string;
       fullName: string;
       username: string | null;
+      gender: string | null;
       profileImageUrl: string | null;
       profile: { bio_profile_image_url: string | null; profileUrl: string | null } | null;
     } | null = null;
@@ -443,6 +472,7 @@ export const getDatingProfileByName = async (req: Request, res: Response) => {
     if (!user && typeof prisma.user.findFirst === "function") {
       user = await prisma.user.findFirst({
         where: {
+          gender: { in: allowedGenders },
           OR: [
             { fullName: { contains: name, mode: "insensitive" } },
             { username: { contains: name, mode: "insensitive" } },
@@ -454,6 +484,10 @@ export const getDatingProfileByName = async (req: Request, res: Response) => {
 
     if (!user) {
       return fail(res, 404, "User not found");
+    }
+
+    if (!canDatingInteract(viewer?.gender, user.gender)) {
+      return fail(res, 403, "Cannot view this profile.");
     }
 
     const block = await prisma.userBlock.findFirst({
@@ -551,24 +585,41 @@ export const getDatingProfileSuggestions = async (req: Request, res: Response) =
       return fail(res, 400, "Name is required");
     }
 
-    const hits = await searchDatingProfiles(name, { size: 10 });
-    if (hits && hits.length > 0) {
-      return ok(
-        res,
-        hits.map((hit) => ({
-          id: hit.userId,
-          fullName: hit.fullName,
-          username: hit.username,
-          profileImageUrl: hit.profileImageUrl,
-        })),
-      );
+    const viewer = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { gender: true },
+    });
+    const allowedGenders = oppositeGenderPreference(viewer?.gender);
+    if (allowedGenders.length === 0) {
+      return ok(res, []);
     }
 
-    // OpenSearch unavailable (or index empty): preserve the DB behaviour.
+    const hits = await searchDatingProfiles(name, { size: 10 });
+    if (hits && hits.length > 0) {
+      const users =
+        typeof prisma.user.findMany === "function"
+          ? await prisma.user.findMany({
+              where: {
+                id: { in: hits.map((hit) => hit.userId) },
+                gender: { in: allowedGenders },
+              },
+              select: {
+                id: true,
+                fullName: true,
+                username: true,
+                profileImageUrl: true,
+              },
+              take: 10,
+            })
+          : [];
+      return ok(res, users);
+    }
+
     const users =
       typeof prisma.user.findMany === "function"
         ? await prisma.user.findMany({
             where: {
+              gender: { in: allowedGenders },
               OR: [
                 { fullName: { contains: name, mode: "insensitive" } },
                 { username: { contains: name, mode: "insensitive" } },

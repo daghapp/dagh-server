@@ -175,7 +175,9 @@ Settings "Basic Info" and "Cultural Background" steps). All fields optional.
 { "fullName": "Ama Mensah", "gender": "FEMALE", "dateOfBirth": "1995-06-15", "ethnicity": "African" }
 ```
 
-- `gender` ∈ `MALE | FEMALE | OTHER`.
+- `gender` ∈ `MALE | FEMALE | OTHER | NON_BINARY | PREFER_NOT_TO_SAY`; values
+  are trimmed/case-normalized (for example `woman` → `FEMALE`), and unknown
+  values are rejected.
 - `dateOfBirth` must be a valid, **past** date.
 - `ethnicity` enum: `African, Asian, Black_African_American, Caribbean, Caucassian_White, Hispanic_Latino, Middle_Eastern, Mixed, Native_American_Indigenous, Pacific_Islander, Other`.
 
@@ -410,7 +412,7 @@ Body:
 { "datingProfileIds": ["uuid", "uuid"] }
 ```
 
-Persists the selected dating profiles against the tour request (KYC-gated) and returns the updated selection list.
+Persists the selected dating profiles against the tour request (KYC-gated) and returns the updated selection list. Only opposite-gender profiles are accepted.
 
 ### GET /itinerary/:tourRequestId
 
@@ -1273,15 +1275,16 @@ exists so the backfill does not need shell access to the database. Idempotent.
 | POST | `/dating/profile/init` | Bearer | Initialize own dating profile (idempotent; accepts the full creation payload). |
 | PATCH | `/dating/profile` | Bearer | Update profile settings (basic info, education & career, cultural background, photos, interests, goals) + account fields. |
 | GET | `/dating/profile/status` | Bearer | Profile existence + completion status (bypass onboarding for returning users). |
-| GET | `/dating/profile/:userId` | Bearer | View another user's public profile (blocked users excluded → 403). |
-| GET | `/dating/profile/search?name=` | Bearer | Find a user's public dating profile by name (returns OG metadata). |
+| GET | `/dating/profile/:userId` | Bearer | View another user's public profile (blocked/same-gender users excluded → 403). |
+| GET | `/dating/profile/search?name=` | Bearer | Find an opposite-gender public dating profile by name (returns OG metadata). |
+| GET | `/dating/profile/suggestions?name=` | Bearer | Typeahead suggestions limited to opposite-gender users. |
 | GET | `/dating/profile/share` | Bearer | Generate a shareable profile link with primary image. |
 | GET | `/dating/preferences` | Bearer | Get own discovery preferences. |
 | PUT | `/dating/preferences` | Bearer | Set discovery preferences. |
 | PUT | `/dating/location` | Bearer | Refresh dating coordinates for proximity alerts. |
 | GET | `/dating/contacts/status` | Bearer | Contact-sync consent + last sync/match counts. |
 | POST | `/dating/contacts/sync` | Bearer | Sync phone contacts (`consent: true` on first call); returns public matches. |
-| GET | `/dating/contacts/matches` | Bearer | List contacts on the platform (all active accounts; dating fields where present). |
+| GET | `/dating/contacts/matches` | Bearer | List opposite-gender contacts on the platform (dating fields where present). |
 | DELETE | `/dating/contacts` | Bearer | Revoke contact consent and delete derived matches. |
 | POST | `/dating/swipe` | Bearer | Swipe LIKE / SUPER_LIKE / PASS; mutual LIKE creates a match + conversation. |
 | GET | `/dating/recommendations` | Bearer | Ranked candidates (excludes passed/blocked/hidden; likes stay in the queue). KYC-gated; `?tourRequestId=<uuid>` restricts to a tour's geofence + schedule window; `?contactsOnly=true` limits results to synced contacts. |
@@ -1295,7 +1298,7 @@ exists so the backfill does not need shell access to the database. Idempotent.
 { "targetId": "uuid", "direction": "LIKE" }
 ```
 
-`direction` ∈ `LIKE | SUPER_LIKE | PASS`. Responses: `201` (swipe recorded; match data when mutual), `400` self-swipe, `403` blocked target, `404` no dating profile, `409` already swiped. **Rate-limited to 200 swipes / 15 min.**
+`direction` ∈ `LIKE | SUPER_LIKE | PASS`. Responses: `201` (swipe recorded; match data when mutual), `400` self-swipe, `403` blocked or same-gender target, `404` no dating profile, `409` already swiped. **Rate-limited to 200 swipes / 15 min.**
 
 ### PUT /dating/preferences
 
@@ -1315,7 +1318,7 @@ exists so the backfill does not need shell access to the database. Idempotent.
 }
 ```
 
-`showProfile`/`showOnlineStatus` toggle visibility. `globalDiscovery` (default `true`) makes discovery worldwide and ignores `maxDistanceKm`/location; set to `false` to rank by proximity.
+`showProfile`/`showOnlineStatus` toggle visibility. `globalDiscovery` (default `true`) makes discovery worldwide and ignores `maxDistanceKm`/location; set to `false` to rank by proximity. `genderPreference` is validated and stored for client use but **ignored** by the server-side opposite-gender compliance rule.
 
 `locationLat`, `locationLng`, and `locationName` are nullable. Send `null` to
 clear a saved location; omitting a field leaves the stored value unchanged.
@@ -1388,8 +1391,10 @@ has never been granted and `consent` is not `true`.
 ### GET /dating/contacts/matches
 
 Returns persisted contact matches (`matchedCount`, `banner`, `matches[]`).
-Matches cover all active users, including those without a dating profile;
-blocks are excluded and dating-specific fields may be empty.
+For dating compatibility, matches cover opposite-gender active users only,
+including those without a dating profile; blocks are excluded and
+dating-specific fields may be empty. General `/contacts/*` endpoints still
+cover all active accounts.
 
 ### GET /dating/contacts/status
 
@@ -1433,11 +1438,14 @@ Returns the dating profile **plus the related `user` object** (`fullName`,
 `dateOfBirth`, `gender`, `ethnicity`, and profile image), so the Profile Preview
 can show the name and compute age from `dateOfBirth`.
 
-> **Opposite-gender discovery (legal compliance):** `GET /dating/recommendations`
-> is **always** filtered to the opposite of the viewer's own gender — MALE
-> viewers see only FEMALE profiles, FEMALE viewers see only MALE profiles. This
-> is enforced in the matching engine and overrides any `genderPreference` saved
-> via `PUT /dating/preferences`. `OTHER`-gender viewers get an empty queue.
+> **Opposite-gender rule (legal compliance):** MALE viewers see only FEMALE
+> profiles and FEMALE viewers see only MALE profiles. The rule is enforced in
+> discovery and for swipes, likes/matches, direct profile lookup/search,
+> suggestions, `/dating/contacts/*`, tour dating selections, and proximity
+> alerts. It overrides any `genderPreference` saved via `PUT /dating/preferences`.
+> `OTHER`, `NON_BINARY`, `PREFER_NOT_TO_SAY`, `null`, and unknown genders get an
+> empty queue. Incompatible swipe targets return `403`; protected profile and
+> like/match/contact views are hidden.
 
 ---
 
@@ -1741,7 +1749,8 @@ Device-aware smart link creation and resolution for contextual onboarding.
 
 Securely match a user's hashed device contacts against existing users.
 
-- Matches cover **all active accounts**, not just users with dating profiles. Check
+- General `/contacts/*` matches cover **all active accounts**, not just users
+  with dating profiles. `/dating/contacts/*` is opposite-gender only. Check
   `hasDatingProfile` to decide whether to show dating-specific UI.
 - Phone numbers are compared across local (`0244000000`), E.164 (`+233244000000`),
   country-code-only, raw formatted (`+233 24 400 0000`) and pre-hashed forms, so

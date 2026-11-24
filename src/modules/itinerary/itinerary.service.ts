@@ -15,6 +15,7 @@ import { prisma } from "../../config/index.js";
 import sendEmail from "../../config/resend.config.js";
 import { isPaymentsEnabled } from "../../config/payments.js";
 import { hasServiceFeeWaiver } from "../../helpers/membership.js";
+import { canDatingInteract } from "../../helpers/dating-gender.js";
 import {
   haversineDistance,
   maxPairwiseDistance,
@@ -411,10 +412,16 @@ export async function selectDatingProfilesForTour(
   requesterId: string,
   candidateUserIds: string[],
 ): Promise<Array<{ userId: string; datingProfileId: string; selectedAt: Date }>> {
-  const tourRequest = await prisma.tourRequest.findUnique({
-    where: { id: tourRequestId },
-    select: { userId: true },
-  });
+  const [tourRequest, viewer] = await Promise.all([
+    prisma.tourRequest.findUnique({
+      where: { id: tourRequestId },
+      select: { userId: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: requesterId },
+      select: { gender: true },
+    }),
+  ]);
 
   if (!tourRequest) throw new Error("TOUR_REQUEST_NOT_FOUND");
   if (tourRequest.userId !== requesterId) throw new Error("FORBIDDEN");
@@ -423,15 +430,19 @@ export async function selectDatingProfilesForTour(
 
   const profiles = await prisma.datingProfile.findMany({
     where: { userId: { in: ids } },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, user: { select: { gender: true } } },
   });
 
-  if (!profiles.length) {
+  const compatibleProfiles = profiles.filter((profile) =>
+    canDatingInteract(viewer?.gender, profile.user.gender),
+  );
+
+  if (!compatibleProfiles.length) {
     throw new Error("NO_VALID_DATING_PROFILES");
   }
 
   const created = await prisma.$transaction(
-    profiles.map((p) =>
+    compatibleProfiles.map((p) =>
       prisma.tourRequestDatingSelection.upsert({
         where: {
           tourRequestId_datingProfileId: {
@@ -445,7 +456,7 @@ export async function selectDatingProfilesForTour(
     ),
   );
 
-  const byUser = new Map(profiles.map((p) => [p.userId, p.id]));
+  const byUser = new Map(compatibleProfiles.map((p) => [p.userId, p.id]));
   const createdByProfile = new Map(created.map((c) => [c.datingProfileId, c.createdAt]));
 
   return ids

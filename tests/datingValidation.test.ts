@@ -71,6 +71,12 @@ describe("datingProfileSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("normalizes legacy account gender values", () => {
+    const result = datingProfileSchema.safeParse({ gender: " woman " });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.gender).toBe("FEMALE");
+  });
+
   it("rejects an invalid account gender", () => {
     const result = datingProfileSchema.safeParse({ gender: "UNKNOWN" });
     expect(result.success).toBe(false);
