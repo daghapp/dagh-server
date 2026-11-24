@@ -141,3 +141,28 @@ export function getCompletedVerificationSteps(state: VerificationStepState | nul
 export function isFullyVerified(state: VerificationStepState | null): boolean {
   return getCompletedVerificationSteps(state).length === VERIFICATION_STEPS.length;
 }
+
+export function mergeVerificationState(
+  state: VerificationStepState | null | undefined,
+  patch: VerificationStepState,
+): VerificationStepState {
+  return {
+    phone_number_verified: patch.phone_number_verified ?? state?.phone_number_verified,
+    bio_profile_verification: patch.bio_profile_verification ?? state?.bio_profile_verification,
+    document_verification: patch.document_verification ?? state?.document_verification,
+    faceStatus: patch.faceStatus ?? state?.faceStatus,
+    documentStatus: patch.documentStatus ?? state?.documentStatus,
+    bioDataStatus: patch.bioDataStatus ?? state?.bioDataStatus,
+    faceRejectionReason: patch.faceRejectionReason ?? state?.faceRejectionReason,
+    documentRejectionReason: patch.documentRejectionReason ?? state?.documentRejectionReason,
+    bioDataRejectionReason: patch.bioDataRejectionReason ?? state?.bioDataRejectionReason,
+    verification_message: patch.verification_message ?? state?.verification_message,
+  };
+}
+
+export function isPatchFullyVerified(
+  state: VerificationStepState | null | undefined,
+  patch: VerificationStepState,
+): boolean {
+  return isFullyVerified(mergeVerificationState(state, patch));
+}

@@ -302,6 +302,8 @@ Unpaginated array (approval status for each section). Item (flattened):
 | `PATCH` | `/admin/profile-verifications/:id/documents` | same |
 | `POST` | `/admin/profile-verifications/:id/verify` | none — approves every section at once |
 
+Full verification also approves the linked `DatingApplication`. A section approval does the same once every verification step is complete; rejections do not downgrade an already-approved dating application. Run `npm run db:sync-dating-approvals` once to backfill older rows.
+
 Each returns `{ success, data: <updated ProfileVerification>, message }`. The
 update response is the raw Prisma row (snake_case fields), not the flattened shape
 — refetch the list after a mutation rather than merging locally.

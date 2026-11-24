@@ -262,7 +262,11 @@ Errors: `400` invalid payload/date range (`endDate` must be after `startDate`); 
 
 - `GET /admin/profile-verifications` — Requires `dating.view`. Returns an unpaginated array newest-updated first. Each row contains verification state, `faceScanUrl`, document URLs/type/number, section summaries (`bioData`, `faceVerification`, `documents` including status/reviewer/timestamp/reason), user identity/status, and `lastUpdatedAt`.
 - `PATCH /admin/profile-verifications/:id/bio-data`, `/face`, or `/documents` — Requires `dating.approve`. Body `{ "action":"APPROVED|REJECTED", "reason":"Optional" }`. Returns the raw updated database row in `data` (not the flattened list representation) and a message. Rejection marks overall `isVerified=false`; approval/rejection reviewer and reason fields are updated.
-- `POST /admin/profile-verifications/:id/verify` — Requires `dating.approve`; no body. Approves all sections and sets `isVerified=true`. Returns the updated raw database row.
+- `POST /admin/profile-verifications/:id/verify` — Requires `dating.approve`; no body. Approves all sections, sets `isVerified=true`, and approves the linked `DatingApplication` so the user leaves the dating moderation queue. Returns the updated raw database row.
+
+Approving an individual section also approves the linked `DatingApplication` once all three verification steps are complete. Rejections never downgrade an already-approved dating application.
+
+Run `npm run db:sync-dating-approvals` once to backfill existing fully-verified users whose dating application is still `PENDING`.
 
 Errors for mutations: `400` invalid/missing action (`Invalid action. Must be APPROVED or REJECTED`); `404` profile verification not found; `403`; `500`. Refetch the list after mutation to restore its flattened item shape.
 

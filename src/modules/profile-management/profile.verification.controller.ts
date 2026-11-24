@@ -13,6 +13,8 @@ import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { ok, fail } from "../../helpers/response.js";
 import { ensureUserProfile } from "../../helpers/ensure-user-profile.js";
+import { isPatchFullyVerified } from "../../helpers/verification-status.js";
+import { approveDatingApplication } from "../../helpers/dating-verification-sync.js";
 
 export class ProfileVerificationController {
   async sendPhoneOtpForVerification(req: Request, res: Response) {
@@ -241,20 +243,27 @@ export class ProfileVerificationController {
 
       await prisma.otp.delete({ where: { id: otpRecord.id } });
 
+      const isVerified = isPatchFullyVerified(existingVerification, {
+        phone_number_verified: true,
+      });
       const verification = await prisma.profileVerification.upsert({
         where: { userProfileId: profile.id },
         update: {
           phone_number_verified: true,
-          isVerified: false,
+          isVerified,
           validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
         create: {
           userProfileId: profile.id,
           phone_number_verified: true,
-          isVerified: false,
+          isVerified,
           validationStep: "PROFILE_IMAGE_VERIFICATION",
         },
       });
+
+      if (isVerified) {
+        await approveDatingApplication(userId, null);
+      }
 
       const phoneMasked = maskPhone(profile.phoneNumber ?? "");
 

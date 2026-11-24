@@ -5,6 +5,8 @@ const prismaMock = {
   profileVerification: {
     findUnique: vi.fn(),
     update: vi.fn(),
+    upsert: vi.fn(),
+    create: vi.fn(),
   },
   userProfile: {
     findUnique: vi.fn(),
@@ -12,6 +14,10 @@ const prismaMock = {
   },
   datingProfile: {
     findUnique: vi.fn(),
+  },
+  datingApplication: {
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
   },
   discoveryPreference: {
     findUnique: vi.fn(),
@@ -89,8 +95,17 @@ beforeEach(() => {
   prismaMock.userProfile.findUnique.mockResolvedValue({
     id: "profile-1",
     userId: "user-1",
+    profileVerification: baseVerification,
   });
+  prismaMock.userProfile.findUniqueOrThrow.mockResolvedValue({
+    id: "profile-1",
+    userId: "user-1",
+    profileVerification: baseVerification,
+  });
+  prismaMock.profileVerification.create.mockResolvedValue(baseVerification);
+  prismaMock.profileVerification.upsert.mockResolvedValue(baseVerification);
   prismaMock.datingProfile.findUnique.mockResolvedValue(null);
+  prismaMock.datingApplication.findUnique.mockResolvedValue(null);
   prismaMock.discoveryPreference.findUnique.mockResolvedValue(null);
   prismaMock.user.findUnique.mockResolvedValue({ gender: "WOMAN" });
   prismaMock.userSwipe.findMany.mockResolvedValue([]);
@@ -116,6 +131,13 @@ describe("verification approval", () => {
     expect(res.statusCode).toBe(200);
     expect(prismaMock.profileVerification.update.mock.calls[0][0].data.isVerified).toBe(true);
     expect(res.body.data.isVerified).toBe(true);
+    expect(prismaMock.datingApplication.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: "user-1" },
+        create: expect.objectContaining({ status: "APPROVED", reviewerId: "admin-1" }),
+        update: expect.objectContaining({ status: "APPROVED", reviewerId: "admin-1" }),
+      }),
+    );
   });
 
   it("sets stored isVerified when bio data is the last approved step", async () => {
@@ -134,6 +156,7 @@ describe("verification approval", () => {
 
     expect(res.statusCode).toBe(200);
     expect(prismaMock.profileVerification.update.mock.calls[0][0].data.isVerified).toBe(true);
+    expect(prismaMock.datingApplication.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("clears stored isVerified on rejection", async () => {
@@ -152,6 +175,27 @@ describe("verification approval", () => {
     );
 
     expect(prismaMock.profileVerification.update.mock.calls[0][0].data.isVerified).toBe(false);
+    expect(prismaMock.datingApplication.upsert).not.toHaveBeenCalled();
+  });
+
+  it("fully verifies and approves the dating application in one call", async () => {
+    const { AdminProfileController } =
+      await import("../src/modules/profile-management/admin-profile.controller.js");
+    const res = createRes();
+
+    await new AdminProfileController().verifyUserFully(
+      {
+        params: { id: "verification-1" },
+        user: { id: "admin-1" },
+      } as unknown as Request,
+      res as unknown as Response,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.profileVerification.update.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({ isVerified: true, faceStatus: "APPROVED" }),
+    );
+    expect(prismaMock.datingApplication.upsert).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -215,5 +259,48 @@ describe("dating KYC enforcement", () => {
     expect(verificationFilter).toContain("phone_number_verified");
     expect(verificationFilter).toContain("bio_profile_verification");
     expect(verificationFilter).toContain("document_verification");
+  });
+});
+
+describe("phone OTP verification", () => {
+  it("recomputes isVerified instead of clearing an otherwise complete verification", async () => {
+    const bcrypt = await import("bcrypt");
+    const { ProfileVerificationController } =
+      await import("../src/modules/profile-management/profile.verification.controller.js");
+    const code = await bcrypt.hash("123456", 10);
+
+    prismaMock.user.findUnique.mockResolvedValue({ email: "ama@example.com" });
+    prismaMock.profileVerification.findUnique.mockResolvedValue({
+      ...baseVerification,
+      phone_number_verified: false,
+      document_verification: true,
+      faceStatus: "APPROVED",
+      documentStatus: "APPROVED",
+      bioDataStatus: "APPROVED",
+      isVerified: false,
+    });
+    prismaMock.otp.findUnique.mockResolvedValue({
+      id: "otp-1",
+      email: "ama@example.com",
+      code,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    prismaMock.profileVerification.upsert.mockImplementation(
+      (args: { create: Record<string, unknown> }) =>
+        Promise.resolve({ ...baseVerification, ...args.create }),
+    );
+    const res = createRes();
+
+    await new ProfileVerificationController().verifyPhoneOtpForVerification(
+      {
+        user: { id: "user-1" },
+        body: { challengeId: "otp-1", code: "123456" },
+      } as unknown as Request,
+      res as unknown as Response,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.profileVerification.upsert.mock.calls[0][0].update.isVerified).toBe(true);
+    expect(prismaMock.datingApplication.upsert).toHaveBeenCalledTimes(1);
   });
 });

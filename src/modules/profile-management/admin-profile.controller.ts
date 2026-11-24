@@ -3,24 +3,10 @@ import { prisma } from "../../config/index.js";
 import { ok, fail } from "../../helpers/response.js";
 import { VerificationStatus } from "../../../generated/prisma/client.js";
 import type { Prisma } from "../../../generated/prisma/client.js";
-import { isFullyVerified, type VerificationStepState } from "../../helpers/verification-status.js";
+import { isPatchFullyVerified } from "../../helpers/verification-status.js";
+import { approveDatingApplicationForVerification } from "../../helpers/dating-verification-sync.js";
 
 const ADMIN_ACTIONS = ["APPROVED", "REJECTED"] as const;
-
-function deriveIsVerified(
-  verification: VerificationStepState & { isVerified?: boolean },
-  patch: VerificationStepState,
-): boolean {
-  return isFullyVerified({
-    phone_number_verified: patch.phone_number_verified ?? verification.phone_number_verified,
-    bio_profile_verification:
-      patch.bio_profile_verification ?? verification.bio_profile_verification,
-    document_verification: patch.document_verification ?? verification.document_verification,
-    faceStatus: patch.faceStatus ?? verification.faceStatus,
-    documentStatus: patch.documentStatus ?? verification.documentStatus,
-    bioDataStatus: patch.bioDataStatus ?? verification.bioDataStatus,
-  });
-}
 
 export class AdminProfileController {
   async getAllVerifications(req: Request, res: Response) {
@@ -127,9 +113,10 @@ export class AdminProfileController {
 
       const proposedStatus =
         action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
+      const isVerified = isPatchFullyVerified(verification, { bioDataStatus: proposedStatus });
       const updateData: Record<string, unknown> = {
         bioDataStatus: proposedStatus,
-        isVerified: deriveIsVerified(verification, { bioDataStatus: proposedStatus }),
+        isVerified,
       };
 
       if (action === "APPROVED") {
@@ -152,6 +139,10 @@ export class AdminProfileController {
         where: { id },
         data: updateData as Prisma.ProfileVerificationUpdateInput,
       });
+
+      if (action === "APPROVED" && isVerified) {
+        await approveDatingApplicationForVerification(verification.userProfileId, adminId);
+      }
 
       return ok(res, updated, `Bio data ${action.toLowerCase()} successfully`);
     } catch (error) {
@@ -184,13 +175,14 @@ export class AdminProfileController {
 
       const proposedStatus =
         action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
+      const isVerified = isPatchFullyVerified(verification, {
+        faceStatus: proposedStatus,
+        bio_profile_verification: action === "APPROVED",
+      });
       const updateData: Record<string, unknown> = {
         faceStatus: proposedStatus,
         bio_profile_verification: action === "APPROVED",
-        isVerified: deriveIsVerified(verification, {
-          faceStatus: proposedStatus,
-          bio_profile_verification: action === "APPROVED",
-        }),
+        isVerified,
       };
 
       if (action === "APPROVED") {
@@ -213,6 +205,10 @@ export class AdminProfileController {
         where: { id },
         data: updateData as Prisma.ProfileVerificationUpdateInput,
       });
+
+      if (action === "APPROVED" && isVerified) {
+        await approveDatingApplicationForVerification(verification.userProfileId, adminId);
+      }
 
       return ok(res, updated, `Face verification ${action.toLowerCase()} successfully`);
     } catch (error) {
@@ -245,13 +241,14 @@ export class AdminProfileController {
 
       const proposedStatus =
         action === "APPROVED" ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
+      const isVerified = isPatchFullyVerified(verification, {
+        documentStatus: proposedStatus,
+        document_verification: action === "APPROVED",
+      });
       const updateData: Record<string, unknown> = {
         documentStatus: proposedStatus,
         document_verification: action === "APPROVED",
-        isVerified: deriveIsVerified(verification, {
-          documentStatus: proposedStatus,
-          document_verification: action === "APPROVED",
-        }),
+        isVerified,
       };
 
       if (action === "APPROVED") {
@@ -274,6 +271,10 @@ export class AdminProfileController {
         where: { id },
         data: updateData as Prisma.ProfileVerificationUpdateInput,
       });
+
+      if (action === "APPROVED" && isVerified) {
+        await approveDatingApplicationForVerification(verification.userProfileId, adminId);
+      }
 
       return ok(res, updated, `Documents ${action.toLowerCase()} successfully`);
     } catch (error) {
@@ -315,6 +316,8 @@ export class AdminProfileController {
           verification_message: "All verification sections approved",
         },
       });
+
+      await approveDatingApplicationForVerification(verification.userProfileId, adminId);
 
       return ok(res, updated, "User fully verified successfully");
     } catch (error) {
