@@ -58,6 +58,7 @@ model User {
   prioritySupportRequests PrioritySupportRequest[]
   supportTickets          SupportTicket[]
   verification            UserVerification?
+  identityVerification    IdentityVerification?
   tourBookings            tour_bookings[]
   sentMessages            Message[]                @relation("SentMessages")
   receivedMessages        Message[]                @relation("ReceivedMessages")
@@ -1555,6 +1556,59 @@ model ProfileVerification {
   documentRejectionReason String?
 
   @@map("profile_verification")
+}
+
+model IdentityVerification {
+  id              String                      @id @default(uuid())
+  userId          String                      @unique
+  status          IdentityVerificationStatus  @default(NOT_STARTED)
+  idDocumentType  String?
+  idNumberHash    String?
+  idFrontUrl      String?
+  idBackUrl       String?
+  selfieUrl       String?
+  livenessScore   Float?
+  faceMatchScore  Float?
+  otpVerifiedAt   DateTime?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  consentVersion  String
+  consentedAt     DateTime                    @default(now())
+  retentionUntil  DateTime?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  user            User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appeals         VerificationAppeal[]
+
+  @@map("identity_verifications")
+  @@index([status, createdAt])
+}
+
+model VerificationAppeal {
+  id            String               @id @default(uuid())
+  verificationId String
+  userId        String
+  reason        String               @db.Text
+  evidenceUrls  String[]
+  status        String               @default("PENDING")
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  decisionNote  String?
+  createdAt     DateTime             @default(now())
+  verification  IdentityVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  @@map("verification_appeals")
+  @@index([status, createdAt])
+}
+
+enum IdentityVerificationStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  APPEALED
 }
 
 enum PaymentStatus {

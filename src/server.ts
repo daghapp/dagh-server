@@ -23,6 +23,8 @@ import { router as PaymentRoutes } from "./routes/payment.routes.js";
 import { router as TourRoutes } from "./routes/tour.routes.js";
 import { router as ProfileRoutes } from "./routes/profile-routes.routes.js";
 import { router as VerificationRoutes } from "./routes/verification.routes.js";
+import { router as IdentityVerificationRoutes } from "./modules/identity-verification/identity-verification.routes.js";
+import { router as AdminVerificationRoutes } from "./modules/identity-verification/admin-verification.routes.js";
 
 import { router as AdminRoutes } from "./routes/admin.routes.js";
 import { router as AdminAuthRoutes } from "./routes/admin-auth.routes.js";
@@ -282,6 +284,7 @@ app.use("/payment", paymentLimiter, PaymentRoutes);
 app.use("/tours", TourRoutes);
 app.use("/profile", ProfileRoutes);
 app.use("/verification", VerificationRoutes);
+app.use("/verification/identity", IdentityVerificationRoutes);
 app.use("/profile", ProfileEthnicityRoutes);
 
 app.use("/admin", AdminRoutes);
@@ -291,6 +294,7 @@ app.use("/admin/notifications", AdminAnnouncementsRoutes);
 app.use("/admin/notifications", AdminNotificationsRoutes);
 app.use("/admin", AdminConsoleRoutes);
 app.use("/admin", AdminProfileRoutes);
+app.use("/admin/verifications", AdminVerificationRoutes);
 app.use("/admin", AdminPaymentGatewayRoutes);
 app.use("/admin/payments", AdminPaymentsRoutes);
 app.use("/admin/dating", AdminDatingRoutes);

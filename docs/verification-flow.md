@@ -511,3 +511,24 @@ const form = new FormData();
 form.append("image", file);
 const { data } = await api<{ url: string }>("/upload", { method: "POST", body: form });
 ```
+
+---
+
+## Identity Verification (Phase 1 — trust & compliance)
+
+New endpoints for the full identity pipeline (ID upload, selfie, OTP, admin review, appeals). All require Bearer token.
+
+- `POST /verification/identity/start` — begin flow, records consent (Ghana DPA).
+- `GET /verification/identity/status` — current status.
+- `POST /verification/identity/id` — submit ID document (type, number, frontUrl, backUrl).
+- `POST /verification/identity/selfie` — submit selfie URL.
+- `POST /verification/identity/otp/verified` — mark phone OTP verified.
+- `POST /verification/identity/submit` — submit for review (auto-approves on high scores, else pending review).
+- `POST /verification/identity/appeal` — appeal a rejection.
+
+Admin:
+- `GET /admin/verifications?status=` — review queue.
+- `PATCH /admin/verifications/{userId}/decide` — approve/reject.
+- `PATCH /admin/verifications/appeals/{appealId}/decide` — decide appeal.
+
+Capability gating: `requireVerified` middleware (src/middleware/require-verified.ts) blocks unverified users from posting/listing/hosting/fundraising.
