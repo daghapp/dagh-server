@@ -89,6 +89,7 @@ import { weeklyDigestJob } from "./jobs/weekly-digest.js";
 import { channelGrantReverifyJob } from "./jobs/channel-grant-reverify.js";
 import { datingProximityJob } from "./jobs/dating-proximity.js";
 import { dailyBriefJob } from "./jobs/daily-brief.js";
+import { dataRetentionJob } from "./jobs/data-retention.js";
 import { logYouTubeGateStatus } from "./services/youtube-oauth.service.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
 import { setIoInstance as setCallIoInstance } from "./modules/messages/calls.controller.js";
@@ -215,6 +216,7 @@ weeklyDigestJob();
 channelGrantReverifyJob();
 datingProximityJob();
 dailyBriefJob();
+dataRetentionJob();
 logYouTubeGateStatus();
 setupSwagger(app);
 
