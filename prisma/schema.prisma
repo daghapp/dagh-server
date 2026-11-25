@@ -1885,6 +1885,19 @@ model WebinarRegistration {
   @@map("webinar_registrations")
 }
 
+model DailyBrief {
+  id          String   @id @default(uuid())
+  date        DateTime @unique @db.Date
+  title       String
+  summary     String   @db.Text
+  sourceIds   String[]
+  status      String   @default("DRAFT")
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@map("daily_briefs")
+}
+
 enum PaymentStatus {
   INITIALIZED
   PENDING

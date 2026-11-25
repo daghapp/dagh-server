@@ -1,6 +1,6 @@
 # Trust & Compliance Infrastructure — Implementation Plan
 
-**Progress:** Phases 1–6 implemented — identity, moderation, forums/comments, listings, crowdfunding/payments, webinars. Phases 7–8 planned.
+**Progress:** Phases 1–7 implemented — identity, moderation, forums/comments, listings, crowdfunding/payments, webinars, daily brief. Phase 8 planned.
 
 **Project:** Diaspora Affairs Ghana (DAGH) backend (`dagh-server`)
 **Owner:** Backend (trust & compliance module)
