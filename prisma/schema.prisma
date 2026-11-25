@@ -65,6 +65,8 @@ model User {
   comments                Comment[]
   propertyListings        PropertyListing[]
   listingSearchRequests   ListingSearchRequest[]
+  campaigns               Campaign[]
+  contributions           Contribution[]
   tourBookings            tour_bookings[]
   sentMessages            Message[]                @relation("SentMessages")
   receivedMessages        Message[]                @relation("ReceivedMessages")
@@ -1466,6 +1468,8 @@ enum PaymentTargetType {
   TOUR_BOOKING
   TOUR_REQUEST
   MEMBERSHIP_SUBSCRIPTION
+  CROWDFUNDING
+  WEBINAR_TICKET
 }
 
 enum AccountStatus {
@@ -1791,6 +1795,56 @@ enum BadgeType {
   VERIFIED_DATE_STAMPED
   GELIS_CONFIRMED
   LAWYER_REVIEWED
+}
+
+model Campaign {
+  id            String            @id @default(uuid())
+  creatorId     String
+  title         String
+  description   String            @db.Text
+  goalAmount    Decimal           @db.Decimal(18, 2)
+  currency      String            @default("GHS")
+  raisedAmount  Decimal           @default(0) @db.Decimal(18, 2)
+  status        CrowdfundingStatus @default(DRAFT)
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  creator       User              @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  contributions Contribution[]
+  @@index([status, createdAt])
+  @@map("campaigns")
+}
+
+model Contribution {
+  id            String           @id @default(uuid())
+  campaignId    String
+  contributorId String?
+  amount        Decimal          @db.Decimal(18, 2)
+  currency      String
+  provider      PaymentProviderExt
+  providerRef   String           @unique
+  status        PaymentStatus
+  anonymous     Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  campaign      Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contributor   User?            @relation(fields: [contributorId], references: [id], onDelete: SetNull)
+  @@index([campaignId, status])
+  @@map("contributions")
+}
+
+enum CrowdfundingStatus {
+  DRAFT
+  LIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentProviderExt {
+  HUBTEL_MOMO
+  STRIPE
+  PAYPAL
 }
 
 enum PaymentStatus {

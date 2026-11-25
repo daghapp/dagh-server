@@ -27,6 +27,7 @@ import { router as IdentityVerificationRoutes } from "./modules/identity-verific
 import { router as ContentModerationRoutes } from "./modules/content-moderation/content-moderation.routes.js";
 import { router as ForumsRoutes } from "./modules/forums/forums.routes.js";
 import { router as ListingsRoutes } from "./modules/listings/listings.routes.js";
+import { router as CrowdfundingRoutes } from "./modules/crowdfunding/crowdfunding.routes.js";
 import { router as AdminListingsRoutes } from "./modules/listings/admin-listings.routes.js";
 import { router as AdminForumsRoutes } from "./modules/forums/admin-forums.routes.js";
 import { router as AdminContentModerationRoutes } from "./modules/content-moderation/admin-content-moderation.routes.js";
@@ -294,6 +295,7 @@ app.use("/verification/identity", IdentityVerificationRoutes);
 app.use("/content", ContentModerationRoutes);
 app.use(ForumsRoutes);
 app.use(ListingsRoutes);
+app.use(CrowdfundingRoutes);
 app.use("/profile", ProfileEthnicityRoutes);
 
 app.use("/admin", AdminRoutes);
