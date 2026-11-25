@@ -59,6 +59,8 @@ model User {
   supportTickets          SupportTicket[]
   verification            UserVerification?
   identityVerification    IdentityVerification?
+  contentPosts            ContentPost[]
+  contentAppeals          ContentAppeal[]
   tourBookings            tour_bookings[]
   sentMessages            Message[]                @relation("SentMessages")
   receivedMessages        Message[]                @relation("ReceivedMessages")
@@ -1609,6 +1611,62 @@ enum IdentityVerificationStatus {
   APPROVED
   REJECTED
   APPEALED
+}
+
+model ContentPost {
+  id              String            @id @default(uuid())
+  kind            ContentKind       @default(POST)
+  authorId        String
+  title           String?
+  body            String            @db.Text
+  mediaUrls       String[]
+  status          ModerationStatus  @default(PENDING)
+  aiScore         Float?
+  aiLabels        String[]
+  aiProvider      String?
+  screenedAt      DateTime?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  publishedAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  author          User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  appeals         ContentAppeal[]
+  @@index([status, createdAt])
+  @@index([authorId, status])
+  @@map("content_posts")
+}
+
+model ContentAppeal {
+  id            String      @id @default(uuid())
+  postId        String
+  userId        String
+  reason        String      @db.Text
+  status        String      @default("PENDING")
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  decisionNote  String?
+  createdAt     DateTime    @default(now())
+  post          ContentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([status, createdAt])
+  @@map("content_appeals")
+}
+
+enum ContentKind {
+  POST
+  COMMENT
+  FORUM_THREAD
+  LISTING
+  WEBINAR
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
 }
 
 enum PaymentStatus {
