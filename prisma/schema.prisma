@@ -63,6 +63,8 @@ model User {
   contentAppeals          ContentAppeal[]
   forumThreads            ForumThread[]
   comments                Comment[]
+  propertyListings        PropertyListing[]
+  listingSearchRequests   ListingSearchRequest[]
   tourBookings            tour_bookings[]
   sentMessages            Message[]                @relation("SentMessages")
   receivedMessages        Message[]                @relation("ReceivedMessages")
@@ -1721,6 +1723,74 @@ model Comment {
   @@index([threadId, createdAt])
   @@index([postId, createdAt])
   @@map("comments")
+}
+
+model PropertyListing {
+  id            String        @id @default(uuid())
+  ownerId       String
+  type          ListingType   @default(SALE)
+  title         String
+  description   String        @db.Text
+  priceGhs      Decimal       @db.Decimal(18, 2)
+  currency      String        @default("GHS")
+  region        String
+  district      String?
+  address       String?
+  latitude      Float?
+  longitude     Float?
+  images        String[]
+  documents     String[]
+  status        ListingStatus @default(DRAFT)
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  badge         BadgeType?
+  badgeIssuedAt DateTime?
+  gelisRef      String?
+  lawyerId      String?
+  expiresAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  owner         User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  searchRequests ListingSearchRequest[]
+  @@index([status, region, type])
+  @@index([ownerId])
+  @@map("property_listings")
+}
+
+model ListingSearchRequest {
+  id          String           @id @default(uuid())
+  requesterId String
+  listingId   String?
+  query       String
+  searchType  String
+  status      String           @default("PENDING")
+  resultRef   String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  requester   User             @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  listing     PropertyListing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  @@index([status, createdAt])
+  @@map("listing_search_requests")
+}
+
+enum ListingType {
+  SALE
+  RENT
+  LEASE
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum BadgeType {
+  VERIFIED_DATE_STAMPED
+  GELIS_CONFIRMED
+  LAWYER_REVIEWED
 }
 
 enum PaymentStatus {
