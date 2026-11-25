@@ -5,16 +5,27 @@ export const AUTO_APPROVE_THRESHOLD = 0.3;
 export const FLAG_THRESHOLD = 0.7;
 
 // Placeholder AI screening. Replace with real provider (OpenAI Moderation / Azure Content Safety).
-export async function screenContent(text: string): Promise<{ score: number; labels: string[]; provider: string }> {
+export async function screenContent(
+  text: string,
+): Promise<{ score: number; labels: string[]; provider: string }> {
   const lower = text.toLowerCase();
   const labels: string[] = [];
   let score = 0.05;
-  if (/\b(spam|buy now|click here)\b/.test(lower)) { labels.push("spam"); score = Math.max(score, 0.6); }
-  if (/\b(hate|kill|idiot)\b/.test(lower)) { labels.push("hate"); score = Math.max(score, 0.8); }
+  if (/\b(spam|buy now|click here)\b/.test(lower)) {
+    labels.push("spam");
+    score = Math.max(score, 0.6);
+  }
+  if (/\b(hate|kill|idiot)\b/.test(lower)) {
+    labels.push("hate");
+    score = Math.max(score, 0.8);
+  }
   return { score, labels, provider: "local-heuristic" };
 }
 
-export async function createPost(authorId: string, data: { kind?: string; title?: string; body: string; mediaUrls?: string[] }) {
+export async function createPost(
+  authorId: string,
+  data: { kind?: string; title?: string; body: string; mediaUrls?: string[] },
+) {
   const post = await prisma.contentPost.create({
     data: {
       authorId,
@@ -27,7 +38,12 @@ export async function createPost(authorId: string, data: { kind?: string; title?
   });
   // Screen synchronously for v1; move to job for scale.
   const result = await screenContent(data.body);
-  const status = result.score < AUTO_APPROVE_THRESHOLD ? "APPROVED" : result.score < FLAG_THRESHOLD ? "FLAGGED" : "REJECTED";
+  const status =
+    result.score < AUTO_APPROVE_THRESHOLD
+      ? "APPROVED"
+      : result.score < FLAG_THRESHOLD
+        ? "FLAGGED"
+        : "REJECTED";
   return prisma.contentPost.update({
     where: { id: post.id },
     data: {
@@ -45,20 +61,31 @@ export async function createPost(authorId: string, data: { kind?: string; title?
 export async function listQueue(status: string, limit = 50, offset = 0) {
   const where = status && status !== "ALL" ? { status: status as MS } : {};
   const [rows, total] = await Promise.all([
-    prisma.contentPost.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip: offset, include: { author: { select: { id: true, email: true, fullName: true } } } }),
+    prisma.contentPost.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      skip: offset,
+      include: { author: { select: { id: true, email: true, fullName: true } } },
+    }),
     prisma.contentPost.count({ where }),
   ]);
   return { rows, total };
 }
 
-export async function decidePost(postId: string, adminId: string, approve: boolean, reason?: string) {
+export async function decidePost(
+  postId: string,
+  adminId: string,
+  approve: boolean,
+  reason?: string,
+) {
   return prisma.contentPost.update({
     where: { id: postId },
     data: {
       status: approve ? "APPROVED" : "REJECTED",
       reviewedBy: adminId,
       reviewedAt: new Date(),
-      rejectionReason: approve ? null : reason ?? "Rejected by moderator",
+      rejectionReason: approve ? null : (reason ?? "Rejected by moderator"),
       publishedAt: approve ? new Date() : null,
     },
   });
@@ -68,18 +95,29 @@ export async function createAppeal(postId: string, userId: string, reason: strin
   const post = await prisma.contentPost.findUnique({ where: { id: postId } });
   if (!post) throw new Error("Post not found");
   if (post.authorId !== userId) throw new Error("Not your post");
-  if (post.status !== "REJECTED" && post.status !== "FLAGGED") throw new Error("Appeals only for rejected/flagged posts");
+  if (post.status !== "REJECTED" && post.status !== "FLAGGED")
+    throw new Error("Appeals only for rejected/flagged posts");
   const appeal = await prisma.contentAppeal.create({ data: { postId, userId, reason } });
   await prisma.contentPost.update({ where: { id: postId }, data: { status: "PENDING" } });
   return appeal;
 }
 
-export async function decideAppeal(appealId: string, adminId: string, approve: boolean, note?: string) {
+export async function decideAppeal(
+  appealId: string,
+  adminId: string,
+  approve: boolean,
+  note?: string,
+) {
   const appeal = await prisma.contentAppeal.findUnique({ where: { id: appealId } });
   if (!appeal) throw new Error("Appeal not found");
   const updated = await prisma.contentAppeal.update({
     where: { id: appealId },
-    data: { status: approve ? "APPROVED" : "REJECTED", reviewedBy: adminId, reviewedAt: new Date(), decisionNote: note ?? null },
+    data: {
+      status: approve ? "APPROVED" : "REJECTED",
+      reviewedBy: adminId,
+      reviewedAt: new Date(),
+      decisionNote: note ?? null,
+    },
   });
   await prisma.contentPost.update({
     where: { id: appeal.postId },
@@ -89,13 +127,21 @@ export async function decideAppeal(appealId: string, adminId: string, approve: b
 }
 
 export async function getPost(id: string) {
-  return prisma.contentPost.findUnique({ where: { id }, include: { author: { select: { id: true, email: true, fullName: true } } } });
+  return prisma.contentPost.findUnique({
+    where: { id },
+    include: { author: { select: { id: true, email: true, fullName: true } } },
+  });
 }
 
 export async function listApproved(limit = 50, offset = 0) {
   const where = { status: MS.APPROVED };
   const [rows, total] = await Promise.all([
-    prisma.contentPost.findMany({ where, orderBy: { publishedAt: "desc" }, take: limit, skip: offset }),
+    prisma.contentPost.findMany({
+      where,
+      orderBy: { publishedAt: "desc" },
+      take: limit,
+      skip: offset,
+    }),
     prisma.contentPost.count({ where }),
   ]);
   return { rows, total };

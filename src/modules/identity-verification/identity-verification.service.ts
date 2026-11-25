@@ -45,7 +45,10 @@ export async function saveIdDocument(
   const row = await prisma.identityVerification.findUnique({ where: { userId } });
   if (!row) throw new Error("Verification not started");
   // Store ID number encrypted at rest.
-  const idNumberHash = (await import("crypto")).createHash("sha256").update(data.number).digest("hex");
+  const idNumberHash = (await import("crypto"))
+    .createHash("sha256")
+    .update(data.number)
+    .digest("hex");
   return prisma.identityVerification.update({
     where: { userId },
     data: {
@@ -127,7 +130,12 @@ export async function adminListVerifications(status?: string, limit = 50, offset
   return { rows, total };
 }
 
-export async function adminDecide(userId: string, adminId: string, approve: boolean, reason?: string) {
+export async function adminDecide(
+  userId: string,
+  adminId: string,
+  approve: boolean,
+  reason?: string,
+) {
   const row = await prisma.identityVerification.findUnique({ where: { userId } });
   if (!row) throw new Error("Verification not found");
   return prisma.identityVerification.update({
@@ -136,12 +144,17 @@ export async function adminDecide(userId: string, adminId: string, approve: bool
       status: approve ? "APPROVED" : "REJECTED",
       reviewedBy: adminId,
       reviewedAt: new Date(),
-      rejectionReason: approve ? null : reason ?? "Rejected by admin",
+      rejectionReason: approve ? null : (reason ?? "Rejected by admin"),
     },
   });
 }
 
-export async function adminDecideAppeal(appealId: string, adminId: string, approve: boolean, note?: string) {
+export async function adminDecideAppeal(
+  appealId: string,
+  adminId: string,
+  approve: boolean,
+  note?: string,
+) {
   const appeal = await prisma.verificationAppeal.findUnique({ where: { id: appealId } });
   if (!appeal) throw new Error("Appeal not found");
   const updated = await prisma.verificationAppeal.update({

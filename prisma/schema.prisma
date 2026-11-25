@@ -61,6 +61,8 @@ model User {
   identityVerification    IdentityVerification?
   contentPosts            ContentPost[]
   contentAppeals          ContentAppeal[]
+  forumThreads            ForumThread[]
+  comments                Comment[]
   tourBookings            tour_bookings[]
   sentMessages            Message[]                @relation("SentMessages")
   receivedMessages        Message[]                @relation("ReceivedMessages")
@@ -1667,6 +1669,58 @@ enum ModerationStatus {
   APPROVED
   REJECTED
   FLAGGED
+}
+
+model Forum {
+  id          String        @id @default(uuid())
+  slug        String        @unique
+  name        String
+  description String?
+  isPublic    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  threads     ForumThread[]
+  @@map("forums")
+}
+
+model ForumThread {
+  id            String          @id @default(uuid())
+  forumId       String
+  authorId      String
+  title         String
+  body          String          @db.Text
+  status        ModerationStatus @default(PENDING)
+  pinned        Boolean         @default(false)
+  locked        Boolean         @default(false)
+  replyCount    Int             @default(0)
+  lastActivityAt DateTime       @default(now())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  forum         Forum           @relation(fields: [forumId], references: [id], onDelete: Cascade)
+  author        User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments      Comment[]
+  @@index([forumId, createdAt])
+  @@index([status, createdAt])
+  @@map("forum_threads")
+}
+
+model Comment {
+  id        String          @id @default(uuid())
+  threadId  String?
+  postId    String?
+  parentId  String?
+  authorId  String
+  body      String          @db.Text
+  status    ModerationStatus @default(PENDING)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  thread    ForumThread?    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author    User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent    Comment?        @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[]       @relation("CommentReplies")
+  @@index([threadId, createdAt])
+  @@index([postId, createdAt])
+  @@map("comments")
 }
 
 enum PaymentStatus {
