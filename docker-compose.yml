@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dagh-server:latest
+    container_name: dagh-server
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-5000}:5000"
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
