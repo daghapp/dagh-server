@@ -92,7 +92,11 @@ export async function generateRefreshToken(user: JwtPayload, options: { days?: n
   const days = options.days ?? 7;
   //check if a refresh token already exists for the user
   const existingToken = await prisma.deviceToken.findFirst({
-    where: { userId: user.id },
+    where: {
+      userId: user.id,
+      platform: "WEB",
+    },
+    orderBy: { addedAt: "desc" },
   });
 
   if (existingToken && existingToken.expiredAt! > new Date()) return existingToken.token;
@@ -127,4 +131,38 @@ export async function generateRefreshToken(user: JwtPayload, options: { days?: n
 export function resolveMfaIdentity(mfaToken: unknown): (JwtPayload & { kind: string }) | null {
   if (typeof mfaToken !== "string" || mfaToken.length === 0) return null;
   return verifyMfaToken(mfaToken);
+}
+
+/**
+ * Generate an independent refresh token for the Diaspora Sync website.
+ * Website sessions use WEBSITE rather than WEB to distinguish them
+ * from legacy tokens created by the shared mobile authentication flow.
+ */
+export async function generateWebsiteRefreshToken(
+  user: JwtPayload,
+  options: { days?: number } = {},
+): Promise<string> {
+  const days = options.days ?? 7;
+
+  const refreshToken = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      accountType: user.accountType,
+      sessionPlatform: "WEBSITE",
+    },
+    RefreshTokenSecret,
+    { expiresIn: days * 24 * 60 * 60 },
+  );
+
+  await prisma.deviceToken.create({
+    data: {
+      userId: user.id,
+      token: refreshToken,
+      platform: "WEBSITE",
+      expiredAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  return refreshToken;
 }

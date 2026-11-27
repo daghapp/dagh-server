@@ -21,7 +21,10 @@ import { toAuthUser } from "../../helpers/auth-user.js";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { getAllPermissionsForRole } from "../../middleware/permissions.js";
-import { generateMfaToken } from "../../helpers/jwt.js";
+import {
+  generateMfaToken,
+  generateWebsiteRefreshToken,
+} from "../../helpers/jwt.js";
 import { getSecuritySettings, isPasswordExpired } from "../../helpers/settings.js";
 import { notifyAdmins } from "../../helpers/notify-admins.js";
 import { disableAllUserDevices } from "../devices/devices.controller.js";
@@ -122,7 +125,7 @@ export class PasswordAuthController {
         },
       });
 
-      if (!user || !user.passwordHash) {
+      if (!user) {
         return fail(res, 400, "Invalid email or password");
       }
 
@@ -153,6 +156,10 @@ export class PasswordAuthController {
       }
 
       const security = await getSecuritySettings();
+
+      if (!user.passwordHash) {
+        return fail(res, 400, "Invalid email or password");
+      }
 
       const passwordMatch = await bcrypt.compare(loginData.password, user.passwordHash);
       if (!passwordMatch) {
@@ -201,6 +208,8 @@ export class PasswordAuthController {
       }
 
       const rememberMe = loginData.rememberMe === true;
+      const isWebsiteClient =
+        req.get("x-client-platform")?.trim().toLowerCase() === "web";
 
       const accessToken =
         user.accountType === "ADMIN"
@@ -217,14 +226,23 @@ export class PasswordAuthController {
               email: user.email,
               accountType: user.accountType,
             });
-      const refreshToken = await generateRefreshToken(
-        {
-          id: user.id,
-          email: user.email,
-          accountType: user.accountType,
-        },
-        { days: rememberMe ? 30 : 7 },
-      );
+      const refreshToken = isWebsiteClient
+        ? await generateWebsiteRefreshToken(
+            {
+              id: user.id,
+              email: user.email,
+              accountType: user.accountType,
+            },
+            { days: rememberMe ? 30 : 7 },
+          )
+        : await generateRefreshToken(
+            {
+              id: user.id,
+              email: user.email,
+              accountType: user.accountType,
+            },
+            { days: rememberMe ? 30 : 7 },
+          );
 
       // Signing in forces a check rather than trusting a live lease. This is the
       // moment yesterday's evidence stops being evidence about today: someone who
@@ -297,13 +315,25 @@ export class PasswordAuthController {
         return fail(res, 401, "Not authenticated");
       }
 
-      // Delete all refresh tokens for this user (logout from all devices)
-      await prisma.deviceToken.deleteMany({
-        where: { userId },
-      });
+      const isWebsiteClient =
+        req.get("x-client-platform")?.trim().toLowerCase() === "web";
 
-      // Disable push-enabled devices so no incoming-call pushes target them
-      await disableAllUserDevices(userId);
+      if (isWebsiteClient) {
+        // Website logout must not invalidate mobile sessions.
+        await prisma.deviceToken.deleteMany({
+          where: {
+            userId,
+            platform: "WEBSITE",
+          },
+        });
+      } else {
+        // Preserve existing mobile logout behaviour.
+        await prisma.deviceToken.deleteMany({
+          where: { userId },
+        });
+
+        await disableAllUserDevices(userId);
+      }
 
       return ok(res, null as never, "Logged out successfully");
     } catch (error) {
@@ -327,7 +357,12 @@ export class PasswordAuthController {
         decoded = jwt.verify(
           refreshToken,
           process.env.JWT_REFRESH_SECRET as string,
-        ) as jwt.JwtPayload & { id: string; email: string; accountType: string };
+        ) as jwt.JwtPayload & {
+          id: string;
+          email: string;
+          accountType: string;
+          sessionPlatform?: string;
+        };
       } catch {
         return fail(res, 401, "Invalid or expired refresh token");
       }
@@ -342,6 +377,18 @@ export class PasswordAuthController {
 
       if (!tokenRecord) {
         return fail(res, 401, "Refresh token not found");
+      }
+
+      // Enforce website/mobile refresh-token separation.
+      const isWebsiteRequest =
+        req.get("x-client-platform")?.trim().toLowerCase() === "web";
+
+      const isWebsiteToken =
+        decoded.sessionPlatform === "WEBSITE" ||
+        tokenRecord.platform === "WEBSITE";
+
+      if (isWebsiteRequest !== isWebsiteToken) {
+        return fail(res, 401, "Refresh token platform mismatch");
       }
 
       // Check if token is expired
@@ -606,7 +653,7 @@ export class PasswordAuthController {
         where: { email: resetData.email },
       });
 
-      if (!user || !user.passwordHash) {
+      if (!user) {
         return fail(res, 400, "Invalid request");
       }
 

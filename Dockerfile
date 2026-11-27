@@ -1,4 +1,4 @@
-FROM node:20.19-alpine3.21 AS builder
+FROM node:22-alpine AS builder
 
 RUN apk upgrade --no-cache
 
@@ -27,7 +27,7 @@ ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN \
 
 RUN npm run sentry:sourcemaps
 
-FROM node:20.19-alpine3.21 AS runner
+FROM node:22-alpine AS runner
 
 RUN apk upgrade --no-cache
 
