@@ -433,7 +433,13 @@ export class UserTourController {
       // Fetch tour details to get the price
       const tour = await prisma.tour_packages.findUnique({
         where: { id: bookingData.tourId },
-        select: { basePrice: true, currency: true, title: true, status: true, minimumBooking: true },
+        select: {
+          basePrice: true,
+          currency: true,
+          title: true,
+          status: true,
+          minimumBooking: true,
+        },
       });
 
       if (!tour || tour.status !== "published" || tour.basePrice === null) {
