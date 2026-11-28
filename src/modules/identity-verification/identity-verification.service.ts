@@ -1,7 +1,16 @@
 import { prisma } from "../../config/index.js";
 import { IdentityVerificationStatus } from "../../../generated/prisma/client.js";
+import { randomInt } from "crypto";
+import * as bcrypt from "bcrypt";
+import sendEmail from "../../config/resend.config.js";
+import { sendSms } from "../../helpers/sms.js";
+import { normalizePhone } from "../../helpers/otp.js";
 
 const RETENTION_DAYS = 90;
+const IDENTITY_OTP_PURPOSE = "IDENTITY_VERIFICATION";
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
 
 function retentionDate() {
   const d = new Date();
@@ -10,6 +19,43 @@ function retentionDate() {
 }
 
 export const CONSENT_VERSION = "v1-ghana-dpa-2026";
+
+async function notifyIdentityStatus(row: {
+  id: string;
+  userId: string;
+  status: string;
+  rejectionReason?: string | null;
+}) {
+  try {
+    await prisma.notificationOutbox.upsert({
+      where: {
+        eventType_aggregateId_recipientUserId: {
+          eventType: "IDENTITY_STATUS_CHANGED",
+          aggregateId: `${row.id}:${row.status}`,
+          recipientUserId: row.userId,
+        },
+      },
+      update: { status: "PENDING" },
+      create: {
+        eventType: "IDENTITY_STATUS_CHANGED",
+        aggregateId: `${row.id}:${row.status}`,
+        recipientUserId: row.userId,
+        payload: {
+          push: {
+            type: "IDENTITY_STATUS_CHANGED",
+            verificationId: row.id,
+            status: row.status,
+            reason: row.rejectionReason ?? "",
+            route: "/verification/identity",
+            schemaVersion: "1",
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("[identity-verification] failed to enqueue status notification", error);
+  }
+}
 
 export async function startIdentityVerification(userId: string) {
   const existing = await prisma.identityVerification.findUnique({ where: { userId } });
@@ -70,6 +116,106 @@ export async function saveSelfie(userId: string, selfieUrl: string) {
   });
 }
 
+function maskDestination(value: string) {
+  if (value.includes("@")) {
+    const [local, domain] = value.split("@");
+    const head = local.slice(0, 2);
+    return `${head}${"*".repeat(Math.max(local.length - 2, 2))}@${domain}`;
+  }
+  if (value.length <= 4) return "****";
+  return `${value.slice(0, 3)}****${value.slice(-2)}`;
+}
+
+async function identityOtpDestination(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, phoneNumber: true, fullName: true },
+  });
+  if (!user) throw new Error("User not found");
+  const phone = user.phoneNumber ? normalizePhone(user.phoneNumber) : null;
+  return { user, phone, destination: phone ?? user.email, channel: phone ? "SMS" : "EMAIL" };
+}
+
+export async function sendIdentityOtp(userId: string) {
+  const row = await prisma.identityVerification.findUnique({ where: { userId } });
+  if (!row) throw new Error("Verification not started");
+  if (row.status === "APPROVED") throw new Error("Identity already verified");
+
+  const { user, phone, destination, channel } = await identityOtpDestination(userId);
+
+  const recent = await prisma.otp.findFirst({
+    where: { email: destination, purpose: IDENTITY_OTP_PURPOSE },
+    orderBy: { createdAt: "desc" },
+  });
+  if (recent && Date.now() - recent.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+    throw new Error("Please wait before requesting another verification code");
+  }
+
+  const code = String(randomInt(100000, 999999));
+  const hashedCode = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+  await prisma.otp.deleteMany({ where: { email: destination, purpose: IDENTITY_OTP_PURPOSE } });
+  const record = await prisma.otp.create({
+    data: { email: destination, code: hashedCode, expiresAt, purpose: IDENTITY_OTP_PURPOSE },
+  });
+
+  try {
+    if (phone) {
+      await sendSms({
+        to: phone,
+        message: `Your DAGH identity verification code is ${code}. It expires in 10 minutes.`,
+      });
+    } else {
+      await sendEmail({
+        email: user.email,
+        subject: "Your DAGH identity verification code",
+        html: `<p>Hello ${user.fullName ?? ""},</p><p>Your identity verification code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
+      });
+    }
+  } catch (error) {
+    await prisma.otp.deleteMany({ where: { id: record.id } });
+    throw error;
+  }
+
+  return {
+    challengeId: record.id,
+    channel,
+    destination: maskDestination(destination),
+    expiresAt,
+  };
+}
+
+export async function verifyIdentityOtp(userId: string, code: string) {
+  const row = await prisma.identityVerification.findUnique({ where: { userId } });
+  if (!row) throw new Error("Verification not started");
+
+  const { destination } = await identityOtpDestination(userId);
+  const record = await prisma.otp.findFirst({
+    where: { email: destination, purpose: IDENTITY_OTP_PURPOSE },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!record) throw new Error("No verification code requested");
+
+  if (record.expiresAt.getTime() < Date.now()) {
+    await prisma.otp.deleteMany({ where: { id: record.id } });
+    throw new Error("Verification code expired");
+  }
+  if (record.attempts >= OTP_MAX_ATTEMPTS) {
+    await prisma.otp.deleteMany({ where: { id: record.id } });
+    throw new Error("Too many attempts. Request a new code");
+  }
+
+  const valid = await bcrypt.compare(code, record.code);
+  if (!valid) {
+    await prisma.otp.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+    throw new Error("Invalid verification code");
+  }
+
+  await prisma.otp.deleteMany({ where: { id: record.id } });
+  return markOtpVerified(userId);
+}
+
 export async function markOtpVerified(userId: string) {
   const row = await prisma.identityVerification.findUnique({ where: { userId } });
   if (!row) throw new Error("Verification not started");
@@ -86,17 +232,17 @@ export async function submitForReview(userId: string) {
     throw new Error("Incomplete verification steps");
   }
   // Automated checks placeholder: in production call liveness/face-match provider here.
+  // A completed submission always goes to a human reviewer (PENDING_REVIEW).
   const livenessScore = row.livenessScore ?? 0.9;
   const faceMatchScore = row.faceMatchScore ?? 0.9;
-  const autoApproved = livenessScore >= 0.8 && faceMatchScore >= 0.8;
   return prisma.identityVerification.update({
     where: { userId },
     data: {
       livenessScore,
       faceMatchScore,
-      status: autoApproved ? "APPROVED" : "PENDING_REVIEW",
-      reviewedAt: autoApproved ? new Date() : null,
-      reviewedBy: autoApproved ? "system" : null,
+      status: "PENDING_REVIEW",
+      reviewedAt: null,
+      reviewedBy: null,
     },
   });
 }
@@ -138,15 +284,19 @@ export async function adminDecide(
 ) {
   const row = await prisma.identityVerification.findUnique({ where: { userId } });
   if (!row) throw new Error("Verification not found");
-  return prisma.identityVerification.update({
+  const updated = await prisma.identityVerification.update({
     where: { userId },
     data: {
       status: approve ? "APPROVED" : "REJECTED",
       reviewedBy: adminId,
       reviewedAt: new Date(),
       rejectionReason: approve ? null : (reason ?? "Rejected by admin"),
+      // Retention clock starts at the review decision, not at submission.
+      retentionUntil: retentionDate(),
     },
   });
+  await notifyIdentityStatus(updated);
+  return updated;
 }
 
 export async function adminDecideAppeal(
@@ -166,10 +316,15 @@ export async function adminDecideAppeal(
       decisionNote: note ?? null,
     },
   });
-  await prisma.identityVerification.update({
+  const verification = await prisma.identityVerification.update({
     where: { id: appeal.verificationId },
-    data: { status: approve ? "APPROVED" : "REJECTED" },
+    data: {
+      status: approve ? "APPROVED" : "REJECTED",
+      rejectionReason: approve ? null : (note ?? "Appeal rejected"),
+      retentionUntil: retentionDate(),
+    },
   });
+  await notifyIdentityStatus(verification);
   return updated;
 }
 

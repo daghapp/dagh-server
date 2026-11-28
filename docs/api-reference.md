@@ -10,12 +10,13 @@ what each one does, its request payload, and key response/error details.
 
 **Auth column legend**
 
-| Value  | Meaning                                                        |
-| ------ | -------------------------------------------------------------- |
-| Public | No authentication required                                     |
-| Bearer | Requires `Authorization: Bearer <accessToken>`                 |
-| Admin  | Bearer token **plus** an `ADMIN` (or `MODERATOR`) account type |
-| Hubtel | Called by Hubtel's payment server (validated signature)        |
+| Value    | Meaning                                                            |
+| -------- | ------------------------------------------------------------------ |
+| Public   | No authentication required                                         |
+| Bearer   | Requires `Authorization: Bearer <accessToken>`                     |
+| Admin    | Bearer token **plus** an `ADMIN` (or `MODERATOR`) account type     |
+| Verified | Bearer token **plus** `IdentityVerification.status === "APPROVED"` |
+| Hubtel   | Called by Hubtel's payment server (validated signature)            |
 
 **Response envelope**
 
@@ -254,6 +255,27 @@ normalized (whitespace + leading `+` stripped).
 `GET /verification/status` returns `profileExists: false` (instead of 404) when the user has no profile yet.
 
 See `docs/verification-flow.md` for the full frontend integration guide.
+
+### Trust & compliance identity pipeline
+
+Separate from the legacy step-by-step flow above. A verified identity here means
+`IdentityVerification.status === "APPROVED"`; it gates posting, listings, hosting, and fundraising.
+
+| Method | Endpoint                            | Auth   | What it does                                                                              |
+| ------ | ----------------------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| POST   | `/verification/identity/start`      | Bearer | Start the flow and record DPA consent.                                                    |
+| GET    | `/verification/identity/status`     | Bearer | Current status plus recent appeals.                                                       |
+| POST   | `/verification/identity/id`         | Bearer | Save encrypted ID number hash + document URLs (`type`, `number`, `frontUrl`, `backUrl?`). |
+| POST   | `/verification/identity/selfie`     | Bearer | Save selfie URL (`selfieUrl`).                                                            |
+| POST   | `/verification/identity/otp/send`   | Bearer | Send a 6-digit code by Hubtel SMS (or email when no phone). 60s resend cooldown.          |
+| POST   | `/verification/identity/otp/verify` | Bearer | Verify `{ code }`; one-time use, 10-minute expiry, 5 attempts.                            |
+| POST   | `/verification/identity/submit`     | Bearer | Move the submission to `PENDING_REVIEW` for a human decision.                             |
+| POST   | `/verification/identity/appeal`     | Bearer | Appeal a rejected verification with a reason/evidence.                                    |
+
+Admin endpoints are permission-gated: `GET /admin/verifications` (`IDENTITY.VIEW`),
+`PATCH /admin/verifications/:userId/decide` (`IDENTITY.REVIEW`), and
+`PATCH /admin/verifications/appeals/:appealId/decide` (`IDENTITY.APPEAL`).
+Biometric URLs are redacted unless the admin also holds `IDENTITY.VIEW_BIOMETRIC`.
 
 ---
 
@@ -1745,6 +1767,101 @@ All are idempotent-safe: each returns `400` if the target is already in that sta
 ```
 
 `status` ∈ `REVIEWING | RESOLVED | DISMISSED`.
+
+---
+
+## Forums & Comments (Module 3)
+
+User-generated threads and comments are screened before they become visible.
+`GET` routes are public but only return `APPROVED` threads/comments; the owner
+(or a moderator) may edit/delete their own content, which re-screens it.
+For a complete frontend integration guide, see
+`docs/frontend-forums-comments-guide.md`.
+
+| Method | Endpoint                | Auth                 | What it does                                          |
+| ------ | ----------------------- | -------------------- | ----------------------------------------------------- |
+| GET    | `/forums`               | Public               | List forums.                                          |
+| POST   | `/forums`               | Admin                | Create a forum (`slug`, `name`, `description?`).      |
+| GET    | `/forums/:slug/threads` | Public               | Approved threads (`?limit=&offset=`).                 |
+| POST   | `/forums/:slug/threads` | Verified             | Create a thread (`title`, `body`); enters moderation. |
+| GET    | `/threads/:id`          | Public               | Thread detail with approved comments only.            |
+| PATCH  | `/threads/:id`          | Bearer (owner/Admin) | Edit title/body; resets to pending review.            |
+| DELETE | `/threads/:id`          | Bearer (owner/Admin) | Delete thread and its comments.                       |
+| POST   | `/threads/:id/comments` | Verified             | Comment or reply (`body`, `parentId?`).               |
+| PATCH  | `/comments/:id`         | Bearer (owner/Admin) | Edit body; resets to pending review.                  |
+| DELETE | `/comments/:id`         | Bearer (owner/Admin) | Delete comment and direct replies.                    |
+
+| Method | Endpoint                            | Permission         | What it does                        |
+| ------ | ----------------------------------- | ------------------ | ----------------------------------- |
+| GET    | `/admin/forums/pending-threads`     | `CONTENT.VIEW`     | Queue (`?status=PENDING\|FLAGGED`). |
+| GET    | `/admin/forums/pending-comments`    | `CONTENT.VIEW`     | Queue (`?status=PENDING\|FLAGGED`). |
+| PATCH  | `/admin/forums/threads/:id/decide`  | `CONTENT.MODERATE` | Approve/flag a thread.              |
+| PATCH  | `/admin/forums/comments/:id/decide` | `CONTENT.MODERATE` | Approve/flag a comment.             |
+
+---
+
+## Trust Modules (Modules 4–7)
+
+### Property & land listings
+
+| Method | Endpoint                       | Auth     | What it does                                       |
+| ------ | ------------------------------ | -------- | -------------------------------------------------- |
+| GET    | `/listings`                    | Public   | Listings (`?region=&type=`), defaults to verified. |
+| GET    | `/listings/:id`                | Public   | Listing detail.                                    |
+| POST   | `/listings`                    | Verified | Create a draft listing.                            |
+| POST   | `/listings/:id/submit`         | Verified | Submit for review.                                 |
+| POST   | `/listings/:id/verify-request` | Verified | Request ownership/legal verification.              |
+| POST   | `/listings/search-requests`    | Bearer   | Request a GELIS/lawyer search.                     |
+
+Admin: `GET /admin/listings/queue` (`LISTINGS.VIEW`),
+`PATCH /admin/listings/:id/decide` (`LISTINGS.VERIFY`),
+`PATCH /admin/listings/:id/badge` (`LISTINGS.VERIFY`, audited),
+`GET /admin/listings/search-requests` (`LISTINGS.VIEW`), and
+`PATCH /admin/listings/search-requests/:id` (`LISTINGS.MANAGE`).
+
+### Crowdfunding & payments
+
+| Method | Endpoint                         | Auth     | What it does                                             |
+| ------ | -------------------------------- | -------- | -------------------------------------------------------- |
+| GET    | `/campaigns`                     | Public   | List campaigns.                                          |
+| GET    | `/campaigns/:id`                 | Public   | Campaign detail.                                         |
+| POST   | `/campaigns`                     | Verified | Create a campaign.                                       |
+| POST   | `/campaigns/:id/publish`         | Verified | Publish a campaign.                                      |
+| POST   | `/campaigns/:id/contribute`      | Bearer   | Start a Stripe/PayPal contribution.                      |
+| GET    | `/campaigns/:id/contributions`   | Public   | Contribution feed.                                       |
+| POST   | `/payment/webhooks/crowdfunding` | Public   | Legacy provider webhook (idempotent).                    |
+| POST   | `/payment/webhooks/stripe`       | Public   | Stripe webhook; signature checked against raw body.      |
+| POST   | `/payment/webhooks/paypal`       | Public   | PayPal webhook; verified via PayPal API when configured. |
+
+Admin: `GET /admin/crowdfunding/campaigns`, `GET /admin/crowdfunding/campaigns/:id`,
+`GET /admin/crowdfunding/contributions` (`FUNDRAISING.VIEW`) and
+`PATCH /admin/crowdfunding/campaigns/:id/status` (`FUNDRAISING.MANAGE`).
+Successful contributions record a ledger entry (`PLATFORM_COMMISSION_RATE`,
+`Account_DAGh_Revenue`) and create/update the `Payment` row. Fraud signals create
+`PaymentRisk` and `TransactionFlag` rows.
+
+### Webinars
+
+| Method | Endpoint                      | Auth                     | What it does                                           |
+| ------ | ----------------------------- | ------------------------ | ------------------------------------------------------ |
+| GET    | `/webinars`                   | Public                   | List webinars.                                         |
+| GET    | `/webinars/:id`               | Public                   | Detail; attendee identities are never exposed.         |
+| POST   | `/webinars`                   | Verified (host)          | Create webinar with optional paid ticket and capacity. |
+| POST   | `/webinars/:id/register`      | Bearer                   | Free registration; capacity checked atomically.        |
+| POST   | `/webinars/:id/paid-register` | Bearer                   | Register with a settled `WEBINAR_TICKET` payment.      |
+| POST   | `/webinars/:id/join`          | Bearer                   | LiveKit token (or placeholder when unconfigured).      |
+| POST   | `/webinars/:id/recording`     | Bearer (host)            | Store recording URL.                                   |
+| GET    | `/webinars/:id/recording`     | Bearer (host/registrant) | Retrieve recording.                                    |
+
+### Daily brief
+
+| Method | Endpoint                    | Auth               | What it does                                                  |
+| ------ | --------------------------- | ------------------ | ------------------------------------------------------------- |
+| GET    | `/briefs`                   | Public             | Published briefs (`?limit=&offset=`).                         |
+| GET    | `/briefs/latest`            | Public             | Latest published brief.                                       |
+| GET    | `/briefs/:date`             | Public             | Brief for a `YYYY-MM-DD` date.                                |
+| POST   | `/admin/briefs/generate`    | `CONTENT.MODERATE` | Generate from approved posts, threads, and verified listings. |
+| PATCH  | `/admin/briefs/:id/publish` | `CONTENT.MODERATE` | Publish and fan out an announcement.                          |
 
 ---
 

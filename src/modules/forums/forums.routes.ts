@@ -16,11 +16,15 @@ router.post(
   c.createThread.bind(c),
 );
 router.get("/threads/:id", c.getThread.bind(c));
+router.patch("/threads/:id", protectedRoute, c.updateThread.bind(c));
+router.delete("/threads/:id", protectedRoute, c.deleteThread.bind(c));
 router.post(
   "/threads/:id/comments",
   protectedRoute,
   requireVerified("post"),
   c.createComment.bind(c),
 );
+router.patch("/comments/:id", protectedRoute, c.updateComment.bind(c));
+router.delete("/comments/:id", protectedRoute, c.deleteComment.bind(c));
 
 export { router };

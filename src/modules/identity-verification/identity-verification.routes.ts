@@ -9,7 +9,8 @@ router.post("/start", protectedRoute, c.start.bind(c));
 router.get("/status", protectedRoute, c.status.bind(c));
 router.post("/id", protectedRoute, c.uploadId.bind(c));
 router.post("/selfie", protectedRoute, c.uploadSelfie.bind(c));
-router.post("/otp/verified", protectedRoute, c.verifyOtp.bind(c));
+router.post("/otp/send", protectedRoute, c.sendOtp.bind(c));
+router.post("/otp/verify", protectedRoute, c.verifyOtp.bind(c));
 router.post("/submit", protectedRoute, c.submit.bind(c));
 router.post("/appeal", protectedRoute, c.appeal.bind(c));
 

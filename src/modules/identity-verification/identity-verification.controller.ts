@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
 import * as svc from "./identity-verification.service.js";
+import { loadAdminRole, hasPermissionKey, PERMISSIONS } from "../../middleware/permissions.js";
 
 export class IdentityVerificationController {
   async start(req: Request, res: Response) {
@@ -47,12 +48,25 @@ export class IdentityVerificationController {
     }
   }
 
-  async verifyOtp(req: Request, res: Response) {
+  async sendOtp(req: Request, res: Response) {
     const userId = req.user?.id;
     if (!userId) return fail(res, 401, "Unauthorized");
     try {
-      const row = await svc.markOtpVerified(userId);
-      return ok(res, row);
+      const data = await svc.sendIdentityOtp(userId);
+      return ok(res, data, "Verification code sent");
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
+
+  async verifyOtp(req: Request, res: Response) {
+    const userId = req.user?.id;
+    if (!userId) return fail(res, 401, "Unauthorized");
+    const { code } = req.body ?? {};
+    if (!code || !/^\d{6}$/.test(String(code))) return fail(res, 400, "6-digit code required");
+    try {
+      const row = await svc.verifyIdentityOtp(userId, String(code));
+      return ok(res, row, "Code verified");
     } catch (e: any) {
       return fail(res, 400, e?.message ?? "Failed");
     }
@@ -88,6 +102,19 @@ export class IdentityVerificationController {
     const limit = Number(req.query.limit ?? 50);
     const offset = Number(req.query.offset ?? 0);
     const data = await svc.adminListVerifications(status, limit, offset);
+    const role = await loadAdminRole(req);
+    const canViewBiometric = role
+      ? hasPermissionKey(role, PERMISSIONS.IDENTITY.VIEW_BIOMETRIC)
+      : false;
+    if (!canViewBiometric) {
+      data.rows = data.rows.map((row) => ({
+        ...row,
+        idFrontUrl: null,
+        idBackUrl: null,
+        selfieUrl: null,
+        idNumberHash: null,
+      }));
+    }
     return ok(res, data);
   }
 

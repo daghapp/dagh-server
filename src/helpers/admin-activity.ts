@@ -25,6 +25,12 @@ export const AdminEntityType = {
   TOUR_DESTINATION: "TOUR_DESTINATION",
   DATING: "DATING",
   ANNOUNCEMENT: "ANNOUNCEMENT",
+  IDENTITY_VERIFICATION: "IDENTITY_VERIFICATION",
+  CONTENT_POST: "CONTENT_POST",
+  LISTING: "LISTING",
+  CAMPAIGN: "CAMPAIGN",
+  WEBINAR: "WEBINAR",
+  DAILY_BRIEF: "DAILY_BRIEF",
 } as const;
 
 export type AdminEntityType = (typeof AdminEntityType)[keyof typeof AdminEntityType];

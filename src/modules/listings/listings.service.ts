@@ -4,6 +4,7 @@ import {
   ListingType as LT,
   BadgeType as BT,
 } from "../../../generated/prisma/client.js";
+import { logAdminActivity, AdminEntityType } from "../../helpers/admin-activity.js";
 
 export async function createListing(ownerId: string, data: any) {
   return prisma.propertyListing.create({
@@ -80,8 +81,30 @@ export async function adminQueue(status = "PENDING_VERIFICATION", limit = 50, of
   return { rows, total };
 }
 
+export async function requestVerification(id: string, requesterId: string) {
+  const row = await prisma.propertyListing.findUnique({ where: { id } });
+  if (!row) throw new Error("Not found");
+  if (row.ownerId !== requesterId) throw new Error("Not your listing");
+  if (row.status === LS.VERIFIED) return row;
+
+  const updated = await prisma.propertyListing.update({
+    where: { id },
+    data: { status: LS.PENDING_VERIFICATION },
+  });
+  await prisma.listingSearchRequest.create({
+    data: {
+      requesterId,
+      listingId: id,
+      query: `Verification requested for ${row.title}`,
+      searchType: "VERIFICATION",
+      status: "PENDING",
+    },
+  });
+  return updated;
+}
+
 export async function adminDecide(id: string, adminId: string, approve: boolean, reason?: string) {
-  return prisma.propertyListing.update({
+  const updated = await prisma.propertyListing.update({
     where: { id },
     data: {
       status: approve ? LS.VERIFIED : LS.REJECTED,
@@ -89,19 +112,37 @@ export async function adminDecide(id: string, adminId: string, approve: boolean,
       verifiedBy: approve ? adminId : null,
     },
   });
+  await logAdminActivity({
+    actorId: adminId,
+    entityType: AdminEntityType.LISTING,
+    entityId: id,
+    action: approve ? "APPROVED" : "REJECTED",
+    note: reason,
+  });
+  return updated;
 }
 
 export async function issueBadge(id: string, adminId: string, badge: string) {
-  return prisma.propertyListing.update({
+  const issuedAt = new Date();
+  const updated = await prisma.propertyListing.update({
     where: { id },
     data: {
       badge: badge as BT,
-      badgeIssuedAt: new Date(),
+      badgeIssuedAt: issuedAt,
       verifiedBy: adminId,
-      verifiedAt: new Date(),
+      verifiedAt: issuedAt,
       status: LS.VERIFIED,
     },
   });
+  await logAdminActivity({
+    actorId: adminId,
+    entityType: AdminEntityType.LISTING,
+    entityId: id,
+    action: "BADGE_ISSUED",
+    note: badge,
+    metadata: { badge, badgeIssuedAt: issuedAt.toISOString() },
+  });
+  return updated;
 }
 
 export async function createSearchRequest(

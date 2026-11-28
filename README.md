@@ -299,7 +299,10 @@ src/
 > icon, and cold-start mitigation). See
 > `docs/contact-discovery-and-start-region.md` for **app-wide contact
 > discovery** (phone-format matching, email matching, invite links) and the
-> **tour start-region inference** rules.
+> **tour start-region inference** rules. See
+> `docs/frontend-forums-comments-guide.md` for the **forums & comments**
+> frontend integration reference and `docs/trust-compliance-infrastructure.md`
+> for the trust/compliance implementation status and permission matrix.
 
 All endpoints return responses in a standardized envelope:
 

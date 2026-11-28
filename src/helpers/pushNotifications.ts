@@ -420,6 +420,17 @@ export async function dispatchNotificationOutbox(): Promise<void> {
         }
       }
 
+      if (
+        row.eventType === "CONTENT_STATUS_CHANGED" ||
+        row.eventType === "IDENTITY_STATUS_CHANGED" ||
+        row.eventType === "DAILY_BRIEF"
+      ) {
+        const eventPayload = row.payload as { push?: PushPayload };
+        if (eventPayload.push) {
+          await sendPushToUser(row.recipientUserId, eventPayload.push);
+        }
+      }
+
       await prisma.notificationOutbox.update({
         where: { id: row.id },
         data: { status: "COMPLETED", attempts: { increment: 1 } },
@@ -1275,6 +1286,31 @@ export interface TestPushResult {
  * end-to-end without creating a real message or call. Skips devices with no
  * usable token and reports per-device outcomes.
  */
+/**
+ * Deliver a flat data payload to every enabled device for a user. Used by the
+ * NotificationOutbox dispatcher for non-call/non-message events such as
+ * moderation and verification status changes.
+ */
+export async function sendPushToUser(
+  userId: string,
+  payload: PushPayload,
+): Promise<{ deviceCount: number }> {
+  const devices = await prisma.userDevice.findMany({
+    where: { userId, enabled: true },
+  });
+  if (devices.length === 0) return { deviceCount: 0 };
+
+  const data = sanitizePushData(payload);
+  let sent = 0;
+  for (const device of devices) {
+    const target = providerForDevice(device, data);
+    if (!target) continue;
+    const result = await sendToDevice(target.provider, target.token, data, 1, device.id);
+    if (!result.errorCode) sent += 1;
+  }
+  return { deviceCount: sent };
+}
+
 export async function sendTestPushToUser(userId: string): Promise<{
   deviceCount: number;
   results: TestPushResult[];

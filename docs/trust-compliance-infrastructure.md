@@ -4,25 +4,60 @@
 
 **Project:** Diaspora Affairs Ghana (DAGH) backend (`dagh-server`)
 **Owner:** Backend (trust & compliance module)
-**Status:** Planning document — maps the platform's promises to concrete work on top of the existing codebase.
+**Status:** Implemented — this document is now a reference/plan-of-record; see §0.1 for what is live and what still needs external provider configuration.
 **Build order (dependency order):** identity → posting with moderation → forums & comments → property/land listings → payments & crowdfunding → webinars/events → daily news brief. Each layer depends on the one before it.
 
 This plan reuses existing primitives wherever possible: Prisma/PostgreSQL, Express 5 + Zod, JWT + Passport, AES-256-GCM encryption (`src/helpers/encryption.ts`), Redis queues/locks (`src/helpers/jobLock.ts`), Socket.IO, Cloudinary, Resend, the `NotificationOutbox`, `AdminActivityLog`, `DataPolicy`, and the admin permission matrix (`src/middleware/permissions.ts`).
 
 ---
 
+## 0.1 Implementation status
+
+All eight phases are wired into `src/server.ts` and documented in
+`docs/api-reference.md` (plus `docs/verification-flow.md` and
+`docs/frontend-forums-comments-guide.md` for frontend integrations).
+
+- **Identity:** real OTP send/verify (`POST /verification/identity/otp/send`,
+  `/verify`), human review (`PENDING_REVIEW`), appeals, biometric redaction, and
+  `IDENTITY_STATUS_CHANGED` notifications. `src/jobs/verification-processing.ts`
+  runs every 2 minutes under a distributed lock.
+- **Content/moderation:** local heuristic scorer (`local-heuristic`, thresholds
+  `0.3` / `0.7`), pending re-screening job, appeals, and
+  `CONTENT_STATUS_CHANGED` notifications.
+- **Forums/comments:** admin-only forum creation, verified-user writes,
+  owner/mod edit/delete with re-screening, cache invalidation, and
+  `?status=PENDING|FLAGGED` admin queues.
+- **Listings:** verification requests, badge issuance, and admin activity logs.
+- **Payments/crowdfunding:** Stripe and PayPal helpers, signature-verified
+  webhooks, idempotent bookkeeping, fraud flags, ledger/commission entries, and
+  admin oversight at `/admin/crowdfunding`.
+- **Webinars:** atomic capacity checks, paid registration, LiveKit tokens when
+  configured, and gated recording access.
+- **Daily brief:** generation from approved posts/threads/verified listings,
+  publishing, and announcement fan-out via `NotificationOutbox`.
+- **Permissions:** `IDENTITY.*`, `CONTENT.*`, `LISTINGS.*`, `FUNDRAISING.*`,
+  `WEBINARS.*` scopes in `src/middleware/permissions.ts`; SUPER_ADMIN holds all.
+
+External integrations still require provider credentials/configuration: the
+biometric score in `verification-processing.ts` is currently a placeholder
+(`0.9`), content scoring uses a local heuristic rather than a paid moderation
+API, and LiveKit/PayPal webhook verification activate only when their env vars
+are set. These are tracked in §10.
+
+---
+
 ## 0. What already exists (do not rebuild)
 
-| Goal area | Existing foundation |
-|---|---|
-| Identity (partial) | `User`, `UserProfile`, `UserVerification`, `ProfileVerification` (phone/ip/bio/doc steps), `otp`, `kyc-verification.service.ts`, admin profile-verification endpoints |
-| Moderation (partial) | `UserReport`, `PendingSite`, `SitePhoto` + moderation queue, admin reports endpoints, `UserWarning`, `UserStatusHistory` |
-| Listings (partial) | `PendingSite`, `TourSite`, site photos gallery |
-| Payments | `Payment`, `HubtelDirectReceiveLog`, `LedgerAccount`, `LedgerTransaction`, `TransactionFlag`, `PaymentRisk`, `PaymentGatewayConfig` (encrypted creds), payment control system docs |
-| Admin RBAC | `AdminProfile`, `AdminRole`, `AdminDepartment`, permission matrix, TOTP/SMS/backup codes, MFA |
-| Queues/cron | node-cron + Redis distributed locks, `NotificationOutbox`, push delivery worker |
-| Compliance | `DataPolicy`, `AuditLog`, `AdminActivityLog`, consent (`ContactSyncConsent`) |
-| Feeds/cache | Redis, Socket.IO, announcement service |
+| Goal area            | Existing foundation                                                                                                                                                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity (partial)   | `User`, `UserProfile`, `UserVerification`, `ProfileVerification` (phone/ip/bio/doc steps), `otp`, `kyc-verification.service.ts`, admin profile-verification endpoints              |
+| Moderation (partial) | `UserReport`, `PendingSite`, `SitePhoto` + moderation queue, admin reports endpoints, `UserWarning`, `UserStatusHistory`                                                           |
+| Listings (partial)   | `PendingSite`, `TourSite`, site photos gallery                                                                                                                                     |
+| Payments             | `Payment`, `HubtelDirectReceiveLog`, `LedgerAccount`, `LedgerTransaction`, `TransactionFlag`, `PaymentRisk`, `PaymentGatewayConfig` (encrypted creds), payment control system docs |
+| Admin RBAC           | `AdminProfile`, `AdminRole`, `AdminDepartment`, permission matrix, TOTP/SMS/backup codes, MFA                                                                                      |
+| Queues/cron          | node-cron + Redis distributed locks, `NotificationOutbox`, push delivery worker                                                                                                    |
+| Compliance           | `DataPolicy`, `AuditLog`, `AdminActivityLog`, consent (`ContactSyncConsent`)                                                                                                       |
+| Feeds/cache          | Redis, Socket.IO, announcement service                                                                                                                                             |
 
 Net-new work is concentrated in: selfie/face match + OTP pipeline hardening, a unified **content moderation pipeline** (pre-publish AI screening + appeals), forums/comments, property/land listings + GELIS/lawyer search + date-stamped badges, MoMo/Stripe/PayPal crowdfunding + ticketed webinars, webinar access/recording, and the daily brief engine.
 
@@ -83,11 +118,12 @@ model VerificationAppeal {
 **Roles/permissions:** extend `AccountType`/`VerificationLevel`. Add `canPost`, `canListProperty`, `canHostWebinar`, `canFundraise` derived from `IdentityVerification.status === APPROVED` + level. Enforce via a `requireVerified(action)` middleware (`src/middleware/`) that calls `kyc-verification.service.ts` and returns 403 `VERIFICATION_REQUIRED` with next step (reuse `KYCVerificationError` pattern).
 
 **Pipeline (async, queued):**
+
 1. `POST /verification/identity/start` → create row, record consent.
 2. `POST /verification/identity/otp/send` + `/verify` (reuse `otp` model + Hubtel SMS).
-3. `POST /verification/identity/id-upload` (multipart → Cloudinary, store URL).
-4. `POST /verification/identity/selfie` (multipart).
-5. Enqueue `verification.process` job: liveness check → face match (selfie vs ID) → score. Use a queue (BullMQ on Redis, or the existing cron+lock pattern for v1).
+3. `POST /verification/identity/id` (document URLs + type/number).
+4. `POST /verification/identity/selfie` (selfie URL).
+5. `src/jobs/verification-processing.ts` claims IN_PROGRESS/OTP-verified rows and applies liveness/face-match scoring (placeholder `0.9` until a provider is chosen), then moves them to `PENDING_REVIEW`. Uses cron + Redis lock, not BullMQ.
 6. Admin review queue `GET /admin/verifications` (PENDING_REVIEW), approve/reject with reason.
 7. Appeal flow `POST /verification/identity/appeal`.
 
@@ -149,6 +185,7 @@ model ContentAppeal {
 ```
 
 **Flow:**
+
 - `POST /content/posts` → creates `PENDING`, enqueues `moderation.screen` job, returns 202 with status.
 - Worker calls AI moderation API (OpenAI Moderation or Azure Content Safety), sets `aiScore/aiLabels`, transitions: score < 0.3 → APPROVED (auto-publish), 0.3–0.7 → FLAGGED (admin queue), ≥0.7 → REJECTED.
 - Admin queue `GET /admin/moderation/queue?status=FLAGGED|PENDING`, actions approve/reject.
@@ -208,7 +245,7 @@ model Comment {
 }
 ```
 
-**APIs:** `GET /forums`, `GET /forums/:slug/threads`, `POST /forums/:slug/threads` (verified users only), `POST /threads/:id/comments`, `PATCH/DELETE` (owner or mod). All user-generated text routes through moderation pipeline (§2) before publish; replies to approved threads may be auto-approved for verified users with low risk score (configurable).
+**APIs:** `GET /forums`, `POST /forums` (admin), `GET /forums/:slug/threads`, `POST /forums/:slug/threads` (verified users only), `GET /threads/:id`, `POST /threads/:id/comments`, `PATCH/DELETE /threads/:id`, `PATCH/DELETE /comments/:id` (owner or mod). All user-generated text routes through moderation pipeline (§2) before publish; admin queues are `GET /admin/forums/pending-threads` and `/pending-comments` with `?status=PENDING|FLAGGED`. See `docs/frontend-forums-comments-guide.md`.
 
 **Caching:** Redis cache for thread lists (TTL 60s), invalidate on new post/comment.
 
@@ -398,6 +435,7 @@ model DailyBrief {
 ```
 
 **Job:** `src/jobs/daily-brief.ts` runs daily (e.g. 06:00 Africa/Accra) under distributed lock:
+
 1. Collect approved content posts from last 24h (forums, comments, listings).
 2. Generate summary via LLM (OpenAI/Neon AI gateway) — reuse AI gateway config if present.
 3. Store `DailyBrief`.
@@ -433,16 +471,16 @@ model DailyBrief {
 
 ## 9. Milestones (aligned to build order)
 
-| # | Milestone | Deliverables |
-|---|---|---|
-| M1 | Identity | Identity verification schema + pipeline + OTP + selfie match + admin review + appeals + `requireVerified` middleware |
-| M2 | Posting + moderation | `ContentPost` + AI screening job + admin queue + appeals + permissions |
-| M3 | Forums & comments | Forum/Thread/Comment + moderation integration + caching |
-| M4 | Listings | PropertyListing + search requests + GELIS/lawyer + date-stamped badges |
-| M5 | Payments & crowdfunding | Stripe/PayPal clients + webhooks + Campaign/Contribution + fraud checks |
-| M6 | Webinars | Webinar + registration + access control + recording storage |
-| M7 | Daily brief | DailyBrief + collector + generator + fan-out job |
-| M8 | Compliance hardening | Encryption audit, retention purge job, audit log enrichment, monitoring |
+| #   | Milestone               | Deliverables                                                                                                         |
+| --- | ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| M1  | Identity                | Identity verification schema + pipeline + OTP + selfie match + admin review + appeals + `requireVerified` middleware |
+| M2  | Posting + moderation    | `ContentPost` + AI screening job + admin queue + appeals + permissions                                               |
+| M3  | Forums & comments       | Forum/Thread/Comment + moderation integration + caching                                                              |
+| M4  | Listings                | PropertyListing + search requests + GELIS/lawyer + date-stamped badges                                               |
+| M5  | Payments & crowdfunding | Stripe/PayPal clients + webhooks + Campaign/Contribution + fraud checks                                              |
+| M6  | Webinars                | Webinar + registration + access control + recording storage                                                          |
+| M7  | Daily brief             | DailyBrief + collector + generator + fan-out job                                                                     |
+| M8  | Compliance hardening    | Encryption audit, retention purge job, audit log enrichment, monitoring                                              |
 
 Each milestone includes: migration, validators, controllers, routes, Swagger docs, tests (vitest), job wiring in `server.ts`.
 

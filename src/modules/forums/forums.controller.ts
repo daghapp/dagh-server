@@ -9,10 +9,15 @@ export class ForumsController {
     return ok(res, rows);
   }
   async createForum(req: Request, res: Response) {
+    if (req.user?.accountType !== "ADMIN") return fail(res, 403, "Admin access required");
     const { slug, name, description } = req.body ?? {};
     if (!slug || !name) return fail(res, 400, "slug and name required");
-    const row = await svc.createForum({ slug, name, description });
-    return ok(res, row);
+    try {
+      const row = await svc.createForum({ slug, name, description });
+      return ok(res, row);
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
   }
   async listThreads(req: Request, res: Response) {
     const slug = req.params.slug as string;
@@ -51,16 +56,84 @@ export class ForumsController {
       return fail(res, 400, e?.message ?? "Failed");
     }
   }
+  async updateThread(req: Request, res: Response) {
+    const userId = req.user?.id;
+    if (!userId) return fail(res, 401, "Unauthorized");
+    const { title, body } = req.body ?? {};
+    if (title === undefined && body === undefined) return fail(res, 400, "title or body required");
+    try {
+      const row = await svc.updateThread(
+        req.params.id as string,
+        userId,
+        req.user?.accountType === "ADMIN",
+        { title, body },
+      );
+      return ok(res, row);
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
+
+  async deleteThread(req: Request, res: Response) {
+    const userId = req.user?.id;
+    if (!userId) return fail(res, 401, "Unauthorized");
+    try {
+      const row = await svc.deleteThread(
+        req.params.id as string,
+        userId,
+        req.user?.accountType === "ADMIN",
+      );
+      return ok(res, row, "Thread deleted");
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
+
+  async updateComment(req: Request, res: Response) {
+    const userId = req.user?.id;
+    if (!userId) return fail(res, 401, "Unauthorized");
+    const { body } = req.body ?? {};
+    if (!body) return fail(res, 400, "body required");
+    try {
+      const row = await svc.updateComment(
+        req.params.id as string,
+        userId,
+        req.user?.accountType === "ADMIN",
+        body,
+      );
+      return ok(res, row);
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
+
+  async deleteComment(req: Request, res: Response) {
+    const userId = req.user?.id;
+    if (!userId) return fail(res, 401, "Unauthorized");
+    try {
+      const row = await svc.deleteComment(
+        req.params.id as string,
+        userId,
+        req.user?.accountType === "ADMIN",
+      );
+      return ok(res, row, "Comment deleted");
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
+
   async adminPendingThreads(req: Request, res: Response) {
+    const status = (req.query.status as string) ?? "PENDING";
     const limit = Number(req.query.limit ?? 50);
     const offset = Number(req.query.offset ?? 0);
-    const data = await svc.listPendingThreads(limit, offset);
+    const data = await svc.listPendingThreads(status, limit, offset);
     return ok(res, data);
   }
   async adminPendingComments(req: Request, res: Response) {
+    const status = (req.query.status as string) ?? "PENDING";
     const limit = Number(req.query.limit ?? 50);
     const offset = Number(req.query.offset ?? 0);
-    const data = await svc.listPendingComments(limit, offset);
+    const data = await svc.listPendingComments(status, limit, offset);
     return ok(res, data);
   }
   async adminDecideThread(req: Request, res: Response) {

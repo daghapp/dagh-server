@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
 import * as svc from "./crowdfunding.service.js";
 import { requireVerified } from "../../middleware/require-verified.js";
+import { verifyStripeSignature, parseStripeEvent } from "../../services/stripe.service.js";
+import { verifyPaypalWebhook, parsePaypalEvent } from "../../services/paypal.service.js";
 
 export class CrowdfundingController {
   async createCampaign(req: Request, res: Response) {
@@ -66,5 +68,32 @@ export class CrowdfundingController {
     if (!providerRef) return fail(res, 400, "providerRef required");
     await svc.handleWebhook(providerRef, !!success);
     return ok(res, { received: true });
+  }
+
+  async stripeWebhook(req: Request, res: Response) {
+    const rawBody =
+      (req as Request & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
+    const signature = req.headers["stripe-signature"] as string | undefined;
+    if (!verifyStripeSignature(rawBody, signature)) {
+      return fail(res, 400, "Invalid Stripe signature");
+    }
+    const { providerRef, success, eventType } = parseStripeEvent(req.body);
+    if (providerRef && success) {
+      await svc.handleWebhook(providerRef, true);
+    }
+    return ok(res, { received: true, eventType });
+  }
+
+  async paypalWebhook(req: Request, res: Response) {
+    const verified = await verifyPaypalWebhook(
+      req.headers as Record<string, unknown>,
+      req.body ?? {},
+    );
+    if (!verified) return fail(res, 400, "Invalid PayPal signature");
+    const { providerRef, success, eventType } = parsePaypalEvent(req.body);
+    if (providerRef && success) {
+      await svc.handleWebhook(providerRef, true);
+    }
+    return ok(res, { received: true, eventType });
   }
 }

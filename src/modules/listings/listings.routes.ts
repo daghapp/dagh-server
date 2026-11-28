@@ -10,6 +10,12 @@ router.get("/listings", c.list.bind(c));
 router.get("/listings/:id", c.get.bind(c));
 router.post("/listings", protectedRoute, requireVerified("list"), c.create.bind(c));
 router.post("/listings/:id/submit", protectedRoute, requireVerified("list"), c.submit.bind(c));
+router.post(
+  "/listings/:id/verify-request",
+  protectedRoute,
+  requireVerified("list"),
+  c.requestVerification.bind(c),
+);
 router.post("/listings/search-requests", protectedRoute, c.createSearchRequest.bind(c));
 
 export { router };

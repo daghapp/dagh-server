@@ -32,6 +32,7 @@ import { router as WebinarsRoutes } from "./modules/webinars/webinars.routes.js"
 import { router as DailyBriefRoutes } from "./modules/daily-brief/daily-brief.routes.js";
 import { router as AdminDailyBriefRoutes } from "./modules/daily-brief/admin-daily-brief.routes.js";
 import { router as AdminListingsRoutes } from "./modules/listings/admin-listings.routes.js";
+import { router as AdminCrowdfundingRoutes } from "./modules/crowdfunding/admin-crowdfunding.routes.js";
 import { router as AdminForumsRoutes } from "./modules/forums/admin-forums.routes.js";
 import { router as AdminContentModerationRoutes } from "./modules/content-moderation/admin-content-moderation.routes.js";
 import { router as AdminVerificationRoutes } from "./modules/identity-verification/admin-verification.routes.js";
@@ -90,6 +91,8 @@ import { channelGrantReverifyJob } from "./jobs/channel-grant-reverify.js";
 import { datingProximityJob } from "./jobs/dating-proximity.js";
 import { dailyBriefJob } from "./jobs/daily-brief.js";
 import { dataRetentionJob } from "./jobs/data-retention.js";
+import { verificationProcessingJob } from "./jobs/verification-processing.js";
+import { contentModerationJob } from "./jobs/content-moderation.js";
 import { logYouTubeGateStatus } from "./services/youtube-oauth.service.js";
 import { setIoInstance } from "./modules/messages/messages.controller.js";
 import { setIoInstance as setCallIoInstance } from "./modules/messages/calls.controller.js";
@@ -185,7 +188,15 @@ app.use(helmet());
 // Correlation id for every request: echoed as X-Request-Id and recorded on audit
 // rows. Must come before morgan so the id is available to request-scoped logging.
 app.use(requestId);
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      // Preserve the exact bytes so provider webhooks (Stripe) can verify their
+      // HMAC signature against the raw payload rather than a re-serialization.
+      (req as typeof req & { rawBody?: string }).rawBody = buf.toString("utf8");
+    },
+  }),
+);
 // urlencoded body parsing for the Apple Sign In callback (response_mode=form_post),
 // which posts its auth code/state as application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: true }));
@@ -217,6 +228,8 @@ channelGrantReverifyJob();
 datingProximityJob();
 dailyBriefJob();
 dataRetentionJob();
+verificationProcessingJob();
+contentModerationJob();
 logYouTubeGateStatus();
 setupSwagger(app);
 
@@ -319,6 +332,7 @@ app.use("/admin/moderation", AdminContentModerationRoutes);
 app.use("/admin/forums", AdminForumsRoutes);
 app.use("/admin/briefs", AdminDailyBriefRoutes);
 app.use("/admin/listings", AdminListingsRoutes);
+app.use("/admin/crowdfunding", AdminCrowdfundingRoutes);
 app.use("/admin", AdminPaymentGatewayRoutes);
 app.use("/admin/payments", AdminPaymentsRoutes);
 app.use("/admin/dating", AdminDatingRoutes);

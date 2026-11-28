@@ -22,6 +22,43 @@ export async function screenContent(
   return { score, labels, provider: "local-heuristic" };
 }
 
+async function notifyContentStatus(post: {
+  id: string;
+  authorId: string;
+  status: string;
+  rejectionReason?: string | null;
+}) {
+  try {
+    await prisma.notificationOutbox.upsert({
+      where: {
+        eventType_aggregateId_recipientUserId: {
+          eventType: "CONTENT_STATUS_CHANGED",
+          aggregateId: `${post.id}:${post.status}`,
+          recipientUserId: post.authorId,
+        },
+      },
+      update: { status: "PENDING" },
+      create: {
+        eventType: "CONTENT_STATUS_CHANGED",
+        aggregateId: `${post.id}:${post.status}`,
+        recipientUserId: post.authorId,
+        payload: {
+          push: {
+            type: "CONTENT_STATUS_CHANGED",
+            contentId: post.id,
+            status: post.status,
+            reason: post.rejectionReason ?? "",
+            route: `/content/posts/${post.id}`,
+            schemaVersion: "1",
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("[content-moderation] failed to enqueue status notification", error);
+  }
+}
+
 export async function createPost(
   authorId: string,
   data: { kind?: string; title?: string; body: string; mediaUrls?: string[] },
@@ -44,7 +81,7 @@ export async function createPost(
       : result.score < FLAG_THRESHOLD
         ? "FLAGGED"
         : "REJECTED";
-  return prisma.contentPost.update({
+  const updated = await prisma.contentPost.update({
     where: { id: post.id },
     data: {
       aiScore: result.score,
@@ -56,6 +93,46 @@ export async function createPost(
       rejectionReason: status === "REJECTED" ? "Rejected by automated screening" : null,
     },
   });
+  await notifyContentStatus(updated);
+  return updated;
+}
+
+function statusForScore(score: number): MS {
+  if (score < AUTO_APPROVE_THRESHOLD) return MS.APPROVED;
+  if (score < FLAG_THRESHOLD) return MS.FLAGGED;
+  return MS.REJECTED;
+}
+
+/**
+ * Re-screens PENDING posts (e.g. resubmitted through an appeal). Returns the
+ * number of posts that were processed.
+ */
+export async function screenPendingPosts(batchSize = 25): Promise<number> {
+  const posts = await prisma.contentPost.findMany({
+    where: { status: MS.PENDING },
+    orderBy: { createdAt: "asc" },
+    take: batchSize,
+  });
+  let processed = 0;
+  for (const post of posts) {
+    const result = await screenContent(post.body);
+    const status = statusForScore(result.score);
+    const updated = await prisma.contentPost.update({
+      where: { id: post.id },
+      data: {
+        aiScore: result.score,
+        aiLabels: result.labels,
+        aiProvider: result.provider,
+        screenedAt: new Date(),
+        status,
+        publishedAt: status === MS.APPROVED ? new Date() : null,
+        rejectionReason: status === MS.REJECTED ? "Rejected by automated screening" : null,
+      },
+    });
+    await notifyContentStatus(updated);
+    processed += 1;
+  }
+  return processed;
 }
 
 export async function listQueue(status: string, limit = 50, offset = 0) {
@@ -79,7 +156,7 @@ export async function decidePost(
   approve: boolean,
   reason?: string,
 ) {
-  return prisma.contentPost.update({
+  const updated = await prisma.contentPost.update({
     where: { id: postId },
     data: {
       status: approve ? "APPROVED" : "REJECTED",
@@ -89,6 +166,8 @@ export async function decidePost(
       publishedAt: approve ? new Date() : null,
     },
   });
+  await notifyContentStatus(updated);
+  return updated;
 }
 
 export async function createAppeal(postId: string, userId: string, reason: string) {
@@ -98,7 +177,11 @@ export async function createAppeal(postId: string, userId: string, reason: strin
   if (post.status !== "REJECTED" && post.status !== "FLAGGED")
     throw new Error("Appeals only for rejected/flagged posts");
   const appeal = await prisma.contentAppeal.create({ data: { postId, userId, reason } });
-  await prisma.contentPost.update({ where: { id: postId }, data: { status: "PENDING" } });
+  const updated = await prisma.contentPost.update({
+    where: { id: postId },
+    data: { status: "PENDING" },
+  });
+  await notifyContentStatus(updated);
   return appeal;
 }
 
@@ -119,10 +202,11 @@ export async function decideAppeal(
       decisionNote: note ?? null,
     },
   });
-  await prisma.contentPost.update({
+  const post = await prisma.contentPost.update({
     where: { id: appeal.postId },
     data: { status: approve ? "APPROVED" : "REJECTED", publishedAt: approve ? new Date() : null },
   });
+  await notifyContentStatus(post);
   return updated;
 }
 

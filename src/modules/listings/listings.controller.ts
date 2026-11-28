@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
 import * as svc from "./listings.service.js";
-import { requireVerified } from "../../middleware/require-verified.js";
 
 export class ListingsController {
   async create(req: Request, res: Response) {
@@ -27,6 +26,17 @@ export class ListingsController {
       return fail(res, 400, e?.message ?? "Failed");
     }
   }
+  async requestVerification(req: Request, res: Response) {
+    const userId = req.user?.id;
+    if (!userId) return fail(res, 401, "Unauthorized");
+    try {
+      const row = await svc.requestVerification(req.params.id as string, userId);
+      return ok(res, row, "Verification requested");
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
+
   async list(req: Request, res: Response) {
     const limit = Number(req.query.limit ?? 20);
     const offset = Number(req.query.offset ?? 0);

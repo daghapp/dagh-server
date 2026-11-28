@@ -24,4 +24,12 @@ export class DailyBriefController {
     const row = await svc.runDailyBrief(date ? new Date(date) : undefined);
     return ok(res, row);
   }
+  async publish(req: Request, res: Response) {
+    try {
+      const row = await svc.publishBrief(req.params.id as string);
+      return ok(res, row, "Brief published");
+    } catch (e: any) {
+      return fail(res, 400, e?.message ?? "Failed");
+    }
+  }
 }

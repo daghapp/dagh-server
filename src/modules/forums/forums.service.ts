@@ -27,11 +27,14 @@ async function cacheSet(key: string, val: any, ttl = 60): Promise<void> {
   }
 }
 
-async function cacheDel(key: string): Promise<void> {
+async function cacheDelPattern(pattern: string): Promise<void> {
   const r = getRedisClient();
   if (!r) return;
   try {
-    await r.del(key);
+    const keys = await r.keys(pattern);
+    for (const key of keys) {
+      await r.del(key);
+    }
   } catch {
     // ignore
   }
@@ -87,7 +90,7 @@ export async function createThread(
       status,
     },
   });
-  await cacheDel(`forum:threads:${forumSlug}:*`);
+  await cacheDelPattern(`forum:threads:${forumSlug}:*`);
   return thread;
 }
 
@@ -111,7 +114,10 @@ export async function createComment(
   body: string,
   parentId?: string,
 ) {
-  const thread = await prisma.forumThread.findUnique({ where: { id: threadId } });
+  const thread = await prisma.forumThread.findUnique({
+    where: { id: threadId },
+    include: { forum: { select: { slug: true } } },
+  });
   if (!thread) throw new Error("Thread not found");
   if (thread.locked) throw new Error("Thread locked");
   const res = await screenContent(body);
@@ -127,7 +133,89 @@ export async function createComment(
       data: { replyCount: { increment: 1 }, lastActivityAt: new Date() },
     });
   }
+  await cacheDelPattern(`forum:threads:${thread.forum.slug}:*`);
   return comment;
+}
+
+export async function updateThread(
+  id: string,
+  userId: string,
+  isAdmin: boolean,
+  data: { title?: string; body?: string },
+) {
+  const thread = await prisma.forumThread.findUnique({
+    where: { id },
+    include: { forum: { select: { slug: true } } },
+  });
+  if (!thread) throw new Error("Thread not found");
+  if (!isAdmin && thread.authorId !== userId) throw new Error("Not allowed");
+  if (thread.locked && !isAdmin) throw new Error("Thread locked");
+
+  const update: Record<string, unknown> = {};
+  if (data.title !== undefined) update.title = data.title;
+  if (data.body !== undefined) {
+    update.body = data.body;
+    const res = await screenContent(`${data.title ?? thread.title} ${data.body}`);
+    update.status = (
+      res.score < AUTO_APPROVE ? MS.APPROVED : res.score < FLAG ? MS.FLAGGED : MS.REJECTED
+    ) as MS;
+  }
+  const updated = await prisma.forumThread.update({ where: { id }, data: update });
+  await cacheDelPattern(`forum:threads:${thread.forum.slug}:*`);
+  return updated;
+}
+
+export async function deleteThread(id: string, userId: string, isAdmin: boolean) {
+  const thread = await prisma.forumThread.findUnique({
+    where: { id },
+    include: { forum: { select: { slug: true } } },
+  });
+  if (!thread) throw new Error("Thread not found");
+  if (!isAdmin && thread.authorId !== userId) throw new Error("Not allowed");
+  await prisma.$transaction([
+    prisma.comment.deleteMany({ where: { threadId: id } }),
+    prisma.forumThread.delete({ where: { id } }),
+  ]);
+  await cacheDelPattern(`forum:threads:${thread.forum.slug}:*`);
+  return { id };
+}
+
+export async function updateComment(id: string, userId: string, isAdmin: boolean, body: string) {
+  const comment = await prisma.comment.findUnique({
+    where: { id },
+    include: { thread: { include: { forum: { select: { slug: true } } } } },
+  });
+  if (!comment) throw new Error("Comment not found");
+  if (!isAdmin && comment.authorId !== userId) throw new Error("Not allowed");
+  const res = await screenContent(body);
+  const status = (
+    res.score < AUTO_APPROVE ? MS.APPROVED : res.score < FLAG ? MS.FLAGGED : MS.REJECTED
+  ) as MS;
+  const updated = await prisma.comment.update({
+    where: { id },
+    data: { body, status },
+  });
+  if (comment.thread) {
+    await cacheDelPattern(`forum:threads:${comment.thread.forum.slug}:*`);
+  }
+  return updated;
+}
+
+export async function deleteComment(id: string, userId: string, isAdmin: boolean) {
+  const comment = await prisma.comment.findUnique({
+    where: { id },
+    include: { thread: { include: { forum: { select: { slug: true } } } } },
+  });
+  if (!comment) throw new Error("Comment not found");
+  if (!isAdmin && comment.authorId !== userId) throw new Error("Not allowed");
+  await prisma.$transaction([
+    prisma.comment.deleteMany({ where: { parentId: id } }),
+    prisma.comment.delete({ where: { id } }),
+  ]);
+  if (comment.thread) {
+    await cacheDelPattern(`forum:threads:${comment.thread.forum.slug}:*`);
+  }
+  return { id };
 }
 
 export async function moderateThread(
@@ -154,8 +242,8 @@ export async function moderateComment(
   });
 }
 
-export async function listPendingThreads(limit = 50, offset = 0) {
-  const where = { status: MS.PENDING };
+export async function listPendingThreads(status = "PENDING", limit = 50, offset = 0) {
+  const where = { status: status as MS };
   const [rows, total] = await Promise.all([
     prisma.forumThread.findMany({
       where,
@@ -169,8 +257,8 @@ export async function listPendingThreads(limit = 50, offset = 0) {
   return { rows, total };
 }
 
-export async function listPendingComments(limit = 50, offset = 0) {
-  const where = { status: MS.PENDING };
+export async function listPendingComments(status = "PENDING", limit = 50, offset = 0) {
+  const where = { status: status as MS };
   const [rows, total] = await Promise.all([
     prisma.comment.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip: offset }),
     prisma.comment.count({ where }),

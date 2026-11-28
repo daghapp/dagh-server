@@ -5,13 +5,36 @@ import { enqueueAnnouncement } from "../../services/announcement.service.js";
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
 export async function collectSourceIds(since: Date) {
-  const posts = await prisma.contentPost.findMany({
-    where: { status: "APPROVED", publishedAt: { gte: since } },
-    select: { id: true, title: true, body: true },
-    orderBy: { publishedAt: "desc" },
-    take: 50,
-  });
-  return posts;
+  const [posts, threads, listings] = await Promise.all([
+    prisma.contentPost.findMany({
+      where: { status: "APPROVED", publishedAt: { gte: since } },
+      select: { id: true, title: true, body: true },
+      orderBy: { publishedAt: "desc" },
+      take: 50,
+    }),
+    prisma.forumThread.findMany({
+      where: { status: "APPROVED", createdAt: { gte: since } },
+      select: { id: true, title: true, body: true },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    }),
+    prisma.propertyListing.findMany({
+      where: { status: "VERIFIED", updatedAt: { gte: since } },
+      select: { id: true, title: true, description: true },
+      orderBy: { updatedAt: "desc" },
+      take: 25,
+    }),
+  ]);
+
+  return [
+    ...posts,
+    ...threads,
+    ...listings.map((listing) => ({
+      id: listing.id,
+      title: listing.title,
+      body: listing.description,
+    })),
+  ];
 }
 
 export async function generateSummary(sources: { title: string | null; body: string }[]) {
@@ -87,6 +110,29 @@ export async function runDailyBrief(date?: Date) {
     await enqueueAnnouncement(ann.id);
   } catch {
     // ignore fan-out failures
+  }
+  return brief;
+}
+
+export async function publishBrief(id: string) {
+  const brief = await prisma.dailyBrief.update({
+    where: { id },
+    data: { status: "PUBLISHED", publishedAt: new Date() },
+  });
+  try {
+    const ann = await prisma.announcement.create({
+      data: {
+        title: brief.title,
+        body: brief.summary,
+        category: "DAILY_BRIEF",
+        audience: "ACTIVE",
+        status: "DRAFT",
+        createdBy: "system",
+      },
+    });
+    await enqueueAnnouncement(ann.id);
+  } catch {
+    // ignore fan-out failures; the brief itself is published
   }
   return brief;
 }

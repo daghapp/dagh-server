@@ -18,5 +18,7 @@ router.post(
 router.post("/campaigns/:id/contribute", protectedRoute, c.contribute.bind(c));
 router.get("/campaigns/:id/contributions", c.contributions.bind(c));
 router.post("/payment/webhooks/crowdfunding", c.webhook.bind(c));
+router.post("/payment/webhooks/stripe", c.stripeWebhook.bind(c));
+router.post("/payment/webhooks/paypal", c.paypalWebhook.bind(c));
 
 export { router };

@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { ok, fail } from "../../helpers/response.js";
 import * as svc from "./webinars.service.js";
-import { requireVerified } from "../../middleware/require-verified.js";
 
 export class WebinarsController {
   async create(req: Request, res: Response) {

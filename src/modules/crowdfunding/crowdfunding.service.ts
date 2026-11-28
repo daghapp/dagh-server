@@ -1,15 +1,15 @@
 import { prisma } from "../../config/index.js";
-import axios from "axios";
 import {
   CrowdfundingStatus as CS,
   PaymentStatus as PS,
   PaymentProviderExt as PPE,
+  PaymentTargetType,
+  PaymentProvider,
 } from "../../../generated/prisma/client.js";
-
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
-const PAYPAL_BASE = process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com";
+import { logAdminActivity, AdminEntityType } from "../../helpers/admin-activity.js";
+import { getAccountId } from "../../helpers/ledger.js";
+import { isStripeConfigured, createStripeCheckout } from "../../services/stripe.service.js";
+import { createPaypalOrder } from "../../services/paypal.service.js";
 
 export async function createCampaign(creatorId: string, data: any) {
   return prisma.campaign.create({
@@ -71,6 +71,87 @@ export async function fraudCheck(contributorId: string | null, amount: number, c
   return { ok: flags.length === 0, flags };
 }
 
+async function recordRisk(paymentId: string, flags: string[], amount: number) {
+  const score = Math.min(100, flags.length * 25 + (amount > 50000 ? 20 : 0));
+  const riskLevel = score >= 60 ? "HIGH" : score >= 30 ? "MEDIUM" : "LOW";
+  await prisma.paymentRisk.upsert({
+    where: { paymentId },
+    update: { score, riskLevel, reasons: flags },
+    create: { paymentId, score, riskLevel, reasons: flags },
+  });
+  for (const reason of flags) {
+    await prisma.transactionFlag.create({
+      data: { paymentId, flaggedBy: "system", reason },
+    });
+  }
+}
+
+async function recordLedger(paymentId: string, amount: number, currency: string) {
+  const rate = Number(process.env.PLATFORM_COMMISSION_RATE ?? 0);
+  if (!rate || rate <= 0) return;
+  try {
+    const accountId = await getAccountId("Account_DAGh_Revenue");
+    await prisma.ledgerTransaction.create({
+      data: {
+        accountId,
+        paymentId,
+        amount: Number((amount * rate).toFixed(2)),
+        currency,
+        type: "CREDIT",
+        description: "Platform commission on crowdfunding contribution",
+      },
+    });
+  } catch {
+    // Ledger account not configured; commission accounting is best-effort.
+  }
+}
+
+async function recordSuccessfulContribution(contribution: {
+  id: string;
+  campaignId: string;
+  contributorId: string | null;
+  amount: unknown;
+  currency: string;
+  provider: PPE;
+  providerRef: string;
+}) {
+  const campaign = await prisma.campaign.findUnique({ where: { id: contribution.campaignId } });
+  if (!campaign) return;
+  const payerId = contribution.contributorId ?? campaign.creatorId;
+  const providerMap: Partial<Record<PPE, PaymentProvider>> = {
+    [PPE.STRIPE]: PaymentProvider.STRIPE,
+    [PPE.HUBTEL_MOMO]: PaymentProvider.HUBTEL,
+  };
+  const payment = await prisma.payment.upsert({
+    where: { reference: contribution.providerRef },
+    update: { status: PS.SUCCESS, paidAt: new Date() },
+    create: {
+      reference: contribution.providerRef,
+      userId: payerId,
+      description: `Contribution to ${campaign.title}`,
+      targetType: PaymentTargetType.CROWDFUNDING,
+      targetId: contribution.campaignId,
+      amount: Number(contribution.amount),
+      currency: contribution.currency,
+      status: PS.SUCCESS,
+      method: "CARD",
+      provider: providerMap[contribution.provider] ?? null,
+      providerReference: contribution.providerRef,
+      paidAt: new Date(),
+    },
+  });
+
+  const flags = await fraudCheck(
+    contribution.contributorId,
+    Number(contribution.amount),
+    contribution.campaignId,
+  );
+  if (flags.flags.length > 0) {
+    await recordRisk(payment.id, flags.flags, Number(contribution.amount));
+  }
+  await recordLedger(payment.id, Number(contribution.amount), contribution.currency);
+}
+
 export async function initiateContribution(
   campaignId: string,
   contributorId: string | null,
@@ -94,105 +175,60 @@ export async function initiateContribution(
       anonymous: !!data.anonymous,
     },
   });
-  // Create checkout URL
+
   let checkoutUrl: string;
   if (provider === PPE.STRIPE) {
-    checkoutUrl = await stripeCheckout(
-      providerRef,
-      data.amount,
-      data.currency ?? campaign.currency,
-    );
+    checkoutUrl = await createStripeCheckout({
+      reference: providerRef,
+      amount: data.amount,
+      currency: data.currency ?? campaign.currency,
+      description: `Contribution to ${campaign.title}`,
+    });
   } else if (provider === PPE.PAYPAL) {
-    checkoutUrl = await paypalCheckout(
-      providerRef,
-      data.amount,
-      data.currency ?? campaign.currency,
-    );
+    checkoutUrl = await createPaypalOrder({
+      reference: providerRef,
+      amount: data.amount,
+      currency: data.currency ?? campaign.currency,
+    });
   } else {
     checkoutUrl = `/payment/processing?ref=${providerRef}`;
   }
-  return { contribution, checkoutUrl };
-}
-
-async function stripeCheckout(ref: string, amount: number, currency: string) {
-  if (!STRIPE_SECRET) return `https://checkout.stripe.com/mock?ref=${ref}`;
-  try {
-    const res = await axios.post(
-      "https://api.stripe.com/v1/checkout/sessions",
-      new URLSearchParams({
-        mode: "payment",
-        success_url: `${process.env.API_URL ?? "http://localhost:5000"}/payment/verify/${ref}`,
-        cancel_url: `${process.env.API_URL ?? "http://localhost:5000"}/payment/processing`,
-        "line_items[0][price_data][currency]": currency.toLowerCase(),
-        "line_items[0][price_data][product_data][name]": "Campaign contribution",
-        "line_items[0][price_data][unit_amount]": String(Math.round(amount * 100)),
-        "line_items[0][quantity]": "1",
-        client_reference_id: ref,
-      }),
-      {
-        headers: {
-          Authorization: `Bearer ${STRIPE_SECRET}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      },
-    );
-    return res.data.url;
-  } catch {
-    return `https://checkout.stripe.com/mock?ref=${ref}`;
-  }
-}
-
-async function paypalCheckout(ref: string, amount: number, currency: string) {
-  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET)
-    return `https://www.paypal.com/checkoutnow?token=${ref}`;
-  try {
-    const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString("base64");
-    const tokenRes = await axios.post(
-      `${PAYPAL_BASE}/v1/oauth2/token`,
-      "grant_type=client_credentials",
-      {
-        headers: {
-          Authorization: `Basic ${auth}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      },
-    );
-    const accessToken = tokenRes.data.access_token;
-    const orderRes = await axios.post(
-      `${PAYPAL_BASE}/v2/checkout/orders`,
-      {
-        intent: "CAPTURE",
-        purchase_units: [
-          { amount: { currency_code: currency, value: amount.toFixed(2) }, custom_id: ref },
-        ],
-      },
-      { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } },
-    );
-    const approve = orderRes.data.links?.find((l: any) => l.rel === "approve");
-    return approve?.href ?? `https://www.paypal.com/checkoutnow?token=${orderRes.data.id}`;
-  } catch {
-    return `https://www.paypal.com/checkoutnow?token=${ref}`;
-  }
+  return { contribution, checkoutUrl, stripeConfigured: isStripeConfigured() };
 }
 
 export async function handleWebhook(providerRef: string, success: boolean) {
   const contribution = await prisma.contribution.findUnique({ where: { providerRef } });
   if (!contribution) return null;
+
+  // Idempotent: a repeated webhook must not increment the campaign twice.
+  if (contribution.status === PS.SUCCESS || contribution.status === PS.FAILED) {
+    return contribution;
+  }
+
   if (success) {
-    await prisma.contribution.update({ where: { providerRef }, data: { status: PS.SUCCESS } });
+    const updated = await prisma.contribution.update({
+      where: { providerRef },
+      data: { status: PS.SUCCESS },
+    });
     await prisma.campaign.update({
       where: { id: contribution.campaignId },
       data: { raisedAmount: { increment: contribution.amount } },
     });
-    // mark completed if goal reached
     const c = await prisma.campaign.findUnique({ where: { id: contribution.campaignId } });
     if (c && Number(c.raisedAmount) >= Number(c.goalAmount)) {
       await prisma.campaign.update({ where: { id: c.id }, data: { status: CS.COMPLETED } });
     }
-  } else {
-    await prisma.contribution.update({ where: { providerRef }, data: { status: PS.FAILED } });
+    try {
+      await recordSuccessfulContribution(updated);
+    } catch (error) {
+      // Accounting/risk bookkeeping must not fail the provider webhook — the
+      // contribution is already recorded and the campaign total is correct.
+      console.error("[crowdfunding] post-payment bookkeeping failed", error);
+    }
+    return updated;
   }
-  return contribution;
+
+  return prisma.contribution.update({ where: { providerRef }, data: { status: PS.FAILED } });
 }
 
 export async function listContributions(campaignId: string, limit = 50, offset = 0) {
@@ -204,6 +240,43 @@ export async function listContributions(campaignId: string, limit = 50, offset =
       skip: offset,
     }),
     prisma.contribution.count({ where: { campaignId } }),
+  ]);
+  return { rows, total };
+}
+
+// ── Admin oversight ────────────────────────────────────────────────────────
+
+export async function adminUpdateStatus(
+  id: string,
+  adminId: string,
+  status: string,
+  note?: string,
+) {
+  const updated = await prisma.campaign.update({
+    where: { id },
+    data: { status: status as CS },
+  });
+  await logAdminActivity({
+    actorId: adminId,
+    entityType: AdminEntityType.CAMPAIGN,
+    entityId: id,
+    action: "STATUS_CHANGED",
+    note,
+    metadata: { status },
+  });
+  return updated;
+}
+
+export async function adminListContributions(limit = 50, offset = 0, status?: string) {
+  const where = status ? { status: status as PS } : {};
+  const [rows, total] = await Promise.all([
+    prisma.contribution.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.contribution.count({ where }),
   ]);
   return { rows, total };
 }

@@ -35,7 +35,7 @@ All endpoints use a single envelope.
 ```json
 {
   "success": true,
-  "data": { /* payload — varies per endpoint */ },
+  "data": {/* payload — varies per endpoint */},
   "message": "Optional human-readable message"
 }
 ```
@@ -172,11 +172,11 @@ is used.
 
 **Errors:**
 
-| Status | Error |
-|--------|-------|
-| 400 | `Phone number is required` / `Phone number must be a valid phone number` |
-| 401 | `Unauthorized` |
-| 500 | `Failed to send OTP` |
+| Status | Error                                                                    |
+| ------ | ------------------------------------------------------------------------ |
+| 400    | `Phone number is required` / `Phone number must be a valid phone number` |
+| 401    | `Unauthorized`                                                           |
+| 500    | `Failed to send OTP`                                                     |
 
 > Frontend: after a 200, navigate to the code-entry screen. Keep the returned
 > `phoneNumber` to display back to the user if you want.
@@ -222,12 +222,12 @@ flag stays `false` until phone, face and documents are all approved.
 
 **Errors:**
 
-| Status | Error |
-|--------|-------|
-| 400 | `Invalid OTP code` / `OTP expired. Please request a new one.` / `OTP expired or not found. Please request a new one.` / `Phone number is required` |
-| 400 (validation) | `OTP must be 6 digits` |
-| 404 | `Profile not found` |
-| 401 | `Unauthorized` |
+| Status           | Error                                                                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400              | `Invalid OTP code` / `OTP expired. Please request a new one.` / `OTP expired or not found. Please request a new one.` / `Phone number is required` |
+| 400 (validation) | `OTP must be 6 digits`                                                                                                                             |
+| 404              | `Profile not found`                                                                                                                                |
+| 401              | `Unauthorized`                                                                                                                                     |
 
 > Frontend: on 200 show the **"Phone Verified"** success screen. "Proceed"
 > moves to the camera step. If `Invalid OTP code`, show an inline error under
@@ -248,9 +248,9 @@ for document front/back images (three separate calls).
 
 **Upload constraints** (enforced by the server):
 
-| Constraint | Value |
-|------------|-------|
-| Max size | **5 MB** |
+| Constraint    | Value               |
+| ------------- | ------------------- |
+| Max size      | **5 MB**            |
 | Allowed types | JPEG, JPG, PNG, PDF |
 
 **Response 201:**
@@ -268,12 +268,12 @@ for document front/back images (three separate calls).
 
 **Errors:**
 
-| Status | Error |
-|--------|-------|
-| 400 | `No file uploaded` |
-| 400 | `Only JPG, PNG images and PDFs are allowed` (wrong type) |
-| 413 | `File too large. Maximum size is 5MB.` |
-| 400 | `Upload failed. Please provide a valid image or PDF.` (Cloudinary error) |
+| Status | Error                                                                    |
+| ------ | ------------------------------------------------------------------------ |
+| 400    | `No file uploaded`                                                       |
+| 400    | `Only JPG, PNG images and PDFs are allowed` (wrong type)                 |
+| 413    | `File too large. Maximum size is 5MB.`                                   |
+| 400    | `Upload failed. Please provide a valid image or PDF.` (Cloudinary error) |
 
 > Frontend: compress images client-side before sending to avoid the 5 MB limit.
 > Send the returned `url` (not the `publicId`) to 2.5 / 2.7.
@@ -309,12 +309,12 @@ Saves the face-scan image URL and advances the flow to the document step.
 
 **Errors:**
 
-| Status | Error |
-|--------|-------|
-| 400 | `bio_profile_url is required` |
-| 404 | `Profile not found. Please initialize your profile first.` |
-| 401 | `Unauthorized` |
-| 500 | `Failed to update bio profile URL.` |
+| Status | Error                                                      |
+| ------ | ---------------------------------------------------------- |
+| 400    | `bio_profile_url is required`                              |
+| 404    | `Profile not found. Please initialize your profile first.` |
+| 401    | `Unauthorized`                                             |
+| 500    | `Failed to update bio profile URL.`                        |
 
 > Frontend: fire this immediately after the face upload succeeds. Show the
 > "Processing…" state. A 200 means the biometric data is captured — show
@@ -355,7 +355,10 @@ state.
 {
   "success": true,
   "data": {
-    "bio_document_urls": ["https://res.cloudinary.com/…/passport-front.jpg", "https://res.cloudinary.com/…/passport-back.jpg"],
+    "bio_document_urls": [
+      "https://res.cloudinary.com/…/passport-front.jpg",
+      "https://res.cloudinary.com/…/passport-back.jpg"
+    ],
     "bio_document_type": "PASSPORT",
     "bio_document_number": "G12345678",
     "bio_document_uploaded_at": "2026-08-08T12:00:00.000Z"
@@ -366,13 +369,13 @@ state.
 
 **Errors:**
 
-| Status | Error |
-|--------|-------|
+| Status           | Error                                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | 400 (validation) | `bio_document_urls must contain at least 1 url` / `Each bio document URL must be a valid URL` / `bio_document_number is required` |
-| **409** | `This document number has already been used to verify another account.` |
-| 404 | `Profile not found. Please initialize your profile first.` |
-| 401 | `Unauthorized` |
-| 500 | `Failed to update bio documents.` |
+| **409**          | `This document number has already been used to verify another account.`                                                           |
+| 404              | `Profile not found. Please initialize your profile first.`                                                                        |
+| 401              | `Unauthorized`                                                                                                                    |
+| 500              | `Failed to update bio documents.`                                                                                                 |
 
 > **409 — duplicate ID:** When this is returned, the submitted
 > `bio_document_number` is already linked to a **different** user account. The
@@ -410,22 +413,22 @@ If omitted, the current step is inferred from stored progress.
 
 **`status` values and screen mapping:**
 
-| `status` | Meaning | UI |
-|----------|---------|-----|
-| `PENDING` | Submitted, awaiting admin review | **"Verifying Your Profile"** (spinner) |
-| `VERIFIED` | Step completed / admin-approved | `current_step == "DOCUMENT_VERIFICATION"` → **"You are done"** |
-| `REJECTED` | Admin rejected the step | **"Profile Verification failed"** (show `verification_message`) |
+| `status`   | Meaning                          | UI                                                              |
+| ---------- | -------------------------------- | --------------------------------------------------------------- |
+| `PENDING`  | Submitted, awaiting admin review | **"Verifying Your Profile"** (spinner)                          |
+| `VERIFIED` | Step completed / admin-approved  | `current_step == "DOCUMENT_VERIFICATION"` → **"You are done"**  |
+| `REJECTED` | Admin rejected the step          | **"Profile Verification failed"** (show `verification_message`) |
 
 `verification_message` is only present (non-null) when `status` is `REJECTED`
-and contains the admin's rejection reason (e.g. *"Expired document"*).
+and contains the admin's rejection reason (e.g. _"Expired document"_).
 
 **Errors:**
 
-| Status | Error |
-|--------|-------|
-| 404 | `Profile not found` |
-| 401 | `Unauthorized` |
-| 500 | `Failed to retrieve current validation step.` |
+| Status | Error                                         |
+| ------ | --------------------------------------------- |
+| 404    | `Profile not found`                           |
+| 401    | `Unauthorized`                                |
+| 500    | `Failed to retrieve current validation step.` |
 
 > Frontend: after 2.6 succeeds, poll every 5–10 seconds. Stop polling when
 > `status` is `VERIFIED` or `REJECTED`.
@@ -475,11 +478,11 @@ The per-step `status` values and their screen mapping are the same as in 2.7.
 
 ## 3. Status semantics (how a record moves through the flow)
 
-| Step (`current_step`) | Verified when | Rejected when |
-|-----------------------|---------------|---------------|
-| `PHONE_NUMBER_VERIFICATION` | `phone_number_verified` (set by 2.3) | — (no admin review) |
-| `PROFILE_IMAGE_VERIFICATION` | face image submitted AND admin approves face | admin rejects face |
-| `DOCUMENT_VERIFICATION` | documents submitted AND admin approves documents/bio data | admin rejects documents or bio data |
+| Step (`current_step`)        | Verified when                                             | Rejected when                       |
+| ---------------------------- | --------------------------------------------------------- | ----------------------------------- |
+| `PHONE_NUMBER_VERIFICATION`  | `phone_number_verified` (set by 2.3)                      | — (no admin review)                 |
+| `PROFILE_IMAGE_VERIFICATION` | face image submitted AND admin approves face              | admin rejects face                  |
+| `DOCUMENT_VERIFICATION`      | documents submitted AND admin approves documents/bio data | admin rejects documents or bio data |
 
 Admin endpoints (for reference — used by the admin app, not the user app):
 `GET /admin/profile-verifications`, `PATCH .../bio-data`,
@@ -522,13 +525,20 @@ New endpoints for the full identity pipeline (ID upload, selfie, OTP, admin revi
 - `GET /verification/identity/status` — current status.
 - `POST /verification/identity/id` — submit ID document (type, number, frontUrl, backUrl).
 - `POST /verification/identity/selfie` — submit selfie URL.
-- `POST /verification/identity/otp/verified` — mark phone OTP verified.
-- `POST /verification/identity/submit` — submit for review (auto-approves on high scores, else pending review).
+- `POST /verification/identity/otp/send` — send a 6-digit code by Hubtel SMS (email fallback when no phone); 60-second resend cooldown.
+- `POST /verification/identity/otp/verify` — verify `{ code }`; one-time use, 10-minute expiry, 5 attempts.
+- `POST /verification/identity/submit` — always moves the submission to `PENDING_REVIEW` for human review.
 - `POST /verification/identity/appeal` — appeal a rejection.
 
-Admin:
-- `GET /admin/verifications?status=` — review queue.
-- `PATCH /admin/verifications/{userId}/decide` — approve/reject.
-- `PATCH /admin/verifications/appeals/{appealId}/decide` — decide appeal.
+Admin (permission-gated):
+
+- `GET /admin/verifications?status=` — review queue (`IDENTITY.VIEW`).
+- `PATCH /admin/verifications/{userId}/decide` — approve/reject (`IDENTITY.REVIEW`).
+- `PATCH /admin/verifications/appeals/{appealId}/decide` — decide appeal (`IDENTITY.APPEAL`).
+
+Biometric URLs returned by the admin queue are redacted unless the admin also
+holds `IDENTITY.VIEW_BIOMETRIC`. Status changes are pushed via
+`NotificationOutbox` (`IDENTITY_STATUS_CHANGED`), and a retention clock is reset
+on every review/appeal decision.
 
 Capability gating: `requireVerified` middleware (src/middleware/require-verified.ts) blocks unverified users from posting/listing/hosting/fundraising.
