@@ -21,10 +21,7 @@ import { toAuthUser } from "../../helpers/auth-user.js";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { getAllPermissionsForRole } from "../../middleware/permissions.js";
-import {
-  generateMfaToken,
-  generateWebsiteRefreshToken,
-} from "../../helpers/jwt.js";
+import { generateMfaToken, generateWebsiteRefreshToken } from "../../helpers/jwt.js";
 import { getSecuritySettings, isPasswordExpired } from "../../helpers/settings.js";
 import { notifyAdmins } from "../../helpers/notify-admins.js";
 import { disableAllUserDevices } from "../devices/devices.controller.js";
@@ -208,8 +205,7 @@ export class PasswordAuthController {
       }
 
       const rememberMe = loginData.rememberMe === true;
-      const isWebsiteClient =
-        req.get("x-client-platform")?.trim().toLowerCase() === "web";
+      const isWebsiteClient = req.get("x-client-platform")?.trim().toLowerCase() === "web";
 
       const accessToken =
         user.accountType === "ADMIN"
@@ -315,8 +311,7 @@ export class PasswordAuthController {
         return fail(res, 401, "Not authenticated");
       }
 
-      const isWebsiteClient =
-        req.get("x-client-platform")?.trim().toLowerCase() === "web";
+      const isWebsiteClient = req.get("x-client-platform")?.trim().toLowerCase() === "web";
 
       if (isWebsiteClient) {
         // Website logout must not invalidate mobile sessions.
@@ -380,12 +375,10 @@ export class PasswordAuthController {
       }
 
       // Enforce website/mobile refresh-token separation.
-      const isWebsiteRequest =
-        req.get("x-client-platform")?.trim().toLowerCase() === "web";
+      const isWebsiteRequest = req.get("x-client-platform")?.trim().toLowerCase() === "web";
 
       const isWebsiteToken =
-        decoded.sessionPlatform === "WEBSITE" ||
-        tokenRecord.platform === "WEBSITE";
+        decoded.sessionPlatform === "WEBSITE" || tokenRecord.platform === "WEBSITE";
 
       if (isWebsiteRequest !== isWebsiteToken) {
         return fail(res, 401, "Refresh token platform mismatch");
