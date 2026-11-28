@@ -627,22 +627,6 @@ export class UserTourController {
           tour_media: true,
           pricing_includes: true,
           pricing_excludes: true,
-          bookings: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true,
-                },
-              },
-              userTourItineraries: {
-                include: {
-                  activities: true,
-                },
-              },
-            },
-          },
         },
       });
 
