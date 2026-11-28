@@ -7,6 +7,7 @@
 //report scam tour by user
 import { Request, Response } from "express";
 import { randomBytes } from "crypto";
+import { validateTourBooking } from "./tour-booking-validation.js";
 import { prisma } from "../../config/index.js";
 import { TourBookingSchema, TourBookingSchema_MOMO } from "../../validator/index.js";
 import sendEmail from "../../config/resend.config.js";
@@ -153,12 +154,19 @@ export class UserTourController {
       // Fetch tour details to get the price
       const tour = await prisma.tour_packages.findUnique({
         where: { id: bookingData.tourId },
-        select: { basePrice: true, currency: true, id: true },
+        select: { basePrice: true, currency: true, id: true, status: true, minimumBooking: true },
       });
 
-      if (!tour || !tour.basePrice) {
+      if (!tour || tour.status !== "published" || tour.basePrice === null) {
         return fail(res, 404, "Tour not found or price not available");
       }
+      const validation = validateTourBooking({
+        numberOfPeople: bookingData.numberOfPeople,
+        tourStartDate: new Date(bookingData.tourStartDate),
+        basePrice: Number(tour.basePrice),
+        minimumBooking: tour.minimumBooking,
+      });
+      if (validation) return fail(res, 400, validation);
 
       // Calculate total price
       const totalPrice = Number(tour.basePrice) * bookingData.numberOfPeople;
@@ -218,7 +226,7 @@ export class UserTourController {
           userId: userId,
           tourId: bookingData.tourId,
           numberOfPeople: bookingData.numberOfPeople,
-          bookingDate: new Date(bookingData.bookingDate),
+          bookingDate: new Date(),
           tourStartDate: new Date(bookingData.tourStartDate),
           bookingReference,
           totalPrice,
@@ -245,10 +253,10 @@ export class UserTourController {
       try {
         await sendEmail({
           email: req.user?.email as string,
-          subject: "Tour Booking Confirmation",
-          html: `<p>Dear ${req.user?.fullName as string},</p>
-            <p>Your booking has been successfully confirmed.</p>
-            <p>Thank you for choosing our tour!</p>`,
+          subject: "Tour Booking Received",
+          html: `<p>Your booking request has been received.</p>
+            <p>Reference: ${bookingReference}</p>
+            <p>Check your booking history for booking and payment status.</p>`,
         });
       } catch (emailError) {
         console.error("Failed to send booking confirmation email:", emailError);
@@ -425,12 +433,25 @@ export class UserTourController {
       // Fetch tour details to get the price
       const tour = await prisma.tour_packages.findUnique({
         where: { id: bookingData.tourId },
-        select: { basePrice: true, currency: true, title: true },
+        select: {
+          basePrice: true,
+          currency: true,
+          title: true,
+          status: true,
+          minimumBooking: true,
+        },
       });
 
-      if (!tour || !tour.basePrice) {
+      if (!tour || tour.status !== "published" || tour.basePrice === null) {
         return fail(res, 404, "Tour not found or price not available");
       }
+      const validation = validateTourBooking({
+        numberOfPeople: bookingData.numberOfPeople,
+        tourStartDate: new Date(bookingData.tourStartDate),
+        basePrice: Number(tour.basePrice),
+        minimumBooking: tour.minimumBooking,
+      });
+      if (validation) return fail(res, 400, validation);
 
       // Calculate total price
       const totalPrice = Number(tour.basePrice) * bookingData.numberOfPeople;
@@ -516,10 +537,10 @@ export class UserTourController {
         try {
           await sendEmail({
             email: req.user?.email as string,
-            subject: "Tour Booking Confirmation",
-            html: `<p>Dear ${req.user?.fullName as string},</p>
-            <p>Your booking has been successfully confirmed.</p>
-            <p>Thank you for choosing our tour!</p>`,
+            subject: "Tour Booking Received",
+            html: `<p>Your booking request has been received.</p>
+            <p>Reference: ${bookingReference}</p>
+            <p>Check your booking history for booking and payment status.</p>`,
           });
         } catch (emailError) {
           console.error("Failed to send booking confirmation email:", emailError);
