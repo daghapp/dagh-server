@@ -97,6 +97,15 @@ function mockRes() {
   return { res: { status, json } as unknown as Response, json, status };
 }
 
+function mockReq(body: Record<string, unknown>) {
+  return {
+    body,
+    get(name: string) {
+      return name.toLowerCase() === "user-agent" ? "test-agent" : undefined;
+    },
+  } as unknown as Request;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   jwtMock.verify.mockReturnValue({ id: "user-1" });
@@ -166,7 +175,7 @@ describe("toAuthUser", () => {
 describe("POST /auth/refresh-token", () => {
   async function refresh() {
     const { res, json } = mockRes();
-    await controller.newAccessToken({ body: { refreshToken: "rt" } } as Request, res);
+    await controller.newAccessToken(mockReq({ refreshToken: "rt" }), res);
     const body = json.mock.calls[0][0];
     expectNoHandlerError();
     return body;
@@ -231,7 +240,7 @@ describe("POST /auth/refresh-token", () => {
       throw new Error("bad signature");
     });
 
-    await controller.newAccessToken({ body: { refreshToken: "nope" } } as Request, res);
+    await controller.newAccessToken(mockReq({ refreshToken: "nope" }), res);
 
     expect(status).toHaveBeenCalledWith(401);
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
@@ -241,10 +250,7 @@ describe("POST /auth/refresh-token", () => {
 describe("POST /auth/login", () => {
   it("forces a fresh check, so a lapsed lease cannot unlock a new session", async () => {
     const { res } = mockRes();
-    await controller.login(
-      { body: { email: USER.email, password: "Password123!" } } as Request,
-      res,
-    );
+    await controller.login(mockReq({ email: USER.email, password: "Password123!" }), res);
 
     // The load-bearing assertion of the whole feature. A live lease from
     // yesterday's login is exactly what would otherwise let someone who
@@ -269,10 +275,7 @@ describe("POST /auth/login", () => {
     });
     const { res, json } = mockRes();
 
-    await controller.login(
-      { body: { email: USER.email, password: "Password123!" } } as Request,
-      res,
-    );
+    await controller.login(mockReq({ email: USER.email, password: "Password123!" }), res);
 
     expect(json.mock.calls[0][0].success).toBe(true);
     expect(json.mock.calls[0][0].data.communityAccess.hasChannelAccess).toBe(false);
@@ -281,10 +284,7 @@ describe("POST /auth/login", () => {
 
   it("returns the identical user shape as refresh, plus the refresh token", async () => {
     const { res, json } = mockRes();
-    await controller.login(
-      { body: { email: USER.email, password: "Password123!" } } as Request,
-      res,
-    );
+    await controller.login(mockReq({ email: USER.email, password: "Password123!" }), res);
 
     const body = json.mock.calls[0][0];
     expectNoHandlerError();
@@ -297,7 +297,7 @@ describe("POST /auth/login", () => {
 
     // Same session-resume handler must work for both endpoints.
     const { res: res2, json: json2 } = mockRes();
-    await controller.newAccessToken({ body: { refreshToken: "rt" } } as Request, res2);
+    await controller.newAccessToken(mockReq({ refreshToken: "rt" }), res2);
     const { accessToken: _a, ...refreshUser } = json2.mock.calls[0][0].data;
 
     expect(loginUser).toEqual(refreshUser);
