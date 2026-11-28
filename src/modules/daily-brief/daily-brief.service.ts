@@ -1,11 +1,25 @@
 import { prisma } from "../../config/index.js";
 import axios from "axios";
 import { enqueueAnnouncement } from "../../services/announcement.service.js";
+import { buildCuratedBriefItems } from "./curated-content.js";
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-export async function collectSourceIds(since: Date) {
-  const [posts, threads, listings] = await Promise.all([
+type BriefSource = {
+  id: string;
+  title: string | null;
+  body: string;
+};
+
+function formatHeadlines(sources: BriefSource[]) {
+  return sources
+    .slice(0, 5)
+    .map((source) => `- ${(source.title ?? source.body.slice(0, 60)).trim()}`);
+}
+
+export async function collectSourceIds(since: Date): Promise<BriefSource[]> {
+  const [posts, threads, listings, comments] = await Promise.all([
     prisma.contentPost.findMany({
       where: { status: "APPROVED", publishedAt: { gte: since } },
       select: { id: true, title: true, body: true },
@@ -24,6 +38,12 @@ export async function collectSourceIds(since: Date) {
       orderBy: { updatedAt: "desc" },
       take: 25,
     }),
+    prisma.comment.findMany({
+      where: { status: "APPROVED", createdAt: { gte: since } },
+      select: { id: true, body: true },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    }),
   ]);
 
   return [
@@ -34,19 +54,24 @@ export async function collectSourceIds(since: Date) {
       title: listing.title,
       body: listing.description,
     })),
+    ...comments.map((comment) => ({ id: comment.id, title: null, body: comment.body })),
   ];
 }
 
-export async function generateSummary(sources: { title: string | null; body: string }[]) {
-  const text = sources.map((s) => (s.title ? s.title + ": " : "") + s.body).join("\n");
-  if (!OPENAI_KEY || sources.length === 0) {
-    // Heuristic fallback
-    const headlines = sources.slice(0, 5).map((s) => (s.title ?? s.body.slice(0, 60)).trim());
+export async function generateSummary(sources: BriefSource[], curated = false) {
+  if (curated || sources.length === 0) {
+    const items = sources.length ? sources : await buildCuratedBriefItems(new Date());
     return {
       title: `Daily Brief - ${new Date().toISOString().slice(0, 10)}`,
-      summary: headlines.length
-        ? `Today's highlights:\n- ${headlines.join("\n- ")}`
-        : "No new content today.",
+      summary: `Today's guide:\n${formatHeadlines(items).join("\n")}`,
+    };
+  }
+
+  const text = sources.map((s) => (s.title ? s.title + ": " : "") + s.body).join("\n");
+  if (!OPENAI_KEY) {
+    return {
+      title: `Daily Brief - ${new Date().toISOString().slice(0, 10)}`,
+      summary: `Today's highlights:\n${formatHeadlines(sources).join("\n")}`,
     };
   }
   try {
@@ -70,8 +95,10 @@ export async function generateSummary(sources: { title: string | null; body: str
     const lines = content.split("\n").filter(Boolean);
     return { title: lines[0] ?? `Daily Brief`, summary: lines.slice(1).join("\n") || content };
   } catch {
-    const headlines = sources.slice(0, 5).map((s) => (s.title ?? s.body.slice(0, 60)).trim());
-    return { title: `Daily Brief`, summary: headlines.join("\n") };
+    return {
+      title: `Daily Brief`,
+      summary: `Today's highlights:\n${formatHeadlines(sources).join("\n")}`,
+    };
   }
 }
 
@@ -79,10 +106,12 @@ export async function runDailyBrief(date?: Date) {
   const d = date ?? new Date();
   const dayStart = new Date(d);
   dayStart.setUTCHours(0, 0, 0, 0);
-  const since = new Date(dayStart.getTime() - 24 * 60 * 60 * 1000);
+  const since = new Date(d.getTime() - DAY_MS);
   const sources = await collectSourceIds(since);
-  const sourceIds = sources.map((s) => s.id);
-  const { title, summary } = await generateSummary(sources);
+  const hasUserActivity = sources.length > 0;
+  const briefSources = hasUserActivity ? sources : await buildCuratedBriefItems(d);
+  const sourceIds = briefSources.map((s) => s.id);
+  const { title, summary } = await generateSummary(briefSources, !hasUserActivity);
   const brief = await prisma.dailyBrief.upsert({
     where: { date: dayStart },
     update: { title, summary, sourceIds, status: "PUBLISHED", publishedAt: new Date() },
@@ -95,21 +124,22 @@ export async function runDailyBrief(date?: Date) {
       publishedAt: new Date(),
     },
   });
-  // Fan out via announcement
-  try {
-    const ann = await prisma.announcement.create({
-      data: {
-        title,
-        body: summary,
-        category: "DAILY_BRIEF",
-        audience: "ACTIVE",
-        status: "DRAFT",
-        createdBy: "system",
-      },
-    });
-    await enqueueAnnouncement(ann.id);
-  } catch {
-    // ignore fan-out failures
+  if (hasUserActivity) {
+    try {
+      const ann = await prisma.announcement.create({
+        data: {
+          title,
+          body: summary,
+          category: "DAILY_BRIEF",
+          audience: "ACTIVE",
+          status: "DRAFT",
+          createdBy: "system",
+        },
+      });
+      await enqueueAnnouncement(ann.id);
+    } catch {
+      return brief;
+    }
   }
   return brief;
 }
@@ -128,11 +158,12 @@ export async function publishBrief(id: string) {
         audience: "ACTIVE",
         status: "DRAFT",
         createdBy: "system",
+        route: brief.sourceIds.some((id) => id.startsWith("evergreen:")) ? "/itinerary" : null,
       },
     });
     await enqueueAnnouncement(ann.id);
   } catch {
-    // ignore fan-out failures; the brief itself is published
+    return brief;
   }
   return brief;
 }

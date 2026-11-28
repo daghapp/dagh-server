@@ -1855,13 +1855,51 @@ Successful contributions record a ledger entry (`PLATFORM_COMMISSION_RATE`,
 
 ### Daily brief
 
-| Method | Endpoint                    | Auth               | What it does                                                  |
-| ------ | --------------------------- | ------------------ | ------------------------------------------------------------- |
-| GET    | `/briefs`                   | Public             | Published briefs (`?limit=&offset=`).                         |
-| GET    | `/briefs/latest`            | Public             | Latest published brief.                                       |
-| GET    | `/briefs/:date`             | Public             | Brief for a `YYYY-MM-DD` date.                                |
-| POST   | `/admin/briefs/generate`    | `CONTENT.MODERATE` | Generate from approved posts, threads, and verified listings. |
-| PATCH  | `/admin/briefs/:id/publish` | `CONTENT.MODERATE` | Publish and fan out an announcement.                          |
+| Method | Endpoint                    | Auth               | What it does                                                            |
+| ------ | --------------------------- | ------------------ | ----------------------------------------------------------------------- |
+| GET    | `/briefs`                   | Public             | Published briefs (`?limit=&offset=`).                                   |
+| GET    | `/briefs/latest`            | Public             | Latest published brief.                                                 |
+| GET    | `/briefs/:date`             | Public             | Brief for a `YYYY-MM-DD` date.                                          |
+| POST   | `/admin/briefs/generate`    | `CONTENT.MODERATE` | Generate from approved posts, threads, comments, and verified listings. |
+| PATCH  | `/admin/briefs/:id/publish` | `CONTENT.MODERATE` | Publish and fan out an announcement.                                    |
+
+`src/jobs/daily-brief.ts` runs at 06:00 Africa/Accra. `runDailyBrief()` collects
+approved posts/threads/comments and verified listings from the **rolling 24
+hours** (not the previous UTC day). When there is activity, the brief uses an
+OpenAI summary (or a local heuristic) and is announced to active users. When
+there is no activity, the brief is still published with curated evergreen cards
+and stable `sourceIds`, but **no announcement or push alert is sent** — there is
+no "No new content today" notification.
+
+Every brief response includes a derived `items` array so clients never parse
+`summary` to find a destination:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "brief-1",
+    "title": "Daily Brief - 2026-11-28",
+    "summary": "Today's guide:\n- ...",
+    "sourceIds": ["evergreen:heritage-weekend"],
+    "items": [
+      {
+        "id": "evergreen:heritage-weekend",
+        "title": "3 hidden heritage spots in Nkonya Tepo, Cape Coast & Volta worth visiting this weekend",
+        "body": "Open the directory/itinerary tab to plan a weekend route.",
+        "route": "/itinerary"
+      }
+    ]
+  }
+}
+```
+
+Curated routes: `evergreen:heritage-weekend` and `evergreen:acc-driver` →
+`/itinerary`; `evergreen:diaspora-nearby` → `/dating/discovery`. The member count
+comes from active users created in the last 7 days whose Accra
+`DiscoveryPreference.locationName` was refreshed in the last 30 days; it is
+never fabricated. Manually publishing a curated brief sets the announcement
+`route` to `/itinerary`.
 
 ---
 

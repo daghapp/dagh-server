@@ -33,8 +33,11 @@ All eight phases are wired into `src/server.ts` and documented in
   admin oversight at `/admin/crowdfunding`.
 - **Webinars:** atomic capacity checks, paid registration, LiveKit tokens when
   configured, and gated recording access.
-- **Daily brief:** generation from approved posts/threads/verified listings,
-  publishing, and announcement fan-out via `NotificationOutbox`.
+- **Daily brief:** rolling 24-hour generation from approved posts/threads/comments/
+  verified listings, publishing, and announcement fan-out. With no user activity
+  the 06:00 brief is still published with structured curated evergreen cards
+  (`/itinerary`, `/dating/discovery`) exposed as `items`, but the push
+  announcement is suppressed.
 - **Permissions:** `IDENTITY.*`, `CONTENT.*`, `LISTINGS.*`, `FUNDRAISING.*`,
   `WEBINARS.*` scopes in `src/middleware/permissions.ts`; SUPER_ADMIN holds all.
 
