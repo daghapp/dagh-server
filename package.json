@@ -35,7 +35,7 @@
   "description": "",
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",
-    "@prisma/client": "^7.4.2",
+    "@prisma/client": "7.10.1",
     "@sentry/node": "^10.69.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "axios": "^1.13.5",
@@ -94,7 +94,7 @@
     "eslint-config-prettier": "^10.1.8",
     "nodemon": "^3.1.14",
     "prettier": "^3.9.5",
-    "prisma": "^7.4.2",
+    "prisma": "7.10.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
