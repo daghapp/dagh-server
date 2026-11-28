@@ -436,9 +436,16 @@ export class UserTourController {
         select: { basePrice: true, currency: true, title: true, status: true, minimumBooking: true },
       });
 
-      if (!tour || !tour.basePrice) {
+      if (!tour || tour.status !== "published" || tour.basePrice === null) {
         return fail(res, 404, "Tour not found or price not available");
       }
+      const validation = validateTourBooking({
+        numberOfPeople: bookingData.numberOfPeople,
+        tourStartDate: new Date(bookingData.tourStartDate),
+        basePrice: Number(tour.basePrice),
+        minimumBooking: tour.minimumBooking,
+      });
+      if (validation) return fail(res, 400, validation);
 
       // Calculate total price
       const totalPrice = Number(tour.basePrice) * bookingData.numberOfPeople;
@@ -524,10 +531,10 @@ export class UserTourController {
         try {
           await sendEmail({
             email: req.user?.email as string,
-            subject: "Tour Booking Confirmation",
-            html: `<p>Dear ${req.user?.fullName as string},</p>
-            <p>Your booking has been successfully confirmed.</p>
-            <p>Thank you for choosing our tour!</p>`,
+            subject: "Tour Booking Received",
+            html: `<p>Your booking request has been received.</p>
+            <p>Reference: ${bookingReference}</p>
+            <p>Check your booking history for booking and payment status.</p>`,
           });
         } catch (emailError) {
           console.error("Failed to send booking confirmation email:", emailError);
