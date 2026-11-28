@@ -18,6 +18,7 @@ import {
 } from "../../helpers/index.js";
 import { ok, created, fail } from "../../helpers/response.js";
 import { toAuthUser } from "../../helpers/auth-user.js";
+import { getClientPlatform } from "../../helpers/client-platform.js";
 import { hashPhoneNumber } from "../../helpers/phoneHash.js";
 import { syncPhoneHashVariants } from "../contacts/contacts.service.js";
 import { getAllPermissionsForRole } from "../../middleware/permissions.js";
@@ -205,7 +206,7 @@ export class PasswordAuthController {
       }
 
       const rememberMe = loginData.rememberMe === true;
-      const isWebsiteClient = req.get("x-client-platform")?.trim().toLowerCase() === "web";
+      const isWebsiteClient = getClientPlatform(req) === "web";
 
       const accessToken =
         user.accountType === "ADMIN"
@@ -311,7 +312,7 @@ export class PasswordAuthController {
         return fail(res, 401, "Not authenticated");
       }
 
-      const isWebsiteClient = req.get("x-client-platform")?.trim().toLowerCase() === "web";
+      const isWebsiteClient = getClientPlatform(req) === "web";
 
       if (isWebsiteClient) {
         // Website logout must not invalidate mobile sessions.
@@ -375,7 +376,7 @@ export class PasswordAuthController {
       }
 
       // Enforce website/mobile refresh-token separation.
-      const isWebsiteRequest = req.get("x-client-platform")?.trim().toLowerCase() === "web";
+      const isWebsiteRequest = getClientPlatform(req) === "web";
 
       const isWebsiteToken =
         decoded.sessionPlatform === "WEBSITE" || tokenRecord.platform === "WEBSITE";

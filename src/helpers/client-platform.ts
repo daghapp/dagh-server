@@ -37,7 +37,7 @@ function normalize(value: unknown): string | null {
  * then the validated request body, then a conservative User-Agent fallback.
  */
 export function getClientPlatform(req: Pick<Request, "headers" | "body">): ClientPlatform {
-  const header = normalize(req.headers["x-client-platform"]);
+  const header = normalize(req.headers?.["x-client-platform"]);
   const body = normalize((req.body as Record<string, unknown> | undefined)?.platform);
   const declared = header ?? body;
 
@@ -47,7 +47,7 @@ export function getClientPlatform(req: Pick<Request, "headers" | "body">): Clien
     if (WEB_VALUES.has(declared)) return "web";
   }
 
-  const userAgent = normalize(req.headers["user-agent"]);
+  const userAgent = normalize(req.headers?.["user-agent"]);
   if (userAgent) {
     if (/iphone|ipad|ipod|\bios\b/.test(userAgent)) return "ios";
     if (/android/.test(userAgent)) return "android";

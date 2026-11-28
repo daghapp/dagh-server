@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Ping /health
         env:
-          API_URL: ${{ vars.PRODUCTION_API_URL || 'https://dagh-server-fo64.onrender.com' }}
+          API_URL: ${{ vars.PRODUCTION_API_URL || 'https://api.diasporansync.com' }}
         run: |
           curl --fail --silent --show-error \
             --connect-timeout 15 --max-time 120 \

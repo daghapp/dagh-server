@@ -29,6 +29,7 @@ const helpersMock = {
   verifyOtp: vi.fn(),
   generateAccessToken: vi.fn(() => "new-access-token"),
   generateRefreshToken: vi.fn(async () => "new-refresh-token"),
+  generateWebsiteRefreshToken: vi.fn(async () => "new-website-refresh-token"),
 };
 
 vi.mock("../src/config/index.js", () => ({ prisma: prismaMock }));
